@@ -1,0 +1,343 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' http: https: file: data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file: http: https:; font-src 'self' data:; connect-src 'self' http: https: ws: wss:; media-src 'self' blob: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none';">
+<title>JARVIS Voice Assistant</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 19px; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #05080d; font-family: "Segoe UI", system-ui, sans-serif; color: #e8eef6; }
+  
+  /* Main Container */
+  .container { display: flex; width: 1920px; height: 480px; padding: 20px; gap: 20px; position: relative; }
+  
+  /* Left Panel: Orb & Status */
+  .left-panel { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 500px; height: 100%; background: linear-gradient(160deg, #0a1424, #05080d); border: 1px solid #1a2a40; border-radius: 20px; position: relative; }
+  .status-label { font-size: 24px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: #7ce7ff; margin-bottom: 20px; text-shadow: 0 0 10px rgba(0, 240, 255, 0.4); }
+  
+  /* Glowing Orb Visualizer */
+  .orb-container { position: relative; width: 160px; height: 160px; display: flex; align-items: center; justify-content: center; }
+  .orb-ring { position: absolute; border-radius: 50%; border: 2px solid transparent; box-sizing: border-box; pointer-events: none; }
+  .ring-1 { width: 160px; height: 160px; border-top-color: #00f0ff; border-bottom-color: #00f0ff; animation: rotate 4s linear infinite; filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.5)); }
+  .ring-2 { width: 130px; height: 130px; border-left-color: #7ce7ff; border-right-color: #7ce7ff; animation: rotate-rev 3s linear infinite; filter: drop-shadow(0 0 6px rgba(124, 231, 255, 0.4)); }
+  .orb-center { width: 90px; height: 90px; background: radial-gradient(circle, #00f0ff 0%, #036888 70%, #05080d 100%); border-radius: 50%; box-shadow: 0 0 30px #00f0ff; transition: all 0.3s ease; cursor: pointer; }
+  
+  /* Orb Status States */
+  .container.state-sleeping .orb-center { background: radial-gradient(circle, #005f73 0%, #001219 70%, #05080d 100%); box-shadow: 0 0 15px #005f73; }
+  .container.state-sleeping .status-label { color: #0096c7; text-shadow: none; }
+  .container.state-sleeping .ring-1 { border-top-color: #0077b6; border-bottom-color: #0077b6; animation-duration: 8s; }
+  .container.state-sleeping .ring-2 { border-left-color: #0096c7; border-right-color: #0096c7; animation-duration: 6s; }
+
+  .container.state-muted .orb-center { background: radial-gradient(circle, #3a0d15 0%, #150003 70%, #05080d 100%); box-shadow: 0 0 15px #f94144; }
+  .container.state-muted .status-label { color: #f94144; text-shadow: none; }
+  .container.state-muted .ring-1 { border-top-color: #570000; border-bottom-color: #570000; animation-duration: 10s; }
+  .container.state-muted .ring-2 { border-left-color: #f94144; border-right-color: #f94144; animation-duration: 8s; }
+
+  .container.state-listening .orb-center { background: radial-gradient(circle, #39FF14 0%, #178007 70%, #05080d 100%); box-shadow: 0 0 35px #39FF14; animation: pulse 0.8s ease-in-out infinite alternate; }
+  .container.state-listening .status-label { color: #39FF14; text-shadow: 0 0 10px rgba(57, 255, 20, 0.4); }
+  .container.state-listening .ring-1 { border-top-color: #39FF14; border-bottom-color: #39FF14; animation-duration: 2s; }
+  .container.state-listening .ring-2 { border-left-color: #39FF14; border-right-color: #39FF14; animation-duration: 1.5s; }
+
+  .container.state-speaking .orb-center { background: radial-gradient(circle, #ff007f 0%, #9b004f 70%, #05080d 100%); box-shadow: 0 0 40px #ff007f; animation: ripple 0.6s linear infinite alternate; }
+  .container.state-speaking .status-label { color: #ff007f; text-shadow: 0 0 10px rgba(255, 0, 127, 0.4); }
+  .container.state-speaking .ring-1 { border-top-color: #ff007f; border-bottom-color: #ff007f; animation-duration: 1s; }
+  .container.state-speaking .ring-2 { border-left-color: #ff007f; border-right-color: #ff007f; animation-duration: 0.8s; }
+
+  .container.state-thinking .orb-center { background: radial-gradient(circle, #7209b7 0%, #3f0761 70%, #05080d 100%); box-shadow: 0 0 30px #7209b7; }
+  .container.state-thinking .status-label { color: #b5179e; text-shadow: 0 0 10px rgba(181, 23, 158, 0.4); }
+  .container.state-thinking .ring-1 { border-top-color: #7209b7; border-bottom-color: #b5179e; animation: rotate 0.5s linear infinite; }
+  .container.state-thinking .ring-2 { border-left-color: #b5179e; border-right-color: #7209b7; animation: rotate-rev 0.4s linear infinite; }
+
+  /* Audio Visualizer Waves (Sleeping/Active) */
+  .wave-hint { margin-top: 25px; font-size: 13px; color: #5f7790; text-align: center; }
+  .wave-hint span { color: #7ce7ff; font-weight: bold; }
+
+  /* Right Panel: Conversation Log */
+  .right-panel { display: flex; flex-direction: column; flex: 1; height: 100%; background: linear-gradient(160deg, #0a1119, #05080d); border: 1px solid #1a2330; border-radius: 20px; overflow: hidden; }
+  .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; background: #0b1119; border-bottom: 1px solid #1a2330; }
+  .panel-title { font-size: 16px; font-weight: 700; color: #8899aa; text-transform: uppercase; letter-spacing: 1px; }
+  .clear-btn { font-size: 13px; color: #5f7790; background: none; border: none; cursor: pointer; transition: color 0.15s; }
+  .clear-btn:hover { color: #ff4d4d; }
+  .messages-container { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; scrollbar-width: thin; scrollbar-color: #1a2330 #05080d; }
+  
+  /* Conversation Messages */
+  .msg { max-width: 85%; padding: 12px 16px; border-radius: 18px; line-height: 1.5; font-size: 15px; animation: slide-up 0.2s ease-out; word-break: break-word; }
+  .msg.user { align-self: flex-end; background: linear-gradient(135deg, #0e2a47, #07192b); border: 1px solid #1c3c5e; color: #e8eef6; border-bottom-right-radius: 4px; }
+  .msg.jarvis { align-self: flex-start; background: linear-gradient(135deg, #0f2430, #08151c); border: 1px solid #143547; color: #cfe0f2; border-bottom-left-radius: 4px; }
+  .msg.sys { align-self: center; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); color: #8899aa; font-size: 13px; padding: 6px 12px; border-radius: 12px; }
+
+  /* Animations */
+  @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes rotate-rev { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.15); } }
+  @keyframes ripple { from { transform: scale(1); box-shadow: 0 0 25px #ff007f; } to { transform: scale(1.1); box-shadow: 0 0 50px #ff007f; } }
+  @keyframes slide-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+  /* Setup Overlay (Glassmorphism Modal) */
+  .overlay { position: absolute; inset: 0; background: rgba(5, 8, 13, 0.95); display: none; align-items: center; justify-content: center; z-index: 100; animation: fade-in 0.25s; }
+  .overlay.open { display: flex; }
+  .setup-card { width: 520px; padding: 30px; background: linear-gradient(160deg, #0b1424, #05080d); border: 1px solid #203654; border-radius: 20px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
+  .setup-icon { font-size: 64px; margin-bottom: 15px; }
+  .setup-title { font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 10px; }
+  .setup-desc { font-size: 14px; color: #8899aa; line-height: 1.6; margin-bottom: 25px; }
+  .pin-display { font-size: 32px; font-weight: 800; color: #7ce7ff; background: rgba(0,240,255,0.07); border: 1px dashed rgba(0,240,255,0.3); padding: 12px; border-radius: 10px; margin-bottom: 15px; letter-spacing: 3px; }
+  .setup-btn { background: #00f0ff; color: #05080d; font-size: 15px; font-weight: 700; padding: 10px 24px; border: none; border-radius: 20px; cursor: pointer; transition: all 0.15s; }
+  .setup-btn:hover { background: #7ce7ff; box-shadow: 0 0 15px rgba(0,240,255,0.4); }
+  
+  .desktop-ui-btn {
+    margin-top: 25px;
+    background: rgba(0, 240, 255, 0.08);
+    color: #7ce7ff;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    border-radius: 12px;
+    padding: 7px 16px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.15s;
+    outline: none;
+  }
+  .desktop-ui-btn:hover {
+    background: rgba(0, 240, 255, 0.18);
+    border-color: #00f0ff;
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+  }
+  
+  /* Tab Buttons styling */
+  .tab-buttons { display: flex; gap: 10px; }
+  .tab-btn { background: none; border: none; color: #5f7790; font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; padding: 5px 10px; border-bottom: 2px solid transparent; transition: all 0.15s; outline: none; }
+  .tab-btn.active { color: #00f0ff; border-bottom-color: #00f0ff; text-shadow: 0 0 8px rgba(0, 240, 255, 0.4); }
+  .tab-btn:hover { color: #7ce7ff; }
+
+  /* Settings Container styling */
+  .settings-container { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; background: rgba(5, 8, 13, 0.3); }
+  .settings-form { display: flex; flex-direction: column; gap: 12px; max-width: 700px; margin: 0 auto; width: 100%; }
+  .form-row { display: flex; flex-direction: column; gap: 5px; }
+  .form-row label { font-size: 13px; font-weight: bold; color: #8899aa; text-transform: uppercase; letter-spacing: 0.5px; text-align: left; }
+  .form-row input, .form-row select { background: rgba(5, 10, 18, 0.85); color: #e8eef6; border: 1px solid rgba(0, 240, 255, 0.25); border-radius: 8px; padding: 8px 12px; font-size: 14px; transition: all 0.15s; width: 100%; outline: none; }
+  .form-row input:focus, .form-row select:focus { border-color: #00f0ff; box-shadow: 0 0 8px rgba(0, 240, 255, 0.35); }
+  
+  .form-actions { display: flex; gap: 12px; margin-top: 10px; }
+  .action-btn { flex: 1; font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.15s; outline: none; }
+  .save-btn { background: #00f0ff; color: #05080d; }
+  .save-btn:hover { background: #7ce7ff; box-shadow: 0 0 12px rgba(0,240,255,0.4); }
+  .restart-btn { background: rgba(255, 77, 109, 0.12); color: #ff4d6d; border: 1px solid rgba(255, 77, 109, 0.3); }
+  .restart-btn:hover { background: rgba(255, 77, 109, 0.22); border-color: #ff4d6d; box-shadow: 0 0 10px rgba(255,77,109,0.3); }
+  
+  .settings-status { font-size: 13px; text-align: center; margin-top: 5px; min-height: 20px; font-weight: bold; }
+  .settings-status.success { color: #39ff14; text-shadow: 0 0 8px rgba(57, 255, 20, 0.3); }
+  .settings-status.error { color: #ff4d6d; text-shadow: 0 0 8px rgba(255, 77, 109, 0.3); }
+
+  /* Chat input bar */
+  .chat-input-container { display: flex; gap: 10px; padding: 10px 20px; background: #0b1119; border-top: 1px solid #1a2330; }
+  .chat-input-container input { flex: 1; background: rgba(5, 10, 18, 0.85); color: #e8eef6; border: 1px solid rgba(0, 240, 255, 0.25); border-radius: 8px; padding: 8px 12px; font-size: 14px; outline: none; transition: all 0.15s; }
+  .chat-input-container input:focus { border-color: #00f0ff; box-shadow: 0 0 8px rgba(0, 240, 255, 0.35); }
+  .chat-input-container button { width: 40px; height: 38px; font-size: 18px; font-weight: bold; background: #00f0ff; color: #05080d; border: none; border-radius: 8px; cursor: pointer; transition: all 0.15s; outline: none; }
+  .chat-input-container button:hover { background: #7ce7ff; box-shadow: 0 0 12px rgba(0,240,255,0.4); }
+
+  /* Metrics View */
+  .metrics-container { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; background: rgba(5, 8, 13, 0.3); }
+  .metrics-grid { display: flex; flex-direction: column; gap: 14px; max-width: 600px; margin: 0 auto; width: 100%; }
+  .metric-item { display: flex; flex-direction: column; gap: 5px; }
+  .metric-meta { display: flex; justify-content: space-between; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+  .metric-name { color: #8899aa; }
+  .metric-val { color: #00f0ff; font-family: monospace; }
+  .metric-bar-bg { width: 100%; height: 6px; background: rgba(0, 240, 255, 0.08); border-radius: 3px; overflow: hidden; }
+  .metric-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
+  .metric-bar-fill.color-cpu { background: #00d4ff; box-shadow: 0 0 6px #00d4ff; }
+  .metric-bar-fill.color-mem { background: #ffcc00; box-shadow: 0 0 6px #ffcc00; }
+  .metric-bar-fill.color-net { background: #00ff88; box-shadow: 0 0 6px #00ff88; }
+  .metric-bar-fill.color-gpu { background: #ff6b00; box-shadow: 0 0 6px #ff6b00; }
+  .metric-bar-fill.color-tmp { background: #ff3355; box-shadow: 0 0 6px #ff3355; }
+  .metrics-footer { display: flex; gap: 15px; justify-content: center; margin-top: 15px; }
+  .metric-badge { font-size: 12px; font-weight: bold; font-family: monospace; padding: 6px 12px; background: rgba(0, 240, 255, 0.05); border: 1px solid rgba(0, 240, 255, 0.15); border-radius: 8px; color: #7ce7ff; }
+
+  /* Files View */
+  .files-container { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; background: rgba(5, 8, 13, 0.3); }
+  .upload-zone { border: 2px dashed rgba(0, 240, 255, 0.25); border-radius: 12px; padding: 25px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; cursor: pointer; transition: all 0.15s; background: rgba(5, 10, 18, 0.4); min-height: 120px; text-align: center; }
+  .upload-zone:hover, .upload-zone.dragover { border-color: #00f0ff; background: rgba(0, 240, 255, 0.05); box-shadow: 0 0 10px rgba(0, 240, 255, 0.15); }
+  .upload-icon { font-size: 32px; }
+  .upload-text { font-size: 13px; font-weight: bold; color: #8899aa; text-transform: uppercase; letter-spacing: 0.5px; }
+  .selected-file-bar { display: flex; align-items: center; gap: 10px; padding: 10px 15px; background: rgba(0, 255, 136, 0.06); border: 1px solid rgba(0, 255, 136, 0.2); border-radius: 8px; font-size: 13px; }
+  .selected-file-info { flex: 1; font-weight: bold; color: #e8eef6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+  .file-action-btn { background: #00ff88; color: #05080d; font-size: 12px; font-weight: bold; text-transform: uppercase; padding: 5px 15px; border: none; border-radius: 6px; cursor: pointer; transition: all 0.15s; }
+  .file-action-btn:hover { background: #56ffac; box-shadow: 0 0 10px rgba(0, 255, 136, 0.4); }
+  .file-cancel-btn { background: none; border: none; color: #ff4d6d; font-size: 16px; cursor: pointer; padding: 0 5px; }
+  .files-list-header { font-size: 13px; font-weight: bold; color: #8899aa; text-transform: uppercase; letter-spacing: 1px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 5px; margin-top: 10px; }
+  .files-list { display: flex; flex-direction: column; gap: 8px; }
+  .file-row { display: flex; align-items: center; gap: 10px; padding: 10px 15px; background: rgba(5, 10, 18, 0.6); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; font-size: 13px; transition: border-color 0.15s; text-decoration: none; color: inherit; }
+  .file-row:hover { border-color: rgba(0, 240, 255, 0.3); background: rgba(5, 10, 18, 0.8); }
+  .file-icon { font-size: 20px; }
+  .file-name { flex: 1; font-weight: bold; color: #e8eef6; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-size { font-family: monospace; color: #8899aa; }
+  .file-list-empty { font-size: 13px; color: #5f7790; text-align: center; padding: 20px 0; }
+
+  /* Remote pairing */
+  .remote-container { flex: 1; padding: 20px; display: flex; align-items: center; justify-content: center; background: rgba(5, 8, 13, 0.3); }
+  .remote-card { display: flex; gap: 25px; padding: 25px; background: linear-gradient(160deg, #0b1424, #05080d); border: 1px solid rgba(0, 240, 255, 0.25); border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.6); max-width: 600px; width: 100%; align-items: center; }
+  .remote-left { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .remote-qr { width: 140px; height: 140px; background: white; padding: 6px; border-radius: 10px; border: 1px solid rgba(0, 240, 255, 0.2); }
+  .remote-qr-hint { font-size: 11px; color: #8899aa; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+  .remote-right { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+  .remote-field { display: flex; flex-direction: column; gap: 4px; text-align: left; }
+  .remote-label { font-size: 11px; font-weight: bold; color: #8899aa; text-transform: uppercase; letter-spacing: 0.5px; }
+  .remote-val { font-family: monospace; font-size: 13px; color: #7ce7ff; word-break: break-all; }
+  .remote-val.select-text { user-select: text; -webkit-user-select: text; }
+  .remote-pin { font-family: monospace; font-size: 26px; font-weight: bold; color: #ff6b00; background: rgba(255, 107, 0, 0.08); border: 1px dashed rgba(255, 107, 0, 0.3); padding: 8px 15px; border-radius: 8px; letter-spacing: 6px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="container state-sleeping" id="app-container">
+    <!-- Left panel: AI status orb -->
+    <div class="left-panel">
+      <div class="status-label" id="status-text">Jarvis Sleeping</div>
+      <div class="orb-container">
+        <div class="orb-ring ring-1"></div>
+        <div class="orb-ring ring-2"></div>
+        <div class="orb-center" id="orb-trigger"></div>
+      </div>
+      <div class="wave-hint" id="knob-hint">Hold <span>device knob</span> or tap Orb to talk</div>
+      <button class="desktop-ui-btn" id="toggle-desktop-ui">Show Desktop UI</button>
+    </div>
+
+    <!-- Right panel: Conversation logs & Settings -->
+    <div class="right-panel">
+      <div class="panel-header">
+        <div class="tab-buttons">
+          <button class="tab-btn active" id="tab-log-btn">Log</button>
+          <button class="tab-btn" id="tab-sys-btn">Sys</button>
+          <button class="tab-btn" id="tab-files-btn">Files</button>
+          <button class="tab-btn" id="tab-remote-btn">Remote</button>
+        </div>
+        <button class="clear-btn" id="clear-log">Clear</button>
+      </div>
+      
+      <!-- Conversation feed -->
+      <div class="messages-container" id="feed">
+        <!-- Message list populated dynamically -->
+        <div class="msg sys">Welcome to JARVIS. Connecting to backend...</div>
+      </div>
+
+      <!-- Chat Input Bar -->
+      <div class="chat-input-container" id="chat-input-container">
+        <input type="text" id="chat-text-input" placeholder="Type command to JARVIS...">
+        <button id="send-chat-btn">▸</button>
+      </div>
+
+      <!-- Metrics View (hidden by default) -->
+      <div class="metrics-container" id="metrics-view" style="display: none;">
+        <div class="metrics-grid">
+          <div class="metric-item">
+            <div class="metric-meta">
+              <span class="metric-name">CPU Utilization</span>
+              <span class="metric-val" id="metric-cpu-val">--%</span>
+            </div>
+            <div class="metric-bar-bg">
+              <div class="metric-bar-fill color-cpu" id="metric-cpu-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-meta">
+              <span class="metric-name">Memory Usage</span>
+              <span class="metric-val" id="metric-mem-val">--%</span>
+            </div>
+            <div class="metric-bar-bg">
+              <div class="metric-bar-fill color-mem" id="metric-mem-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-meta">
+              <span class="metric-name">Network I/O</span>
+              <span class="metric-val" id="metric-net-val">-- KB/s</span>
+            </div>
+            <div class="metric-bar-bg">
+              <div class="metric-bar-fill color-net" id="metric-net-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-meta">
+              <span class="metric-name">GPU Load</span>
+              <span class="metric-val" id="metric-gpu-val">--%</span>
+            </div>
+            <div class="metric-bar-bg">
+              <div class="metric-bar-fill color-gpu" id="metric-gpu-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-meta">
+              <span class="metric-name">CPU Temperature</span>
+              <span class="metric-val" id="metric-tmp-val">--°C</span>
+            </div>
+            <div class="metric-bar-bg">
+              <div class="metric-bar-fill color-tmp" id="metric-tmp-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="metrics-footer">
+          <div class="metric-badge">Uptime: <span id="metric-uptime">--:--</span></div>
+          <div class="metric-badge">Processes: <span id="metric-proc">--</span></div>
+        </div>
+      </div>
+
+      <!-- Files View (hidden by default) -->
+      <div class="files-container" id="files-view" style="display: none;">
+        <div class="upload-zone" id="upload-zone">
+          <span class="upload-icon">📁</span>
+          <span class="upload-text">Drag & Drop file here or Click to Browse</span>
+          <input type="file" id="file-uploader" style="display: none;">
+        </div>
+        <div class="selected-file-bar" id="selected-file-bar" style="display: none;">
+          <span class="selected-file-info" id="selected-file-info">No file chosen</span>
+          <button class="file-action-btn" id="upload-file-btn">Upload</button>
+          <button class="file-cancel-btn" id="cancel-file-btn">✕</button>
+        </div>
+        <div class="files-list-header">Uploaded Files</div>
+        <div class="files-list" id="files-list">
+          <div class="file-list-empty">No files uploaded yet.</div>
+        </div>
+      </div>
+
+      <!-- Remote Control View (hidden by default) -->
+      <div class="remote-container" id="remote-view" style="display: none;">
+        <div class="remote-card">
+          <div class="remote-left">
+            <img class="remote-qr" id="remote-qr-img" src="" alt="QR Code">
+            <span class="remote-qr-hint">Scan to pair instantly</span>
+          </div>
+          <div class="remote-right">
+            <div class="remote-field">
+              <span class="remote-label">Manual URL</span>
+              <span class="remote-val select-text" id="remote-url-val">--</span>
+            </div>
+            <div class="remote-field">
+              <span class="remote-label">One-Time PIN Code</span>
+              <span class="remote-pin" id="remote-pin-val">------</span>
+            </div>
+            <button class="setup-btn" id="refresh-remote-btn" style="margin-top: 10px;">New Code</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Security PIN Pairing Overlay -->
+    <div class="overlay" id="pairing-overlay">
+      <div class="setup-card">
+        <div class="setup-icon">🤖</div>
+        <div class="setup-title">Pairing Required</div>
+        <div class="setup-desc">
+          Please pair your device with the JARVIS Assistant.<br>
+          Open the JARVIS Desktop UI, click <b>Remote Control</b>, and enter the pairing PIN in the open-quake app settings.
+        </div>
+        <div class="pin-display" id="pairing-status">Pairing Pending...</div>
+        <button class="setup-btn" id="retry-pairing">Check Connection</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="jarvisview.js"></script>
+</body>
+</html>

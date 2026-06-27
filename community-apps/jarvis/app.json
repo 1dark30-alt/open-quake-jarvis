@@ -1,0 +1,61 @@
+{
+  "id": "jarvis",
+  "name": "JARVIS",
+  "entry": "jarvisview.html",
+  "served": true,
+  "server": "server.js",
+  "options": [
+    {
+      "key": "endpoint",
+      "label": "JARVIS Server URL",
+      "type": "text",
+      "default": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "pin",
+      "label": "Pairing PIN",
+      "type": "secret",
+      "default": "QUAKE"
+    },
+    {
+      "key": "gemini_api_key",
+      "label": "Gemini API Key",
+      "type": "secret",
+      "default": ""
+    },
+    {
+      "key": "llm_provider",
+      "label": "LLM Provider",
+      "type": "select",
+      "default": "gemini-live",
+      "choices": [
+        ["gemini-live", "Gemini Live API"],
+        ["ollama", "Ollama (Local)"],
+        ["openai", "OpenAI Compatible"]
+      ]
+    },
+    {
+      "key": "llm_url",
+      "label": "Ollama / OpenAI Base URL",
+      "type": "text",
+      "default": ""
+    },
+    {
+      "key": "llm_model",
+      "label": "Ollama / OpenAI Model Name",
+      "type": "text",
+      "default": ""
+    },
+    {
+      "key": "os_system",
+      "label": "OS Target",
+      "type": "select",
+      "default": "windows",
+      "choices": [
+        ["windows", "Windows"],
+        ["darwin", "macOS"],
+        ["linux", "Linux"]
+      ]
+    }
+  ]
+}

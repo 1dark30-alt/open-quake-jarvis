@@ -1,0 +1,7 @@
+{
+  "gemini_api_key": "",
+  "llm_provider": "gemini-live",
+  "llm_url": "",
+  "llm_model": "",
+  "os_system": "windows"
+}
