@@ -101,3 +101,34 @@ abbreviation bold (per today's DST rules) and an editable time under each.
   European brothers (rendered in the app's normal options list — the editor's
   collapsible "Advanced" section is host-owned and not available to app options).
 - Rejected alternatives: shared timeline scrubber, on-screen keypad, steppers (v1).
+
+## Zone selection — World Clock parity (added 2026-07-24)
+
+Same selector the World Clock offers: a **mode** option (US time zones / Cities) plus
+**6 city slots** with per-city label overrides, using the identical city list (generated
+from `tzclock`'s own `choices` so the two can't drift). **US is the default** and its
+rendering is untouched — 4 columns, real `PDT/PST` pairs.
+
+- **Cities show GMT offsets, not letter abbreviations.** `Intl` only returns real
+  abbreviations for US zones; elsewhere it gives numeric forms (Paris → `GMT+1`/`GMT+2`,
+  Tokyo → `GMT+9`) and it truncates half-hour zones (`GMT+5:3` for Kolkata). So the
+  offsets are computed and formatted here instead. Inventing a curated abbreviation
+  table (CET/CEST, BST, JST…) was considered and rejected — it needs an authoritative
+  source and ongoing maintenance. A city cell therefore reads: city name over its
+  offset pair (`GMT+1/GMT+2`, current half bold), or a single offset when the zone has
+  no DST.
+- **One row, always** — the only intentional divergence from the World Clock, which
+  wraps to 2 rows at 4+ zones. A second row is 240 px tall and the drum picker needs
+  ~340 px, so wrapping would break editing outright. Instead type scales with column
+  width via `--colw`: at 4 columns it resolves to exactly the previous sizes, and 5-6
+  columns shrink to fit rather than overflow (verified: picker 362/290/241 px against
+  456/360/296 px usable).
+- **Stored state moved to a UTC minute-of-day** (`umins`, migrating the old `pmins`),
+  so changing the city list can't silently reinterpret the time the user set.
+- **Auto-order** (added 2026-07-24, and added to the World Clock at the same time so the
+  two keep matching): a cities-only checkbox that sorts the chosen zones **ascending by
+  GMT offset — west → east** (GMT−7 before GMT+9). Direction confirmed with the user:
+  it preserves the US layout specified up front (`PDT | MDT | CDT | EDT`), where a literal
+  reading of "high to low" would have reversed it. US mode is already in this order, so
+  the option is hidden there and would be a no-op anyway. Sort is stable, so zones sharing
+  an offset keep the order they were picked in.

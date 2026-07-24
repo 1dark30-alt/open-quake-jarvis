@@ -15,14 +15,17 @@ Included apps:
   (Pacific / Mountain / Central / Eastern) or a pick of **2–6 world cities**; each shown as a
   **digital** readout or an **analog** face. Options include 12/24-hour, optional seconds (with
   a second hand on the analog faces), and a **per-city label override** (e.g. pick *London* but
-  label it *Edinburgh*). DST-correct via the system's time-zone database; follows the global
-  light/dark theme and accent.
-- **Time Zone Converter** — for "can you meet at 4:30 my time?": the four US zones side
-  by side (PDT/PST … EDT/EST, the currently-active abbreviation bold), with an editable
-  time under each. Set any zone's time — spin the inline drum picker (Apple-style
-  hour/minute/AM-PM wheels), type, or scroll — and the other three update automatically.
-  Sticky: keeps the last-set times across restarts and never snaps to the current time
-  (that's the World Clock's job). 12/24-hour option.
+  label it *Edinburgh*), and **Auto-order by time zone** — lay the cities out west → east by
+  GMT offset instead of the order you picked them in. DST-correct via the system's time-zone
+  database; follows the global light/dark theme and accent.
+- **Time Zone Converter** — for "can you meet at 4:30 my time?". Same two modes as the
+  World Clock: **US time zones** (PDT/PST … EDT/EST, the abbreviation in effect today bold)
+  or a pick of **2–6 world cities** (city name over its GMT offset, with the same
+  per-city label override and **Auto-order by time zone**). Each zone gets an editable
+  time — set one by spinning the
+  inline drum picker (hour/minute/AM-PM wheels), typing, or scrolling, and the rest
+  convert automatically. Sticky: keeps the last-set times across restarts and never snaps
+  to the current time (that's the World Clock's job). 12/24-hour option.
 - **[Music controller](music.md)** — now-playing + transport + a programmable app grid.
 - **[Open WebUI chat + voice](ai-chat.md)** — talk to your own LLM, with knob push-to-talk.
 - **[Meeting](meeting.md)** — one-tap mute/video/accept/decline/leave for Zoom and Teams,
