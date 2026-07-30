@@ -14,7 +14,10 @@ an **Auth** tab (Home Assistant credentials — see below), and a **Monitor** ta
   set the interval (5–3600 s), and pick which **categories** to include (grids, dashboards,
   apps); then tick **Include in rotation** on each page you want in the loop (a page rotates
   only when both its category and its own box are checked). Start or pause it any time from
-  the knob's page selector (double-click) or the tray menu.
+  the knob's page selector (double-click), the tray menu, or a **hotkey** — click the Hotkey
+  box and press a combo with a modifier (e.g. Ctrl+Alt+R) to get a global start/stop that
+  works even when open-quake isn't focused. The hotkey is only live while Auto-rotate is on,
+  and a combo another app (or one of your page hotkeys) already owns simply won't fire.
 - **Hotkey shortcut** (per page, in that page's settings) — a global combo that jumps the
   panel to the page from anywhere, even when open-quake isn't focused. Tick **Disables
   rotation** next to it and firing the hotkey also turns auto-rotation off, so the panel

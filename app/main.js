@@ -1224,6 +1224,7 @@ function rotationCfg() {
     enabled: !!r.enabled,
     interval: Math.max(5, Math.min(3600, parseInt(r.interval, 10) || 30)),
     cats: Object.assign({ grids: false, dashboards: false, apps: false }, r.cats || {}),
+    hotkey: typeof r.hotkey === 'string' ? r.hotkey : '',
   };
 }
 function pageCategory(g) { return g.kind === 'web' ? 'dashboards' : g.kind === 'app' ? 'apps' : 'grids'; }
@@ -1273,6 +1274,20 @@ function applyShortcuts() {
       });
       if (!ok) console.log('shortcut already in use, not registered:', g.shortcut, '->', g.id);
     } catch (e) { console.log('shortcut register error:', g.shortcut, '-', e.message); }
+  }
+  // Rotation toggle hotkey: same start/stop path as the knob, tray, and panel, so all three stay in sync.
+  // Only registered while auto-rotate is enabled — matches the tray item (which hides when it's off) and
+  // avoids holding a global combo hostage for a feature that can't run. Page hotkeys register first, so a
+  // combo used by both goes to the page.
+  const rot = rotationCfg();
+  if (rot.enabled && rot.hotkey) {
+    try {
+      const ok = globalShortcut.register(rot.hotkey, () => {
+        if (process.platform === 'win32') modifiersInAccelerator(rot.hotkey).forEach(m => mediaKeys.keyUp(m));
+        toggleRotation();
+      });
+      if (!ok) console.log('shortcut already in use, not registered:', rot.hotkey, '-> rotation toggle');
+    } catch (e) { console.log('shortcut register error:', rot.hotkey, '-', e.message); }
   }
 }
 function rotateTick() {

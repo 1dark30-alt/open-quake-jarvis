@@ -1589,7 +1589,11 @@
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sRotG"> Grids</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sRotD"> Dashboards</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sRotA"> Apps</label></div>
+      <div class="row"><label>Hotkey</label>
+        <input id="sRotKey" readonly placeholder="click, then press keys" value="${esc(rot.hotkey || '')}" style="width:200px"${rot.enabled ? '' : ' disabled'}>
+        <button id="sRotKeyClear" style="margin-left:8px"${rot.enabled ? '' : ' disabled'}>Clear</button></div>
       <p class="hint">A page rotates only if its category is ticked here <i>and</i> that page's own “Include in rotation” box is checked — the box appears on each page once its category is enabled. Start/stop any time from the knob menu (double-click) or the tray.</p>
+      <p class="hint">The <b>hotkey</b> starts and pauses rotation from anywhere, even when open-quake isn't focused. Click the box and press a combo that includes a modifier (e.g. Ctrl+Alt+R). It's only live while Auto-rotate is on; if another app — or one of your page hotkeys — already owns the combo, it just won't fire.</p>
 
       <p class="sectitle" style="margin-top:22px">Desktop focus</p>
       <div class="row"><label>Auto-follow</label>
@@ -1890,11 +1894,16 @@
       document.getElementById('sLaunch').value = s.launchMode;
       document.getElementById('sLaunch').onchange = e => setS('launchMode', e.target.value);
       const saveRot = r => { if (!config.settings) config.settings = {}; config.settings.rotation = r; markDirty(); };
+      const rotKey = document.getElementById('sRotKey'), rotKeyClr = document.getElementById('sRotKeyClear');
       document.getElementById('sRot').checked = !!rot.enabled;
       document.getElementById('sRotG').checked = !!rot.cats.grids;
       document.getElementById('sRotD').checked = !!rot.cats.dashboards;
       document.getElementById('sRotA').checked = !!rot.cats.apps;
-      document.getElementById('sRot').onchange = e => { const r = currentRot(); r.enabled = e.target.checked; saveRot(r); };
+      // The hotkey only registers while auto-rotate is on (main.js applyShortcuts), so grey it out with the
+      // toggle — same pattern as "Pause auto-rotation" under Desktop focus below.
+      document.getElementById('sRot').onchange = e => { const r = currentRot(); r.enabled = e.target.checked; saveRot(r); rotKey.disabled = rotKeyClr.disabled = !e.target.checked; };
+      rotKey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { const r = currentRot(); r.hotkey = acc; rotKey.value = acc; saveRot(r); } };
+      rotKeyClr.onclick = () => { const r = currentRot(); delete r.hotkey; rotKey.value = ''; saveRot(r); };
       document.getElementById('sRotInt').onchange = e => { const r = currentRot(); r.interval = Math.max(5, Math.min(3600, parseInt(e.target.value, 10) || 30)); e.target.value = r.interval; saveRot(r); };
       document.getElementById('sRotG').onchange = e => { const r = currentRot(); r.cats.grids = e.target.checked; saveRot(r); };
       document.getElementById('sRotD').onchange = e => { const r = currentRot(); r.cats.dashboards = e.target.checked; saveRot(r); };
