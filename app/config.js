@@ -1550,7 +1550,7 @@
   }
 
   // ---- settings page ----
-  const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false };
+  const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false, reservedDisplay: false };
   function appSettings() { return Object.assign({}, DEFAULT_SETTINGS, config.settings || {}); }
   function renderSettings() {
     ['tilegrid', 'mergebar', 'tileform', 'iconpane'].forEach(id => { const e = document.getElementById(id); if (e) e.innerHTML = ''; });
@@ -1647,9 +1647,14 @@
       <p class="hint"><b>Clear all calibrations</b> wipes any old <code>tabcal</code> coordinate calibration. You don't normally need it — only run it if your taps land on the right display but are visibly off-target.</p>
       <div class="row" style="gap:8px"><button id="sTouchSetup">Set up touchscreen</button><button id="sTouchClear">Clear all calibrations</button><span id="sTouchMsg" class="hint" style="margin:0 0 0 10px"></span></div>`;
 
-    // Monitor tab — how the knob behaves while the device is used as a normal monitor
+    // Monitor tab — reserved-display protection and intentional normal-monitor behavior
     const monHtml = `
-      <p class="sectitle">Monitor mode</p>
+      <p class="sectitle">Reserved Display</p>
+      <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="sReserved" ${s.reservedDisplay ? 'checked' : ''}> Prevent normal application windows from remaining on the Quake display</label></div>
+      <p class="hint">Windows only. Windows dragged or relocated onto the Quake are returned to another display. If your other displays disconnect, their positions are held and restored when a display returns. Open Quake, Windows shell surfaces, and secure desktop screens are left alone.</p>
+      <p class="hint">Protection is suspended in Monitor Mode and resumes when Monitor Mode exits. This does not change the panel's USB keepalive.</p>
+
+      <p class="sectitle" style="margin-top:22px">Monitor mode</p>
       <p class="hint">Use the device as a normal monitor: it shows your Windows desktop and touch acts as the mouse. Enter it from the tray menu or a “System → monitor” tile; exit from the tray. These set what the knob does while in monitor mode.</p>
       <div class="row"><label>Knob turn</label>
         <select id="sMonTurn" style="width:230px">
@@ -1962,6 +1967,7 @@
       });
     } else if (tab === 'monitor') {
       // Monitor mode — knob turn/tap behavior (applied by the main process while in monitor mode)
+      document.getElementById('sReserved').onchange = e => setS('reservedDisplay', e.target.checked);
       const saveMon = patch => { if (!config.settings) config.settings = {}; config.settings.monitor = Object.assign(currentMon(), patch); markDirty(); };
       document.getElementById('sMonTurn').value = mon.knobTurn;
       document.getElementById('sMonTap').value = mon.knobTap;

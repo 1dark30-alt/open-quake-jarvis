@@ -12,6 +12,7 @@
     "start": "node build-smtc.js && electron .",
     "rebuild": "electron-rebuild -v 42.4.1 -f --only node-hid",
     "build:smtc": "node build-smtc.js",
+    "test": "node --test test/*.test.js",
     "dist": "node build-smtc.js && electron-builder --win"
   },
   "license": "SEE LICENSE IN LICENSE",

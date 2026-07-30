@@ -4,8 +4,8 @@ The editor's **⚙ Settings** page (top-right) holds the app- and device-level o
 split into a **Software** tab (on launch, screen rotation), a **Hardware** tab (knob
 ring, microphone), a **Theme** tab (light/dark + accent color), an **Apps** tab
 (which apps appear in the picker), a **Drop-In Apps** tab (manage installed drop-ins),
-an **Auth** tab (Home Assistant credentials — see below), and a **Monitor** tab (what
-the knob does in monitor mode):
+an **Auth** tab (Home Assistant credentials — see below), and a **Monitor** tab
+(Reserved Display protection and what the knob does in monitor mode):
 
 - **On launch** — open the editor window, start **minimized** to the taskbar, or run
   **tray-only** (panel + system tray, no window). open-quake always sits in the system
@@ -63,6 +63,15 @@ the knob does in monitor mode):
 - **Apps** — show or hide each bundled app in the editor's **+ App** picker (it only
   affects the picker, not pages already built on an app). A **show developer apps**
   toggle reveals extra developer-built apps, hidden by default.
+- **Reserved Display** (Monitor tab, Windows only) — prevents ordinary application
+  windows from remaining on the Quake while the panel is active. A window dropped there
+  is returned to a non-Quake display. If every other display disconnects, eligible
+  windows are recoverably minimized with their last placement cached, then restored when a
+  display returns. Open Quake windows, shell/taskbar surfaces, tool windows, cloaked
+  windows, and secure-desktop UI are excluded. This setting is off by default.
+- **Monitor Mode** — intentionally exposes the Quake as a normal Windows desktop
+  monitor. Reserved Display protection is suspended for the duration of Monitor Mode and
+  resumes when it exits; the USB panel keepalive continues in either mode.
 
 The ring is driven over the device's QMK VIA lighting channel; settings are stored in
 `%APPDATA%\open-quake` and re-applied on connect.

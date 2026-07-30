@@ -44,6 +44,7 @@ const touchSetup = require('./touchSetup');   // Bind a touchscreen to its physi
 const meetingControl = require('./meetingControl');   // Zoom/Teams call-control keystrokes (Meeting app page)
 const desktopFocus = require('./desktopFocus');   // tracks the PC's OS-level foreground app; auto-switches the panel to a mapped page
 const ahk = require('./ahk');                  // macro "ahk" step backend (shells out to an installed AutoHotkey.exe)
+const { createReservedDisplay } = require('./reservedDisplay'); // Windows helper that keeps foreign windows off the panel display
 const HA_SCHEDULE_APPS = ['haschedule', 'agenda', 'events'];   // dev apps backed by the shared HA /haschedule-data snapshot
 
 const USER_DIR = app.getPath('userData');
@@ -54,7 +55,7 @@ const APPS_DIR = path.join(__dirname, '..', 'apps').replace('app.asar', 'app.asa
 const SMTC_CTL_EXE = path.join(__dirname, 'native', 'smtc-control.exe').replace('app.asar', 'app.asar.unpacked'); // SMTC transport helper (Windows)
 const LED_DEFAULT = { effect: 1, brightness: 200, speed: 128, hue: 128, sat: 255 }; // ring lighting fallback (effect 1 = Solid Color)
 const THEME_DEFAULT = { appearance: 'system', accent: '#7CFFB2', presets: ['#7CFFB2', '#38B6FF', '#FF4040', '#FFB000'] };
-const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false, lighting: Object.assign({}, LED_DEFAULT), theme: Object.assign({}, THEME_DEFAULT) };
+const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false, reservedDisplay: false, lighting: Object.assign({}, LED_DEFAULT), theme: Object.assign({}, THEME_DEFAULT) };
 const actionDeps = { fs, shell, exec, execFile, spawn, platform: process.platform, log: message => console.log(message) };
 const mediaKeys = createMediaKeys({ log: message => console.log(message) });
 let firstRun = false;     // set by loadConfig when there was no prior config (fresh install)
@@ -76,6 +77,11 @@ let config = loadConfig();
 let panelWin = null, configWin = null, tray = null;
 let dashSession = null, cookieFlushT = null;   // dashboard webview session + a debounced cookie-store flush
 const dev = new MultiKnob({ hid: HID });
+let reservedRefreshTimer = null;
+const reservedDisplay = createReservedDisplay({
+  getDisplayState: reservedDisplayState,
+  log: message => console.log('[reserved-display] ' + message),
+});
 function appSettings() { return Object.assign({}, DEFAULT_SETTINGS, config.settings || {}); }
 // ---- theme (global light/dark + accent, with per-card overrides) ----
 function themeGlobal() { return Object.assign({}, THEME_DEFAULT, (config.settings || {}).theme || {}); }
@@ -1003,8 +1009,52 @@ async function onMeetingActionRequest(platform, action) {
   return { ok: false, error: 'unknown platform: ' + platform };
 }
 
-function deviceDisplay() {
-  return screen.getAllDisplays().find(d => (d.bounds.width === 480 && d.bounds.height === 1920) || (d.bounds.width === 1920 && d.bounds.height === 480));
+function isDeviceDisplay(d) {
+  return !!(d && ((d.bounds.width === 480 && d.bounds.height === 1920) || (d.bounds.width === 1920 && d.bounds.height === 480)));
+}
+function deviceDisplay() { return screen.getAllDisplays().find(isDeviceDisplay); }
+// Once the panel exists, its actual HWND bounds are a stronger runtime identity than resolution alone.
+// Electron display ids remain useful only within this topology snapshot and are never persisted.
+function reservedTargetDisplay() {
+  if (panelWin && !panelWin.isDestroyed()) {
+    try {
+      const match = screen.getDisplayMatching(panelWin.getBounds());
+      const b = panelWin.getBounds();
+      const overlap = Math.max(0, Math.min(b.x + b.width, match.bounds.x + match.bounds.width) - Math.max(b.x, match.bounds.x)) *
+        Math.max(0, Math.min(b.y + b.height, match.bounds.y + match.bounds.height) - Math.max(b.y, match.bounds.y));
+      // Windows may relocate the panel HWND to a primary monitor after HDMI disconnect. Bounds are
+      // authoritative only while the containing display still has the Quake's known geometry.
+      if (overlap > 0 && isDeviceDisplay(match)) return match;
+    } catch (e) {}
+  }
+  return deviceDisplay();
+}
+function reservedDisplayState() {
+  const target = reservedTargetDisplay();
+  const rect = b => ({ x: b.x, y: b.y, width: b.width, height: b.height });
+  if (!target) return {
+    reserved: null,
+    displays: screen.getAllDisplays().map(d => ({
+      id: String(d.id),
+      primary: d.id === screen.getPrimaryDisplay().id,
+      bounds: rect(d.bounds),
+      workArea: rect(d.workArea),
+    })),
+  };
+  return {
+    reserved: rect(target.bounds),
+    displays: screen.getAllDisplays().filter(d => String(d.id) !== String(target.id)).map(d => ({
+      id: String(d.id),
+      primary: d.id === screen.getPrimaryDisplay().id,
+      bounds: rect(d.bounds),
+      workArea: rect(d.workArea),
+    })),
+  };
+}
+function refreshReservedDisplay(reason, delay) {
+  clearTimeout(reservedRefreshTimer);
+  if (!delay) reservedDisplay.refresh(reason);
+  reservedRefreshTimer = setTimeout(() => reservedDisplay.refresh(reason + ' (settled)'), delay || 900);
 }
 function applyPanelDisplayMode(d) {
   panelWin.setBounds(d.bounds);
@@ -1030,6 +1080,8 @@ function placePanel() {
       },
     });
     panelWin.loadFile(path.join(__dirname, 'index.html'));
+    panelWin.on('move', () => refreshReservedDisplay('panel moved', 350));
+    panelWin.on('resize', () => refreshReservedDisplay('panel bounds changed', 350));
     panelWin.once('ready-to-show', () => {
       const dd = deviceDisplay() || d;
       applyPanelDisplayMode(dd); panelWin.setAlwaysOnTop(true); panelWin.show(); panelWin.focus();
@@ -1037,8 +1089,9 @@ function placePanel() {
       pushToPanel();
       console.log('panel display bounds', JSON.stringify(dd.bounds), 'workArea', JSON.stringify(dd.workArea));
       console.log('panel placed at', JSON.stringify(panelWin.getBounds()), 'fullscreen', panelWin.isFullScreen(), 'simpleFullscreen', panelWin.isSimpleFullScreen && panelWin.isSimpleFullScreen());
+      refreshReservedDisplay('panel placed', 350);
     });
-  } else { applyPanelDisplayMode(d); panelWin.show(); pushToPanel(); }
+  } else { applyPanelDisplayMode(d); panelWin.show(); pushToPanel(); refreshReservedDisplay('panel placed', 350); }
 }
 
 // ---- monitor mode: use the device as a normal monitor ----
@@ -1048,6 +1101,7 @@ function placePanel() {
 function enterMonitorMode() {
   if (monitorMode || !panelWin || panelWin.isDestroyed()) return;
   monitorMode = true;
+  reservedDisplay.setSuspended(true);
   try { if (process.platform === 'darwin') panelWin.setSimpleFullScreen(false); else panelWin.setFullScreen(false); } catch (e) {}
   panelWin.hide();
   syncPollers(null);                                                // nothing on the panel is visible -> idle the page pollers
@@ -1058,6 +1112,7 @@ function enterMonitorMode() {
 function exitMonitorMode(reason) {
   if (!monitorMode) return;
   monitorMode = false;
+  reservedDisplay.setSuspended(false);
   releaseTouch();                                                   // drop any held mouse button from an in-progress touch
   if (panelWin && !panelWin.isDestroyed()) {
     const d = deviceDisplay();
@@ -1468,6 +1523,7 @@ app.whenReady().then(async () => {
     if (config.grids.some(g => g.id === active)) config.activeGridId = active;
     else if (!config.grids.some(g => g.id === config.activeGridId)) config.activeGridId = (config.grids[0] || {}).id || null;
     saveConfig(); pushToPanel(); applyKnobSettings(); refreshTray(); applyRotationSettings(wasRot); applyFocusFollowSettings(); applyShortcuts(); applyTheme();
+    reservedDisplay.setEnabled(!!appSettings().reservedDisplay);
     configureHaSchedule();                                          // pick up any haAuth edits without a restart
   });
   ipcMain.handle('pickProgram', async (e) => {
@@ -1539,6 +1595,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('listRunningApps', async (e) => isFrom(e, configWin) ? await desktopFocus.listRunningApps() : []);
 
   placePanel();
+  reservedDisplay.setEnabled(!!appSettings().reservedDisplay);
+  reservedDisplay.start();
   if (rotationCfg().enabled) setRotation(true);          // auto-start cycling on launch when enabled
   applyFocusFollowSettings();                             // auto-start foreground-app polling on launch when enabled
   applyShortcuts();                                       // register per-page global hotkeys
@@ -1578,13 +1636,14 @@ app.whenReady().then(async () => {
   dev.on('error', e => console.log('dev error:', e.message));
   dev.start();
 
-  screen.on('display-added', () => { dev.screenOn(); setTimeout(placePanel, 800); });
-  screen.on('display-removed', () => dev.screenOn());
-  screen.on('display-metrics-changed', () => setTimeout(placePanel, 500));
+  screen.on('display-added', () => { dev.screenOn(); refreshReservedDisplay('display added'); setTimeout(placePanel, 800); });
+  screen.on('display-removed', () => { dev.screenOn(); refreshReservedDisplay('display removed'); });
+  screen.on('display-metrics-changed', () => { refreshReservedDisplay('display metrics changed'); setTimeout(placePanel, 500); });
 });
 }
 app.on('window-all-closed', () => {});
 app.on('before-quit', () => {
+  try { reservedDisplay.stop(); } catch (e) {}                // release WinEvent hooks and terminate the native helper
   try { dev.stop(); } catch (e) {}                       // close HID devices + clear keep-alive/rescan timers — an open node-hid handle blocks process exit (Cmd+Q would hang -> force-quit)
   try { if (sysserver) sysserver.stop(); } catch (e) {}  // stop metrics timers + close the local server
   try { if (dashSession) dashSession.cookies.flushStore(); } catch (e) {}   // commit a fresh webview login to disk before exit
