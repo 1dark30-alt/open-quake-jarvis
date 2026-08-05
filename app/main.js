@@ -1505,16 +1505,30 @@ app.whenReady().then(async () => {
 
   // Dashboard auth injection for the webview session. The active page's auth config drives it:
   //  - 'header'  -> add custom header(s) to requests to the dashboard host (bearer / Cloudflare Access / …)
-  //  - 'basic'   -> answer HTTP Basic Auth challenges with the configured user/pass
+  //  - 'basic'   -> send Authorization: Basic preemptively on every request (below), plus still answer
+  //                 a real 401/WWW-Authenticate challenge if one comes (app.on('login') further down)
   // ('ha' token injection is done renderer-side; 'none' does nothing.)
+  //
+  // Basic Auth used to be challenge-response only (wait for 401 + WWW-Authenticate, then retry with
+  // credentials — Electron's app.on('login') only fires on that exact exchange). Reverse-proxy SSO
+  // layers like Authelia, Traefik forward-auth, etc. don't issue that challenge for an unauthenticated
+  // request — they 302 straight to their own login page instead, so 'login' never fired and the
+  // configured credentials never got sent. Sending the header preemptively (what curl -u and
+  // wget --http-user do by default) works against both kinds of backend.
   dashSession = session.fromPartition('persist:dashboards');
   dashSession.setPermissionRequestHandler(handleDashboardPermissionRequest);
   dashSession.webRequest.onBeforeSendHeaders((details, cb) => {
     const g = activeGrid();
-    if (g && g.kind === 'web' && g.auth && g.auth.type === 'header' && hostMatches(g.url, details.url)) {
+    if (g && g.kind === 'web' && g.auth && hostMatches(g.url, details.url)) {
       const h = details.requestHeaders;
-      (g.auth.headers || []).forEach(x => { if (x.name) h[x.name] = x.value; });
-      return cb({ requestHeaders: h });
+      if (g.auth.type === 'header') {
+        (g.auth.headers || []).forEach(x => { if (x.name) h[x.name] = x.value; });
+        return cb({ requestHeaders: h });
+      }
+      if (g.auth.type === 'basic' && (g.auth.user || g.auth.pass)) {
+        h['Authorization'] = 'Basic ' + Buffer.from(`${g.auth.user || ''}:${g.auth.pass || ''}`).toString('base64');
+        return cb({ requestHeaders: h });
+      }
     }
     cb({});
   });
