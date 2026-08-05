@@ -31,6 +31,11 @@ an **Auth** tab (Home Assistant credentials — see below), and a **Monitor** ta
   cause flicker — and manually navigating away is never overridden, since it only
   re-triggers on the next focus change. Tick **Pause auto-rotation** to hold rotation off
   for as long as a mapped app stays focused, picking back up the moment it loses focus.
+- **Dashboards → Reload hotkey** — a global combo that force-reloads whatever dashboard
+  page is currently showing, from anywhere, even when open-quake isn't focused. Switching
+  away to another page and back does **not** reload a dashboard on its own (that's what
+  keeps its session/scroll state across page switches) — this hotkey is the way to force
+  one. Only acts while a dashboard page is on screen; does nothing on a grid or app page.
 - **Knob ring** — the RGB ring around the knob. Pick an **effect** (the 44 QMK
   RGB-matrix modes, or *All Off* to turn it off), a **color**, **brightness**, and
   **effect speed**. By default the ring **follows the Theme accent** (below); tick

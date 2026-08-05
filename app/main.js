@@ -1289,6 +1289,17 @@ function applyShortcuts() {
       if (!ok) console.log('shortcut already in use, not registered:', rot.hotkey, '-> rotation toggle');
     } catch (e) { console.log('shortcut register error:', rot.hotkey, '-', e.message); }
   }
+  // Dashboard reload hotkey: no on/off toggle (unlike rotation) -- just registers whenever a combo is set.
+  const dashReload = dashboardReloadCfg();
+  if (dashReload.hotkey) {
+    try {
+      const ok = globalShortcut.register(dashReload.hotkey, () => {
+        if (process.platform === 'win32') modifiersInAccelerator(dashReload.hotkey).forEach(m => mediaKeys.keyUp(m));
+        reloadActiveDashboard();
+      });
+      if (!ok) console.log('shortcut already in use, not registered:', dashReload.hotkey, '-> dashboard reload');
+    } catch (e) { console.log('shortcut register error:', dashReload.hotkey, '-', e.message); }
+  }
 }
 function rotateTick() {
   const ids = rotationList().map(g => g.id);
@@ -1341,6 +1352,16 @@ function keyboardShortcutsSnapshot() {
 
 // ---- desktop focus (panel auto-follows the PC's foreground app) ----
 function focusFollowCfg() { const f = (config.settings && config.settings.focusFollow) || {}; return { enabled: !!f.enabled, pauseRotation: !!f.pauseRotation }; }
+
+// ---- dashboard reload hotkey ----
+// Switching away from a dashboard and back doesn't reload it (index.js keeps the shared webview's
+// src unchanged when the URL matches, so sessions/scroll state survive page switches) -- this is the
+// deliberate way to force one anyway. Only acts on a currently-showing dashboard/web page.
+function dashboardReloadCfg() { const d = (config.settings && config.settings.dashboardReload) || {}; return { hotkey: typeof d.hotkey === 'string' ? d.hotkey : '' }; }
+function reloadActiveDashboard() {
+  const g = activeGrid();
+  if (g && g.kind === 'web' && panelWin && !panelWin.isDestroyed()) panelWin.webContents.send('reloadDashboard');
+}
 // The page (if any) mapped to whatever app currently holds OS foreground focus, per desktopFocus.js's own
 // debounced/committed value — not the raw poll, so this agrees with whatever page onForegroundAppChange last acted on.
 function currentFocusMatch() {

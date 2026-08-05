@@ -1611,6 +1611,8 @@
     const rot = currentRot();
     const currentFocusFollow = () => Object.assign({ enabled: false, pauseRotation: false }, (config.settings || {}).focusFollow || {});
     const focusFollow = currentFocusFollow();
+    const currentDashReload = () => Object.assign({ hotkey: '' }, (config.settings || {}).dashboardReload || {});
+    const dashReload = currentDashReload();
     const currentMon = () => Object.assign({ knobTurn: 'scroll', knobTap: 'enter' }, (config.settings || {}).monitor || {});
     const mon = currentMon();
     const currentTheme = () => Object.assign({ appearance: 'system', accent: '#7CFFB2', presets: ['#7CFFB2', '#38B6FF', '#FF4040', '#FFB000'] }, (config.settings || {}).theme || {});
@@ -1652,7 +1654,13 @@
         <input type="checkbox" id="sFocus" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">switch the panel to a page when its mapped app becomes focused on the PC</span></div>
       <div class="row"><label>While focused</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sFocusPauseRot" ${focusFollow.enabled ? '' : 'disabled'}> Pause auto-rotation</label></div>
-      <p class="hint">Map apps to a page under that page's Advanced settings → “Focus trigger app(s)”. Detection polls in the background and only switches once the newly-focused app has held focus for a couple seconds, so quick alt-tabbing won't cause flicker — and manually navigating the panel away is never overridden; it only re-triggers on the next focus change. With <b>Pause auto-rotation</b> on, rotation holds off the moment a mapped app takes focus and picks back up the moment it loses focus.</p>`;
+      <p class="hint">Map apps to a page under that page's Advanced settings → “Focus trigger app(s)”. Detection polls in the background and only switches once the newly-focused app has held focus for a couple seconds, so quick alt-tabbing won't cause flicker — and manually navigating the panel away is never overridden; it only re-triggers on the next focus change. With <b>Pause auto-rotation</b> on, rotation holds off the moment a mapped app takes focus and picks back up the moment it loses focus.</p>
+
+      <p class="sectitle" style="margin-top:22px">Dashboards</p>
+      <div class="row"><label>Reload hotkey</label>
+        <input id="sDashReloadKey" readonly placeholder="click, then press keys" value="${esc(dashReload.hotkey || '')}" style="width:200px">
+        <button id="sDashReloadKeyClear" style="margin-left:8px">Clear</button></div>
+      <p class="hint">A global combo that force-reloads the current dashboard page from anywhere, even when open-quake isn't focused. Switching away to another page and back does <b>not</b> reload a dashboard (that's what keeps its session/scroll state) — this hotkey is the way to force one. Only acts while a dashboard page is showing; does nothing on a grid or app page.</p>`;
 
     // Hardware tab — knob ring + microphone
     const hwHtml = `
@@ -1968,6 +1976,11 @@
       };
       document.getElementById('sFocusPauseRot').checked = !!focusFollow.pauseRotation;
       document.getElementById('sFocusPauseRot').onchange = e => { const f = currentFocusFollow(); f.pauseRotation = e.target.checked; saveFocusFollow(f); };
+
+      const saveDashReload = d => { if (!config.settings) config.settings = {}; config.settings.dashboardReload = d; markDirty(); };
+      const dashReloadKey = document.getElementById('sDashReloadKey'), dashReloadKeyClr = document.getElementById('sDashReloadKeyClear');
+      dashReloadKey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { const d = currentDashReload(); d.hotkey = acc; dashReloadKey.value = acc; saveDashReload(d); } };
+      dashReloadKeyClr.onclick = () => { const d = currentDashReload(); delete d.hotkey; dashReloadKey.value = ''; saveDashReload(d); };
 
     } else if (tab === 'hardware') {
       // Lighting writes go straight to the device (and persist in config) via the main process — no Save needed.

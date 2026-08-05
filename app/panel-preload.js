@@ -28,4 +28,5 @@ contextBridge.exposeInMainWorld('openQuakePanel', {
   onIntro(callback) { return on('intro', callback); },
   onTouch(callback) { return on('touch', callback); },
   onKnob(callback) { return on('knob', callback); },
+  onReloadDashboard(callback) { return on('reloadDashboard', callback); },
 });
