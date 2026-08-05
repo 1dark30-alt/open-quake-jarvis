@@ -411,6 +411,44 @@
         </div></div>
       <p class="hint">When <b>Desktop focus</b> is on (Settings → Software), the panel switches to this page whenever one of these apps becomes the focused window on the PC. Matched by process name, not window title.</p>`;
   }
+  // ---- Keyboard Shortcuts app: global Custom cheat-sheet (customShortcuts) ----
+  // Edited right on the app's own page-config screen (App tab, like World Clock's city picks),
+  // but the data itself is a single shared list across every page that has this app — NOT a
+  // per-page g.options value — see docs/charter-keyshortcuts.md. Rendering always shows at least
+  // one (possibly blank) row; a blank row isn't written to config until the user types into it.
+  function shortcutRowsHtml(list) {
+    const rows = Array.isArray(list) && list.length ? list : [{ shortcut: '', description: '' }];
+    return rows.map((r, i) => `<div class="row" data-idx="${i}" style="margin-top:6px">
+        <input class="scShortcut" placeholder="e.g. Ctrl+Shift+E" value="${esc(r.shortcut || '')}" style="width:180px">
+        <input class="scDesc" placeholder="what it does" value="${esc(r.description || '')}" style="flex:1;margin-left:8px">
+        <button class="scRemove" type="button" data-rm="${i}" title="Remove" style="margin-left:8px">✕</button>
+      </div>`).join('');
+  }
+  function wireShortcutRows() {
+    const host = document.getElementById('sShortcutRows');
+    if (!host) return;
+    const list = () => { if (!config.settings) config.settings = {}; if (!Array.isArray(config.settings.customShortcuts)) config.settings.customShortcuts = []; return config.settings.customShortcuts; };
+    const redraw = () => { host.innerHTML = shortcutRowsHtml(list()); wireRows(); };
+    function wireRows() {
+      host.querySelectorAll('.scShortcut').forEach((inp, i) => {
+        inp.oninput = e => { const l = list(); if (!l[i]) l[i] = { shortcut: '', description: '' }; l[i].shortcut = e.target.value; markDirty(); };
+      });
+      host.querySelectorAll('.scDesc').forEach((inp, i) => {
+        inp.oninput = e => { const l = list(); if (!l[i]) l[i] = { shortcut: '', description: '' }; l[i].description = e.target.value; markDirty(); };
+      });
+      host.querySelectorAll('.scRemove').forEach(btn => {
+        btn.onclick = () => { list().splice(parseInt(btn.getAttribute('data-rm'), 10), 1); markDirty(); redraw(); };
+      });
+    }
+    wireRows();
+    const addBtn = document.getElementById('sShortcutAdd');
+    if (addBtn) addBtn.onclick = () => {
+      list().push({ shortcut: '', description: '' });
+      markDirty(); redraw();
+      const inputs = host.querySelectorAll('.scShortcut');
+      if (inputs.length) inputs[inputs.length - 1].focus();
+    };
+  }
   function wireFocusRow(g) {
     const chips = document.getElementById('gFocusChips');
     if (!chips) return;
@@ -1283,6 +1321,7 @@
     // Music groups its three panels (album art / lyrics / button grid) in one box, capped at 2 on.
     const isMusic = g.app === 'music';
     const isHaDash = g.app === 'ha-dashboard';
+    const isKeyShortcuts = g.app === 'keyshortcuts';
     const musicBox = `<fieldset style="border:1px solid #2a3a4e; border-radius:8px; padding:6px 14px 10px; margin:10px 0">
         <legend style="padding:0 6px; color:#9fb3c8; font-size:13px">Panels</legend>
         <div><label class="iconopt" style="width:auto"><input type="checkbox" id="pArt" ${optVal(g, 'art', true) ? 'checked' : ''}> Show album art</label></div>
@@ -1305,7 +1344,18 @@
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
-    const optsBlock = isMusic ? musicBox : isHaDash ? haBox : ('<div id="appOpts"></div>' + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
+    // Custom shortcuts cheat-sheet: edited right here, but the list itself is global/shared — see
+    // shortcutRowsHtml's comment and docs/charter-keyshortcuts.md.
+    const keyShortcutsBox = `<div style="margin-top:10px">
+        <p class="hint" style="margin:0 0 8px">Free-text shortcut/description rows for other programs. Shown as
+        <b>Custom</b> on the panel, alongside open-quake's own rotation hotkey and every page's jump shortcut.
+        This list is shared — editing it here updates every page that has the Keyboard Shortcuts app.</p>
+        <div id="sShortcutRows">${shortcutRowsHtml((config.settings || {}).customShortcuts)}</div>
+        <button id="sShortcutAdd" type="button" style="margin-top:8px">+ Add another shortcut</button>
+      </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
+        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
+      <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
+    const optsBlock = isMusic ? musicBox : isHaDash ? haBox : isKeyShortcuts ? keyShortcutsBox : ('<div id="appOpts"></div>' + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : ''));
     el.innerHTML = tabBar + `
@@ -1363,6 +1413,8 @@
       const kiosk = document.getElementById('haKiosk'); if (kiosk) kiosk.onchange = e => { if (!g.options) g.options = {}; g.options.kiosk = e.target.checked; markDirty(); };
       const hideHeader = document.getElementById('haHideHeader'); if (hideHeader) hideHeader.onchange = e => { if (!g.options) g.options = {}; g.options.hideHeader = e.target.checked; markDirty(); };
       const hideSidebar = document.getElementById('haHideSidebar'); if (hideSidebar) hideSidebar.onchange = e => { if (!g.options) g.options = {}; g.options.hideSidebar = e.target.checked; markDirty(); };
+    } else if (isKeyShortcuts) {
+      wireShortcutRows();
     } else {
       renderAppOpts(g, def);
     }
@@ -1916,6 +1968,7 @@
       };
       document.getElementById('sFocusPauseRot').checked = !!focusFollow.pauseRotation;
       document.getElementById('sFocusPauseRot').onchange = e => { const f = currentFocusFollow(); f.pauseRotation = e.target.checked; saveFocusFollow(f); };
+
     } else if (tab === 'hardware') {
       // Lighting writes go straight to the device (and persist in config) via the main process — no Save needed.
       const live = patch => { Object.assign(L, patch); if (!config.settings) config.settings = {}; config.settings.lighting = Object.assign({}, L); configApi.setLighting(patch); markDirty(); };

@@ -1314,6 +1314,31 @@ function applyRotationSettings(wasEnabled) {
   scheduleRotation(); refreshTray(); pushRotationState();
 }
 
+// ---- keyboard shortcuts (System/Pages/Custom cheat-sheet app) ----
+// customShortcuts is a global, shared-across-instances list (not per-page-app-options) — see
+// docs/charter-keyshortcuts.md for why. Edited from Settings -> Software.
+function customShortcutsCfg() {
+  const list = (config.settings && config.settings.customShortcuts) || [];
+  if (!Array.isArray(list)) return [];
+  return list.map(r => ({
+    shortcut: typeof (r && r.shortcut) === 'string' ? r.shortcut : '',
+    description: typeof (r && r.description) === 'string' ? r.description : '',
+  })).filter(r => r.shortcut || r.description);
+}
+// Live snapshot for the keyshortcuts app's /shortcuts fetch: the rotation toggle hotkey (the only
+// hotkey not tied to a specific page), every page's own jump-to hotkey, and the custom cheat-sheet.
+function keyboardShortcutsSnapshot() {
+  const rot = rotationCfg();
+  const pages = (config.grids || [])
+    .filter(g => g.shortcut)
+    .map(g => ({ id: g.id, name: g.name || g.id, shortcut: g.shortcut, stopsRotation: !!g.shortcutStopsRotation }));
+  return {
+    rotation: (rot.enabled && rot.hotkey) ? { hotkey: rot.hotkey } : null,
+    pages,
+    custom: customShortcutsCfg(),
+  };
+}
+
 // ---- desktop focus (panel auto-follows the PC's foreground app) ----
 function focusFollowCfg() { const f = (config.settings && config.settings.focusFollow) || {}; return { enabled: !!f.enabled, pauseRotation: !!f.pauseRotation }; }
 // The page (if any) mapped to whatever app currently holds OS foreground focus, per desktopFocus.js's own
@@ -1450,7 +1475,7 @@ app.whenReady().then(async () => {
   // Lazy-required so a metrics/load failure can never crash the rest of the app.
   try {
     sysserver = require('./sysserver');
-    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps() });
+    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(), getShortcuts: keyboardShortcutsSnapshot });
     ensureSystemViewPage(serverPort); ensureMusicPage(); ensureDropInDir();
     const haUrl = configureHaSchedule();
     console.log('SystemView + Music on http://127.0.0.1:' + serverPort + (haUrl ? ' · HA Schedule -> ' + haUrl : ''));

@@ -34,6 +34,14 @@ Included apps:
   HA server in a dropdown, no hand-typed URLs. Requires **Use Home Assistant** in
   **Settings → Auth**; hidden from the App picker otherwise. Uses your global HA token
   so login persists. (See the full HA guide for entity tiles + icons.)
+- **Keyboard Shortcuts** — a live cheat-sheet, three columns: **System** (the auto-rotation
+  toggle hotkey, if set), **Pages** (every page's own jump-to hotkey), and **Custom** — a
+  free-text list of shortcut/description pairs for other programs, edited right on the
+  app's own **App** tab in the editor (same spot as any app's options) with a **+ Add
+  another shortcut** row-adder, same as the World Clock's city picks. That list is shared
+  across every page running the app, not per-page — edit it from any one of them and every
+  other instance shows the update. Updates live on the panel — no restart needed after
+  adding a page hotkey or editing the custom list.
 
 ![Configuring the Flip Clock app in the editor](shots/editor-clock.png)
 

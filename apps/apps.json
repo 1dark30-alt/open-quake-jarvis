@@ -6068,5 +6068,12 @@
         ]
       }
     ]
+  },
+  {
+    "id": "keyshortcuts",
+    "name": "Keyboard Shortcuts",
+    "file": "keyshortcutsview.html",
+    "served": true,
+    "options": []
   }
 ]
