@@ -58,8 +58,7 @@ function renderTranscript() {
   var list = $('list'), empty = $('empty');
   empty.style.display = transcript.length ? 'none' : '';
   list.innerHTML = transcript.map(function (m) {
-    return '<div class="msg ' + m.role + '"><div class="who">' + (m.role === 'user' ? 'You' : 'Claude') + '</div>' +
-      '<div class="bubble">' + renderContent(m.text) + '</div></div>';
+    return '<div class="msg ' + m.role + '"><div class="bubble">' + renderContent(m.text) + '</div></div>';
   }).join('');
   wireCopyButtons(list);
   $('card').scrollTop = $('card').scrollHeight;
@@ -102,7 +101,7 @@ function connectEvents() {
       $('empty').style.display = 'none';
       var row = document.createElement('div');
       row.className = 'msg assistant'; row.setAttribute('data-live', '1');
-      row.innerHTML = '<div class="who">Claude</div><div class="bubble"></div>';
+      row.innerHTML = '<div class="bubble"></div>';
       $('list').appendChild(row);
       $('card').scrollTop = $('card').scrollHeight;
     } else if (msg.type === 'assistant-delta') {
@@ -124,11 +123,11 @@ function connectEvents() {
         renderTranscript();
       }
       liveMsg = null;
-      // Only speak the reply back if THIS turn started as voice -- a typed message never gets an
-      // unsolicited spoken reply. speak() itself sets status to 'speaking' then back to
-      // listening/idle when playback ends, so it fully owns the status transition here.
-      if (lastTurnWasVoice && !msg.error) { speak(finalText); }
-      else { setStatus('idle', msg.error); }
+      // Only speak the reply back if THIS turn started as voice (a typed message never gets an
+      // unsolicited spoken reply) AND the speaker toggle is on. speak() itself sets status to
+      // 'speaking' then back to listening/idle when playback ends, so it owns that transition.
+      if (lastTurnWasVoice && !msg.error && speakEnabled) { speak(finalText); }
+      else { setStatus(conversationOpen ? 'listening' : 'idle', msg.error); }
       lastTurnWasVoice = false;
     } else if (msg.type === 'error') {
       setStatus('error', msg.error);
@@ -242,8 +241,14 @@ function speak(text, onDone) {
   if (!text) { if (onDone) onDone(); return; }
   suppressVAD = true;
   setStatus('speaking');
+  $('spkBtn').classList.add('pulsing');
   var audio = new Audio('/claude-voice/tts-audio?text=' + encodeURIComponent(text));
-  var finish = function () { suppressVAD = false; setStatus(conversationOpen ? 'listening' : 'idle'); if (onDone) onDone(); };
+  var finish = function () {
+    suppressVAD = false;
+    $('spkBtn').classList.remove('pulsing');
+    setStatus(conversationOpen ? 'listening' : 'idle');
+    if (onDone) onDone();
+  };
   audio.addEventListener('ended', finish);
   audio.addEventListener('error', finish);
   audio.play().catch(finish);
@@ -283,9 +288,52 @@ window.oqxToggleConversation = function () {
   } else {
     conversationOpen = true;
     setStatus('listening');
-    vad.start(onVADSpeechStart, onVADSpeechEnd).catch(function (e) {
+    vad.start(onVADSpeechStart, onVADSpeechEnd, onVADLevel).catch(function (e) {
       conversationOpen = false;
+      syncMicUI();
       setStatus('error', 'Microphone access failed: ' + e.message);
     });
   }
+  syncMicUI();
 };
+
+// ---- Voice panel (right side): mic + speaker icon toggles, ripples, Project/Settings ----
+// The mic icon IS the listening toggle (same action as the knob tap) -- crossed out when off,
+// rippling outward when it hears sound. The speaker icon gates the spoken read-back of replies
+// (text always renders either way) -- crossed out when off, pulsing while actually speaking.
+function syncMicUI() {
+  $('micBtn').classList.toggle('on', conversationOpen);
+  $('micBtn').classList.toggle('off', !conversationOpen);
+}
+var speakEnabled = localStorage.getItem('cvSpeakEnabled') !== '0';   // persists across page switches/reloads
+function syncSpkUI() {
+  $('spkBtn').classList.toggle('on', speakEnabled);
+  $('spkBtn').classList.toggle('off', !speakEnabled);
+}
+$('micBtn').onclick = function () { window.oqxToggleConversation(); };
+$('spkBtn').onclick = function () {
+  speakEnabled = !speakEnabled;
+  localStorage.setItem('cvSpeakEnabled', speakEnabled ? '1' : '0');
+  syncSpkUI();
+};
+// Ripples: spawn one expanding ring per level sample above the ripple floor, throttled so a
+// sustained voice reads as a steady outward pulse rather than a solid blob.
+var lastRippleAt = 0;
+function onVADLevel(level) {
+  if (!conversationOpen || suppressVAD) return;
+  var now = Date.now();
+  if (level < 0.012 || now - lastRippleAt < 180) return;
+  lastRippleAt = now;
+  var r = document.createElement('div');
+  r.className = 'ripple';
+  $('micRipples').appendChild(r);
+  r.addEventListener('animationend', function () { r.remove(); });
+}
+$('vpProject').onclick = function () {
+  setStatus(conversationOpen ? 'listening' : 'idle',
+    'Project switching from the panel is coming soon — for now set it in the editor (page options).');
+};
+$('vpSettings').onclick = function () { $('settingsOverlay').classList.remove('hidden'); };
+$('settingsClose').onclick = function () { $('settingsOverlay').classList.add('hidden'); };
+syncMicUI();
+syncSpkUI();

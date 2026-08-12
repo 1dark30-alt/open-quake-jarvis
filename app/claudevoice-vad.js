@@ -43,7 +43,10 @@ function createVAD(opts) {
     return out;
   }
 
-  async function start(onSpeechStart, onSpeechEnd) {
+  // onLevel(rms) fires on every audio buffer (~4 times/second) regardless of speech state -- it
+  // drives the mic visualizer's ripples, which should react to ANY sound the mic hears, not just
+  // audio that crosses the utterance threshold.
+  async function start(onSpeechStart, onSpeechEnd, onLevel) {
     stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: SAMPLE_RATE } });
     audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
     source = audioCtx.createMediaStreamSource(stream);
@@ -59,6 +62,7 @@ function createVAD(opts) {
     processor.onaudioprocess = e => {
       const data = e.inputBuffer.getChannelData(0);
       const level = rms(data);
+      if (onLevel) { try { onLevel(level); } catch (err) {} }
       if (level >= threshold) {
         if (!speaking) {
           speaking = true;
