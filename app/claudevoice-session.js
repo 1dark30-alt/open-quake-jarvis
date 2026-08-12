@@ -167,9 +167,13 @@ function createClaudeVoiceSession(options) {
     sendTurn(text) {
       if (!child || !child.stdin || child.stdin.destroyed) return false;
       try {
+        // content as a plain STRING, not an array of blocks: this is the documented stream-json
+        // input form, and it's what makes slash commands (/compact, /clear, custom commands) get
+        // interpreted as commands -- sent as a content-block array they reach the model as literal
+        // text instead.
         child.stdin.write(JSON.stringify({
           type: 'user',
-          message: { role: 'user', content: [{ type: 'text', text }] },
+          message: { role: 'user', content: text },
         }) + '\n');
         return true;
       } catch (e) { log('claude sendTurn failed: ' + e.message); return false; }

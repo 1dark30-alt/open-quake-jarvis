@@ -116,6 +116,12 @@ function connectEvents() {
         var row = $('list').querySelector('[data-live="1"]');
         if (row) row.removeAttribute('data-live');
         updateLiveBubbleFinal(row);
+      } else if (finalText) {
+        // No live bubble exists -- this turn never streamed (slash commands like /model or /context
+        // come back only in the final result event), or the page loaded mid-turn. Render the result
+        // as its own assistant message now instead of silently dropping it.
+        transcript.push({ role: 'assistant', text: finalText });
+        renderTranscript();
       }
       liveMsg = null;
       // Only speak the reply back if THIS turn started as voice -- a typed message never gets an
@@ -183,7 +189,12 @@ function updateLiveBubbleFinal(row) {
   wireCopyButtons(row);
 }
 fetch('/claude-voice/state', { cache: 'no-store' }).then(function (r) { return r.json(); })
-  .then(function (s) { setStatus(s.status, s.error); }).catch(function () {});
+  .then(function (s) {
+    // Replay the session's transcript (kept by main.js) -- the webview reloads this page on every
+    // page switch, so without this a rotate-away-and-back would blank the whole conversation.
+    if (s.transcript && s.transcript.length) { transcript = s.transcript.slice(); renderTranscript(); }
+    setStatus(s.status, s.error);
+  }).catch(function () {});
 connectEvents();
 
 function autoGrow() {

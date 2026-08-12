@@ -393,10 +393,14 @@
     if (k.type === 'press') {
       if (selOpen) { confirmSelector(); return; }           // any press picks the highlighted grid
       // Single press -> configured click action; double press -> configured dblclick action.
-      // Defaults preserve prior behavior: click='rotation' (toggle), dblclick='selector'.
+      // Defaults preserve prior behavior: click='rotation' (toggle), dblclick='selector' -- except
+      // the Claude Code app, which defaults its own click to 'enter' (tap-to-talk) so voice works
+      // with zero setup rather than requiring the same manual per-page "Knob Override" that Music's
+      // play/pause needs. An explicit per-page override (Advanced -> Knob) still wins either way.
+      const defaultClick = (cfg && cfg.app === 'claude-voice') ? 'enter' : 'rotation';
       const action = (k.index === 2)
         ? ((cfg._knob && cfg._knob.dblclick) || 'selector')
-        : ((cfg._knob && cfg._knob.click) || 'rotation');
+        : ((cfg._knob && cfg._knob.click) || defaultClick);
       doKnobAction(action);
     }
   });

@@ -119,6 +119,12 @@ function broadcastClaudeVoice(payload) {
   const line = 'data: ' + JSON.stringify(payload) + '\n\n';
   for (const res of claudeVoiceSubscribers) { try { res.write(line); } catch (e) { claudeVoiceSubscribers.delete(res); } }
 }
+// Transcript history for the current session, owned HERE rather than by the guest page: the webview
+// reloads its page on every page switch, so anything only the page remembers is lost the moment the
+// user rotates away and back. getClaudeVoiceState() returns this so a freshly-(re)loaded page can
+// repaint the whole conversation before subscribing to live SSE events. Cleared on new-session start
+// only -- an ended session's transcript stays readable until a new one replaces it.
+let claudeVoiceTranscript = [];   // [{role:'user'|'assistant', text}]
 claudeVoiceSession.on('event', event => {
   if (event.type === 'stream_event' && event.event) {
     const se = event.event;
@@ -141,6 +147,7 @@ claudeVoiceSession.on('event', event => {
     claudeVoiceState.status = 'idle';
     if (typeof event.result === 'string') claudeVoiceState.lastAssistantText = event.result;
     claudeVoiceState.error = event.is_error ? (event.result || 'error') : null;
+    if (claudeVoiceState.lastAssistantText && !claudeVoiceState.error) claudeVoiceTranscript.push({ role: 'assistant', text: claudeVoiceState.lastAssistantText });
     broadcastClaudeVoice({ type: 'turn-complete', text: claudeVoiceState.lastAssistantText, error: claudeVoiceState.error });
     return;
   }
@@ -169,10 +176,12 @@ function onClaudeVoiceTurn(text) {
   if (!claudeVoiceSession.isRunning() && !startClaudeVoiceSession()) return false;
   claudeVoiceState.status = 'thinking';
   claudeVoiceState.lastUserText = text;
-  return claudeVoiceSession.sendTurn(text);
+  const sent = claudeVoiceSession.sendTurn(text);
+  if (sent) claudeVoiceTranscript.push({ role: 'user', text });
+  return sent;
 }
 function getClaudeVoiceState() {
-  return Object.assign({}, claudeVoiceState, { running: claudeVoiceSession.isRunning(), sessionId: claudeVoiceSession.sessionId() });
+  return Object.assign({}, claudeVoiceState, { running: claudeVoiceSession.isRunning(), sessionId: claudeVoiceSession.sessionId(), transcript: claudeVoiceTranscript });
 }
 // Explicit session start/stop (Phase 3): switching projects in the editor, or the future
 // tap-to-toggle gesture (Phase 5), both want "start now" / "end this conversation" rather than
@@ -200,20 +209,23 @@ function startClaudeVoiceSession(dir) {
     token: claudeVoiceToken,
   });
   claudeVoiceState = { running: true, status: 'idle', lastUserText: '', lastAssistantText: '', error: null };
+  claudeVoiceTranscript = [];   // new session, fresh conversation
   broadcastClaudeVoice({ type: 'session-started', projectDir });
   return true;
 }
 // Transcribes one VAD-trimmed utterance (raw 16kHz/16-bit/mono PCM, matching claudevoiceview.js's
 // mic pipeline -- see claudevoice-vad.js) via the configured wyoming-faster-whisper host/port.
+function claudeVoiceLog(message) { console.log('[claude-voice] ' + message); }
 async function transcribeClaudeVoiceAudio(pcmBuffer) {
   const opts = activeServedAppConfig('claude-voice');
   const host = (opts && opts.options.wyomingHost) || '';
   const port = (opts && opts.options.wyomingSttPort) || '';
   if (!host || !port) return { ok: false, error: 'Wyoming host/STT port not configured' };
   try {
-    const text = await claudeVoiceWyoming.transcribe({ host, port, audio: pcmBuffer, rate: 16000, width: 2, channels: 1 });
+    const text = await claudeVoiceWyoming.transcribe({ host, port, audio: pcmBuffer, rate: 16000, width: 2, channels: 1, log: claudeVoiceLog });
     return { ok: true, text };
   } catch (e) {
+    claudeVoiceLog('STT error: ' + e.message);
     return { ok: false, error: e.message };
   }
 }
@@ -229,7 +241,7 @@ async function synthesizeClaudeVoiceSpeech(text, res) {
   let headerWritten = false;
   try {
     await claudeVoiceWyoming.synthesize({
-      host, port, text,
+      host, port, text, log: claudeVoiceLog,
       onFormat: fmt => {
         headerWritten = true;
         res.writeHead(200, { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' });
