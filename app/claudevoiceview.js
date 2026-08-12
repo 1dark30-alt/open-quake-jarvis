@@ -95,18 +95,22 @@ function connectEvents() {
   es.onmessage = function (e) {
     var msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
     if (msg.type === 'assistant-start') {
+      // Just a status change -- do NOT create a bubble yet. A turn emits message_start for every
+      // internal message (tool calls, thinking), most of which never produce any text; creating a
+      // bubble here left a trail of empty bars. The bubble appears on the first real text delta.
       setStatus('thinking');
-      liveMsg = { role: 'assistant', text: '' };
-      transcript.push(liveMsg);
-      $('empty').style.display = 'none';
-      var row = document.createElement('div');
-      row.className = 'msg assistant'; row.setAttribute('data-live', '1');
-      row.innerHTML = '<div class="bubble"></div>';
-      $('list').appendChild(row);
-      $('card').scrollTop = $('card').scrollHeight;
     } else if (msg.type === 'assistant-delta') {
-      if (!liveMsg) return;   // a delta arrived with no preceding start (e.g. page just loaded mid-turn) — ignore, /claude-voice/state will catch up on next reload
-      liveMsg.text += msg.text || '';
+      if (!msg.text) return;
+      if (!liveMsg) {
+        liveMsg = { role: 'assistant', text: '' };
+        transcript.push(liveMsg);
+        $('empty').style.display = 'none';
+        var row = document.createElement('div');
+        row.className = 'msg assistant'; row.setAttribute('data-live', '1');
+        row.innerHTML = '<div class="bubble"></div>';
+        $('list').appendChild(row);
+      }
+      liveMsg.text += msg.text;
       updateLiveBubble();
     } else if (msg.type === 'turn-complete') {
       var finalText = msg.text;

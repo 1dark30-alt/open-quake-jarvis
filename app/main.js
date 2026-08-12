@@ -232,6 +232,15 @@ function startClaudeVoiceSession(dir) {
 // Transcribes one VAD-trimmed utterance (raw 16kHz/16-bit/mono PCM, matching claudevoiceview.js's
 // mic pipeline -- see claudevoice-vad.js) via the configured wyoming-faster-whisper host/port.
 function claudeVoiceLog(message) { console.log('[claude-voice] ' + message); }
+// Whisper hallucinates stock phrases on background noise/near-silence ("thanks for watching" is the
+// classic, from YouTube training data). Exact-phrase blocklist, compared case/punctuation-insensitively --
+// deliberately NOT a fuzzy match, so real dictation containing these words inside a sentence still goes
+// through. Dropped utterances return ok+empty text, which the page treats as "heard nothing".
+const CLAUDE_VOICE_STT_NOISE_PHRASES = ['thanks for watching'];
+function isSttNoisePhrase(text) {
+  const norm = String(text || '').toLowerCase().replace(/[^a-z' ]/g, ' ').replace(/\s+/g, ' ').trim();
+  return CLAUDE_VOICE_STT_NOISE_PHRASES.includes(norm);
+}
 async function transcribeClaudeVoiceAudio(pcmBuffer) {
   const opts = activeServedAppConfig('claude-voice');
   const host = (opts && opts.options.wyomingHost) || '';
@@ -239,6 +248,10 @@ async function transcribeClaudeVoiceAudio(pcmBuffer) {
   if (!host || !port) return { ok: false, error: 'Wyoming host/STT port not configured' };
   try {
     const text = await claudeVoiceWyoming.transcribe({ host, port, audio: pcmBuffer, rate: 16000, width: 2, channels: 1, log: claudeVoiceLog });
+    if (isSttNoisePhrase(text)) {
+      claudeVoiceLog('STT dropped a known noise-hallucination phrase: ' + JSON.stringify(text));
+      return { ok: true, text: '' };
+    }
     return { ok: true, text };
   } catch (e) {
     claudeVoiceLog('STT error: ' + e.message);
