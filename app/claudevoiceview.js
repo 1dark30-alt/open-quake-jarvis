@@ -135,6 +135,9 @@ function connectEvents() {
       showApprovalOverlay(msg.requestId, msg.toolName, msg.toolInput);
     } else if (msg.type === 'approval-decision' || msg.type === 'approval-timeout') {
       if (msg.requestId === pendingApprovalRequestId) hideApprovalOverlay();
+    } else if (msg.type === 'permission-mode') {
+      currentMode = msg.mode || currentMode;
+      syncModeUI();
     }
   };
   es.onerror = function () { /* EventSource auto-reconnects; nothing to do */ };
@@ -192,6 +195,7 @@ fetch('/claude-voice/state', { cache: 'no-store' }).then(function (r) { return r
     // Replay the session's transcript (kept by main.js) -- the webview reloads this page on every
     // page switch, so without this a rotate-away-and-back would blank the whole conversation.
     if (s.transcript && s.transcript.length) { transcript = s.transcript.slice(); renderTranscript(); }
+    if (s.permissionMode) { currentMode = s.permissionMode; syncModeUI(); }
     setStatus(s.status, s.error);
   }).catch(function () {});
 connectEvents();
@@ -335,5 +339,37 @@ $('vpProject').onclick = function () {
 };
 $('vpSettings').onclick = function () { $('settingsOverlay').classList.remove('hidden'); };
 $('settingsClose').onclick = function () { $('settingsOverlay').classList.add('hidden'); };
+
+// ---- Permission mode (Mode button + overlay) ----
+// Switching restarts the claude process with --resume + the new --permission-mode (mode is a
+// launch-only CLI flag; the mid-session control message is undocumented/unsupported). The
+// conversation itself carries over -- expect a ~2s pause before the next turn responds.
+var MODE_LABELS = { manual: 'Manual', acceptEdits: 'Accept edits', plan: 'Plan', bypassPermissions: 'Full auto' };
+var currentMode = '';
+function syncModeUI() {
+  $('vpMode').textContent = currentMode ? 'Mode: ' + (MODE_LABELS[currentMode] || currentMode) : 'Mode';
+  document.querySelectorAll('.modeOpt').forEach(function (b) {
+    b.classList.toggle('current', b.getAttribute('data-mode') === currentMode);
+  });
+}
+$('vpMode').onclick = function () { syncModeUI(); $('modeOverlay').classList.remove('hidden'); };
+$('modeCancel').onclick = function () { $('modeOverlay').classList.add('hidden'); };
+document.querySelectorAll('.modeOpt').forEach(function (btn) {
+  btn.onclick = function () {
+    var mode = btn.getAttribute('data-mode');
+    $('modeOverlay').classList.add('hidden');
+    if (!mode || mode === currentMode) return;
+    fetch('/claude-voice/permission-mode', {
+      method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: mode }),
+    }).then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (!r || !r.ok) setStatus(conversationOpen ? 'listening' : 'idle', 'Mode switch failed — is a session running yet? (Send a message first.)');
+      })
+      .catch(function () { setStatus('error', 'Could not reach the panel server.'); });
+  };
+});
+
 syncMicUI();
 syncSpkUI();
+syncModeUI();

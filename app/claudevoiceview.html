@@ -18,8 +18,9 @@
      Settings. Icon buttons follow the Music page's transport aesthetic exactly: circular, 2px
      border, soft gradient fill, currentColor SVG glyphs, scale-down on press. All chrome, so
      user-select:none. */
-  #voicePanel { flex: 0 0 236px; display: flex; flex-direction: column; gap: 14px; align-items: center;
+  #voicePanel { flex: 0 0 284px; display: flex; flex-direction: column; gap: 14px; align-items: center;
     justify-content: center; user-select: none; }
+  #vizRow { display: flex; gap: 16px; justify-content: center; }
   .iconBtn { position: relative; width: 116px; height: 116px; border-radius: 50%; border: 2px solid var(--tile-bd);
     background: linear-gradient(160deg, var(--surf), var(--surf2)); cursor: pointer; color: var(--fg);
     display: flex; align-items: center; justify-content: center; transition: transform .08s ease; }
@@ -73,6 +74,21 @@
     color: var(--muted); cursor: pointer; user-select: none; }
   .copybtn:active { background: var(--accent); color: #04120b; }
   .copybtn.copied { color: var(--accent); border-color: var(--accent); }
+
+  /* Mode overlay: one big row per permission mode, current one highlighted with the accent. */
+  #modeOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex;
+    align-items: center; justify-content: center; padding: 24px; z-index: 45; user-select: none; }
+  #modeOverlay.hidden { display: none; }
+  #modeCard { width: min(560px, 100%); background: var(--surf); border: 1px solid var(--tile-bd);
+    border-radius: 16px; padding: 20px 24px; box-shadow: 0 12px 40px rgba(0,0,0,.4); }
+  #modeTitle { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+  .modeOpt { display: block; width: 100%; min-height: 60px; margin-bottom: 10px; border-radius: 12px;
+    border: 1px solid var(--tile-bd); background: var(--surf2); color: var(--fg); font-size: 17px;
+    font-weight: 600; cursor: pointer; text-align: left; padding: 10px 16px; }
+  .modeOpt small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+  .modeOpt.current { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: -2px; }
+  #modeCancel { min-height: 48px; min-width: 96px; border-radius: 10px; border: 1px solid var(--tile-bd);
+    background: var(--surf2); color: var(--fg); font-size: 15px; font-weight: 600; cursor: pointer; }
 
   /* Settings overlay: minimal for now (Test speech lives here); device pickers etc. come later. */
   #settingsOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex;
@@ -135,17 +151,30 @@
       </div>
     </div>
     <div id="voicePanel">
-      <button id="micBtn" class="iconBtn off" type="button" title="Tap to start/stop listening">
-        <div id="micRipples"></div>
-        <svg class="glyph" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2h-2v2a5 5 0 0 1-10 0v-2H5z"/><rect x="11" y="18.4" width="2" height="2.9"/><rect x="8" y="21.3" width="8" height="1.8" rx=".9"/></svg>
-        <svg class="ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.6"/><line x1="4.6" y1="4.6" x2="19.4" y2="19.4"/></svg>
-      </button>
-      <button id="spkBtn" class="iconBtn on" type="button" title="Tap to turn spoken replies on/off">
-        <svg class="glyph" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path class="wave" d="M16.5 12A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/><path class="wave" d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
-        <svg class="ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.6"/><line x1="4.6" y1="4.6" x2="19.4" y2="19.4"/></svg>
-      </button>
+      <div id="vizRow">
+        <button id="micBtn" class="iconBtn off" type="button" title="Tap to start/stop listening">
+          <div id="micRipples"></div>
+          <svg class="glyph" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2h-2v2a5 5 0 0 1-10 0v-2H5z"/><rect x="11" y="18.4" width="2" height="2.9"/><rect x="8" y="21.3" width="8" height="1.8" rx=".9"/></svg>
+          <svg class="ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.6"/><line x1="4.6" y1="4.6" x2="19.4" y2="19.4"/></svg>
+        </button>
+        <button id="spkBtn" class="iconBtn on" type="button" title="Tap to turn spoken replies on/off">
+          <svg class="glyph" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path class="wave" d="M16.5 12A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/><path class="wave" d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+          <svg class="ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.6"/><line x1="4.6" y1="4.6" x2="19.4" y2="19.4"/></svg>
+        </button>
+      </div>
       <button id="vpProject" class="vpBtn" type="button">Change project</button>
       <button id="vpSettings" class="vpBtn" type="button">Settings</button>
+      <button id="vpMode" class="vpBtn" type="button">Mode</button>
+    </div>
+  </div>
+  <div id="modeOverlay" class="hidden">
+    <div id="modeCard">
+      <div id="modeTitle">Permission mode</div>
+      <button class="modeOpt" data-mode="manual" type="button">Manual<small>Ask before every action (touch approval)</small></button>
+      <button class="modeOpt" data-mode="acceptEdits" type="button">Accept edits<small>File changes auto-approved</small></button>
+      <button class="modeOpt" data-mode="plan" type="button">Plan<small>Describe, don't act, until approved</small></button>
+      <button class="modeOpt" data-mode="bypassPermissions" type="button">Full auto<small>No prompts at all — use with care</small></button>
+      <div style="display:flex;justify-content:flex-end"><button id="modeCancel" type="button">Cancel</button></div>
     </div>
   </div>
   <div id="settingsOverlay" class="hidden">

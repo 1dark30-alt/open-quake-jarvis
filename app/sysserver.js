@@ -67,7 +67,8 @@ let sysHtml = FALLBACK, musicHtml = FALLBACK, chatHtml = FALLBACK, hascheduleHtm
 // Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
 let onClaudeVoiceTurn = null, getClaudeVoiceState = null, onClaudeVoiceAudio = null, onClaudeVoiceApprovalRequest = null,
   onClaudeVoiceApprovalDecision = null, onClaudeVoiceSessionStart = null, onClaudeVoiceSessionStop = null,
-  onClaudeVoiceSubscribe = null, getClaudeVoiceProjects = null, onClaudeVoiceSynthesize = null, voiceToken = null;
+  onClaudeVoiceSubscribe = null, getClaudeVoiceProjects = null, onClaudeVoiceSynthesize = null,
+  onClaudeVoicePermissionMode = null, voiceToken = null;
 const staticAssets = {};   // request path -> { body, type }; populated at start()
 let appFolders = {};        // drop-in served app id -> { root, proxy }; supplied by main.js
 const appServers = {};      // app id -> required server module
@@ -342,6 +343,7 @@ const CLAUDE_VOICE_POST_ROUTES = new Set([
   '/claude-voice/approval-decision',
   '/claude-voice/session/start',
   '/claude-voice/session/stop',
+  '/claude-voice/permission-mode',
 ]);
 
 async function handler(req, res) {
@@ -428,6 +430,13 @@ async function handler(req, res) {
     if (onClaudeVoiceSessionStop) { try { ok = !!onClaudeVoiceSessionStop(); } catch (e) {} }
     return done(res, ok);
   }
+  if (url === '/claude-voice/permission-mode' && req.method === 'POST') {
+    let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+    const mode = body && typeof body.mode === 'string' ? body.mode : '';
+    if (!mode || !onClaudeVoicePermissionMode) return done(res, false);
+    let ok = false; try { ok = !!onClaudeVoicePermissionMode(mode); } catch (e) {}
+    return done(res, ok);
+  }
   if (url === '/claude-voice/approval-decision' && req.method === 'POST') {
     let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
     const requestId = body && body.requestId, decision = body && body.decision;
@@ -490,6 +499,7 @@ function start(opts) {
   onClaudeVoiceSubscribe = opts.onClaudeVoiceSubscribe || null;
   getClaudeVoiceProjects = opts.getClaudeVoiceProjects || null;
   onClaudeVoiceSynthesize = opts.onClaudeVoiceSynthesize || null;
+  onClaudeVoicePermissionMode = opts.onClaudeVoicePermissionMode || null;
   voiceToken = opts.voiceToken || null;
   setAppFolders(opts.appFolders);
   nowplaying.setProvider(opts.getNowPlaying || null);

@@ -54,6 +54,7 @@ function createClaudeVoiceSession(options) {
   let stopping = false;
   let restartTimer = null;
   let sessionId = null;
+  let resumeSessionId = null;   // when set, launch() resumes this session instead of starting fresh
   let projectDir = null;
   let permissionMode = 'bypassPermissions';
   let voicePort = null;
@@ -68,6 +69,9 @@ function createClaudeVoiceSession(options) {
       let event;
       try { event = JSON.parse(line); }
       catch (e) { log('claude output (unparsed): ' + line.slice(0, 300)); return; }
+      // The init event is authoritative for the session id -- on --resume the id normally carries
+      // over, but if the CLI ever forks to a new one, tracking init keeps later resumes correct.
+      if (event.type === 'system' && event.subtype === 'init' && event.session_id) sessionId = event.session_id;
       try { emitter.emit('event', event); } catch (e) {}
     });
   }
@@ -89,7 +93,10 @@ function createClaudeVoiceSession(options) {
         '--verbose',                              // required by the CLI when -p + stream-json output are combined
         '--include-partial-messages',              // real token-level streaming (content_block_delta events)
         '--permission-mode', permissionMode,
-        '--session-id', sessionId,
+        // Fresh session vs continue-an-existing-one: --resume is how a mid-conversation permission-
+        // mode change works (restart the process against the same session file, new mode flag) --
+        // the documented path, since mode is a launch-only flag on the CLI.
+        ...(resumeSessionId ? ['--resume', resumeSessionId] : ['--session-id', sessionId]),
       ], {
         cwd: projectDir,
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -151,6 +158,7 @@ function createClaudeVoiceSession(options) {
     start({ projectDir: dir, permissionMode: mode, port, token }) {
       stopping = true; stopChild(); stopping = false;
       sessionId = crypto.randomUUID();
+      resumeSessionId = null;
       projectDir = dir;
       permissionMode = mode || 'bypassPermissions';
       voicePort = port;
@@ -158,6 +166,17 @@ function createClaudeVoiceSession(options) {
       launch();
       return sessionId;
     },
+    // Restarts the current session with a different permission mode, keeping the conversation:
+    // stop the child, relaunch with --resume against the same session id. No-op without a session.
+    setPermissionMode(mode) {
+      if (!sessionId || !mode) return false;
+      stopping = true; stopChild(); stopping = false;
+      permissionMode = mode;
+      resumeSessionId = sessionId;
+      launch();
+      return true;
+    },
+    permissionMode() { return permissionMode; },
     stop() {
       stopping = true;
       stopChild();

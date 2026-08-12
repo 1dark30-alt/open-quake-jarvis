@@ -181,7 +181,23 @@ function onClaudeVoiceTurn(text) {
   return sent;
 }
 function getClaudeVoiceState() {
-  return Object.assign({}, claudeVoiceState, { running: claudeVoiceSession.isRunning(), sessionId: claudeVoiceSession.sessionId(), transcript: claudeVoiceTranscript });
+  return Object.assign({}, claudeVoiceState, {
+    running: claudeVoiceSession.isRunning(),
+    sessionId: claudeVoiceSession.sessionId(),
+    permissionMode: claudeVoiceSession.permissionMode(),
+    transcript: claudeVoiceTranscript,
+  });
+}
+const CLAUDE_VOICE_MODES = ['manual', 'acceptEdits', 'plan', 'bypassPermissions'];
+// Mid-session permission-mode switch (panel Mode button): restart the claude process with --resume
+// against the same session id + the new --permission-mode flag. The documented path -- mode is a
+// launch-only CLI flag, and the mid-session control message is explicitly undocumented/unsupported.
+function setClaudeVoicePermissionMode(mode) {
+  if (!CLAUDE_VOICE_MODES.includes(mode)) return false;
+  if (!claudeVoiceSession.isRunning()) return false;
+  const ok = claudeVoiceSession.setPermissionMode(mode);
+  if (ok) broadcastClaudeVoice({ type: 'permission-mode', mode });
+  return ok;
 }
 // Explicit session start/stop (Phase 3): switching projects in the editor, or the future
 // tap-to-toggle gesture (Phase 5), both want "start now" / "end this conversation" rather than
@@ -1714,7 +1730,7 @@ app.whenReady().then(async () => {
   // Lazy-required so a metrics/load failure can never crash the rest of the app.
   try {
     sysserver = require('./sysserver');
-    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(), getShortcuts: keyboardShortcutsSnapshot, onClaudeVoiceTurn, getClaudeVoiceState, onClaudeVoiceSubscribe, onClaudeVoiceSessionStart: startClaudeVoiceSession, onClaudeVoiceSessionStop: stopClaudeVoiceSession, onClaudeVoiceAudio: transcribeClaudeVoiceAudio, onClaudeVoiceSynthesize: synthesizeClaudeVoiceSpeech, onClaudeVoiceApprovalRequest, onClaudeVoiceApprovalDecision, voiceToken: claudeVoiceToken });
+    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(), getShortcuts: keyboardShortcutsSnapshot, onClaudeVoiceTurn, getClaudeVoiceState, onClaudeVoiceSubscribe, onClaudeVoiceSessionStart: startClaudeVoiceSession, onClaudeVoiceSessionStop: stopClaudeVoiceSession, onClaudeVoiceAudio: transcribeClaudeVoiceAudio, onClaudeVoiceSynthesize: synthesizeClaudeVoiceSpeech, onClaudeVoiceApprovalRequest, onClaudeVoiceApprovalDecision, onClaudeVoicePermissionMode: setClaudeVoicePermissionMode, voiceToken: claudeVoiceToken });
     ensureSystemViewPage(serverPort); ensureMusicPage(); ensureDropInDir();
     const haUrl = configureHaSchedule();
     console.log('SystemView + Music on http://127.0.0.1:' + serverPort + (haUrl ? ' · HA Schedule -> ' + haUrl : ''));
