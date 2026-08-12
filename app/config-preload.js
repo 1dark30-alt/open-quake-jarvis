@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('openQuakeConfig', {
   getHaCache() { return ipcRenderer.invoke('getHaCache'); },
   refreshHaCache() { return ipcRenderer.invoke('refreshHaCache'); },
   fetchHaEntityState(entityId) { return ipcRenderer.invoke('fetchHaEntityState', entityId); },
+  // Claude Code voice app: candidate project directories under the configured projects root (Phase 3).
+  listProjectDirs(root) { return ipcRenderer.invoke('listProjectDirs', root); },
   pathToFileURL(filePath) {
     try { return pathToFileURL(filePath).href; }
     catch (e) { return ''; }

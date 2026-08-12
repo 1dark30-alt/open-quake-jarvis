@@ -76,6 +76,9 @@
   });
   web.addEventListener('console-message', (e) => {
     if (webExternalLinks && e.message && e.message.indexOf('OQX_OPEN::') === 0) panelApi.openExternal(e.message.slice(10));
+    // Ring-state signaling (Claude Code app): same host-channel trick as OQX_OPEN, but unconditional —
+    // any served page can drive the ring this way, not gated behind the external-links toggle.
+    if (e.message && e.message.indexOf('OQX_RING::') === 0) panelApi.setRingState(e.message.slice(10));
   });
   web.addEventListener('did-finish-load', () => {
     if (!webExternalLinks) return;
@@ -436,6 +439,10 @@
       return;
     }
     if (cfg && cfg.app === 'music') { panelApi.media('playpause'); return; }   // music: play/pause
+    if (cfg && cfg.app === 'claude-voice') {   // Claude Code: tap toggles the voice conversation on/off
+      if (webMode && webReady) web.executeJavaScript('window.oqxToggleConversation && window.oqxToggleConversation()').catch(function () {});
+      return;
+    }
     panelApi.launch({ type: 'key', value: 'enter', label: 'knob enter' });     // else: a real Enter keystroke
   }
   let counterLocked = false;

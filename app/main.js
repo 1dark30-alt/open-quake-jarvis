@@ -45,6 +45,9 @@ const meetingControl = require('./meetingControl');   // Zoom/Teams call-control
 const desktopFocus = require('./desktopFocus');   // tracks the PC's OS-level foreground app; auto-switches the panel to a mapped page
 const ahk = require('./ahk');                  // macro "ahk" step backend (shells out to an installed AutoHotkey.exe)
 const { createReservedDisplay } = require('./reservedDisplay'); // Windows helper that keeps foreign windows off the panel display
+const { createClaudeVoiceSession } = require('./claudevoice-session'); // persistent `claude` CLI process backing the Claude Code voice+text app
+const claudeVoiceWyoming = require('./claudevoice-wyoming'); // hand-rolled Wyoming protocol client (STT/TTS) for the same app
+const claudeVoiceApprovals = require('./claudevoice-approvals'); // touch-approval hook installer + pending-request manager for the same app
 const HA_SCHEDULE_APPS = ['haschedule', 'agenda', 'events'];   // dev apps backed by the shared HA /haschedule-data snapshot
 
 const USER_DIR = app.getPath('userData');
@@ -82,6 +85,172 @@ const reservedDisplay = createReservedDisplay({
   getDisplayState: reservedDisplayState,
   log: message => console.log('[reserved-display] ' + message),
 });
+const claudeVoiceSession = createClaudeVoiceSession({ log: message => console.log('[claude-voice] ' + message) });
+// Per-boot random token, handed to the `claude` process via env and echoed back by the PreToolUse
+// hook (Phase 7) so sysserver.js can tell a legitimate hook request from anything else that might
+// guess the loopback port -- the hook has no Origin/Sec-Fetch-Site header to check instead.
+const claudeVoiceToken = crypto.randomBytes(24).toString('hex');
+// Accumulated view of the current turn, for the /claude-voice/state snapshot (initial page load and
+// SSE-reconnect recovery -- a fresh subscriber knows the current status immediately, before any new
+// event arrives). Real-time updates go out over SSE via claudeVoiceSubscribers, sourced from the
+// same claudeVoiceSession 'event' stream, classified below.
+let claudeVoiceState = { running: false, status: 'idle', lastUserText: '', lastAssistantText: '', error: null };
+const claudeVoiceSubscribers = new Set();   // open SSE response objects (see onClaudeVoiceSubscribe)
+// Pending PreToolUse approval requests from the hook (see claudevoice-approvals.js). onChange drives
+// both the SSE broadcast to the panel and the ring override -- kept here rather than inside the
+// approvals module since both of those are main.js-level concerns already (broadcastClaudeVoice,
+// setRingState) that the module shouldn't need to know about.
+const claudeVoiceApprovalManager = claudeVoiceApprovals.createApprovalManager({
+  onChange: evt => {
+    if (evt.type === 'approval-request') {
+      claudeVoiceState.status = 'approval';
+      setRingState('approval');
+      broadcastClaudeVoice({ type: 'approval-request', requestId: evt.requestId, toolName: evt.toolName, toolInput: evt.toolInput });
+    } else if (evt.type === 'approval-decision' || evt.type === 'approval-timeout') {
+      claudeVoiceState.status = 'thinking';   // control returns to Claude, which keeps working or asks again
+      setRingState('thinking');
+      broadcastClaudeVoice({ type: evt.type, requestId: evt.requestId, decision: evt.decision });
+    }
+  },
+});
+function onClaudeVoiceApprovalRequest(body, res) { claudeVoiceApprovalManager.request(body || {}, res); }
+function onClaudeVoiceApprovalDecision(requestId, decision) { return claudeVoiceApprovalManager.decide(requestId, decision); }
+function broadcastClaudeVoice(payload) {
+  const line = 'data: ' + JSON.stringify(payload) + '\n\n';
+  for (const res of claudeVoiceSubscribers) { try { res.write(line); } catch (e) { claudeVoiceSubscribers.delete(res); } }
+}
+claudeVoiceSession.on('event', event => {
+  if (event.type === 'stream_event' && event.event) {
+    const se = event.event;
+    if (se.type === 'message_start') {
+      claudeVoiceState.status = 'thinking';
+      broadcastClaudeVoice({ type: 'assistant-start' });
+    } else if (se.type === 'content_block_delta' && se.delta && se.delta.type === 'text_delta' && se.delta.text) {
+      broadcastClaudeVoice({ type: 'assistant-delta', text: se.delta.text });
+    }
+    return;
+  }
+  if (event.type === 'assistant' && event.message && Array.isArray(event.message.content)) {
+    // Authoritative complete text for this message (stream_event deltas already pushed it live) --
+    // used as the fallback if a client only ever polls /claude-voice/state and never opens SSE.
+    const text = event.message.content.filter(b => b && b.type === 'text').map(b => b.text).join('');
+    if (text) { claudeVoiceState.status = 'thinking'; claudeVoiceState.lastAssistantText = text; }
+    return;
+  }
+  if (event.type === 'result') {
+    claudeVoiceState.status = 'idle';
+    if (typeof event.result === 'string') claudeVoiceState.lastAssistantText = event.result;
+    claudeVoiceState.error = event.is_error ? (event.result || 'error') : null;
+    broadcastClaudeVoice({ type: 'turn-complete', text: claudeVoiceState.lastAssistantText, error: claudeVoiceState.error });
+    return;
+  }
+});
+claudeVoiceSession.on('error', e => {
+  claudeVoiceState.status = 'error'; claudeVoiceState.error = (e && e.message) || 'error';
+  broadcastClaudeVoice({ type: 'error', error: claudeVoiceState.error });
+});
+claudeVoiceSession.on('exit', () => { claudeVoiceState.running = false; });
+// SSE subscribe: keeps the response open, pushes every broadcastClaudeVoice() call as a `data:` line,
+// removes itself when the page navigates away/reloads/closes. No history replay yet (flagged as an
+// open item in the plan) -- a fresh subscriber gets /claude-voice/state's snapshot for "where things
+// stand right now" and then only future events, same as a page reload losing scrollback in most chat
+// UIs unless they specifically buffer it.
+function onClaudeVoiceSubscribe(req, res) {
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'Connection': 'keep-alive' });
+  res.write(': connected\n\n');
+  claudeVoiceSubscribers.add(res);
+  req.on('close', () => { claudeVoiceSubscribers.delete(res); });
+}
+// Ensures a claude-voice session is running for the panel's currently-active page (starting one on
+// first use), then sends the turn. Returns false if the active page isn't a claude-voice app page.
+function onClaudeVoiceTurn(text) {
+  const opts = activeServedAppConfig('claude-voice');
+  if (!opts) return false;
+  if (!claudeVoiceSession.isRunning() && !startClaudeVoiceSession()) return false;
+  claudeVoiceState.status = 'thinking';
+  claudeVoiceState.lastUserText = text;
+  return claudeVoiceSession.sendTurn(text);
+}
+function getClaudeVoiceState() {
+  return Object.assign({}, claudeVoiceState, { running: claudeVoiceSession.isRunning(), sessionId: claudeVoiceSession.sessionId() });
+}
+// Explicit session start/stop (Phase 3): switching projects in the editor, or the future
+// tap-to-toggle gesture (Phase 5), both want "start now" / "end this conversation" rather than
+// onClaudeVoiceTurn's implicit lazy-start-on-first-message. `dir` overrides the app page's own
+// configured projectDir when given (e.g. a picker change not yet Saved to config.json).
+function startClaudeVoiceSession(dir) {
+  const opts = activeServedAppConfig('claude-voice');
+  if (!opts) return false;
+  const projectDir = dir || opts.options.projectDir || app.getPath('documents');
+  try { fs.mkdirSync(projectDir, { recursive: true }); } catch (e) {}
+  // Sync the global PreToolUse hook to the current "Touch approval when in Manual mode" option on
+  // every session start, rather than reacting to the checkbox's onchange directly -- app options save
+  // through the generic grid-config path with no dedicated "this one option changed" event, and
+  // re-syncing here is idempotent (a no-op write when already in the right state) so there's no real
+  // cost to doing it this way. A toggle takes effect the next time a session starts.
+  const approveLog = message => console.log('[claude-voice] ' + message);
+  try {
+    if (opts.options.approvalsEnabled) claudeVoiceApprovals.ensureHookInstalled(app.getPath('userData'), approveLog);
+    else claudeVoiceApprovals.ensureHookRemoved(approveLog);
+  } catch (e) { approveLog('hook sync failed: ' + e.message); }
+  claudeVoiceSession.start({
+    projectDir,
+    permissionMode: opts.options.permissionMode || 'bypassPermissions',
+    port: serverPort,
+    token: claudeVoiceToken,
+  });
+  claudeVoiceState = { running: true, status: 'idle', lastUserText: '', lastAssistantText: '', error: null };
+  broadcastClaudeVoice({ type: 'session-started', projectDir });
+  return true;
+}
+// Transcribes one VAD-trimmed utterance (raw 16kHz/16-bit/mono PCM, matching claudevoiceview.js's
+// mic pipeline -- see claudevoice-vad.js) via the configured wyoming-faster-whisper host/port.
+async function transcribeClaudeVoiceAudio(pcmBuffer) {
+  const opts = activeServedAppConfig('claude-voice');
+  const host = (opts && opts.options.wyomingHost) || '';
+  const port = (opts && opts.options.wyomingSttPort) || '';
+  if (!host || !port) return { ok: false, error: 'Wyoming host/STT port not configured' };
+  try {
+    const text = await claudeVoiceWyoming.transcribe({ host, port, audio: pcmBuffer, rate: 16000, width: 2, channels: 1 });
+    return { ok: true, text };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+// Streams synthesized speech for `text` straight into `res` as a WAV, via the configured
+// wyoming-piper host/port (Phase 4). Writes the WAV header the moment Wyoming's audio-start reply
+// tells us the real sample rate/width/channels -- see claudevoice-wyoming.js's header comment for
+// why that's read live rather than assumed (Piper's rate can vary by voice model).
+async function synthesizeClaudeVoiceSpeech(text, res) {
+  const opts = activeServedAppConfig('claude-voice');
+  const host = (opts && opts.options.wyomingHost) || '';
+  const port = (opts && opts.options.wyomingTtsPort) || '';
+  if (!host || !port || !text) { res.writeHead(400); res.end(); return; }
+  let headerWritten = false;
+  try {
+    await claudeVoiceWyoming.synthesize({
+      host, port, text,
+      onFormat: fmt => {
+        headerWritten = true;
+        res.writeHead(200, { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' });
+        res.write(claudeVoiceWyoming.wavHeader(fmt));
+      },
+      onChunk: buf => { try { res.write(buf); } catch (e) {} },
+    });
+  } catch (e) {
+    console.log('[claude-voice] TTS error: ' + e.message);
+    if (!headerWritten) { try { res.writeHead(502); } catch (er) {} }
+  }
+  try { res.end(); } catch (e) {}
+}
+function stopClaudeVoiceSession() {
+  claudeVoiceSession.stop();
+  claudeVoiceApprovalManager.cancelAll('Session ended.');   // don't leave the hook's HTTP request hanging on a dead session
+  claudeVoiceState = { running: false, status: 'idle', lastUserText: '', lastAssistantText: '', error: null };
+  clearRingOverride();
+  broadcastClaudeVoice({ type: 'session-stopped' });
+  return true;
+}
 function appSettings() { return Object.assign({}, DEFAULT_SETTINGS, config.settings || {}); }
 // ---- theme (global light/dark + accent, with per-card overrides) ----
 function themeGlobal() { return Object.assign({}, THEME_DEFAULT, (config.settings || {}).theme || {}); }
@@ -1196,6 +1365,7 @@ function openConfigWindow() {
 // ---- device settings (knob RGB ring, mic) ----
 function lighting() { return Object.assign({}, LED_DEFAULT, (config.settings || {}).lighting || {}); }
 function applyKnobSettings() {
+  if (ringOverrideState) { applyRingOverride(); return; }
   const L = lighting();
   const lig = (config.settings && config.settings.lighting) || {};
   let hue = L.hue, sat = L.sat;
@@ -1206,6 +1376,41 @@ function applyKnobSettings() {
   try { dev.setLedSpeed(L.speed & 0xFF); } catch (e) {}
   try { dev.setLedColor(hue & 0xFF, sat & 0xFF); } catch (e) {}
   if (L.effect) lastRingEffect = L.effect;
+}
+// ---- ring override (Claude Code voice states) ----
+// A served page signals its state via console.log('OQX_RING::<state>') (caught in index.js, funneled
+// through the panelApi.setRingState IPC channel below). While an override is active it wins over the
+// normal theme-driven ring on every applyKnobSettings() call (settings changes, app switches, etc. all
+// route through that one function) so nothing else can silently clobber it mid-conversation. Colors
+// echo the same palette used in claudevoiceview.html's status pill (--accent green / blue / --warn
+// amber) so the on-screen status and the ring always agree. Brightness always follows the user's own
+// lighting setting -- only hue/sat/effect/speed are state-driven.
+const RING_STATES = {
+  listening: { hue: 106, sat: 255, effect: 1, speed: 128 },   // solid green — mirrors the app's --accent
+  thinking: { hue: 106, sat: 255, effect: 5, speed: 180 },    // breathing green — actively working
+  speaking: { hue: 149, sat: 255, effect: 1, speed: 128 },    // solid blue — Claude is talking
+  approval: { hue: 28, sat: 255, effect: 5, speed: 220 },     // breathing amber — needs a touch, mirrors --warn
+};
+let ringOverrideState = null;
+function applyRingOverride() {
+  const s = RING_STATES[ringOverrideState];
+  if (!s) { ringOverrideState = null; applyKnobSettings(); return; }
+  try { dev.setKnobLed(true); } catch (e) {}
+  try { dev.setLedEffect(s.effect & 0xFF); } catch (e) {}
+  try { dev.setLedBrightness(lighting().brightness & 0xFF); } catch (e) {}
+  try { dev.setLedSpeed(s.speed & 0xFF); } catch (e) {}
+  try { dev.setLedColor(s.hue & 0xFF, s.sat & 0xFF); } catch (e) {}
+}
+function setRingState(state) {
+  if (!state || state === 'idle') { clearRingOverride(); return; }
+  if (!RING_STATES[state]) return;   // unrecognized state string — ignore rather than guess at a mapping
+  ringOverrideState = state;
+  applyRingOverride();
+}
+function clearRingOverride() {
+  if (!ringOverrideState) return;
+  ringOverrideState = null;
+  applyKnobSettings();
 }
 function applyMic(on) { try { dev.setMic(on); } catch (e) {} micState = !!on; refreshTray(); }
 function toggleMic() { applyMic(!micState); }
@@ -1231,6 +1436,7 @@ function pageCategory(g) { return g.kind === 'web' ? 'dashboards' : g.kind === '
 function rotationList() { const c = rotationCfg(); return config.grids.filter(g => g.rotate && c.cats[pageCategory(g)] && !g.hidden); }
 function gotoGrid(id, persist) {
   if (!config.grids.some(g => g.id === id)) return;
+  clearRingOverride();   // leaving whatever page set the override (if any) — always restore the normal ring
   config.activeGridId = id; if (persist) saveConfig(); pushToPanel();
 }
 // Force the dashboard webview's cookies to commit to disk. Chromium only lazily flushes (~30s / clean
@@ -1496,7 +1702,7 @@ app.whenReady().then(async () => {
   // Lazy-required so a metrics/load failure can never crash the rest of the app.
   try {
     sysserver = require('./sysserver');
-    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(), getShortcuts: keyboardShortcutsSnapshot });
+    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(), getShortcuts: keyboardShortcutsSnapshot, onClaudeVoiceTurn, getClaudeVoiceState, onClaudeVoiceSubscribe, onClaudeVoiceSessionStart: startClaudeVoiceSession, onClaudeVoiceSessionStop: stopClaudeVoiceSession, onClaudeVoiceAudio: transcribeClaudeVoiceAudio, onClaudeVoiceSynthesize: synthesizeClaudeVoiceSpeech, onClaudeVoiceApprovalRequest, onClaudeVoiceApprovalDecision, voiceToken: claudeVoiceToken });
     ensureSystemViewPage(serverPort); ensureMusicPage(); ensureDropInDir();
     const haUrl = configureHaSchedule();
     console.log('SystemView + Music on http://127.0.0.1:' + serverPort + (haUrl ? ' · HA Schedule -> ' + haUrl : ''));
@@ -1575,9 +1781,22 @@ app.whenReady().then(async () => {
     console.log('[counter] SAVED: grid', data.gridId, 'tile', data.index, '=', data.value);
   });
   ipcMain.on('openExternal', (e, url) => { if (!isFrom(e, panelWin) && !isFrom(e, configWin)) return; openExternalUrl(url); });
+  ipcMain.on('ringState', (e, state) => { if (!isFrom(e, panelWin)) return; setRingState(state); });
   ipcMain.handle('getConfig', (e) => isFrom(e, configWin) ? config : null);
   // HA cache: editor reads the registries + dashboards for picker UIs; refresh kicks a new fetchAll.
   // fetchHaEntityState is wired now for phase-2 features that assign an entity to a button.
+  // Claude Code voice app: candidate project directories under `root` for the editor's picker
+  // (Phase 3). Directories only (not files); silently returns [] for a missing/unreadable root
+  // rather than throwing, since the field is free-editable and may not exist yet.
+  ipcMain.handle('listProjectDirs', (e, root) => {
+    if (!isFrom(e, configWin)) return [];
+    try {
+      return fs.readdirSync(root, { withFileTypes: true })
+        .filter(d => d.isDirectory())
+        .map(d => path.join(root, d.name))
+        .sort((a, b) => a.localeCompare(b));
+    } catch (err) { return []; }
+  });
   ipcMain.handle('getHaCache', (e) => isFrom(e, configWin) ? haCache : null);
   ipcMain.handle('refreshHaCache', (e) => isFrom(e, configWin) ? refreshHaCache() : null);
   ipcMain.handle('fetchHaEntityState', (e, entityId) => {
@@ -1719,6 +1938,8 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {});
 app.on('before-quit', () => {
   try { reservedDisplay.stop(); } catch (e) {}                // release WinEvent hooks and terminate the native helper
+  try { claudeVoiceSession.stop(); } catch (e) {}        // terminate the persistent claude CLI process, if running
+  try { claudeVoiceApprovalManager.cancelAll('App is quitting.'); } catch (e) {}   // don't leave a hook's HTTP request hanging
   try { dev.stop(); } catch (e) {}                       // close HID devices + clear keep-alive/rescan timers — an open node-hid handle blocks process exit (Cmd+Q would hang -> force-quit)
   try { if (sysserver) sysserver.stop(); } catch (e) {}  // stop metrics timers + close the local server
   try { if (dashSession) dashSession.cookies.flushStore(); } catch (e) {}   // commit a fresh webview login to disk before exit

@@ -58,10 +58,16 @@ const STATIC_FILES = {
   '/schedule.css': 'text/css; charset=utf-8',
   '/schedule-app.js': 'application/javascript; charset=utf-8',
   '/keyshortcutsview.js': 'application/javascript; charset=utf-8',
+  '/claudevoiceview.js': 'application/javascript; charset=utf-8',
+  '/claudevoice-vad.js': 'application/javascript; charset=utf-8',
 };
 
 let server = null, onMedia = null, onLaunch = null, getGridTiles = null, getAppConfig = null, onOpenExternal = null, onMeetingAction = null, getShortcuts = null;
-let sysHtml = FALLBACK, musicHtml = FALLBACK, chatHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK;
+let sysHtml = FALLBACK, musicHtml = FALLBACK, chatHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, claudeVoiceHtml = FALLBACK;
+// Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
+let onClaudeVoiceTurn = null, getClaudeVoiceState = null, onClaudeVoiceAudio = null, onClaudeVoiceApprovalRequest = null,
+  onClaudeVoiceApprovalDecision = null, onClaudeVoiceSessionStart = null, onClaudeVoiceSessionStop = null,
+  onClaudeVoiceSubscribe = null, getClaudeVoiceProjects = null, onClaudeVoiceSynthesize = null, voiceToken = null;
 const staticAssets = {};   // request path -> { body, type }; populated at start()
 let appFolders = {};        // drop-in served app id -> { root, proxy }; supplied by main.js
 const appServers = {};      // app id -> required server module
@@ -141,6 +147,27 @@ function queryObject(full) {
   const out = {};
   try { new URL(full, 'http://127.0.0.1').searchParams.forEach((value, key) => { out[key] = value; }); } catch (e) {}
   return out;
+}
+// Reads a POST body into a Buffer, capped at 10MB (comfortably covers a few seconds of raw 16-bit
+// PCM audio at 16kHz mono -- see /claude-voice/audio in Phase 5 -- while still bounding memory use).
+function readRawBody(req, maxBytes) {
+  const cap = maxBytes || 10 * 1024 * 1024;
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', chunk => {
+      size += chunk.length;
+      if (size > cap) { req.destroy(); reject(new Error('body too large')); return; }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+async function readJsonBody(req, maxBytes) {
+  const buf = await readRawBody(req, maxBytes);
+  if (!buf.length) return {};
+  return JSON.parse(buf.toString('utf8'));
 }
 function privateHost(hostname) {
   const h = String(hostname || '').toLowerCase();
@@ -304,11 +331,25 @@ function sameOrigin(req) {
   catch (e) { return false; }
 }
 
+// Claude Code voice app: the only routes in this server that need a request body (turn text, raw
+// PCM audio) rather than a query string -- so they're the only ones allowed to be POST. Everything
+// else stays GET-only, unchanged. /claude-voice/approval-request (called by the PreToolUse hook
+// process, not the browser guest page) is intentionally NOT in this set -- it has no Origin/
+// Sec-Fetch-Site header at all and is gated separately by OQX_VOICE_TOKEN (see handler() below).
+const CLAUDE_VOICE_POST_ROUTES = new Set([
+  '/claude-voice/turn',
+  '/claude-voice/audio',
+  '/claude-voice/approval-decision',
+  '/claude-voice/session/start',
+  '/claude-voice/session/stop',
+]);
+
 async function handler(req, res) {
-  if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
   if (!hostOk(req)) { res.writeHead(403); res.end(); return; }   // foreign / DNS-rebinding Host -> reject (all routes)
   const full = req.url || '/';
   const url = full.split('?')[0];
+  const isAllowedPost = req.method === 'POST' && (CLAUDE_VOICE_POST_ROUTES.has(url) || url === '/claude-voice/approval-request');
+  if (req.method !== 'GET' && !isAllowedPost) { res.writeHead(405); res.end(); return; }
   if (url === '/' || url === '/index.html') return html(res, sysHtml);
   if (url === '/music') return html(res, musicHtml);
   if (url === '/meeting') return html(res, meetingHtml);
@@ -317,6 +358,16 @@ async function handler(req, res) {
   if (url === '/agenda') return html(res, agendaHtml);
   if (url === '/events') return html(res, eventsHtml);
   if (url === '/keyshortcuts') return html(res, keyshortcutsHtml);
+  if (url === '/claude-voice') return html(res, claudeVoiceHtml);
+  // /claude-voice/approval-request: called by tools/quake-approval-hook.js, a plain Node process with
+  // no Origin/Sec-Fetch-Site headers at all -- sameOrigin() below would always reject it, so it's
+  // gated here instead by the per-boot OQX_VOICE_TOKEN the hook receives via its own environment.
+  if (url === '/claude-voice/approval-request' && req.method === 'POST') {
+    const okToken = !!voiceToken && req.headers['x-oqx-voice-token'] === voiceToken;
+    if (!okToken) { res.writeHead(403); res.end(); return; }
+    return readJsonBody(req).then(body => onClaudeVoiceApprovalRequest ? onClaudeVoiceApprovalRequest(body, res) : done(res, false))
+      .catch(() => done(res, false));
+  }
   const asset = staticAssets[url];
   if (asset) { res.writeHead(200, headers(asset.type)); return res.end(asset.body); }
   if (serveDropInApp(url, res)) return;
@@ -340,6 +391,50 @@ async function handler(req, res) {
   if (url === '/nowplaying') return json(res, nowplaying.getSnapshot());
   if (url === '/lyrics') { try { await lyrics.ensure(nowplaying.getSnapshot()); } catch (e) {} return json(res, lyrics.getSnapshot()); }   // synced lyrics for the current track
   if (url === '/haschedule-data') return json(res, haschedule.getSnapshot());
+  if (url === '/claude-voice/turn' && req.method === 'POST') {
+    let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+    const text = body && typeof body.text === 'string' ? body.text.trim() : '';
+    if (!text || !onClaudeVoiceTurn) return done(res, false);
+    let ok = false; try { ok = !!onClaudeVoiceTurn(text); } catch (e) {}
+    return done(res, ok);
+  }
+  if (url === '/claude-voice/state') {
+    return json(res, getClaudeVoiceState ? getClaudeVoiceState() : { running: false, status: 'idle' });
+  }
+  if (url === '/claude-voice/events') {
+    if (!onClaudeVoiceSubscribe) { res.writeHead(503); res.end(); return; }
+    onClaudeVoiceSubscribe(req, res);   // keeps res open itself; nothing to return/end here
+    return;
+  }
+  if (url === '/claude-voice/session/start' && req.method === 'POST') {
+    let body; try { body = await readJsonBody(req); } catch (e) { body = {}; }
+    let ok = false;
+    if (onClaudeVoiceSessionStart) { try { ok = !!onClaudeVoiceSessionStart(body && body.projectDir); } catch (e) {} }
+    return done(res, ok);
+  }
+  if (url === '/claude-voice/audio' && req.method === 'POST') {
+    let pcm; try { pcm = await readRawBody(req); } catch (e) { return done(res, false); }
+    if (!pcm.length || !onClaudeVoiceAudio) return json(res, { ok: false, text: '' });
+    let result; try { result = await onClaudeVoiceAudio(pcm); } catch (e) { result = { ok: false, error: e.message }; }
+    return json(res, result);
+  }
+  if (url === '/claude-voice/tts-audio') {
+    const text = queryValue(full, 'text');
+    if (!text || !onClaudeVoiceSynthesize) { res.writeHead(400); res.end(); return; }
+    return onClaudeVoiceSynthesize(text, res);   // pipes the response itself; nothing to return here
+  }
+  if (url === '/claude-voice/session/stop' && req.method === 'POST') {
+    let ok = false;
+    if (onClaudeVoiceSessionStop) { try { ok = !!onClaudeVoiceSessionStop(); } catch (e) {} }
+    return done(res, ok);
+  }
+  if (url === '/claude-voice/approval-decision' && req.method === 'POST') {
+    let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+    const requestId = body && body.requestId, decision = body && body.decision;
+    if (!requestId || (decision !== 'allow' && decision !== 'deny') || !onClaudeVoiceApprovalDecision) return done(res, false);
+    let ok = false; try { ok = !!onClaudeVoiceApprovalDecision(requestId, decision); } catch (e) {}
+    return done(res, ok);
+  }
   if (url === '/shortcuts') return json(res, getShortcuts ? getShortcuts() : { rotation: null, pages: [], custom: [] });
   if (url === '/grid-tiles') {
     let t = { cols: 2, rows: 2, tiles: [] };
@@ -385,6 +480,17 @@ function start(opts) {
   onOpenExternal = opts.onOpenExternal || null;
   onMeetingAction = opts.onMeetingAction || null;
   getShortcuts = opts.getShortcuts || null;
+  onClaudeVoiceTurn = opts.onClaudeVoiceTurn || null;
+  getClaudeVoiceState = opts.getClaudeVoiceState || null;
+  onClaudeVoiceAudio = opts.onClaudeVoiceAudio || null;
+  onClaudeVoiceApprovalRequest = opts.onClaudeVoiceApprovalRequest || null;
+  onClaudeVoiceApprovalDecision = opts.onClaudeVoiceApprovalDecision || null;
+  onClaudeVoiceSessionStart = opts.onClaudeVoiceSessionStart || null;
+  onClaudeVoiceSessionStop = opts.onClaudeVoiceSessionStop || null;
+  onClaudeVoiceSubscribe = opts.onClaudeVoiceSubscribe || null;
+  getClaudeVoiceProjects = opts.getClaudeVoiceProjects || null;
+  onClaudeVoiceSynthesize = opts.onClaudeVoiceSynthesize || null;
+  voiceToken = opts.voiceToken || null;
   setAppFolders(opts.appFolders);
   nowplaying.setProvider(opts.getNowPlaying || null);
   return new Promise((resolve, reject) => {
@@ -397,6 +503,7 @@ function start(opts) {
     try { agendaHtml = fs.readFileSync(path.join(__dirname, 'agenda.html'), 'utf8'); } catch (e) {}
     try { eventsHtml = fs.readFileSync(path.join(__dirname, 'events.html'), 'utf8'); } catch (e) {}
     try { keyshortcutsHtml = fs.readFileSync(path.join(__dirname, 'keyshortcutsview.html'), 'utf8'); } catch (e) {}
+    try { claudeVoiceHtml = fs.readFileSync(path.join(__dirname, 'claudevoiceview.html'), 'utf8'); } catch (e) {}
     for (const [route, type] of Object.entries(STATIC_FILES)) {
       try { staticAssets[route] = { body: fs.readFileSync(path.join(__dirname, route.slice(1)), 'utf8'), type }; } catch (e) {}
     }

@@ -1327,6 +1327,7 @@
     const isMusic = g.app === 'music';
     const isHaDash = g.app === 'ha-dashboard';
     const isKeyShortcuts = g.app === 'keyshortcuts';
+    const isClaudeVoice = g.app === 'claude-voice';
     const musicBox = `<fieldset style="border:1px solid #2a3a4e; border-radius:8px; padding:6px 14px 10px; margin:10px 0">
         <legend style="padding:0 6px; color:#9fb3c8; font-size:13px">Panels</legend>
         <div><label class="iconopt" style="width:auto"><input type="checkbox" id="pArt" ${optVal(g, 'art', true) ? 'checked' : ''}> Show album art</label></div>
@@ -1360,7 +1361,35 @@
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
-    const optsBlock = isMusic ? musicBox : isHaDash ? haBox : isKeyShortcuts ? keyShortcutsBox : ('<div id="appOpts"></div>' + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
+    // Claude Code voice app: project picker (dynamic dir list -- can't be a static apps.json enum)
+    // plus the rest of the app's options, hand-rendered here same as HA Dashboard's box does for its
+    // own picker + flags rather than delegating to the generic renderAppOpts(). See docs/claude-voice.md
+    // and the plan file for why projectDir specifically needs this (D:\Github\* isn't known at
+    // apps.json-authoring time).
+    const cvOptDef = key => (def && def.options || []).find(o => o.key === key) || {};
+    const cvVal = (key, dflt) => optVal(g, key, dflt);
+    const cvPermChoices = (cvOptDef('permissionMode').choices || []);
+    const claudeVoiceBox = `<div id="cvBox" style="margin-top:10px">
+        <div class="row"><label>Project</label>
+          <select id="cvProjectSel" style="flex:1"><option value="${esc(cvVal('projectDir', ''))}" selected>${esc(cvVal('projectDir', '') || '— pick a project —')}</option></select>
+          <button id="cvProjectRefresh" type="button" title="Rescan the projects folder">Refresh</button></div>
+        <div class="row"><label style="width:auto">or type a path</label>
+          <input id="cvProjectPath" value="${esc(cvVal('projectDir', ''))}" placeholder="D:\\Github\\my-project" style="flex:1"></div>
+        <p class="hint">A new directory is created automatically the first time a session starts in it.</p>
+        <div class="row" style="margin-top:10px"><label style="width:auto">Projects folder</label>
+          <input id="cvProjectsRoot" value="${esc(cvVal('projectsRoot', 'D:\\\\Github'))}" style="flex:1"></div>
+        <div class="row"><label>Wyoming host</label><input id="cvWyomingHost" value="${esc(cvVal('wyomingHost', ''))}" style="flex:1"></div>
+        <div class="row"><label>STT / TTS ports</label>
+          <input id="cvSttPort" value="${esc(cvVal('wyomingSttPort', ''))}" style="width:90px">
+          <input id="cvTtsPort" value="${esc(cvVal('wyomingTtsPort', ''))}" style="width:90px;margin-left:8px"></div>
+        <div class="row" style="margin-top:10px"><label>Permission mode</label>
+          <select id="cvPermMode" style="flex:1">${cvPermChoices.map(c => `<option value="${esc(c[0])}" ${cvVal('permissionMode', 'bypassPermissions') === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>
+        <div class="row"><label>Touch approval</label>
+          <label class="iconopt" style="width:auto"><input type="checkbox" id="cvApprovals" ${cvVal('approvalsEnabled', false) ? 'checked' : ''}> when in Manual mode</label></div>
+      </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
+        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
+      <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
+    const optsBlock = isMusic ? musicBox : isHaDash ? haBox : isKeyShortcuts ? keyShortcutsBox : isClaudeVoice ? claudeVoiceBox : ('<div id="appOpts"></div>' + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : ''));
     el.innerHTML = tabBar + `
@@ -1420,6 +1449,31 @@
       const hideSidebar = document.getElementById('haHideSidebar'); if (hideSidebar) hideSidebar.onchange = e => { if (!g.options) g.options = {}; g.options.hideSidebar = e.target.checked; markDirty(); };
     } else if (isKeyShortcuts) {
       wireShortcutRows();
+    } else if (isClaudeVoice) {
+      const setOpt = (key, val) => { if (!g.options) g.options = {}; g.options[key] = val; markDirty(); };
+      const sel = document.getElementById('cvProjectSel');
+      const path = document.getElementById('cvProjectPath');
+      const rootEl = document.getElementById('cvProjectsRoot');
+      const refresh = document.getElementById('cvProjectRefresh');
+      const loadList = () => {
+        const root = rootEl.value.trim();
+        if (!root) return;
+        configApi.listProjectDirs(root).then(dirs => {
+          const cur = path.value.trim();
+          sel.innerHTML = (cur && !dirs.includes(cur) ? [cur] : []).concat(dirs)
+            .map(d => `<option value="${esc(d)}" ${d === cur ? 'selected' : ''}>${esc(d)}</option>`).join('');
+        }).catch(() => {});
+      };
+      sel.onmousedown = () => { if (!sel.dataset.loaded) { sel.dataset.loaded = '1'; loadList(); } };
+      sel.onchange = () => { path.value = sel.value; setOpt('projectDir', sel.value); };
+      path.oninput = e => setOpt('projectDir', e.target.value.trim());
+      rootEl.oninput = e => { setOpt('projectsRoot', e.target.value.trim()); sel.dataset.loaded = ''; };
+      refresh.onclick = () => { sel.dataset.loaded = '1'; loadList(); };
+      document.getElementById('cvWyomingHost').oninput = e => setOpt('wyomingHost', e.target.value.trim());
+      document.getElementById('cvSttPort').oninput = e => setOpt('wyomingSttPort', e.target.value.trim());
+      document.getElementById('cvTtsPort').oninput = e => setOpt('wyomingTtsPort', e.target.value.trim());
+      document.getElementById('cvPermMode').onchange = e => setOpt('permissionMode', e.target.value);
+      document.getElementById('cvApprovals').onchange = e => setOpt('approvalsEnabled', e.target.checked);
     } else {
       renderAppOpts(g, def);
     }

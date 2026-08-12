@@ -6075,5 +6075,31 @@
     "file": "keyshortcutsview.html",
     "served": true,
     "options": []
+  },
+  {
+    "id": "claude-voice",
+    "name": "Claude Code",
+    "file": "claudevoiceview.html",
+    "served": true,
+    "options": [
+      { "key": "projectDir", "label": "Project directory", "type": "text", "default": "" },
+      { "key": "projectsRoot", "label": "Projects folder (for the picker)", "type": "text", "default": "D:\\Github" },
+      { "key": "wyomingHost", "label": "Wyoming host (STT/TTS)", "type": "text", "default": "192.168.1.25" },
+      { "key": "wyomingSttPort", "label": "Wyoming STT port", "type": "text", "default": "10300" },
+      { "key": "wyomingTtsPort", "label": "Wyoming TTS port", "type": "text", "default": "10200" },
+      {
+        "key": "permissionMode",
+        "label": "Permission mode",
+        "type": "select",
+        "default": "bypassPermissions",
+        "choices": [
+          ["manual", "Manual — ask before every action (requires touch-approval hook, Phase 7)"],
+          ["acceptEdits", "Accept edits — auto-approve file changes"],
+          ["plan", "Plan — describe, don't act, until approved"],
+          ["bypassPermissions", "Full auto — no prompts (dev default until Phase 7 ships)"]
+        ]
+      },
+      { "key": "approvalsEnabled", "label": "Touch approval when in Manual mode", "type": "bool", "default": false }
+    ]
   }
 ]
