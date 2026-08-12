@@ -259,11 +259,15 @@ function startClaudeVoiceSession(dir) {
     if (opts.options.approvalsEnabled) claudeVoiceApprovals.ensureHookInstalled(app.getPath('userData'), approveLog);
     else claudeVoiceApprovals.ensureHookRemoved(approveLog);
   } catch (e) { approveLog('hook sync failed: ' + e.message); }
+  let voicePrompt = '';
+  try { voicePrompt = fs.readFileSync(path.join(__dirname, 'claudevoice-voice-prompt.md'), 'utf8'); }
+  catch (e) { claudeVoiceLog('voice prompt not loaded: ' + e.message); }
   claudeVoiceSession.start({
     projectDir,
     permissionMode: opts.options.permissionMode || 'bypassPermissions',
     port: serverPort,
     token: claudeVoiceToken,
+    systemPrompt: voicePrompt,
   });
   claudeVoiceState = { running: true, status: 'idle', lastUserText: '', lastAssistantText: '', error: null };
   claudeVoiceTranscript = [];   // new session, fresh conversation

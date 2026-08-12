@@ -38,14 +38,22 @@ Read `docs/design-system.md` first; this file adds the touch/kiosk numbers and p
 
 ## Scrolling
 
-- Fling/momentum is the scroll mechanism. Scrollbars are position **indicators, not controls** —
-  do not design around dragging a thumb.
-- On every scroll region: `touch-action: pan-y;` and `overscroll-behavior: contain;`
-- Globally: `touch-action: manipulation;` (kills double-tap-zoom tap delay).
-- Styling any `::-webkit-scrollbar-*` forces classic always-visible scrollbars (consumes layout
-  width, disables overlay mode). A modest visible thumb is fine as a position cue; a "fat
-  grabbable scrollbar" is not a touch pattern — jump navigation is.
+**Every control on the Quake is designed for FINGERS — including the scroll control itself.**
+A mouse also happens to work on this panel; that is never a reason to design for one.
+
+- Every scroll region gets a **fat, finger-draggable scrollbar (~44px track, rounded thumb)**.
+  **It MUST be a real DOM element driven by pointer events** — Chromium's
+  `::-webkit-scrollbar`-styled bars are mouse-only and silently ignore touch, and native
+  unstyled bars accept touch but can't be made finger-sized. Reference implementation:
+  `syncProjThumb`/`wireProjScroll` in app/claudevoiceview.js (thumb drag + tap-track-to-page).
+  (Generic mobile guidance says thumbs are decorative because phones fling — do NOT import that
+  assumption here; the fat thumb is the established, user-preferred pattern on this panel.
+  This was litigated 2026-08-12; don't relitigate it.)
+- On scroll regions: `overscroll-behavior: contain;`. Globally: `touch-action: manipulation;`
+  (kills double-tap-zoom tap delay).
 - Scroll only the region that needs it (design-system rule); never the page.
+- Do NOT add letter-index strips / jump rails — tried, rejected as too small to touch reliably
+  on this screen height. Recents rows + the fat scrollbar are the navigation aids here.
 
 ## Focus vs selection (Chromium kiosk)
 

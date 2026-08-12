@@ -59,6 +59,7 @@ function createClaudeVoiceSession(options) {
   let permissionMode = 'bypassPermissions';
   let voicePort = null;
   let voiceToken = null;
+  let systemPromptAppend = '';   // voice-panel behavior prompt, injected on every spawn
   const emitter = new EventEmitter();
 
   function attachOutput(proc) {
@@ -93,6 +94,10 @@ function createClaudeVoiceSession(options) {
         '--verbose',                              // required by the CLI when -p + stream-json output are combined
         '--include-partial-messages',              // real token-level streaming (content_block_delta events)
         '--permission-mode', permissionMode,
+        // Voice-panel behavior prompt (app/claudevoice-voice-prompt.md), injected per-spawn so it
+        // ONLY affects panel sessions -- deliberately NOT a user-level skill, which would leak into
+        // the user's normal terminal/app Claude usage.
+        ...(systemPromptAppend ? ['--append-system-prompt', systemPromptAppend] : []),
         // Fresh session vs continue-an-existing-one: --resume is how a mid-conversation permission-
         // mode change works (restart the process against the same session file, new mode flag) --
         // the documented path, since mode is a launch-only flag on the CLI.
@@ -155,7 +160,7 @@ function createClaudeVoiceSession(options) {
     // Starts a fresh session (new session-id) scoped to `dir`. If a session is already running
     // (e.g. switching projects), it's stopped first -- one active claude process at a time, matching
     // "the session lives entirely on the Quake" (no multi-session juggling in v1).
-    start({ projectDir: dir, permissionMode: mode, port, token }) {
+    start({ projectDir: dir, permissionMode: mode, port, token, systemPrompt }) {
       stopping = true; stopChild(); stopping = false;
       sessionId = crypto.randomUUID();
       resumeSessionId = null;
@@ -163,6 +168,7 @@ function createClaudeVoiceSession(options) {
       permissionMode = mode || 'bypassPermissions';
       voicePort = port;
       voiceToken = token;
+      systemPromptAppend = systemPrompt || '';
       launch();
       return sessionId;
     },

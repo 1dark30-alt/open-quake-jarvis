@@ -365,10 +365,10 @@ function pickProject(dir) {
     .catch(function () { setStatus('error', 'Could not reach the panel server.'); });
 }
 // Loads (or reloads) the overlay listing `browsePath` -- omitted on first open, so the server
-// falls back to the page's configured root. Tap a NAME to start a session in that folder; tap the
-// › zone to browse into it; ⬆ Up walks toward the drive root; "Use this folder" selects the
-// browsed directory itself (how you pick a folder you navigated to, matching the standard mobile
-// folder-picker pattern).
+// falls back to the page's configured root. Tapping folders (rows or Recent chips) only NAVIGATES
+// -- into the folder, ⬆ Up back out -- and the overlay stays open; the single commit action is
+// "Use this folder", which starts a session at whatever level is being browsed (the standard
+// mobile folder-picker pattern, chosen explicitly by the user 2026-08-12).
 function openProjectOverlay(browsePath) {
   var url = '/claude-voice/projects' + (browsePath ? '?path=' + encodeURIComponent(browsePath) : '');
   fetch(url, { cache: 'no-store' }).then(function (r) { return r.json(); })
@@ -378,59 +378,54 @@ function openProjectOverlay(browsePath) {
       $('projUp').disabled = !p.parent;
       $('projUp').onclick = function () { if (p.parent) openProjectOverlay(p.parent); };
       $('projUse').onclick = function () { pickProject(projRoot); };
-      // Recent row: quick one-tap picks, plain styling (the ONLY highlight anywhere is the solid
-      // fill on the current folder in the grid below).
+      // Recent row: chips COMMIT -- one tap starts a session in that folder and closes the menu
+      // (that's the whole point of recents). Only the main list navigates.
       var recentsRow = $('projRecentsRow');
       recentsRow.querySelectorAll('.projChip').forEach(function (c) { c.remove(); });
+      var pathEl = $('projPath');
       (p.recents || []).slice(0, 5).forEach(function (dir) {
         var chip = document.createElement('button');
         chip.type = 'button'; chip.className = 'projChip';
         chip.textContent = baseName(dir); chip.title = dir;
         chip.onclick = function () { pickProject(dir); };
-        recentsRow.appendChild(chip);
+        recentsRow.insertBefore(chip, pathEl);
       });
+      // Folder taps NAVIGATE into the folder (so sub-folders are reachable); only the
+      // "Use this folder" button actually starts a session, at whatever level is being browsed.
       $('projList').innerHTML = '';
-      var firstRowForLetter = {};   // 'A'..'Z' or '#' -> first row element, feeds the A-Z jump strip
       (p.dirs || []).forEach(function (dir) {
         var row = document.createElement('div');
         row.className = 'projRow' + (dir === p.current ? ' current' : '');
         var name = document.createElement('button');
         name.type = 'button'; name.className = 'projName';
         name.textContent = baseName(dir); name.title = dir;
-        name.onclick = function () { pickProject(dir); };
-        var into = document.createElement('button');
-        into.type = 'button'; into.className = 'projInto';
-        into.textContent = '›'; into.title = 'Browse into ' + baseName(dir);
-        into.onclick = function () { openProjectOverlay(dir); };
-        row.appendChild(name); row.appendChild(into);
+        name.onclick = function () { openProjectOverlay(dir); };
+        row.appendChild(name);
         $('projList').appendChild(row);
-        var initial = baseName(dir).charAt(0).toUpperCase();
-        if (!/[A-Z]/.test(initial)) initial = '#';
-        if (!firstRowForLetter[initial]) firstRowForLetter[initial] = row;
       });
-      // A-Z jump strip -- only worth the vertical space when the list is actually long.
-      var az = $('projAZ');
-      az.innerHTML = '';
-      if ((p.dirs || []).length > 20) {
-        '#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(function (letter) {
-          var lb = document.createElement('button');
-          lb.type = 'button'; lb.className = 'azBtn'; lb.textContent = letter;
-          lb.disabled = !firstRowForLetter[letter];
-          lb.onclick = function () {
-            var row = firstRowForLetter[letter];
-            if (row) row.scrollIntoView({ block: 'start' });
-          };
-          az.appendChild(lb);
-        });
-        az.style.display = '';
-      } else {
-        az.style.display = 'none';
-      }
       $('projNewName').value = '';
       $('projectOverlay').classList.remove('hidden');
     })
     .catch(function () { setStatus('error', 'Could not load the folder list.'); });
 }
+// ▲/▼ page buttons for the folder list -- replaced the custom drag-thumb, which only registered
+// ~1 in 5 finger drags on the real panel. Tap = one page; hold = keeps paging every 400ms.
+(function wireProjScrollButtons() {
+  var list = $('projList');
+  function step(dir) { list.scrollBy({ top: dir * list.clientHeight * 0.9, behavior: 'smooth' }); }
+  [['projScrollUp', -1], ['projScrollDown', 1]].forEach(function (pair) {
+    var btn = $(pair[0]);
+    var repeat = null;
+    btn.addEventListener('pointerdown', function (e) {
+      btn.setPointerCapture(e.pointerId);
+      step(pair[1]);
+      repeat = setInterval(function () { step(pair[1]); }, 400);
+    });
+    ['pointerup', 'pointercancel'].forEach(function (ev) {
+      btn.addEventListener(ev, function () { clearInterval(repeat); repeat = null; });
+    });
+  });
+})();
 $('vpProject').onclick = function () { openProjectOverlay(); };
 $('projCancel').onclick = function () { $('projectOverlay').classList.add('hidden'); };
 $('projCreate').onclick = function () {
