@@ -1370,14 +1370,12 @@
     const cvVal = (key, dflt) => optVal(g, key, dflt);
     const cvPermChoices = (cvOptDef('permissionMode').choices || []);
     const claudeVoiceBox = `<div id="cvBox" style="margin-top:10px">
-        <div class="row"><label>Project</label>
-          <select id="cvProjectSel" style="flex:1"><option value="${esc(cvVal('projectDir', ''))}" selected>${esc(cvVal('projectDir', '') || '— pick a project —')}</option></select>
-          <button id="cvProjectRefresh" type="button" title="Rescan the projects folder">Refresh</button></div>
-        <div class="row"><label style="width:auto">or type a path</label>
-          <input id="cvProjectPath" value="${esc(cvVal('projectDir', ''))}" placeholder="D:\\Github\\my-project" style="flex:1"></div>
-        <p class="hint">A new directory is created automatically the first time a session starts in it.</p>
-        <div class="row" style="margin-top:10px"><label style="width:auto">Projects folder</label>
+        <div class="row"><label>Default folder</label>
+          <input id="cvProjectPath" value="${esc(cvVal('projectDir', ''))}" placeholder="D:\\Github\\my-folder" style="flex:1"></div>
+        <p class="hint">Where new sessions start until a folder is picked on the panel (Change folder). The panel's pick updates this. Created automatically if it doesn't exist yet.</p>
+        <div class="row" style="margin-top:10px"><label style="width:auto">Folders root</label>
           <input id="cvProjectsRoot" value="${esc(cvVal('projectsRoot', 'D:\\\\Github'))}" style="flex:1"></div>
+        <p class="hint">The folder the panel's Change folder list scans.</p>
         <div class="row"><label>Wyoming host</label><input id="cvWyomingHost" value="${esc(cvVal('wyomingHost', ''))}" style="flex:1"></div>
         <div class="row"><label>STT / TTS ports</label>
           <input id="cvSttPort" value="${esc(cvVal('wyomingSttPort', ''))}" style="width:90px">
@@ -1451,24 +1449,10 @@
       wireShortcutRows();
     } else if (isClaudeVoice) {
       const setOpt = (key, val) => { if (!g.options) g.options = {}; g.options[key] = val; markDirty(); };
-      const sel = document.getElementById('cvProjectSel');
-      const path = document.getElementById('cvProjectPath');
-      const rootEl = document.getElementById('cvProjectsRoot');
-      const refresh = document.getElementById('cvProjectRefresh');
-      const loadList = () => {
-        const root = rootEl.value.trim();
-        if (!root) return;
-        configApi.listProjectDirs(root).then(dirs => {
-          const cur = path.value.trim();
-          sel.innerHTML = (cur && !dirs.includes(cur) ? [cur] : []).concat(dirs)
-            .map(d => `<option value="${esc(d)}" ${d === cur ? 'selected' : ''}>${esc(d)}</option>`).join('');
-        }).catch(() => {});
-      };
-      sel.onmousedown = () => { if (!sel.dataset.loaded) { sel.dataset.loaded = '1'; loadList(); } };
-      sel.onchange = () => { path.value = sel.value; setOpt('projectDir', sel.value); };
-      path.oninput = e => setOpt('projectDir', e.target.value.trim());
-      rootEl.oninput = e => { setOpt('projectsRoot', e.target.value.trim()); sel.dataset.loaded = ''; };
-      refresh.onclick = () => { sel.dataset.loaded = '1'; loadList(); };
+      // Default folder is a plain text box -- actual project switching happens on the panel
+      // (Change project), which writes its pick back into this same option.
+      document.getElementById('cvProjectPath').oninput = e => setOpt('projectDir', e.target.value.trim());
+      document.getElementById('cvProjectsRoot').oninput = e => setOpt('projectsRoot', e.target.value.trim());
       document.getElementById('cvWyomingHost').oninput = e => setOpt('wyomingHost', e.target.value.trim());
       document.getElementById('cvSttPort').oninput = e => setOpt('wyomingSttPort', e.target.value.trim());
       document.getElementById('cvTtsPort').oninput = e => setOpt('wyomingTtsPort', e.target.value.trim());

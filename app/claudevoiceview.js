@@ -142,6 +142,13 @@ function connectEvents() {
     } else if (msg.type === 'permission-mode') {
       currentMode = msg.mode || currentMode;
       syncModeUI();
+    } else if (msg.type === 'session-started') {
+      // New session (project switch or fresh start): new conversation, new header.
+      transcript = [];
+      liveMsg = null;
+      renderTranscript();
+      setProjectHeader(msg.projectDir);
+      setStatus('idle');
     }
   };
   es.onerror = function () { /* EventSource auto-reconnects; nothing to do */ };
@@ -200,6 +207,7 @@ fetch('/claude-voice/state', { cache: 'no-store' }).then(function (r) { return r
     // page switch, so without this a rotate-away-and-back would blank the whole conversation.
     if (s.transcript && s.transcript.length) { transcript = s.transcript.slice(); renderTranscript(); }
     if (s.permissionMode) { currentMode = s.permissionMode; syncModeUI(); }
+    if (s.projectDir) setProjectHeader(s.projectDir);   // live truth beats the (possibly stale) page-load query param
     setStatus(s.status, s.error);
   }).catch(function () {});
 connectEvents();
@@ -337,9 +345,99 @@ function onVADLevel(level) {
   $('micRipples').appendChild(r);
   r.addEventListener('animationend', function () { r.remove(); });
 }
-$('vpProject').onclick = function () {
-  setStatus(conversationOpen ? 'listening' : 'idle',
-    'Project switching from the panel is coming soon — for now set it in the editor (page options).');
+// ---- Change folder overlay ----
+// ("Folder", not "project" -- Claude has its own "projects" concept, so the panel never uses that
+// word for directories.) Picks restart the session in the chosen directory (fresh conversation; the
+// old session file stays resumable from a terminal). One flowing wall of pill chips: recent folders
+// first (accent border), then everything under the root alphabetically; the current folder is the
+// single solid accent-filled pill.
+function baseName(p) { return String(p || '').split(/[\\/]/).filter(Boolean).pop() || p; }
+function setProjectHeader(dir) { $('project').textContent = dir ? baseName(dir) : '(no folder set)'; }
+var projRoot = '';
+function pickProject(dir) {
+  $('projectOverlay').classList.add('hidden');
+  setStatus('thinking', '');
+  fetch('/claude-voice/session/start', {
+    method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectDir: dir }),
+  }).then(function (r) { return r.json(); })
+    .then(function (r) { if (!r || !r.ok) setStatus('error', 'Could not start a session in ' + dir); })
+    .catch(function () { setStatus('error', 'Could not reach the panel server.'); });
+}
+// Loads (or reloads) the overlay listing `browsePath` -- omitted on first open, so the server
+// falls back to the page's configured root. Tap a NAME to start a session in that folder; tap the
+// › zone to browse into it; ⬆ Up walks toward the drive root; "Use this folder" selects the
+// browsed directory itself (how you pick a folder you navigated to, matching the standard mobile
+// folder-picker pattern).
+function openProjectOverlay(browsePath) {
+  var url = '/claude-voice/projects' + (browsePath ? '?path=' + encodeURIComponent(browsePath) : '');
+  fetch(url, { cache: 'no-store' }).then(function (r) { return r.json(); })
+    .then(function (p) {
+      projRoot = p.root || '';
+      $('projPath').textContent = projRoot;
+      $('projUp').disabled = !p.parent;
+      $('projUp').onclick = function () { if (p.parent) openProjectOverlay(p.parent); };
+      $('projUse').onclick = function () { pickProject(projRoot); };
+      // Recent row: quick one-tap picks, plain styling (the ONLY highlight anywhere is the solid
+      // fill on the current folder in the grid below).
+      var recentsRow = $('projRecentsRow');
+      recentsRow.querySelectorAll('.projChip').forEach(function (c) { c.remove(); });
+      (p.recents || []).slice(0, 5).forEach(function (dir) {
+        var chip = document.createElement('button');
+        chip.type = 'button'; chip.className = 'projChip';
+        chip.textContent = baseName(dir); chip.title = dir;
+        chip.onclick = function () { pickProject(dir); };
+        recentsRow.appendChild(chip);
+      });
+      $('projList').innerHTML = '';
+      var firstRowForLetter = {};   // 'A'..'Z' or '#' -> first row element, feeds the A-Z jump strip
+      (p.dirs || []).forEach(function (dir) {
+        var row = document.createElement('div');
+        row.className = 'projRow' + (dir === p.current ? ' current' : '');
+        var name = document.createElement('button');
+        name.type = 'button'; name.className = 'projName';
+        name.textContent = baseName(dir); name.title = dir;
+        name.onclick = function () { pickProject(dir); };
+        var into = document.createElement('button');
+        into.type = 'button'; into.className = 'projInto';
+        into.textContent = '›'; into.title = 'Browse into ' + baseName(dir);
+        into.onclick = function () { openProjectOverlay(dir); };
+        row.appendChild(name); row.appendChild(into);
+        $('projList').appendChild(row);
+        var initial = baseName(dir).charAt(0).toUpperCase();
+        if (!/[A-Z]/.test(initial)) initial = '#';
+        if (!firstRowForLetter[initial]) firstRowForLetter[initial] = row;
+      });
+      // A-Z jump strip -- only worth the vertical space when the list is actually long.
+      var az = $('projAZ');
+      az.innerHTML = '';
+      if ((p.dirs || []).length > 20) {
+        '#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(function (letter) {
+          var lb = document.createElement('button');
+          lb.type = 'button'; lb.className = 'azBtn'; lb.textContent = letter;
+          lb.disabled = !firstRowForLetter[letter];
+          lb.onclick = function () {
+            var row = firstRowForLetter[letter];
+            if (row) row.scrollIntoView({ block: 'start' });
+          };
+          az.appendChild(lb);
+        });
+        az.style.display = '';
+      } else {
+        az.style.display = 'none';
+      }
+      $('projNewName').value = '';
+      $('projectOverlay').classList.remove('hidden');
+    })
+    .catch(function () { setStatus('error', 'Could not load the folder list.'); });
+}
+$('vpProject').onclick = function () { openProjectOverlay(); };
+$('projCancel').onclick = function () { $('projectOverlay').classList.add('hidden'); };
+$('projCreate').onclick = function () {
+  var name = $('projNewName').value.trim();
+  if (!name || !projRoot) return;
+  if (/[<>:"|?*\\/]/.test(name)) { setStatus(conversationOpen ? 'listening' : 'idle', 'Folder names can\'t contain < > : " | ? * \\ /'); return; }
+  pickProject(projRoot.replace(/[\\/]+$/, '') + '\\' + name);
 };
 $('vpSettings').onclick = function () { $('settingsOverlay').classList.remove('hidden'); };
 $('settingsClose').onclick = function () { $('settingsOverlay').classList.add('hidden'); };

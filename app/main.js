@@ -181,12 +181,39 @@ function onClaudeVoiceTurn(text) {
   return sent;
 }
 function getClaudeVoiceState() {
+  const opts = activeServedAppConfig('claude-voice');
   return Object.assign({}, claudeVoiceState, {
     running: claudeVoiceSession.isRunning(),
     sessionId: claudeVoiceSession.sessionId(),
     permissionMode: claudeVoiceSession.permissionMode(),
+    projectDir: claudeVoiceSession.projectDir() || (opts && opts.options.projectDir) || '',
     transcript: claudeVoiceTranscript,
   });
+}
+// Data for the Change-folder overlay. `browsePath` (optional) is the directory currently being
+// browsed -- the overlay can walk Up a level or into subfolders anywhere on disk, starting from the
+// page's configured root. Scanned fresh on each request so new clones just show up. `parent` is
+// null at a filesystem root (Up gets disabled there).
+function getClaudeVoiceProjects(browsePath) {
+  const opts = activeServedAppConfig('claude-voice');
+  if (!opts) return { root: '', parent: null, dirs: [], current: '', recents: [] };
+  const root = path.resolve(browsePath || opts.options.projectsRoot || '');
+  let dirs = [];
+  try {
+    dirs = fs.readdirSync(root, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => path.join(root, d.name))
+      .sort((a, b) => a.localeCompare(b));
+  } catch (e) {}
+  const up = path.dirname(root);
+  const cv = (config.settings && config.settings.claudeVoice) || {};
+  return {
+    root,
+    parent: up !== root ? up : null,
+    dirs,
+    current: claudeVoiceSession.projectDir() || opts.options.projectDir || '',
+    recents: cv.recentProjects || [],
+  };
 }
 const CLAUDE_VOICE_MODES = ['manual', 'acceptEdits', 'plan', 'bypassPermissions'];
 // Mid-session permission-mode switch (panel Mode button): restart the claude process with --resume
@@ -208,6 +235,20 @@ function startClaudeVoiceSession(dir) {
   if (!opts) return false;
   const projectDir = dir || opts.options.projectDir || app.getPath('documents');
   try { fs.mkdirSync(projectDir, { recursive: true }); } catch (e) {}
+  // Persist the pick: the page's own options stay the single source of truth (so the editor always
+  // shows the real current project, and it survives app restarts), and the recents list feeds the
+  // picker overlay's quick row. One combined saveConfig below.
+  const g = activeGrid();
+  let cfgDirty = false;
+  if (g && g.kind === 'app' && g.app === 'claude-voice') {
+    if (!g.options) g.options = {};
+    if (g.options.projectDir !== projectDir) { g.options.projectDir = projectDir; cfgDirty = true; }
+  }
+  if (!config.settings) config.settings = {};
+  const cv = config.settings.claudeVoice = config.settings.claudeVoice || {};
+  const recents = [projectDir].concat((cv.recentProjects || []).filter(p => p !== projectDir)).slice(0, 5);
+  if (JSON.stringify(recents) !== JSON.stringify(cv.recentProjects || [])) { cv.recentProjects = recents; cfgDirty = true; }
+  if (cfgDirty) saveConfig();
   // Sync the global PreToolUse hook to the current "Touch approval when in Manual mode" option on
   // every session start, rather than reacting to the checkbox's onchange directly -- app options save
   // through the generic grid-config path with no dedicated "this one option changed" event, and
@@ -1743,7 +1784,7 @@ app.whenReady().then(async () => {
   // Lazy-required so a metrics/load failure can never crash the rest of the app.
   try {
     sysserver = require('./sysserver');
-    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(), getShortcuts: keyboardShortcutsSnapshot, onClaudeVoiceTurn, getClaudeVoiceState, onClaudeVoiceSubscribe, onClaudeVoiceSessionStart: startClaudeVoiceSession, onClaudeVoiceSessionStop: stopClaudeVoiceSession, onClaudeVoiceAudio: transcribeClaudeVoiceAudio, onClaudeVoiceSynthesize: synthesizeClaudeVoiceSpeech, onClaudeVoiceApprovalRequest, onClaudeVoiceApprovalDecision, onClaudeVoicePermissionMode: setClaudeVoicePermissionMode, voiceToken: claudeVoiceToken });
+    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(), getShortcuts: keyboardShortcutsSnapshot, onClaudeVoiceTurn, getClaudeVoiceState, onClaudeVoiceSubscribe, onClaudeVoiceSessionStart: startClaudeVoiceSession, onClaudeVoiceSessionStop: stopClaudeVoiceSession, onClaudeVoiceAudio: transcribeClaudeVoiceAudio, onClaudeVoiceSynthesize: synthesizeClaudeVoiceSpeech, onClaudeVoiceApprovalRequest, onClaudeVoiceApprovalDecision, onClaudeVoicePermissionMode: setClaudeVoicePermissionMode, getClaudeVoiceProjects, voiceToken: claudeVoiceToken });
     ensureSystemViewPage(serverPort); ensureMusicPage(); ensureDropInDir();
     const haUrl = configureHaSchedule();
     console.log('SystemView + Music on http://127.0.0.1:' + serverPort + (haUrl ? ' · HA Schedule -> ' + haUrl : ''));

@@ -10,7 +10,7 @@
   body.light { --bg:#e6ecf3; --fg:#12202c; --muted:#566573; --dim:#68798a; --surf:#f3f6f9; --surf2:#e6ecf2; --tile-bd:#c7d2dc; }
   html, body { margin: 0; width: 100%; height: 100%; }
   body { background: var(--bg); color: var(--fg); overflow: hidden;
-    font-family: "Segoe UI", system-ui, sans-serif; }
+    font-family: "Segoe UI", system-ui, sans-serif; touch-action: manipulation; }
   #wrap { display: flex; flex-direction: row; width: 100vw; height: 100vh; padding: 14px 18px 16px 24px; gap: 16px; }
   #main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 
@@ -57,7 +57,8 @@
   #status.approval { color: var(--warn); }
 
   #card { flex: 1; min-height: 0; overflow-y: auto; background: var(--surf); border: 1px solid var(--tile-bd);
-    border-radius: 14px; padding: 14px 18px; display: flex; flex-direction: column; gap: 14px; }
+    border-radius: 14px; padding: 14px 18px; display: flex; flex-direction: column; gap: 14px;
+    touch-action: pan-y; overscroll-behavior: contain; }
   .empty { color: var(--dim); font-size: 18px; text-align: center; margin: auto; }
 
   /* Full-width bars, color alone tells the speaker apart -- no "You"/"Claude" labels. */
@@ -74,6 +75,64 @@
     color: var(--muted); cursor: pointer; user-select: none; }
   .copybtn:active { background: var(--accent); color: #04120b; }
   .copybtn.copied { color: var(--accent); border-color: var(--accent); }
+
+  /* Folder overlay -- the layout the user approved: Recent row up top, then a uniform grid of big
+     aligned rows (no ragged pill wall, no quarter-width slabs), 26px names left-aligned, 64px rows.
+     Each row: tap the NAME to start a session there (one tap for the common case), tap the › zone
+     to browse INTO it; ⬆ Up walks toward the drive root; "Use this folder" selects the directory
+     currently being browsed. The ONLY highlighted item is the current folder (solid accent fill) --
+     nothing else carries an accent border. Touch focus rings are suppressed the standard way
+     (:focus-visible keeps keyboard focus working; pointer/touch taps get no ring). */
+  button:focus:not(:focus-visible) { outline: none; }
+  #projectOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex;
+    align-items: center; justify-content: center; padding: 14px; z-index: 45; user-select: none; }
+  #projectOverlay.hidden { display: none; }
+  #projectCard { width: 100%; height: 100%; background: var(--surf); border: 1px solid var(--tile-bd);
+    border-radius: 16px; padding: 12px 20px; box-shadow: 0 12px 40px rgba(0,0,0,.4);
+    display: flex; flex-direction: column; gap: 10px; }
+  #projRecentsRow { display: flex; gap: 10px; align-items: center; flex: 0 0 auto; overflow: hidden; }
+  #projRecentsRow .rowlabel { font-size: 16px; color: var(--dim); flex: 0 0 auto; }
+  .projChip { min-height: 64px; padding: 8px 26px; border-radius: 12px; border: 1px solid var(--tile-bd);
+    background: var(--surf2); color: var(--fg); font-size: 26px; font-weight: 600; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .projChip:active, .projName:active, .projInto:active { background: var(--tile-bd); }
+  #projNav { display: flex; gap: 10px; align-items: center; flex: 0 0 auto; }
+  #projPath { flex: 1; font-size: 17px; color: var(--muted); overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; direction: rtl; text-align: left; }
+  #projUp, #projUse { min-height: 56px; border-radius: 12px; border: 1px solid var(--tile-bd);
+    background: var(--surf2); color: var(--fg); font-size: 19px; font-weight: 600; cursor: pointer; padding: 6px 22px; }
+  #projUp:disabled { opacity: .35; cursor: default; }
+  /* A-Z jump strip: the touch answer to a long list (research: flinging through big lists is
+     strenuous; index-jump is the phone-standard pattern at 50+ items). Letters with no folders
+     are dimmed. */
+  #projAZ { display: flex; gap: 6px; flex: 0 0 auto; overflow-x: auto; }
+  .azBtn { flex: 1; min-width: 48px; min-height: 48px; border-radius: 10px; border: 1px solid var(--tile-bd);
+    background: var(--surf2); color: var(--fg); font-size: 20px; font-weight: 700; cursor: pointer; }
+  .azBtn:disabled { opacity: .3; cursor: default; }
+  .azBtn:active:not(:disabled) { background: var(--tile-bd); }
+  #projList { flex: 1; min-height: 0; overflow-y: auto; display: grid;
+    grid-template-columns: repeat(4, 1fr); gap: 12px; align-content: start; padding-right: 4px;
+    touch-action: pan-y; overscroll-behavior: contain; scroll-behavior: smooth; }
+  /* Slim thumb as a position indicator only -- swipe/fling and the A-Z strip do the navigating. */
+  #projList::-webkit-scrollbar { width: 8px; }
+  #projList::-webkit-scrollbar-thumb { background: var(--tile-bd); border-radius: 4px; }
+  #projList::-webkit-scrollbar-track { background: transparent; }
+  .projRow { display: flex; min-height: 64px; border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--tile-bd); background: var(--surf2); }
+  .projName { flex: 1; min-width: 0; border: none; background: transparent; color: var(--fg);
+    font-size: 26px; font-weight: 600; cursor: pointer; text-align: left; padding: 6px 8px 6px 20px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .projRow.current { background: var(--accent); border-color: transparent; }
+  .projRow.current .projName, .projRow.current .projInto { color: #04120b; }
+  .projInto { flex: 0 0 64px; border: none; border-left: 1px solid var(--tile-bd); background: transparent;
+    color: var(--dim); font-size: 30px; cursor: pointer; }
+  #projNewRow { display: flex; gap: 10px; flex: 0 0 auto; align-items: center; }
+  #projNewName { flex: 1; min-height: 56px; padding: 8px 16px; font-size: 20px; border-radius: 12px;
+    border: 1px solid var(--tile-bd); background: var(--surf2); color: var(--fg); font-family: inherit; }
+  #projCreate, #projCancel { min-height: 56px; min-width: 130px; border-radius: 12px; font-size: 19px;
+    font-weight: 600; cursor: pointer; }
+  #projCreate { border: none; background: var(--accent); color: #04120b; }
+  #projCancel { border: 1px solid var(--tile-bd); background: var(--surf2); color: var(--fg); }
 
   /* Mode overlay: one big row per permission mode, current one highlighted with the accent. */
   #modeOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex;
@@ -162,9 +221,26 @@
           <svg class="ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.6"/><line x1="4.6" y1="4.6" x2="19.4" y2="19.4"/></svg>
         </button>
       </div>
-      <button id="vpProject" class="vpBtn" type="button">Change project</button>
+      <button id="vpProject" class="vpBtn" type="button">Change folder</button>
       <button id="vpSettings" class="vpBtn" type="button">Settings</button>
       <button id="vpMode" class="vpBtn" type="button">Mode</button>
+    </div>
+  </div>
+  <div id="projectOverlay" class="hidden">
+    <div id="projectCard">
+      <div id="projRecentsRow"><span class="rowlabel">Recent:</span></div>
+      <div id="projNav">
+        <button id="projUp" type="button">⬆ Up</button>
+        <div id="projPath"></div>
+        <button id="projUse" type="button">Use this folder</button>
+      </div>
+      <div id="projAZ"></div>
+      <div id="projList"></div>
+      <div id="projNewRow">
+        <input id="projNewName" type="text" placeholder="New folder name…">
+        <button id="projCreate" type="button">Create</button>
+        <button id="projCancel" type="button">Cancel</button>
+      </div>
     </div>
   </div>
   <div id="modeOverlay" class="hidden">

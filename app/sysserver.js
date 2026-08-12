@@ -430,6 +430,10 @@ async function handler(req, res) {
     if (onClaudeVoiceSessionStop) { try { ok = !!onClaudeVoiceSessionStop(); } catch (e) {} }
     return done(res, ok);
   }
+  if (url === '/claude-voice/projects') {
+    const browsePath = queryValue(full, 'path');
+    return json(res, getClaudeVoiceProjects ? getClaudeVoiceProjects(browsePath) : { root: '', parent: null, dirs: [], current: '', recents: [] });
+  }
   if (url === '/claude-voice/permission-mode' && req.method === 'POST') {
     let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
     const mode = body && typeof body.mode === 'string' ? body.mode : '';
