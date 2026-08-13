@@ -52,6 +52,10 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
   // repaint the whole conversation before subscribing to live SSE events. Cleared on new-session
   // start only -- an ended session's transcript stays readable until a new one replaces it.
   let transcript = [];   // [{role:'user'|'assistant', text}]
+  // CLI-like turn queueing: exactly one turn in flight; later entries wait for its turn-complete.
+  let turnActive = false;
+  let turnQueue = [];             // [{text, speak}] in arrival order
+  let queuedSpeakPending = false; // a dequeued turn wants speech; its stream opens on first delta
 
   function broadcast(payload) {
     const line = 'data: ' + JSON.stringify(payload) + '\n\n';
@@ -80,6 +84,12 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     broadcast({ type: 'assistant-start' });
   });
   adapter.on('assistant-delta', ({ text }) => {
+    // A dequeued turn's speech starts on its FIRST delta, not at dispatch -- so the previous
+    // reply's spoken tail gets to finish (CLI semantics: complete the current task, then answer).
+    if (queuedSpeakPending) {
+      queuedSpeakPending = false;
+      broadcast({ type: 'turn-speech', speech: speech.beginTurn() });
+    }
     speech.feed(text);   // no-op unless this turn was started with speak
     broadcast({ type: 'assistant-delta', text });
   });
@@ -91,21 +101,41 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     state.status = 'idle';
     if (typeof text === 'string') state.lastAssistantText = text;
     state.error = error;
+    // A dequeued result-only turn (no deltas ever streamed) still owes its speech: open its stream
+    // now so the whole-text finish below lands in it.
+    if (queuedSpeakPending) {
+      queuedSpeakPending = false;
+      if (!error && text) broadcast({ type: 'turn-speech', speech: speech.beginTurn() });
+    }
     // Speech: flush the pipeline's remainder (or speak the whole result for turns that never
     // streamed deltas, e.g. slash commands); errored turns get their speech cut instead.
     if (state.error) speech.abortActive('turn ended in error');
     else speech.finish(state.lastAssistantText);
     if (state.lastAssistantText && !state.error) transcript.push({ role: 'assistant', text: state.lastAssistantText });
     broadcast({ type: 'turn-complete', text: state.lastAssistantText, error: state.error });
+    // CLI semantics: the finished turn hands off to the next queued entry, in order.
+    turnActive = false;
+    if (turnQueue.length) {
+      const next = turnQueue.shift();
+      dispatchTurn(next.text, next.speak, true);
+    }
   });
   adapter.on('error', ({ message }) => {
     state.status = 'error'; state.error = message;
+    turnActive = false;
+    turnQueue = [];
+    queuedSpeakPending = false;
     speech.abortActive('session error');
     broadcast({ type: 'error', error: state.error });
   });
   adapter.on('exit', ({ stillRunning }) => {
     state.running = false;
-    if (!stillRunning) speech.abortActive('agent process exited');
+    if (!stillRunning) {
+      turnActive = false;
+      turnQueue = [];
+      queuedSpeakPending = false;
+      speech.abortActive('agent process exited');
+    }
   });
   // Approval flow (normalized from whatever mechanism the adapter uses -- external hook for claude,
   // in-band protocol requests for codex): drives status, the ring, and the panel overlay.
@@ -144,20 +174,40 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     if (!opts) return { ok: false };
     const lazyStart = !adapter.isRunning();
     if (lazyStart && !startSession()) return { ok: false };
-    state.status = 'thinking';
-    state.lastUserText = text;
-    const sent = adapter.sendTurn(text);
-    if (!sent) return { ok: false };
-    transcript.push({ role: 'user', text });
+    // CLI semantics (explicitly required): a turn sent while one is in flight WAITS -- the current
+    // reply finishes its text and speech, then the queued entry dispatches. Its speech-stream id
+    // is announced later via the 'turn-speech' broadcast (there is no id to hand back yet).
+    if (turnActive) {
+      turnQueue.push({ text, speak });
+      return { ok: true, queued: true, speech: null };
+    }
+    const speechId = dispatchTurn(text, speak, false);
+    if (speechId === false) return { ok: false };
     // A lazy session start just broadcast session-started, which wipes the page's local transcript
     // -- INCLUDING the user bubble the page drew for this very turn ("my first spoken instruction
     // flashes then disappears"). Send the turn text back so the page can redraw it.
     if (lazyStart) broadcast({ type: 'user-turn', text });
-    // New input always supersedes whatever the panel was still saying (barge-in by construction).
+    return { ok: true, speech: speechId };
+  }
+  // Sends one turn to the adapter. Returns false on send failure, else the speech-stream id (or
+  // null). Queued dispatches defer their speech to the first delta (see the assistant-delta
+  // handler) so the previous reply's spoken tail is never cut off.
+  function dispatchTurn(text, speak, fromQueue) {
+    state.status = 'thinking';
+    state.lastUserText = text;
+    const sent = adapter.sendTurn(text);
+    if (!sent) return false;
+    turnActive = true;
+    transcript.push({ role: 'user', text });
+    if (fromQueue) {
+      queuedSpeakPending = !!speak;
+      return null;
+    }
+    // Immediate turn: any previous reply is long done; a still-open speech stream is stale.
     let speechId = null;
     if (speak) speechId = speech.beginTurn();
     else speech.abortActive('a new turn was sent');
-    return { ok: true, speech: speechId };
+    return speechId;
   }
 
   function getState() {
@@ -259,6 +309,9 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       approvalsEnabled: !!opts.options.approvalsEnabled,
     });
     state = { running: true, status: 'idle', lastUserText: '', lastAssistantText: '', error: null };
+    turnActive = false;
+    turnQueue = [];
+    queuedSpeakPending = false;
     transcript = [];   // new session, fresh conversation
     speech.abortActive('new session started');   // a folder switch mid-reply silences the old folder's voice
     // permissionMode rides along so the page's Mode button is corrected the moment a lazy first-turn
@@ -269,6 +322,9 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
 
   function stopSession() {
     adapter.stop();
+    turnActive = false;
+    turnQueue = [];
+    queuedSpeakPending = false;
     speech.abortActive('session stopped');
     state = { running: false, status: 'idle', lastUserText: '', lastAssistantText: '', error: null };
     deps.clearRingOverride();

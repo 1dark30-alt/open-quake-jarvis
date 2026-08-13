@@ -62,8 +62,11 @@ var transcript = [];   // [{role:'user'|'assistant', text}]
 function renderTranscript() {
   var list = $('list'), empty = $('empty');
   empty.style.display = transcript.length ? 'none' : '';
+  // The still-streaming entry keeps its data-live marker across full re-renders -- without this, a
+  // message typed mid-reply destroyed the marker and the old reply's text froze on screen while
+  // its generation quietly finished.
   list.innerHTML = transcript.map(function (m) {
-    return '<div class="msg ' + m.role + '"><div class="bubble">' + renderContent(m.text) + '</div></div>';
+    return '<div class="msg ' + m.role + '"' + (m === liveMsg ? ' data-live="1"' : '') + '><div class="bubble">' + renderContent(m.text) + '</div></div>';
   }).join('');
   wireCopyButtons(list);
   $('card').scrollTop = $('card').scrollHeight;
@@ -153,6 +156,10 @@ function connectEvents() {
     } else if (msg.type === 'model') {
       liveModel = msg.model || '';   // what's ACTUALLY running, from the session's init event
       syncPickButtons();
+    } else if (msg.type === 'turn-speech') {
+      // A queued turn just started generating: its speech stream id arrives here rather than on
+      // the POST /turn response (that turn was parked behind the previous one -- CLI semantics).
+      if (msg.speech) startTurnAudio(msg.speech);
     } else if (msg.type === 'user-turn') {
       // A lazily-started session's session-started broadcast just wiped this page's transcript,
       // taking the freshly-drawn user bubble with it -- the host echoes the turn text back so the
