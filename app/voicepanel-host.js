@@ -103,7 +103,11 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
   });
   adapter.on('turn-complete', ({ text, error }) => {
     state.status = 'idle';
-    if (typeof text === 'string') state.lastAssistantText = text;
+    // THIS turn's text only: a turn that died without producing anything must broadcast null, not
+    // echo the previous reply out of lastAssistantText (which made every errored turn "answer"
+    // with the prior response, hardware-observed as the agent repeating itself).
+    const turnFinalText = typeof text === 'string' ? text : null;
+    if (turnFinalText != null) state.lastAssistantText = turnFinalText;
     state.error = error;
     // A dequeued result-only turn (no deltas ever streamed) still owes its speech: open its stream
     // now so the whole-text finish below lands in it.
@@ -114,9 +118,9 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     // Speech: flush the pipeline's remainder (or speak the whole result for turns that never
     // streamed deltas, e.g. slash commands); errored turns get their speech cut instead.
     if (state.error) speech.abortActive('turn ended in error');
-    else speech.finish(state.lastAssistantText);
-    if (state.lastAssistantText && !state.error) transcript.push({ role: 'assistant', text: state.lastAssistantText });
-    broadcast({ type: 'turn-complete', text: state.lastAssistantText, error: state.error });
+    else speech.finish(turnFinalText);
+    if (turnFinalText && !state.error) transcript.push({ role: 'assistant', text: turnFinalText });
+    broadcast({ type: 'turn-complete', text: turnFinalText, error: state.error });
     // CLI semantics: the finished turn hands off to the next queued entry, in order.
     turnActive = false;
     if (turnQueue.length) {

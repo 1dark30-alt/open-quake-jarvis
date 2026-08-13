@@ -49,13 +49,15 @@ const CODEX_MODE_PRESETS = {
     label: 'Manual', desc: 'Can work in the folder — asks before commands and file changes',
     approvalPolicy: 'on-request', sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
   },
-  // Auto is 'on-failure', not 'never': codex's Windows sandbox is experimental and on this class
-  // of setup denies commands outright ("Access is denied" even for reads, hardware-verified).
-  // on-failure keeps Auto hands-off in the happy path but raises the approval overlay when the
-  // sandbox blocks something, so the agent escalates instead of dead-ending.
+  // Auto asks ONLY for sandbox escalations: codex's Windows sandbox is experimental and on this
+  // class of setup denies commands outright ("Access is denied" even for reads, hardware-verified),
+  // so a no-questions policy dead-ends the agent. 0.147 REMOVED the old 'on-failure' value (turn
+  // rejects it with "unknown variant"); its successor is the granular object, where each flag is
+  // an ask-for-this category and sandbox_approval covers exactly the escalation case.
   auto: {
     label: 'Auto', desc: 'Works in the folder — asks only if the sandbox blocks something',
-    approvalPolicy: 'on-failure', sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
+    approvalPolicy: { granular: { mcp_elicitations: false, rules: false, sandbox_approval: true } },
+    sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
   },
   full: {
     label: 'Full auto', desc: 'No sandbox at all — use with care',
@@ -269,7 +271,9 @@ function createCodexVoiceAdapter({ log }) {
     }, 30000);
     if (handshakeDeadline.unref) handshakeDeadline.unref();
     const preset = CODEX_MODE_PRESETS[mode] || CODEX_MODE_PRESETS[CODEX_DEFAULT_MODE];
-    send('initialize', { clientInfo: { name: 'open-quake', version: '0' } })
+    // experimentalApi unlocks the granular approval policy the Auto preset needs (0.147 gates it
+    // behind this capability; verified live: without it turn/start rejects granular outright).
+    send('initialize', { clientInfo: { name: 'open-quake', version: '0' }, capabilities: { experimentalApi: true } })
       .then(() => {
         // Required by the protocol contract (MCP-style two-step): acknowledge before anything else.
         try { thisProc.stdin.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n'); } catch (e) {}
@@ -324,7 +328,10 @@ function createCodexVoiceAdapter({ log }) {
       model: modelPick || null,   // null = the account default
     })
       .then(result => { activeTurnId = (result && result.turn && result.turn.id) || activeTurnId; })
-      .catch(e => emitter.emit('turn-complete', { text: null, error: 'turn failed to start: ' + e.message }));
+      .catch(e => {
+        say('turn/start rejected: ' + e.message);   // surfaced to the panel too, but the log is where diagnosis starts
+        emitter.emit('turn-complete', { text: null, error: 'turn failed to start: ' + e.message });
+      });
   }
 
   return {
