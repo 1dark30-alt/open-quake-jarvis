@@ -668,8 +668,8 @@ function applyChatFont() {
   document.documentElement.style.setProperty('--chatFont', chatFontSize + 'px');
   $('fontVal').textContent = chatFontSize + ' px';
 }
-$('fontMinus').onclick = function () { chatFontSize -= 2; applyChatFont(); postOption('chatFontSize', chatFontSize); };
-$('fontPlus').onclick = function () { chatFontSize += 2; applyChatFont(); postOption('chatFontSize', chatFontSize); };
+$('fontMinus').onclick = function () { chatFontSize -= 1; applyChatFont(); postOption('chatFontSize', chatFontSize); };
+$('fontPlus').onclick = function () { chatFontSize += 1; applyChatFont(); postOption('chatFontSize', chatFontSize); };
 // Voice pause tolerance: how long a mid-sentence silence can last before the utterance is sent.
 function applyPause() {
   vadHangoverMs = Math.max(400, Math.min(2500, vadHangoverMs));

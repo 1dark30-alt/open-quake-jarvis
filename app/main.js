@@ -351,6 +351,12 @@ async function synthesizeClaudeVoiceSpeech(text, res) {
 function stopClaudeVoiceSession() {
   claudeVoiceSession.stop();
   claudeVoiceApprovalManager.cancelAll('Session ended.');   // don't leave the hook's HTTP request hanging on a dead session
+  // Take the global PreToolUse hook back out now the panel is done with it. It lives in the user's one
+  // machine-wide ~/.claude/settings.json, so for as long as it's installed EVERY Claude Code surface on
+  // this box (terminal, desktop app, VS Code/JetBrains extensions) spawns a node process before every
+  // single tool call just to be told "not a panel session, carry on". Install-on-start/remove-on-stop
+  // keeps that cost inside the window where the panel actually needs approvals.
+  try { claudeVoiceApprovals.ensureHookRemoved(claudeVoiceLog); } catch (e) { claudeVoiceLog('hook removal failed: ' + e.message); }
   claudeVoiceState = { running: false, status: 'idle', lastUserText: '', lastAssistantText: '', error: null };
   clearRingOverride();
   broadcastClaudeVoice({ type: 'session-stopped' });
@@ -1813,6 +1819,11 @@ app.whenReady().then(async () => {
     console.log('SystemView + Music on http://127.0.0.1:' + serverPort + (haUrl ? ' · HA Schedule -> ' + haUrl : ''));
   } catch (e) { console.log('local panel services failed to start:', e.message); }
   sweepIconCache();   // clean up orphaned URL-icon cache files left by prior sessions
+  // Same idea for the approval hook: a crash (or a force-kill) skips before-quit's removal and strands
+  // our entry in the user's global settings.json, where it would tax every Claude Code session on the
+  // machine until the next panel session happened to clean it up. No voice session can be running this
+  // early in startup, so anything still installed at boot is by definition a leftover.
+  try { claudeVoiceApprovals.ensureHookRemoved(claudeVoiceLog); } catch (e) {}
 
   // Dashboard auth injection for the webview session. The active page's auth config drives it:
   //  - 'header'  -> add custom header(s) to requests to the dashboard host (bearer / Cloudflare Access / …)
@@ -2045,6 +2056,7 @@ app.on('before-quit', () => {
   try { reservedDisplay.stop(); } catch (e) {}                // release WinEvent hooks and terminate the native helper
   try { claudeVoiceSession.stop(); } catch (e) {}        // terminate the persistent claude CLI process, if running
   try { claudeVoiceApprovalManager.cancelAll('App is quitting.'); } catch (e) {}   // don't leave a hook's HTTP request hanging
+  try { claudeVoiceApprovals.ensureHookRemoved(claudeVoiceLog); } catch (e) {}    // and don't leave our entry behind in the user's global Claude settings
   try { dev.stop(); } catch (e) {}                       // close HID devices + clear keep-alive/rescan timers — an open node-hid handle blocks process exit (Cmd+Q would hang -> force-quit)
   try { if (sysserver) sysserver.stop(); } catch (e) {}  // stop metrics timers + close the local server
   try { if (dashSession) dashSession.cookies.flushStore(); } catch (e) {}   // commit a fresh webview login to disk before exit
