@@ -339,6 +339,7 @@ function createCodexVoiceAdapter({ log }) {
       }
       stopProc('superseded by a new session');
       projectDir = dir;
+      if (pick === 'auto') pick = 'manual';   // legacy alias: the removed sandboxed-writes preset maps to its nearest safe survivor
       mode = CODEX_MODE_PRESETS[pick] ? pick : CODEX_DEFAULT_MODE;
       threadId = null;
       resumeThreadId = null;   // a fresh start (e.g. folder switch) is a NEW conversation, never a resume of the old folder's
