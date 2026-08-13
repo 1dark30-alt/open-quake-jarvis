@@ -6,7 +6,10 @@ const { pathToFileURL } = require('url');
 contextBridge.exposeInMainWorld('openQuakeConfig', {
   getConfig() { return ipcRenderer.invoke('getConfig'); },
   getApps() { return ipcRenderer.invoke('getApps'); },
-  saveConfig(config) { ipcRenderer.send('saveConfigFromEditor', config); },
+  saveConfig(config) { return ipcRenderer.invoke('saveConfigFromEditor', config); },
+  listOAuthProviders() { return ipcRenderer.invoke('listOAuthProviders'); },
+  connectOAuthProvider(provider, scopes) { return ipcRenderer.invoke('connectOAuthProvider', provider, scopes); },
+  disconnectOAuthProvider(provider) { return ipcRenderer.invoke('disconnectOAuthProvider', provider); },
   pickProgram() { return ipcRenderer.invoke('pickProgram'); },
   pickFile() { return ipcRenderer.invoke('pickFile'); },
   pickFolder() { return ipcRenderer.invoke('pickFolder'); },

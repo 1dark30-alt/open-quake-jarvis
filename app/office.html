@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' http: https: file: data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file: http: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none';">
+<title>Microsoft 365 — Teams</title>
+<link rel="stylesheet" href="/office.css">
+</head>
+<body>
+  <main id="officeDeck" class="office-deck">
+    <header class="deck-header">
+      <div class="identity">
+        <div id="presenceAvatar" class="avatar offline" aria-hidden="true"><span id="avatar">365</span></div>
+        <div class="identity-copy">
+          <p class="eyebrow">Microsoft 365</p>
+          <div class="identity-status">
+            <h1 id="name">Office</h1>
+            <div id="presence" class="presence offline" aria-label="Microsoft Teams presence">Not connected</div>
+          </div>
+        </div>
+      </div>
+
+      <nav class="header-actions" aria-label="Office applications">
+        <button class="header-action selected" data-app-index="0" type="button">
+          <span class="office-app-mark" aria-hidden="true">T</span>
+          <span class="app-nav-copy"><strong>Teams</strong><small>Desktop / web</small></span>
+        </button>
+        <button class="header-action" data-app-index="1" type="button">
+          <span class="office-app-mark" aria-hidden="true">O</span>
+          <span class="app-nav-copy"><strong>Outlook</strong><small>Desktop / web</small></span>
+        </button>
+        <button class="header-action" data-app-index="2" type="button">
+          <span class="office-app-mark" aria-hidden="true">W</span>
+          <span class="app-nav-copy"><strong>Word</strong><small>Desktop / web</small></span>
+        </button>
+        <button class="header-action" data-app-index="3" type="button">
+          <span class="office-app-mark" aria-hidden="true">X</span>
+          <span class="app-nav-copy"><strong>Excel</strong><small>Desktop / web</small></span>
+        </button>
+      </nav>
+    </header>
+
+    <section class="meeting-strip">
+      <article class="meeting-card" aria-live="polite">
+        <div class="section-heading">
+          <span id="focusLabel">Next meeting</span>
+          <span id="status" class="status">Connecting…</span>
+        </div>
+        <div class="meeting-content">
+          <div id="primaryEvent" class="primary-event">
+            <time id="primaryTime">--:--</time>
+            <div class="primary-copy">
+              <h2 id="primaryTitle">Loading calendar</h2>
+              <p id="primaryMeta">Checking your schedule…</p>
+            </div>
+          </div>
+          <button id="primaryActionBtn" class="join-button" type="button" disabled>
+            <span class="play-icon" aria-hidden="true"></span>
+            <span id="primaryActionLabel">Join meeting</span>
+          </button>
+        </div>
+      </article>
+
+      <article class="agenda-card" aria-label="Upcoming calendar events">
+        <div class="section-heading"><span>Upcoming</span></div>
+        <div id="events" class="agenda"><div class="empty-state">Loading agenda…</div></div>
+      </article>
+    </section>
+
+    <section class="control-deck" aria-label="Keyboard shortcuts for selected Office application">
+      <button class="teams-control shortcut-control" data-shortcut-index="0" type="button">
+        <span class="shortcut-glyph" aria-hidden="true">⌨</span>
+        <strong>Mute</strong>
+        <small>Ctrl+Shift+M</small>
+      </button>
+      <button class="teams-control shortcut-control" data-shortcut-index="1" type="button">
+        <span class="shortcut-glyph" aria-hidden="true">⌨</span>
+        <strong>Camera</strong>
+        <small>Ctrl+Shift+O</small>
+      </button>
+      <button class="teams-control shortcut-control" data-shortcut-index="2" type="button">
+        <span class="shortcut-glyph" aria-hidden="true">⌨</span>
+        <strong>Accept audio</strong>
+        <small>Ctrl+Shift+S</small>
+      </button>
+      <button class="teams-control shortcut-control" data-shortcut-index="3" type="button">
+        <span class="shortcut-glyph" aria-hidden="true">⌨</span>
+        <strong>Hang up</strong>
+        <small>Ctrl+Shift+H</small>
+      </button>
+    </section>
+  </main>
+
+  <div id="auth" class="auth hidden">
+    <div class="auth-box">
+      <div class="auth-mark" aria-hidden="true">365</div>
+      <div>
+        <h2>Connect Microsoft 365</h2>
+        <p>This deck uses the global Open-Quake Microsoft connection for calendar and presence.</p>
+        <p id="authMsg" class="auth-message"></p>
+      </div>
+      <button id="connect" type="button">Connect</button>
+    </div>
+  </div>
+<script src="/officeCalendar.js"></script>
+<script src="/office.js"></script>
+</body>
+</html>
