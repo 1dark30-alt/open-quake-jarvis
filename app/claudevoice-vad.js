@@ -17,7 +17,7 @@ function createVAD(opts) {
   opts = opts || {};
   const SAMPLE_RATE = 16000;
   const threshold = opts.threshold || 0.02;        // RMS amplitude above which audio counts as speech
-  const hangoverMs = opts.hangoverMs || 800;        // sustained silence before an utterance is considered over
+  let hangoverMs = opts.hangoverMs || 800;          // sustained silence before an utterance is considered over (user-tunable)
   const minSpeechMs = opts.minSpeechMs || 250;      // ignore blips shorter than this (taps, clicks, breath)
   const bufferSize = 4096;
 
@@ -99,7 +99,11 @@ function createVAD(opts) {
     stream = audioCtx = source = processor = silentGain = null;
   }
 
-  return { start, stop };
+  // Live-tunable pause tolerance (the settings overlay's "Voice pause tolerance" stepper): the
+  // hangover closure reads the current value on every silence check, so this applies immediately.
+  function setHangoverMs(ms) { ms = parseInt(ms, 10); if (ms > 0) hangoverMs = ms; }
+
+  return { start, stop, setHangoverMs };
 }
 
 window.createClaudeVoiceVAD = createVAD;

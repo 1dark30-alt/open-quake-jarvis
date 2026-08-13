@@ -6099,7 +6099,9 @@
           ["bypassPermissions", "Full auto — no prompts (dev default until Phase 7 ships)"]
         ]
       },
-      { "key": "approvalsEnabled", "label": "Touch approval when in Manual mode", "type": "bool", "default": false }
+      { "key": "approvalsEnabled", "label": "Touch approval when in Manual mode", "type": "bool", "default": false },
+    { "key": "chatFontSize", "label": "Chat text size (px)", "type": "text", "default": "16" },
+    { "key": "vadHangoverMs", "label": "Voice pause tolerance (ms)", "type": "text", "default": "800" }
     ]
   }
 ]

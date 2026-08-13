@@ -68,7 +68,7 @@ let sysHtml = FALLBACK, musicHtml = FALLBACK, chatHtml = FALLBACK, hascheduleHtm
 let onClaudeVoiceTurn = null, getClaudeVoiceState = null, onClaudeVoiceAudio = null, onClaudeVoiceApprovalRequest = null,
   onClaudeVoiceApprovalDecision = null, onClaudeVoiceSessionStart = null, onClaudeVoiceSessionStop = null,
   onClaudeVoiceSubscribe = null, getClaudeVoiceProjects = null, onClaudeVoiceSynthesize = null,
-  onClaudeVoicePermissionMode = null, voiceToken = null;
+  onClaudeVoicePermissionMode = null, onClaudeVoiceOption = null, voiceToken = null;
 const staticAssets = {};   // request path -> { body, type }; populated at start()
 let appFolders = {};        // drop-in served app id -> { root, proxy }; supplied by main.js
 const appServers = {};      // app id -> required server module
@@ -344,7 +344,23 @@ const CLAUDE_VOICE_POST_ROUTES = new Set([
   '/claude-voice/session/start',
   '/claude-voice/session/stop',
   '/claude-voice/permission-mode',
+  '/claude-voice/tts',
+  '/claude-voice/option',
 ]);
+
+// TTS handoff: reply text can be many KB -- far beyond what fits in a GET query string (Node
+// rejects an oversized request line with 431 BEFORE any handler runs, which silently killed
+// speech on long replies). The page POSTs the text here, gets a short id, and points its <audio>
+// at /claude-voice/tts-audio?id=<id>. Entries are capped; not deleted on read because Chromium
+// may issue multiple range requests for one <audio> element.
+const ttsTexts = new Map();
+let ttsSeq = 0;
+function storeTtsText(text) {
+  const id = (++ttsSeq) + '-' + Math.random().toString(36).slice(2, 8);
+  ttsTexts.set(id, text);
+  while (ttsTexts.size > 50) ttsTexts.delete(ttsTexts.keys().next().value);
+  return id;
+}
 
 async function handler(req, res) {
   if (!hostOk(req)) { res.writeHead(403); res.end(); return; }   // foreign / DNS-rebinding Host -> reject (all routes)
@@ -420,8 +436,22 @@ async function handler(req, res) {
     let result; try { result = await onClaudeVoiceAudio(pcm); } catch (e) { result = { ok: false, error: e.message }; }
     return json(res, result);
   }
+  if (url === '/claude-voice/option' && req.method === 'POST') {
+    let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+    const key = body && typeof body.key === 'string' ? body.key : '';
+    if (!key || body.value == null || !onClaudeVoiceOption) return done(res, false);
+    let ok = false; try { ok = !!onClaudeVoiceOption(key, String(body.value)); } catch (e) {}
+    return done(res, ok);
+  }
+  if (url === '/claude-voice/tts' && req.method === 'POST') {
+    let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+    const text = body && typeof body.text === 'string' ? body.text.trim() : '';
+    if (!text) return done(res, false);
+    return json(res, { ok: true, id: storeTtsText(text) });
+  }
   if (url === '/claude-voice/tts-audio') {
-    const text = queryValue(full, 'text');
+    const id = queryValue(full, 'id');
+    const text = id ? (ttsTexts.get(id) || '') : queryValue(full, 'text');   // ?text= kept for short/manual use
     if (!text || !onClaudeVoiceSynthesize) { res.writeHead(400); res.end(); return; }
     return onClaudeVoiceSynthesize(text, res);   // pipes the response itself; nothing to return here
   }
@@ -504,6 +534,7 @@ function start(opts) {
   getClaudeVoiceProjects = opts.getClaudeVoiceProjects || null;
   onClaudeVoiceSynthesize = opts.onClaudeVoiceSynthesize || null;
   onClaudeVoicePermissionMode = opts.onClaudeVoicePermissionMode || null;
+  onClaudeVoiceOption = opts.onClaudeVoiceOption || null;
   voiceToken = opts.voiceToken || null;
   setAppFolders(opts.appFolders);
   nowplaying.setProvider(opts.getNowPlaying || null);

@@ -66,7 +66,7 @@
   /* Full-width bars, color alone tells the speaker apart -- no "You"/"Claude" labels. */
   .msg.user, .msg.assistant { align-self: stretch; max-width: none; }
   .bubble { background: var(--surf2); border: 1px solid var(--tile-bd); border-radius: 12px; padding: 12px 16px;
-    font-size: 16px; line-height: 1.45; overflow-wrap: break-word; }
+    font-size: var(--chatFont, 16px); line-height: 1.45; overflow-wrap: break-word; }
   .msg.user .bubble { background: var(--accent); color: #04120b; border-color: transparent; }
 
   .codeblock { position: relative; margin: 8px 0; }
@@ -159,6 +159,11 @@
   #settingsTitle { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
   #settingsCard .srow { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
   #settingsCard .hint { font-size: 13px; color: var(--dim); }
+  .slabel { flex: 1; font-size: 18px; }
+  .stepBtn { width: 56px; height: 56px; border-radius: 12px; border: 1px solid var(--tile-bd);
+    background: var(--surf2); color: var(--fg); font-size: 28px; font-weight: 700; cursor: pointer; }
+  .stepBtn:active { background: var(--tile-bd); }
+  .stepVal { min-width: 92px; text-align: center; font-size: 20px; font-weight: 600; }
   #settingsClose { min-height: 48px; min-width: 96px; border-radius: 10px; border: none;
     background: var(--accent); color: #04120b; font-size: 15px; font-weight: 700; cursor: pointer; }
 
@@ -256,9 +261,17 @@
   <div id="settingsOverlay" class="hidden">
     <div id="settingsCard">
       <div id="settingsTitle">Settings</div>
+      <div class="srow"><span class="slabel">Chat text size</span>
+        <button id="fontMinus" class="stepBtn" type="button">–</button>
+        <span id="fontVal" class="stepVal"></span>
+        <button id="fontPlus" class="stepBtn" type="button">+</button></div>
+      <div class="srow"><span class="slabel">Voice pause tolerance</span>
+        <button id="pauseMinus" class="stepBtn" type="button">–</button>
+        <span id="pauseVal" class="stepVal"></span>
+        <button id="pausePlus" class="stepBtn" type="button">+</button></div>
+      <p class="hint" style="margin:0 0 12px">Pause tolerance = how long you can go quiet mid-sentence before the utterance is sent. Raise it if swallowing or thinking pauses cut you off.</p>
       <div class="srow"><button id="ttsTestBtn" class="vpBtn" type="button">🔊 Test speech</button>
         <span class="hint">Speaks Claude's last reply through the configured voice.</span></div>
-      <p class="hint" style="margin:0 0 14px">Mic/speaker device selection and voice options are coming here. Wyoming host/ports and permission mode are in the editor (page options) for now.</p>
       <div class="srow" style="justify-content:flex-end;margin:0"><button id="settingsClose" type="button">Done</button></div>
     </div>
   </div>

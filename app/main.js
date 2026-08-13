@@ -215,6 +215,25 @@ function getClaudeVoiceProjects(browsePath) {
     recents: cv.recentProjects || [],
   };
 }
+// Panel-tunable options (Settings overlay): whitelist + validation. Written into the page's own
+// options in config.json so they persist across app restarts (the page's localStorage can't --
+// the server port, and so the origin, changes every launch).
+const CLAUDE_VOICE_PANEL_OPTIONS = {
+  chatFontSize: v => { const n = parseInt(v, 10); return n >= 12 && n <= 32 ? String(n) : null; },
+  vadHangoverMs: v => { const n = parseInt(v, 10); return n >= 300 && n <= 3000 ? String(n) : null; },
+};
+function setClaudeVoiceOption(key, value) {
+  const validate = CLAUDE_VOICE_PANEL_OPTIONS[key];
+  if (!validate) return false;
+  const v = validate(value);
+  if (v == null) return false;
+  const g = activeGrid();
+  if (!(g && g.kind === 'app' && g.app === 'claude-voice')) return false;
+  if (!g.options) g.options = {};
+  g.options[key] = v;
+  saveConfig();
+  return true;
+}
 const CLAUDE_VOICE_MODES = ['manual', 'acceptEdits', 'plan', 'bypassPermissions'];
 // Mid-session permission-mode switch (panel Mode button): restart the claude process with --resume
 // against the same session id + the new --permission-mode flag. The documented path -- mode is a
@@ -1788,7 +1807,7 @@ app.whenReady().then(async () => {
   // Lazy-required so a metrics/load failure can never crash the rest of the app.
   try {
     sysserver = require('./sysserver');
-    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(), getShortcuts: keyboardShortcutsSnapshot, onClaudeVoiceTurn, getClaudeVoiceState, onClaudeVoiceSubscribe, onClaudeVoiceSessionStart: startClaudeVoiceSession, onClaudeVoiceSessionStop: stopClaudeVoiceSession, onClaudeVoiceAudio: transcribeClaudeVoiceAudio, onClaudeVoiceSynthesize: synthesizeClaudeVoiceSpeech, onClaudeVoiceApprovalRequest, onClaudeVoiceApprovalDecision, onClaudeVoicePermissionMode: setClaudeVoicePermissionMode, getClaudeVoiceProjects, voiceToken: claudeVoiceToken });
+    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(), getShortcuts: keyboardShortcutsSnapshot, onClaudeVoiceTurn, getClaudeVoiceState, onClaudeVoiceSubscribe, onClaudeVoiceSessionStart: startClaudeVoiceSession, onClaudeVoiceSessionStop: stopClaudeVoiceSession, onClaudeVoiceAudio: transcribeClaudeVoiceAudio, onClaudeVoiceSynthesize: synthesizeClaudeVoiceSpeech, onClaudeVoiceApprovalRequest, onClaudeVoiceApprovalDecision, onClaudeVoicePermissionMode: setClaudeVoicePermissionMode, onClaudeVoiceOption: setClaudeVoiceOption, getClaudeVoiceProjects, voiceToken: claudeVoiceToken });
     ensureSystemViewPage(serverPort); ensureMusicPage(); ensureDropInDir();
     const haUrl = configureHaSchedule();
     console.log('SystemView + Music on http://127.0.0.1:' + serverPort + (haUrl ? ' · HA Schedule -> ' + haUrl : ''));
