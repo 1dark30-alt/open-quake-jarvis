@@ -109,7 +109,9 @@ function transcribe({ host, port, audio, rate, width, channels, language, timeou
 // `onFormat({rate,width,channels})` fires once, as soon as audio-start arrives, so a caller (the
 // /claude-voice/tts-audio/:id route) can write a correctly-sized WAV header before any audio bytes
 // exist yet. `onChunk(buffer)` fires per audio-chunk, for piping straight into an HTTP response.
-function synthesize({ host, port, text, onFormat, onChunk, timeoutMs, log }) {
+// `registerCancel(fn)` hands the caller an abort function (kills the socket, rejects) -- the
+// per-turn speech pipeline uses it to cut off a sentence mid-synthesis on barge-in.
+function synthesize({ host, port, text, onFormat, onChunk, timeoutMs, log, registerCancel }) {
   const say = log || (() => {});
   return new Promise((resolve, reject) => {
     const socket = net.connect({ host, port: Number(port) });
@@ -120,6 +122,7 @@ function synthesize({ host, port, text, onFormat, onChunk, timeoutMs, log }) {
       try { socket.destroy(); } catch (e) {}
       err ? reject(err) : resolve(format);
     };
+    if (registerCancel) registerCancel(() => finish(new Error('cancelled')));
     socket.on('error', e => { say('TTS socket error: ' + e.message); finish(e); });
     socket.on('close', () => { if (!settled) finish(new Error('Wyoming TTS: connection closed before audio-stop')); });
     socket.setTimeout(timeoutMs || 30000, () => finish(new Error('Wyoming TTS request timed out')));

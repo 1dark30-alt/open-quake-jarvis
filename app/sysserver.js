@@ -68,7 +68,7 @@ let sysHtml = FALLBACK, musicHtml = FALLBACK, chatHtml = FALLBACK, hascheduleHtm
 let onClaudeVoiceTurn = null, getClaudeVoiceState = null, onClaudeVoiceAudio = null, onClaudeVoiceApprovalRequest = null,
   onClaudeVoiceApprovalDecision = null, onClaudeVoiceSessionStart = null, onClaudeVoiceSessionStop = null,
   onClaudeVoiceSubscribe = null, getClaudeVoiceProjects = null, onClaudeVoiceSynthesize = null,
-  onClaudeVoicePermissionMode = null, onClaudeVoiceOption = null, voiceToken = null;
+  onClaudeVoicePermissionMode = null, onClaudeVoiceOption = null, onClaudeVoiceTurnAudio = null, voiceToken = null;
 const staticAssets = {};   // request path -> { body, type }; populated at start()
 let appFolders = {};        // drop-in served app id -> { root, proxy }; supplied by main.js
 const appServers = {};      // app id -> required server module
@@ -413,8 +413,10 @@ async function handler(req, res) {
     let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
     const text = body && typeof body.text === 'string' ? body.text.trim() : '';
     if (!text || !onClaudeVoiceTurn) return done(res, false);
-    let ok = false; try { ok = !!onClaudeVoiceTurn(text); } catch (e) {}
-    return done(res, ok);
+    // `speak` = the page wants this turn's reply spoken; the response's `speech` id (when set) is
+    // what the page feeds into /claude-voice/turn-audio to receive that one continuous WAV stream.
+    let out = null; try { out = onClaudeVoiceTurn(text, !!body.speak); } catch (e) {}
+    return json(res, out && out.ok ? out : { ok: false });
   }
   if (url === '/claude-voice/state') {
     return json(res, getClaudeVoiceState ? getClaudeVoiceState() : { running: false, status: 'idle' });
@@ -454,6 +456,15 @@ async function handler(req, res) {
     const text = id ? (ttsTexts.get(id) || '') : queryValue(full, 'text');   // ?text= kept for short/manual use
     if (!text || !onClaudeVoiceSynthesize) { res.writeHead(400); res.end(); return; }
     return onClaudeVoiceSynthesize(text, res);   // pipes the response itself; nothing to return here
+  }
+  if (url === '/claude-voice/turn-audio') {
+    // One continuous WAV per voice turn, streamed by the main-process speech pipeline while the
+    // reply is still being generated. Long-lived response; the page closing it is the barge-in
+    // signal that aborts synthesis. A stale/unknown turn id is 404'd by the pipeline itself.
+    const turnId = queryValue(full, 'turn');
+    if (!turnId || !onClaudeVoiceTurnAudio) { res.writeHead(404); res.end(); return; }
+    onClaudeVoiceTurnAudio(turnId, req, res);   // holds res open and streams; nothing to return here
+    return;
   }
   if (url === '/claude-voice/session/stop' && req.method === 'POST') {
     let ok = false;
@@ -533,6 +544,7 @@ function start(opts) {
   onClaudeVoiceSubscribe = opts.onClaudeVoiceSubscribe || null;
   getClaudeVoiceProjects = opts.getClaudeVoiceProjects || null;
   onClaudeVoiceSynthesize = opts.onClaudeVoiceSynthesize || null;
+  onClaudeVoiceTurnAudio = opts.onClaudeVoiceTurnAudio || null;
   onClaudeVoicePermissionMode = opts.onClaudeVoicePermissionMode || null;
   onClaudeVoiceOption = opts.onClaudeVoiceOption || null;
   voiceToken = opts.voiceToken || null;

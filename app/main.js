@@ -48,6 +48,7 @@ const { createReservedDisplay } = require('./reservedDisplay'); // Windows helpe
 const { createClaudeVoiceSession } = require('./claudevoice-session'); // persistent `claude` CLI process backing the Claude Code voice+text app
 const claudeVoiceWyoming = require('./claudevoice-wyoming'); // hand-rolled Wyoming protocol client (STT/TTS) for the same app
 const claudeVoiceApprovals = require('./claudevoice-approvals'); // touch-approval hook installer + pending-request manager for the same app
+const claudeVoiceSpeechLib = require('./claudevoice-speech'); // main-process per-turn speech pipeline (one WAV stream per voice turn)
 const HA_SCHEDULE_APPS = ['haschedule', 'agenda', 'events'];   // dev apps backed by the shared HA /haschedule-data snapshot
 
 const USER_DIR = app.getPath('userData');
@@ -86,6 +87,23 @@ const reservedDisplay = createReservedDisplay({
   log: message => console.log('[reserved-display] ' + message),
 });
 const claudeVoiceSession = createClaudeVoiceSession({ log: message => console.log('[claude-voice] ' + message) });
+// Per-turn speech pipeline (the user's own v2 design): sentences are cut and synthesized HERE, in
+// the main process, and streamed to the page as ONE continuous WAV per turn -- the page just plays
+// a single <audio> element. Replaces the page-side per-sentence queue, whose failure modes
+// (orphaned watchdogs forking second player chains) came from splitting speech state across two
+// processes. See claudevoice-speech.js.
+const claudeVoiceSpeech = claudeVoiceSpeechLib.createSpeechPipeline({
+  synthesize: claudeVoiceWyoming.synthesize,
+  wavHeader: claudeVoiceWyoming.wavHeader,
+  getTts: () => {
+    const opts = activeServedAppConfig('claude-voice');
+    const host = (opts && opts.options.wyomingHost) || '';
+    const port = (opts && opts.options.wyomingTtsPort) || '';
+    return host && port ? { host, port } : null;
+  },
+  log: message => console.log('[claude-voice] ' + message),
+});
+function onClaudeVoiceTurnAudio(turnId, req, res) { claudeVoiceSpeech.attach(turnId, req, res); }
 // Per-boot random token, handed to the `claude` process via env and echoed back by the PreToolUse
 // hook (Phase 7) so sysserver.js can tell a legitimate hook request from anything else that might
 // guess the loopback port -- the hook has no Origin/Sec-Fetch-Site header to check instead.
@@ -132,6 +150,7 @@ claudeVoiceSession.on('event', event => {
       claudeVoiceState.status = 'thinking';
       broadcastClaudeVoice({ type: 'assistant-start' });
     } else if (se.type === 'content_block_delta' && se.delta && se.delta.type === 'text_delta' && se.delta.text) {
+      claudeVoiceSpeech.feed(se.delta.text);   // no-op unless this turn was started with speak
       broadcastClaudeVoice({ type: 'assistant-delta', text: se.delta.text });
     }
     return;
@@ -147,6 +166,10 @@ claudeVoiceSession.on('event', event => {
     claudeVoiceState.status = 'idle';
     if (typeof event.result === 'string') claudeVoiceState.lastAssistantText = event.result;
     claudeVoiceState.error = event.is_error ? (event.result || 'error') : null;
+    // Speech: flush the pipeline's remainder (or speak the whole result for turns that never
+    // streamed deltas, e.g. slash commands); errored turns get their speech cut instead.
+    if (claudeVoiceState.error) claudeVoiceSpeech.abortActive('turn ended in error');
+    else claudeVoiceSpeech.finish(claudeVoiceState.lastAssistantText);
     if (claudeVoiceState.lastAssistantText && !claudeVoiceState.error) claudeVoiceTranscript.push({ role: 'assistant', text: claudeVoiceState.lastAssistantText });
     broadcastClaudeVoice({ type: 'turn-complete', text: claudeVoiceState.lastAssistantText, error: claudeVoiceState.error });
     return;
@@ -154,9 +177,15 @@ claudeVoiceSession.on('event', event => {
 });
 claudeVoiceSession.on('error', e => {
   claudeVoiceState.status = 'error'; claudeVoiceState.error = (e && e.message) || 'error';
+  claudeVoiceSpeech.abortActive('session error');
   broadcastClaudeVoice({ type: 'error', error: claudeVoiceState.error });
 });
-claudeVoiceSession.on('exit', () => { claudeVoiceState.running = false; });
+claudeVoiceSession.on('exit', () => {
+  claudeVoiceState.running = false;
+  // A mode switch swaps the child intentionally (isRunning() is already true again by the time the
+  // old process's exit event lands) -- only a real crash, with nothing running, cuts speech off.
+  if (!claudeVoiceSession.isRunning()) claudeVoiceSpeech.abortActive('claude process exited');
+});
 // SSE subscribe: keeps the response open, pushes every broadcastClaudeVoice() call as a `data:` line,
 // removes itself when the page navigates away/reloads/closes. No history replay yet (flagged as an
 // open item in the plan) -- a fresh subscriber gets /claude-voice/state's snapshot for "where things
@@ -169,16 +198,24 @@ function onClaudeVoiceSubscribe(req, res) {
   req.on('close', () => { claudeVoiceSubscribers.delete(res); });
 }
 // Ensures a claude-voice session is running for the panel's currently-active page (starting one on
-// first use), then sends the turn. Returns false if the active page isn't a claude-voice app page.
-function onClaudeVoiceTurn(text) {
+// first use), then sends the turn. `speak` is decided by the page PER TURN (voice-initiated and the
+// speaker toggle is on) -- when set, the reply gets a speech stream and `speech` carries its id for
+// the page's <audio src="/claude-voice/turn-audio?turn=...">. Returns {ok:false} if the active page
+// isn't a claude-voice app page or the turn couldn't be sent.
+function onClaudeVoiceTurn(text, speak) {
   const opts = activeServedAppConfig('claude-voice');
-  if (!opts) return false;
-  if (!claudeVoiceSession.isRunning() && !startClaudeVoiceSession()) return false;
+  if (!opts) return { ok: false };
+  if (!claudeVoiceSession.isRunning() && !startClaudeVoiceSession()) return { ok: false };
   claudeVoiceState.status = 'thinking';
   claudeVoiceState.lastUserText = text;
   const sent = claudeVoiceSession.sendTurn(text);
-  if (sent) claudeVoiceTranscript.push({ role: 'user', text });
-  return sent;
+  if (!sent) return { ok: false };
+  claudeVoiceTranscript.push({ role: 'user', text });
+  // New input always supersedes whatever the panel was still saying (barge-in by construction).
+  let speech = null;
+  if (speak) speech = claudeVoiceSpeech.beginTurn();
+  else claudeVoiceSpeech.abortActive('a new turn was sent');
+  return { ok: true, speech };
 }
 function getClaudeVoiceState() {
   const opts = activeServedAppConfig('claude-voice');
@@ -290,6 +327,7 @@ function startClaudeVoiceSession(dir) {
   });
   claudeVoiceState = { running: true, status: 'idle', lastUserText: '', lastAssistantText: '', error: null };
   claudeVoiceTranscript = [];   // new session, fresh conversation
+  claudeVoiceSpeech.abortActive('new session started');   // a folder switch mid-reply silences the old folder's voice
   broadcastClaudeVoice({ type: 'session-started', projectDir });
   return true;
 }
@@ -330,6 +368,7 @@ async function synthesizeClaudeVoiceSpeech(text, res) {
   const opts = activeServedAppConfig('claude-voice');
   const host = (opts && opts.options.wyomingHost) || '';
   const port = (opts && opts.options.wyomingTtsPort) || '';
+  text = claudeVoiceSpeechLib.prepWholeSpeech(text);   // speech-only markdown cleanup lives server-side now
   if (!host || !port || !text) { res.writeHead(400); res.end(); return; }
   let headerWritten = false;
   try {
@@ -350,6 +389,7 @@ async function synthesizeClaudeVoiceSpeech(text, res) {
 }
 function stopClaudeVoiceSession() {
   claudeVoiceSession.stop();
+  claudeVoiceSpeech.abortActive('session stopped');
   claudeVoiceApprovalManager.cancelAll('Session ended.');   // don't leave the hook's HTTP request hanging on a dead session
   // Take the global PreToolUse hook back out now the panel is done with it. It lives in the user's one
   // machine-wide ~/.claude/settings.json, so for as long as it's installed EVERY Claude Code surface on
@@ -1813,7 +1853,7 @@ app.whenReady().then(async () => {
   // Lazy-required so a metrics/load failure can never crash the rest of the app.
   try {
     sysserver = require('./sysserver');
-    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(), getShortcuts: keyboardShortcutsSnapshot, onClaudeVoiceTurn, getClaudeVoiceState, onClaudeVoiceSubscribe, onClaudeVoiceSessionStart: startClaudeVoiceSession, onClaudeVoiceSessionStop: stopClaudeVoiceSession, onClaudeVoiceAudio: transcribeClaudeVoiceAudio, onClaudeVoiceSynthesize: synthesizeClaudeVoiceSpeech, onClaudeVoiceApprovalRequest, onClaudeVoiceApprovalDecision, onClaudeVoicePermissionMode: setClaudeVoicePermissionMode, onClaudeVoiceOption: setClaudeVoiceOption, getClaudeVoiceProjects, voiceToken: claudeVoiceToken });
+    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(), getShortcuts: keyboardShortcutsSnapshot, onClaudeVoiceTurn, getClaudeVoiceState, onClaudeVoiceSubscribe, onClaudeVoiceSessionStart: startClaudeVoiceSession, onClaudeVoiceSessionStop: stopClaudeVoiceSession, onClaudeVoiceAudio: transcribeClaudeVoiceAudio, onClaudeVoiceSynthesize: synthesizeClaudeVoiceSpeech, onClaudeVoiceTurnAudio, onClaudeVoiceApprovalRequest, onClaudeVoiceApprovalDecision, onClaudeVoicePermissionMode: setClaudeVoicePermissionMode, onClaudeVoiceOption: setClaudeVoiceOption, getClaudeVoiceProjects, voiceToken: claudeVoiceToken });
     ensureSystemViewPage(serverPort); ensureMusicPage(); ensureDropInDir();
     const haUrl = configureHaSchedule();
     console.log('SystemView + Music on http://127.0.0.1:' + serverPort + (haUrl ? ' · HA Schedule -> ' + haUrl : ''));

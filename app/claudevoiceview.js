@@ -112,10 +112,8 @@ function connectEvents() {
       }
       liveMsg.text += msg.text;
       updateLiveBubble();
-      // Sentence-streaming speech: feed the live text into the speech splitter so talking starts
-      // as sentences complete, not after the whole reply lands. Voice-initiated turns only.
-      if (!speechTurnActive && lastTurnWasVoice && speakEnabled) speechTurnActive = true;
-      if (speechTurnActive) { speechBuf += msg.text; drainSpeechBuf(false); }
+      // Speech is NOT handled here anymore: the main process cuts sentences out of this same delta
+      // stream itself and streams one continuous WAV per turn (see claudevoice-speech.js).
     } else if (msg.type === 'turn-complete') {
       var finalText = msg.text;
       if (liveMsg) {
@@ -131,20 +129,14 @@ function connectEvents() {
         renderTranscript();
       }
       liveMsg = null;
-      // Speech: if the sentence-streaming pipeline was active this turn, flush its remainder and
-      // let the queue own the status until it drains. Otherwise fall back to whole-reply speak()
-      // for voice turns that never streamed text (e.g. a result-only turn). Typed turns are never
-      // spoken unsolicited.
-      if (speechTurnActive) {
-        drainSpeechBuf(true);
-        speechTurnActive = false;
-        maybeEndSpeech();
-        if (msg.error) setStatus('error', msg.error);
-      } else if (lastTurnWasVoice && !msg.error && speakEnabled) { speak(finalText); }
-      else { setStatus(conversationOpen ? 'listening' : 'idle', msg.error); }
-      lastTurnWasVoice = false;
+      turnInProgress = false;
+      // Speech: the server's per-turn stream keeps playing past turn-complete; when the audio is
+      // still active its 'ended' event owns the status handoff back to listening/idle.
+      if (msg.error) { stopTurnAudio(); setStatus('error', msg.error); }
+      else if (!turnAudio) setStatus(conversationOpen ? 'listening' : 'idle');
     } else if (msg.type === 'error') {
-      stopSpeech();
+      turnInProgress = false;
+      stopTurnAudio();
       setStatus('error', msg.error);
     } else if (msg.type === 'approval-request') {
       showApprovalOverlay(msg.requestId, msg.toolName, msg.toolInput);
@@ -155,7 +147,8 @@ function connectEvents() {
       syncModeUI();
     } else if (msg.type === 'session-started') {
       // New session (folder switch or fresh start): new conversation, new header, silence.
-      stopSpeech();
+      stopTurnAudio();
+      turnInProgress = false;
       transcript = [];
       liveMsg = null;
       renderTranscript();
@@ -231,20 +224,26 @@ function autoGrow() {
 }
 $('textInput').addEventListener('input', autoGrow);
 
-var lastTurnWasVoice = false;   // gates auto-speak-the-reply -- typed turns never get spoken back unsolicited
+var turnInProgress = false;   // a sent turn hasn't seen its turn-complete yet (drives status after audio ends early)
 function sendText(text, fromVoice) {
   if (!text) return;
   transcript.push({ role: 'user', text: text });
   renderTranscript();
-  lastTurnWasVoice = !!fromVoice;
+  turnInProgress = true;
   $('sendBtn').disabled = true;
   fetch('/claude-voice/turn', {
     method: 'POST', cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: text }),
+    // `speak` is decided HERE, per turn (voice-initiated + speaker on) -- the server ties it to the
+    // turn, so one turn finishing can never silence a queued next turn's speech (the old
+    // lastTurnWasVoice-clobber bug). Typed turns never get spoken back unsolicited.
+    body: JSON.stringify({ text: text, speak: !!(fromVoice && speakEnabled) }),
   }).then(function (r) { return r.json(); })
-    .then(function (r) { if (!r || !r.ok) setStatus('error', 'Turn failed to send — no project set, or claude CLI not found.'); })
-    .catch(function () { setStatus('error', 'Could not reach the panel server.'); })
+    .then(function (r) {
+      if (!r || !r.ok) { turnInProgress = false; setStatus('error', 'Turn failed to send — no project set, or claude CLI not found.'); return; }
+      if (r.speech) startTurnAudio(r.speech);
+    })
+    .catch(function () { turnInProgress = false; setStatus('error', 'Could not reach the panel server.'); })
     .finally(function () { $('sendBtn').disabled = false; });
 }
 function send() {
@@ -259,15 +258,15 @@ $('textInput').addEventListener('keydown', function (e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
 
-// Speaks `text` via the configured wyoming-piper. Used both by the manual test button and by the
-// real voice-conversation loop below (auto-speaking Claude's reply after a voice-initiated turn).
+// Speaks `text` via the configured wyoming-piper. Test-speech button ONLY now -- real replies
+// stream through the per-turn pipeline below. The server sanitizes the text for speech itself.
 // `suppressVAD` is held true for the duration of playback so the mic doesn't hear Claude's own
 // voice through the speakers and mistake it for the next user utterance (a real feedback-loop risk
 // in a fully hands-free loop -- there's no headset here, just the panel's own mic and speaker).
 var suppressVAD = false;
 function speak(text, onDone) {
-  text = prepWholeSpeech(text);   // speech-only cleanup; the on-screen text is never altered
   if (!text) { if (onDone) onDone(); return; }
+  stopTurnAudio();   // the Test button supersedes any in-flight turn speech -- never two streams
   suppressVAD = true;
   setStatus('speaking');
   $('spkBtn').classList.add('pulsing');
@@ -299,194 +298,44 @@ $('ttsTestBtn').onclick = function () {
   speak(last ? last.text : 'No reply yet to test with.');
 };
 
-// ---- Sentence-streaming speech (voice turns) ----
-// Speaks the reply WHILE it streams: complete sentences are cut out of the live delta text, each
-// synthesized via POST /claude-voice/tts, and played back through a strictly-ordered queue (the
-// next sentence synthesizes while the current one plays). Fenced code blocks are never read
-// aloud -- each block becomes the announcement below, once, and the code stays on screen.
-// Thinking can never be spoken: only text_delta events reach the page at all.
-var CODE_ANNOUNCE = "Code's on screen.";
-var TABLE_ANNOUNCE = "Table's on screen.";
-var speechQueue = [];          // {text, id, ready, failed} in speaking order
-var speechPlaying = false;
-var speechBuf = '';            // streamed text not yet cut into sentences
-var speechInFence = false;     // currently inside a ``` block (content dropped for speech)
-var speechTurnActive = false;  // this turn is voice-initiated and speaker is on
-var speechInTable = false;     // consecutive table-row chunks announce only once per table
-var currentSpeechAudio = null;
-// Generation token: bumped by stopSpeech(). Every timer/callback armed by playNextSpeech captures
-// the generation it was born in and goes inert if it fires after a stop. This is THE fix for the
-// two-voices-overtalking bug (verified root cause 2026-08-12): stopping speech mid-playback (e.g.
-// a folder switch) couldn't reach a playing sentence's closure-local watchdog; when that orphaned
-// watchdog later fired it freed speechPlaying while the NEW conversation's audio was mid-sentence,
-// forking a second player chain.
-var speechGen = 0;
-
-// Speech-ONLY text cleanup -- the display path never touches this; the screen always shows the
-// raw text. Piper reads markdown source miserably, so for the speaker: links become their label,
-// URLs become the bare hostname, file paths become the filename, UUIDs/hex become a word, and
-// markdown markers / arrows / bullets / emoji vanish.
-function speechSanitize(text) {
-  var s = String(text || '');
-  s = s.replace(/!?\[([^\]]*)\]\(([^)]*)\)/g, '$1');                               // [label](url) -> label
-  s = s.replace(/\bhttps?:\/\/([^\s/)\]>]+)[^\s)\]>]*/gi, function (m, host) {     // bare URL -> "host dot com"
-    return host.replace(/^www\./i, '').replace(/:\d+$/, '').replace(/\./g, ' dot ');
-  });
-  s = s.replace(/(?:[A-Za-z]:)?(?:\\[\w.\-~]+)+\\?/g, function (m) {               // windows path -> filename
-    var parts = m.split('\\').filter(Boolean);
-    return parts.length ? parts[parts.length - 1].replace(/^[A-Za-z]:$/, '') : '';
-  });
-  s = s.replace(/(^|\s)(~?\/[\w.\-/]+|[\w.\-]+(?:\/[\w.\-]+){2,})/g, function (m, pre, p) {   // unix-ish path -> filename
-    var parts = p.split('/').filter(Boolean);
-    return pre + (parts.length ? parts[parts.length - 1] : '');
-  });
-  s = s.replace(/\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/g, 'an ID');
-  s = s.replace(/\b(?=[0-9a-fA-F]*\d)(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{7,40}\b/g, 'a hash');   // hex runs (needs a digit AND a letter -- plain numbers survive)
-  s = s.replace(/[←-⇿⌀-➿⬀-⯿■-◿★☆•·\u{1F000}-\u{1FAFF}]/gu, ' ');  // arrows, checks, bullets, emoji
-  s = s.replace(/^[ \t]*#{1,6}[ \t]*/gm, '');                                       // heading markers
-  s = s.replace(/^[ \t]*>+[ \t]*/gm, '');                                           // blockquote markers
-  s = s.replace(/(\*\*|__|[*`])/g, ' ');                                            // emphasis/backtick markers
-  return s.replace(/\s+/g, ' ').trim();
+// ---- Turn speech (v2 -- the user's own architecture, task #26) ----
+// ALL speech logic lives in the MAIN process now (claudevoice-speech.js): it cuts sentences out of
+// the same delta stream this page renders, sanitizes them for the speaker, synthesizes serially,
+// and streams ONE continuous WAV per turn. This page just plays a single <audio> element per voice
+// turn -- overlap is structurally impossible, and there are no page-side queues or watchdogs left
+// to orphan. Dropping the element's stream (mute, folder switch, page unload) is itself the abort
+// signal the server acts on; no separate stop request exists or is needed.
+var turnAudio = null;   // the current voice turn's <audio>, or null
+function endSpeechUI(errMsg) {
+  suppressVAD = false;
+  $('spkBtn').classList.remove('pulsing');
+  setStatus(turnInProgress ? 'thinking' : conversationOpen ? 'listening' : 'idle', errMsg || '');
 }
-
-function enqueueSentence(text) {
-  var raw = String(text || '');
-  // Markdown tables: rows are dropped from speech; each table announces itself exactly once
-  // (consecutive table-row chunks share one announcement; any prose in between resets it).
-  var kept = [], sawTable = false;
-  raw.split('\n').forEach(function (ln) {
-    if (/^\s*\|/.test(ln)) sawTable = true;
-    else if (ln.trim()) kept.push(ln);
-  });
-  var announceTable = sawTable && !speechInTable;
-  speechInTable = sawTable;
-  text = speechSanitize(kept.join(' '));
-  if (announceTable) text = (text ? text + ' ' : '') + TABLE_ANNOUNCE;
-  if (!text) return;
-  enqueueSpeechItem(text);
+function stopTurnAudio() {
+  if (!turnAudio) return;
+  var a = turnAudio;
+  turnAudio = null;
+  try { a.pause(); } catch (e) {}
+  try { a.removeAttribute('src'); a.load(); } catch (e) {}   // closes the HTTP stream -> server aborts synthesis
+  endSpeechUI();
 }
-// Adds already-sanitized text to the playback queue. This queue is the ONLY audio path in the app
-// -- speak() feeds it too -- so two streams can never talk over each other.
-function enqueueSpeechItem(text) {
-  var item = { text: text, id: null, ready: false, failed: false };
-  speechQueue.push(item);
-  fetch('/claude-voice/tts', {
-    method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: text }),
-  }).then(function (r) { return r.json(); })
-    .then(function (r) { if (r && r.ok && r.id) item.id = r.id; else item.failed = true; item.ready = true; playNextSpeech(); })
-    .catch(function () { item.failed = true; item.ready = true; playNextSpeech(); });
-}
-// Cuts complete sentences (through the LAST . ! ? or newline) out of `text`, enqueues them, and
-// returns the incomplete remainder.
-function cutSentences(text) {
-  var m = text.match(/[\s\S]*(?:[.!?](?=\s|$)|\n)/);
-  if (!m) return text;
-  enqueueSentence(m[0]);
-  return text.slice(m[0].length);
-}
-function drainSpeechBuf(final) {
-  for (;;) {
-    var idx = speechBuf.indexOf('```');
-    if (idx < 0) break;
-    if (!speechInFence) {
-      var before = speechBuf.slice(0, idx);
-      if (before.trim()) enqueueSentence(before);
-      enqueueSentence(CODE_ANNOUNCE);
-    }
-    speechBuf = speechBuf.slice(idx + 3);
-    speechInFence = !speechInFence;
-  }
-  if (speechInFence) {
-    // Inside a block: drop the content, keeping only a tail that could be a split ``` marker.
-    if (speechBuf.length > 2) speechBuf = speechBuf.slice(-2);
-    return;
-  }
-  if (final) { if (speechBuf.trim()) enqueueSentence(speechBuf); speechBuf = ''; }
-  else speechBuf = cutSentences(speechBuf);
-}
-// Watchdog: 30s per QUEUE ITEM (one sentence of Claude's reply -- normally 2-5s to synthesize and
-// play). This never touches the user's own speech; the mic side has no timer at all. It exists
-// because a hung TTS request or an <audio> that never fires ended/error would otherwise hold
-// suppressVAD forever -- the "conversation is on but the mic ignores me" stuck state.
-var SPEECH_ITEM_TIMEOUT_MS = 30000;
-function playNextSpeech() {
-  var gen = speechGen;   // closures below go inert if stopSpeech() bumps the generation
-  if (speechPlaying) return;
-  while (speechQueue.length && speechQueue[0].ready && speechQueue[0].failed) speechQueue.shift();
-  if (!speechQueue.length) { maybeEndSpeech(); return; }
-  if (!speechQueue[0].ready) {
-    // Head still synthesizing: give it a deadline so a hung /tts fetch can't wedge the queue.
-    var head = speechQueue[0];
-    if (!head.deadline) {
-      head.deadline = setTimeout(function () {
-        if (gen !== speechGen) return;
-        if (!head.ready) { head.ready = true; head.failed = true; playNextSpeech(); }
-      }, SPEECH_ITEM_TIMEOUT_MS);
-    }
-    maybeEndSpeech();
-    return;
-  }
-  var item = speechQueue.shift();
-  clearTimeout(item.deadline);
-  speechPlaying = true;
-  suppressVAD = true;   // held through the whole queue so the mic never hears the speaker
-  setStatus('speaking');
-  $('spkBtn').classList.add('pulsing');
-  var audio = currentSpeechAudio = new Audio('/claude-voice/tts-audio?id=' + encodeURIComponent(item.id));
-  var finished = false;
-  var done = function () {
-    if (finished || gen !== speechGen) return;   // stale generation: a stop already superseded us
-    finished = true;
-    clearTimeout(playTimer);
-    try { audio.pause(); } catch (e) {}          // belt-and-braces: never advance over a sounding element
-    if (currentSpeechAudio === audio) currentSpeechAudio = null;
-    speechPlaying = false;
-    playNextSpeech();
+function startTurnAudio(turnId) {
+  stopTurnAudio();
+  var a = turnAudio = new Audio('/claude-voice/turn-audio?turn=' + encodeURIComponent(turnId));
+  var done = function () {   // ended and error land in the same place: release the mic, settle status
+    if (turnAudio !== a) return;
+    turnAudio = null;
+    endSpeechUI();
   };
-  // Playback deadline: a sentence's audio that hasn't ENDED after 30s of no progress is stuck.
-  // Reset the timer while playback advances so a genuinely long sentence is never cut off.
-  var playTimer = setTimeout(function check() {
-    if (finished || gen !== speechGen) return;
-    if (!audio.paused && audio.currentTime > 0 && !audio.ended) {
-      playTimer = setTimeout(check, SPEECH_ITEM_TIMEOUT_MS);   // progressing -- keep waiting
-      return;
-    }
-    try { audio.pause(); } catch (e) {}
-    done();
-  }, SPEECH_ITEM_TIMEOUT_MS);
-  audio.addEventListener('ended', done);
-  audio.addEventListener('error', done);
-  audio.play().catch(done);
-}
-function maybeEndSpeech() {
-  if (speechPlaying || speechQueue.length || speechTurnActive) return;
-  if (suppressVAD) {
-    suppressVAD = false;
-    $('spkBtn').classList.remove('pulsing');
-    setStatus(conversationOpen ? 'listening' : 'idle');
-  }
-}
-function stopSpeech() {
-  speechGen++;   // every armed timer/callback from the old generation is now inert
-  speechQueue.forEach(function (it) { clearTimeout(it.deadline); });
-  speechQueue = []; speechBuf = ''; speechInFence = false; speechTurnActive = false; speechInTable = false;
-  if (currentSpeechAudio) { try { currentSpeechAudio.pause(); } catch (e) {} currentSpeechAudio = null; }
-  speechPlaying = false;
-  maybeEndSpeech();
-}
-// Whole-text variant of the same cleanup, for the non-streaming speak() path (Test speech, and
-// voice turns that never streamed): fences and tables become their one-line announcements inline.
-function prepWholeSpeech(raw) {
-  var out = [], inFence = false, inTable = false;
-  String(raw || '').split('\n').forEach(function (ln) {
-    if (/^\s*```/.test(ln)) { if (!inFence) out.push(CODE_ANNOUNCE); inFence = !inFence; return; }
-    if (inFence) return;
-    if (/^\s*\|/.test(ln)) { if (!inTable) out.push(TABLE_ANNOUNCE); inTable = true; return; }
-    inTable = false;
-    out.push(ln);
+  a.addEventListener('playing', function () {
+    if (turnAudio !== a) return;
+    suppressVAD = true;   // the mic must never hear Claude's own voice through the speaker
+    setStatus('speaking');
+    $('spkBtn').classList.add('pulsing');
   });
-  return speechSanitize(out.join(' '));
+  a.addEventListener('ended', done);
+  a.addEventListener('error', done);
+  a.play().catch(done);
 }
 
 // ---- Tap-to-toggle voice conversation (Phase 5) ----
@@ -506,6 +355,10 @@ function onVADSpeechEnd(pcm16) {
   fetch('/claude-voice/audio', { method: 'POST', cache: 'no-store', body: pcm16.buffer })
     .then(function (r) { return r.json(); })
     .then(function (r) {
+      // Re-check AFTER the async STT round trip: if speech started playing while this was in
+      // flight, the utterance may have caught the speaker's first words -- drop it, never
+      // ghost-send it as a turn.
+      if (suppressVAD) return;
       if (r && r.ok && r.text && r.text.trim()) { sendText(r.text.trim(), true); }
       else { setStatus(conversationOpen ? 'listening' : 'idle', r && r.error); }
     })
@@ -546,7 +399,7 @@ $('micBtn').onclick = function () { window.oqxToggleConversation(); };
 $('spkBtn').onclick = function () {
   speakEnabled = !speakEnabled;
   localStorage.setItem('cvSpeakEnabled', speakEnabled ? '1' : '0');
-  if (!speakEnabled) stopSpeech();   // muting mid-reply cuts the current sentence and the queue
+  if (!speakEnabled) stopTurnAudio();   // muting mid-reply drops the stream; the server aborts synthesis on the socket close
   syncSpkUI();
 };
 // Ripples: spawn one expanding ring per level sample above the ripple floor, throttled so a
