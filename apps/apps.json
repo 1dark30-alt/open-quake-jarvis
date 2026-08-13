@@ -6125,7 +6125,9 @@
         "default": "readOnly",
         "choices": [
           ["readOnly", "Read only — look but never touch (no approvals needed)"],
-          ["manual", "Manual — can work in the folder, asks before commands and file changes"]
+          ["manual", "Manual — can work in the folder, asks before commands and file changes"],
+          ["auto", "Auto — works in the folder without asking"],
+          ["full", "Full auto — no sandbox at all (use with care)"]
         ]
       },
       { "key": "chatFontSize", "label": "Chat text size (px)", "type": "text", "default": "16" },

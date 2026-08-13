@@ -82,6 +82,7 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
 
   // ---- adapter events -> state/speech/SSE (moved verbatim from the main.js event handlers) ----
   adapter.on('model', ({ model }) => broadcast({ type: 'model', model }));
+  adapter.on('models-changed', () => broadcast({ type: 'meta', meta: buildMeta() }));
   adapter.on('assistant-start', () => {
     state.status = 'thinking';
     broadcast({ type: 'assistant-start' });
@@ -224,16 +225,20 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       model: adapter.currentModel(),
       projectDir: adapter.projectDir() || (opts && opts.options.projectDir) || '',
       transcript,
-      // Agent-specific page strings + pick lists; the shared page applies these over its
-      // claude-shaped markup fallbacks (see applyMeta in claudevoiceview.js).
-      meta: {
-        title: brand.title || '',
-        approvalTitle: brand.approvalTitle || '',
-        turnFailedText: brand.turnFailedText || '',
-        modes: adapter.listModes ? adapter.listModes() : [],
-        models: adapter.listModels ? adapter.listModels() : [],
-      },
+      meta: buildMeta(),
     });
+  }
+  // Agent-specific page strings + pick lists; the shared page applies these over its claude-shaped
+  // markup fallbacks (see applyMeta in claudevoiceview.js). Delivered on /state and re-pushed over
+  // SSE whenever the adapter's lists change (e.g. codex model discovery finishing after page load).
+  function buildMeta() {
+    return {
+      title: brand.title || '',
+      approvalTitle: brand.approvalTitle || '',
+      turnFailedText: brand.turnFailedText || '',
+      modes: adapter.listModes ? adapter.listModes() : [],
+      models: adapter.listModels ? adapter.listModels() : [],
+    };
   }
 
   // Data for the Change-folder overlay. `browsePath` (optional) is the directory currently being

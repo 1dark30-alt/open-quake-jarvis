@@ -47,7 +47,8 @@ const ahk = require('./ahk');                  // macro "ahk" step backend (shel
 const { createReservedDisplay } = require('./reservedDisplay'); // Windows helper that keeps foreign windows off the panel display
 const { createVoicePanelHost } = require('./voicepanel-host'); // generic voice-panel app host (state/SSE/speech/STT-TTS plumbing)
 const { createClaudeVoiceAdapter } = require('./claudevoice-adapter'); // Claude Code session adapter (CLI spawn, events, approval hook)
-const { createCodexVoiceAdapter } = require('./codexvoice-session'); // OpenAI Codex session adapter (app-server JSON-RPC over stdio)
+const { createCodexVoiceAdapter, findCodexExe } = require('./codexvoice-session'); // OpenAI Codex session adapter (app-server JSON-RPC over stdio)
+const { findClaudeExe } = require('./claudevoice-session'); // CLI presence probe for the editor's voice-app warning
 const claudeVoiceApprovals = require('./claudevoice-approvals'); // required directly ONLY for the boot-time leftover-hook sweep below
 const HA_SCHEDULE_APPS = ['haschedule', 'agenda', 'events'];   // dev apps backed by the shared HA /haschedule-data snapshot
 
@@ -1710,6 +1711,16 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('getHaCache', (e) => isFrom(e, configWin) ? haCache : null);
   ipcMain.handle('refreshHaCache', (e) => isFrom(e, configWin) ? refreshHaCache() : null);
+  // Editor voice-app options: is the page's CLI actually installed? Lets the editor warn at
+  // add-time instead of the user discovering a dead page on the panel later.
+  ipcMain.handle('probeVoiceCli', (e, appId) => {
+    if (!isFrom(e, configWin)) return null;
+    try {
+      if (appId === 'claude-voice') return findClaudeExe() || null;
+      if (appId === 'codex-voice') return findCodexExe() || null;
+    } catch (err) {}
+    return null;
+  });
   // "Edit prompt file" in the Claude Code page options: seed the template if needed, then open the
   // file in whatever the user's default .md editor is.
   ipcMain.handle('editClaudeVoicePrompt', (e) => {

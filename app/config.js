@@ -1372,6 +1372,7 @@
     const cvVal = (key, dflt) => optVal(g, key, dflt);
     const cvPermChoices = (cvOptDef('permissionMode').choices || []);
     const claudeVoiceBox = `<div id="cvBox" style="margin-top:10px">
+        <p id="cvCliWarn" class="hint" style="display:none;color:#ff8a8a;font-weight:600"></p>
         <div class="row"><label>Default folder</label>
           <input id="cvProjectPath" value="${esc(cvVal('projectDir', ''))}" placeholder="D:\\Github\\my-folder" style="flex:1"></div>
         <p class="hint">Where new sessions start until a folder is picked on the panel (Change folder). The panel's pick updates this. Created automatically if it doesn't exist yet.</p>
@@ -1466,6 +1467,15 @@
       if (cvApprovals) cvApprovals.onchange = e => setOpt('approvalsEnabled', e.target.checked);
       const cvEditPrompt = document.getElementById('cvEditPrompt');
       if (cvEditPrompt) cvEditPrompt.onclick = () => configApi.editClaudeVoicePrompt();
+      // Warn at add-time if the agent CLI this page drives isn't installed -- otherwise the user
+      // only finds out when the panel page errors on first use.
+      configApi.probeVoiceCli(g.app).then(p => {
+        const warn = document.getElementById('cvCliWarn');
+        if (warn && !p) {
+          warn.textContent = '⚠ The ' + (isCodexVoice ? 'codex' : 'claude') + ' CLI was not found on PATH — this page won\'t work until it is installed.';
+          warn.style.display = '';
+        }
+      }).catch(() => {});
     } else {
       renderAppOpts(g, def);
     }

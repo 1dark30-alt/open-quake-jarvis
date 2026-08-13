@@ -49,6 +49,14 @@ const CODEX_MODE_PRESETS = {
     label: 'Manual', desc: 'Can work in the folder — asks before commands and file changes',
     approvalPolicy: 'on-request', sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
   },
+  auto: {
+    label: 'Auto', desc: 'Works in the folder without asking',
+    approvalPolicy: 'never', sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
+  },
+  full: {
+    label: 'Full auto', desc: 'No sandbox at all — use with care',
+    approvalPolicy: 'never', sandbox: 'danger-full-access', sandboxPolicy: { type: 'dangerFullAccess' },
+  },
 };
 const CODEX_DEFAULT_MODE = 'readOnly';
 
@@ -77,6 +85,8 @@ function createCodexVoiceAdapter({ log }) {
   let lastStderr = '';          // only surfaced when a handshake fails, else stderr is log noise
   let pendingApprovals = new Map();   // requestId(string) -> {id, method} awaiting a panel decision
   let fileChangeItems = new Map();    // itemId -> item, so a fileChange approval can show WHAT changes (capped)
+  let modelPick = '';                 // '' = account default; otherwise a Model.model slug, sent per turn
+  let modelList = [];                 // discovered via model/list after each handshake
 
   function send(method, params) {
     if (!proc || !proc.stdin || proc.stdin.destroyed) return Promise.reject(new Error('codex app-server not running'));
@@ -267,6 +277,17 @@ function createCodexVoiceAdapter({ log }) {
         if (!threadId) throw new Error('no thread id in thread/start response');
         ready = true;
         say('codex thread ' + threadId + ' ready (' + mode + ')');
+        // Model discovery (best effort): feeds the panel's model picker and the "what's actually
+        // running" display. Failure just leaves the picker at "Default".
+        send('model/list', {})
+          .then(r => {
+            modelList = ((r && r.data) || []).filter(m => m && !m.hidden && m.model);
+            const def = modelList.find(m => m.isDefault);
+            emitter.emit('model', { model: modelPick || (def ? def.model : '') });
+            emitter.emit('models-changed', {});
+            say('model/list: ' + modelList.length + ' models' + (def ? ', default ' + def.model : ''));
+          })
+          .catch(e => say('model/list failed (picker stays at Default): ' + e.message));
         const q = queuedTurns; queuedTurns = [];
         q.forEach(text => startTurn(text));
       })
@@ -274,6 +295,12 @@ function createCodexVoiceAdapter({ log }) {
         say('codex handshake failed: ' + e.message + (lastStderr ? ' | stderr: ' + lastStderr : ''));
         emitter.emit('error', { message: 'Codex session failed to start: ' + e.message });
       });
+  }
+
+  function isValidModel(pick) {
+    if (pick === '') return true;
+    if (!modelList.length) return typeof pick === 'string' && pick.length <= 64;   // discovery pending: be lenient, codex validates at turn time
+    return modelList.some(m => m.model === pick);
   }
 
   function startTurn(text) {
@@ -288,6 +315,7 @@ function createCodexVoiceAdapter({ log }) {
       input: [{ type: 'text', text }],
       approvalPolicy: preset.approvalPolicy,
       sandboxPolicy: preset.sandboxPolicy,
+      model: modelPick || null,   // null = the account default
     })
       .then(result => { activeTurnId = (result && result.turn && result.turn.id) || activeTurnId; })
       .catch(e => emitter.emit('turn-complete', { text: null, error: 'turn failed to start: ' + e.message }));
@@ -347,11 +375,25 @@ function createCodexVoiceAdapter({ log }) {
       return Object.entries(CODEX_MODE_PRESETS).map(([id, p]) => ({ id, label: p.label, desc: p.desc }));
     },
 
-    // ---- model (Phase 4: account default only; model/list lands in Phase 7) ----
-    setModel(model) { return model === ''; },
-    currentModel() { return null; },
-    validModel(model) { return model === ''; },
-    listModels() { return [{ id: '', label: 'Default (account setting)' }]; },
+    // ---- model: discovered via model/list, applied as a per-turn override (same mechanism as
+    // the mode presets -- takes effect from the next message, no restart) ----
+    setModel(pick) {
+      if (!isValidModel(pick)) return false;
+      modelPick = pick;
+      const def = modelList.find(m => m.isDefault);
+      emitter.emit('model', { model: modelPick || (def ? def.model : '') });
+      return true;
+    },
+    currentModel() {
+      if (modelPick) return modelPick;
+      const def = modelList.find(m => m.isDefault);
+      return def ? def.model : null;
+    },
+    validModel(pick) { return isValidModel(pick); },
+    listModels() {
+      return [{ id: '', label: 'Default (account setting)' }]
+        .concat(modelList.map(m => ({ id: m.model, label: (m.displayName || m.model) + (m.isDefault ? ' — default' : '') })));
+    },
 
     // ---- approvals (in-band JSON-RPC responses; no external hook, no settings.json) ----
     decideApproval(requestId, decision) {

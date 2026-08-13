@@ -158,8 +158,10 @@ function connectEvents() {
       currentMode = msg.mode || currentMode;
       syncModeUI();
     } else if (msg.type === 'model') {
-      liveModel = msg.model || '';   // what's ACTUALLY running, from the session's init event
+      liveModel = msg.model || '';   // what's ACTUALLY running, per the session/adapter
       syncPickButtons();
+    } else if (msg.type === 'meta') {
+      applyMeta(msg.meta);   // live refresh (e.g. codex model discovery finished after page load)
     } else if (msg.type === 'speech-error') {
       speechErrText = msg.error || 'Speech failed.';
       setStatus($('status').textContent.toLowerCase(), '');   // repaint the status line with the sticky notice
