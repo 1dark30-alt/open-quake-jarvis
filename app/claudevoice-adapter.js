@@ -19,6 +19,14 @@ const claudeVoiceApprovals = require('./claudevoice-approvals');
 // launch-only CLI flag, and the mid-session control message is explicitly undocumented/unsupported.
 const CLAUDE_VOICE_MODES = ['manual', 'acceptEdits', 'plan', 'bypassPermissions'];
 const CLAUDE_VOICE_MODE_LABELS = { manual: 'Manual', acceptEdits: 'Accept edits', plan: 'Plan', bypassPermissions: 'Full auto' };
+// Overlay descriptions, delivered to the page via /state meta (the page has matching fallbacks).
+const CLAUDE_VOICE_MODE_DESCS = {
+  manual: 'Ask before every action (touch approval)',
+  acceptEdits: 'File changes auto-approved',
+  plan: "Describe, don't act, until approved",
+  bypassPermissions: 'No prompts at all — use with care',
+};
+const CLAUDE_VOICE_MODEL_LABELS = { '': 'Default (account setting)', fable: 'Fable', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku' };
 // Model aliases the panel may pick ('' = account default, no --model flag). Aliases only, never
 // full model ids: aliases track "latest of the family" and can't go stale. All four verified
 // accepted by the installed CLI (2.1.228) -- an invalid --model would crash-loop the child.
@@ -157,7 +165,7 @@ function createClaudeVoiceAdapter({ getServerPort, getUserDataPath, log }) {
       return session.setPermissionMode(mode);
     },
     mode() { return session.permissionMode(); },
-    listModes() { return CLAUDE_VOICE_MODES.map(id => ({ id, label: CLAUDE_VOICE_MODE_LABELS[id] || id })); },
+    listModes() { return CLAUDE_VOICE_MODES.map(id => ({ id, label: CLAUDE_VOICE_MODE_LABELS[id] || id, desc: CLAUDE_VOICE_MODE_DESCS[id] || '' })); },
 
     // ---- model ----
     // With no session running a valid pick is still a success -- it persists via the modelPick
@@ -169,6 +177,7 @@ function createClaudeVoiceAdapter({ getServerPort, getUserDataPath, log }) {
     },
     currentModel() { return session.currentModel(); },
     validModel(model) { return CLAUDE_VOICE_MODEL_PICKS.includes(model); },
+    listModels() { return CLAUDE_VOICE_MODEL_PICKS.map(id => ({ id, label: CLAUDE_VOICE_MODEL_LABELS[id] || id })); },
 
     // ---- approvals (hook-based; claude-only surface) ----
     decideApproval(requestId, decision) { return approvalManager.decide(requestId, decision); },

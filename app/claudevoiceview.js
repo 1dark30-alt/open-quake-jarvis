@@ -4,6 +4,11 @@ function $(id) { return document.getElementById(id); }
 // hardcoded-dark approach — see docs/claude-voice.md). No options here are secret (confirmed in
 // apps.json), so unlike the OWUI chat app there's no /app-config fetch needed at all for config.
 var Q = new URLSearchParams(location.search);
+// This one page serves EVERY voice-panel app: the served path's first segment is the app id, and
+// every server route lives under it (/claude-voice/*, /codex-voice/*, ...). Agent-specific strings
+// (title, modes, models, approval wording) arrive as `meta` on the /state snapshot -- see
+// applyMeta() -- so nothing agent-specific is hardcoded here beyond the claude-shaped fallbacks.
+var BASE = '/' + (location.pathname.split('/')[1] || 'claude-voice');
 (function () {
   document.body.classList.toggle('light', Q.get('_dark') === '0');
   var a = Q.get('_accent') || '';
@@ -91,7 +96,7 @@ function updateLiveBubble() {
   $('card').scrollTop = $('card').scrollHeight;
 }
 function connectEvents() {
-  var es = new EventSource('/claude-voice/events');
+  var es = new EventSource(BASE + '/events');
   es.onmessage = function (e) {
     var msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
     if (msg.type === 'assistant-start') {
@@ -200,7 +205,7 @@ function decideApproval(decision) {
   var requestId = pendingApprovalRequestId;
   if (!requestId) return;
   hideApprovalOverlay();
-  fetch('/claude-voice/approval-decision', {
+  fetch(BASE + '/approval-decision', {
     method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ requestId: requestId, decision: decision }),
   }).catch(function () { setStatus('error', 'Could not send the approval decision.'); });
@@ -212,8 +217,43 @@ function updateLiveBubbleFinal(row) {
   row.querySelector('.bubble').innerHTML = renderContent(liveMsg.text);
   wireCopyButtons(row);
 }
-fetch('/claude-voice/state', { cache: 'no-store' }).then(function (r) { return r.json(); })
+// Agent-specific strings and pick lists, delivered by the host on /state. The markup ships with
+// claude-shaped fallbacks so the page still renders sensibly if the fetch fails; meta replaces
+// them wholesale. Mode options are rebuilt as DOM (labels + descriptions differ per agent).
+function applyMeta(meta) {
+  if (!meta) return;
+  if (meta.title) { $('title').textContent = meta.title; document.title = meta.title; }
+  if (meta.approvalTitle) $('approvalTitle').textContent = meta.approvalTitle;
+  if (meta.turnFailedText) turnFailedText = meta.turnFailedText;
+  if (meta.modes && meta.modes.length) {
+    MODE_LABELS = {};
+    var wrap = $('modeOpts');
+    wrap.innerHTML = '';
+    meta.modes.forEach(function (m) {
+      MODE_LABELS[m.id] = m.label;
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'modeOpt';
+      b.setAttribute('data-mode', m.id);
+      b.textContent = m.label;
+      if (m.desc) {
+        var s = document.createElement('small');
+        s.textContent = m.desc;
+        b.appendChild(s);
+      }
+      wireModeOpt(b);
+      wrap.appendChild(b);
+    });
+    syncModeUI();
+  }
+  if (meta.models && meta.models.length) {
+    MODEL_PICKS = meta.models.map(function (m) { return [m.id, m.label]; });
+    syncPickButtons();
+  }
+}
+fetch(BASE + '/state', { cache: 'no-store' }).then(function (r) { return r.json(); })
   .then(function (s) {
+    applyMeta(s.meta);
     // Replay the session's transcript (kept by main.js) -- the webview reloads this page on every
     // page switch, so without this a rotate-away-and-back would blank the whole conversation.
     if (s.transcript && s.transcript.length) { transcript = s.transcript.slice(); renderTranscript(); }
@@ -232,13 +272,14 @@ function autoGrow() {
 $('textInput').addEventListener('input', autoGrow);
 
 var turnInProgress = false;   // a sent turn hasn't seen its turn-complete yet (drives status after audio ends early)
+var turnFailedText = 'Turn failed to send — no project set, or claude CLI not found.';   // meta can override per agent
 function sendText(text) {
   if (!text) return;
   transcript.push({ role: 'user', text: text });
   renderTranscript();
   turnInProgress = true;
   $('sendBtn').disabled = true;
-  fetch('/claude-voice/turn', {
+  fetch(BASE + '/turn', {
     method: 'POST', cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
     // `speak` is decided HERE, per turn, by the SPEAKER toggle alone -- mic and speaker are fully
@@ -248,7 +289,7 @@ function sendText(text) {
     body: JSON.stringify({ text: text, speak: !!speakEnabled }),
   }).then(function (r) { return r.json(); })
     .then(function (r) {
-      if (!r || !r.ok) { turnInProgress = false; setStatus('error', 'Turn failed to send — no project set, or claude CLI not found.'); return; }
+      if (!r || !r.ok) { turnInProgress = false; setStatus('error', turnFailedText); return; }
       if (r.speech) startTurnAudio(r.speech);
     })
     .catch(function () { turnInProgress = false; setStatus('error', 'Could not reach the panel server.'); })
@@ -288,13 +329,13 @@ function speak(text, onDone) {
   // string survives (oversized request lines got rejected server-side before any handler ran --
   // the "sometimes replies just aren't spoken" bug). Failures surface in the status line now
   // instead of dying silently.
-  fetch('/claude-voice/tts', {
+  fetch(BASE + '/tts', {
     method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: text }),
   }).then(function (r) { return r.json(); })
     .then(function (r) {
       if (!r || !r.ok || !r.id) { finish('Speech failed to start.'); return; }
-      var audio = new Audio('/claude-voice/tts-audio?id=' + encodeURIComponent(r.id));
+      var audio = new Audio(BASE + '/tts-audio?id=' + encodeURIComponent(r.id));
       audio.addEventListener('ended', function () { finish(); });
       audio.addEventListener('error', function () { finish('Speech playback failed.'); });
       applySinkId(audio);
@@ -332,7 +373,7 @@ function stopTurnAudio() {
 }
 function startTurnAudio(turnId) {
   stopTurnAudio();
-  var a = turnAudio = new Audio('/claude-voice/turn-audio?turn=' + encodeURIComponent(turnId));
+  var a = turnAudio = new Audio(BASE + '/turn-audio?turn=' + encodeURIComponent(turnId));
   var done = function () {   // ended and error land in the same place: release the mic, settle status
     if (turnAudio !== a) return;
     turnAudio = null;
@@ -448,7 +489,7 @@ function pickDevice(kind, label) {
     savedModelPick = label;
     postOption('modelPick', label);   // persists; also what a fresh session start reads
     // Live session: resume-restart onto the new model (same trick as the Mode button, ~2s pause).
-    fetch('/claude-voice/model', {
+    fetch(BASE + '/model', {
       method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: label }),
     }).then(function (r) { return r.json(); })
@@ -495,7 +536,7 @@ function onVADSpeechStart() {
 function onVADSpeechEnd(pcm16) {
   if (suppressVAD) return;
   setStatus('thinking');
-  fetch('/claude-voice/audio', { method: 'POST', cache: 'no-store', body: pcm16.buffer })
+  fetch(BASE + '/audio', { method: 'POST', cache: 'no-store', body: pcm16.buffer })
     .then(function (r) { return r.json(); })
     .then(function (r) {
       // Re-check AFTER the async STT round trip: if speech started playing while this was in
@@ -574,7 +615,7 @@ var projRoot = '';
 function pickProject(dir) {
   $('projectOverlay').classList.add('hidden');
   setStatus('thinking', '');
-  fetch('/claude-voice/session/start', {
+  fetch(BASE + '/session/start', {
     method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ projectDir: dir }),
   }).then(function (r) { return r.json(); })
@@ -587,7 +628,7 @@ function pickProject(dir) {
 // "Use this folder", which starts a session at whatever level is being browsed (the standard
 // mobile folder-picker pattern, chosen explicitly by the user 2026-08-12).
 function openProjectOverlay(browsePath) {
-  var url = '/claude-voice/projects' + (browsePath ? '?path=' + encodeURIComponent(browsePath) : '');
+  var url = BASE + '/projects' + (browsePath ? '?path=' + encodeURIComponent(browsePath) : '');
   fetch(url, { cache: 'no-store' }).then(function (r) { return r.json(); })
     .then(function (p) {
       projRoot = p.root || '';
@@ -661,7 +702,7 @@ $('settingsClose').onclick = function () { $('settingsOverlay').classList.add('h
 
 // ---- Panel-tunable settings (persisted server-side into the page's options in config.json) ----
 function postOption(key, value) {
-  fetch('/claude-voice/option', {
+  fetch(BASE + '/option', {
     method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key: key, value: String(value) }),
   }).catch(function () {});
@@ -700,12 +741,13 @@ function syncModeUI() {
 }
 $('vpMode').onclick = function () { syncModeUI(); $('modeOverlay').classList.remove('hidden'); };
 $('modeCancel').onclick = function () { $('modeOverlay').classList.add('hidden'); };
-document.querySelectorAll('.modeOpt').forEach(function (btn) {
+// One wiring path for both the markup's fallback buttons and the meta-built ones (applyMeta).
+function wireModeOpt(btn) {
   btn.onclick = function () {
     var mode = btn.getAttribute('data-mode');
     $('modeOverlay').classList.add('hidden');
     if (!mode || mode === currentMode) return;
-    fetch('/claude-voice/permission-mode', {
+    fetch(BASE + '/permission-mode', {
       method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode: mode }),
     }).then(function (r) { return r.json(); })
@@ -714,7 +756,8 @@ document.querySelectorAll('.modeOpt').forEach(function (btn) {
       })
       .catch(function () { setStatus('error', 'Could not reach the panel server.'); });
   };
-});
+}
+document.querySelectorAll('.modeOpt').forEach(wireModeOpt);
 
 syncMicUI();
 syncSpkUI();

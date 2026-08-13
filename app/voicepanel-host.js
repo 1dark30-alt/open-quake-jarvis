@@ -35,8 +35,11 @@ function isSttNoisePhrase(text) {
 
 // deps: { activeServedAppConfig(appId), activeGrid(), getConfig(), saveConfig(),
 //         setRingState(state), clearRingOverride(), getDocumentsPath() }
-function createVoicePanelHost({ appId, storageKey, log, adapter, deps }) {
+// branding: { title, approvalTitle, turnFailedText } -- agent-specific page strings, delivered to
+// the shared page as `meta` on the /state snapshot together with the adapter's mode/model lists.
+function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps }) {
   const say = log || (() => {});
+  const brand = branding || {};
 
   // Accumulated view of the current turn, for the /<app>/state snapshot (initial page load and
   // SSE-reconnect recovery -- a fresh subscriber knows the current status immediately, before any
@@ -163,6 +166,15 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, deps }) {
       model: adapter.currentModel(),
       projectDir: adapter.projectDir() || (opts && opts.options.projectDir) || '',
       transcript,
+      // Agent-specific page strings + pick lists; the shared page applies these over its
+      // claude-shaped markup fallbacks (see applyMeta in claudevoiceview.js).
+      meta: {
+        title: brand.title || '',
+        approvalTitle: brand.approvalTitle || '',
+        turnFailedText: brand.turnFailedText || '',
+        modes: adapter.listModes ? adapter.listModes() : [],
+        models: adapter.listModels ? adapter.listModels() : [],
+      },
     });
   }
 

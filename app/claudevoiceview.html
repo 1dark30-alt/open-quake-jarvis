@@ -292,10 +292,13 @@
   <div id="modeOverlay" class="hidden">
     <div id="modeCard">
       <div id="modeTitle">Permission mode</div>
-      <button class="modeOpt" data-mode="manual" type="button">Manual<small>Ask before every action (touch approval)</small></button>
-      <button class="modeOpt" data-mode="acceptEdits" type="button">Accept edits<small>File changes auto-approved</small></button>
-      <button class="modeOpt" data-mode="plan" type="button">Plan<small>Describe, don't act, until approved</small></button>
-      <button class="modeOpt" data-mode="bypassPermissions" type="button">Full auto<small>No prompts at all — use with care</small></button>
+      <!-- Fallback options (claude-shaped); applyMeta() rebuilds this container per agent. -->
+      <div id="modeOpts">
+        <button class="modeOpt" data-mode="manual" type="button">Manual<small>Ask before every action (touch approval)</small></button>
+        <button class="modeOpt" data-mode="acceptEdits" type="button">Accept edits<small>File changes auto-approved</small></button>
+        <button class="modeOpt" data-mode="plan" type="button">Plan<small>Describe, don't act, until approved</small></button>
+        <button class="modeOpt" data-mode="bypassPermissions" type="button">Full auto<small>No prompts at all — use with care</small></button>
+      </div>
       <div style="display:flex;justify-content:flex-end"><button id="modeCancel" type="button">Cancel</button></div>
     </div>
   </div>

@@ -94,6 +94,11 @@ const claudeVoiceHost = createVoicePanelHost({
   appId: 'claude-voice',
   storageKey: 'claudeVoice',
   log: claudeVoiceLog,
+  branding: {
+    title: 'Claude Code',
+    approvalTitle: '⚠ Claude wants to do something',
+    turnFailedText: 'Turn failed to send — no project set, or claude CLI not found.',
+  },
   adapter: createClaudeVoiceAdapter({
     getServerPort: () => serverPort,
     getUserDataPath: () => app.getPath('userData'),
