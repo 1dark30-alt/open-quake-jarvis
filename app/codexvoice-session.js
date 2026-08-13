@@ -37,6 +37,7 @@ function findCodexExe(execFileSync) {
 // flow (Phase 6) before they are safe to offer on the panel.
 const CODEX_MODE_PRESETS = {
   readOnly: { label: 'Read only', desc: 'Look but never touch — no approvals needed', approvalPolicy: 'never', sandbox: 'read-only' },
+  manual: { label: 'Manual', desc: 'Can work in the folder — asks before commands and file changes', approvalPolicy: 'on-request', sandbox: 'workspace-write' },
 };
 const CODEX_DEFAULT_MODE = 'readOnly';
 
@@ -63,6 +64,8 @@ function createCodexVoiceAdapter({ log }) {
   let turnText = '';            // accumulated deltas for the current turn
   let finalText = null;         // authoritative text from item/completed(agentMessage)
   let lastStderr = '';          // only surfaced when a handshake fails, else stderr is log noise
+  let pendingApprovals = new Map();   // requestId(string) -> {id, method} awaiting a panel decision
+  let fileChangeItems = new Map();    // itemId -> item, so a fileChange approval can show WHAT changes (capped)
 
   function send(method, params) {
     if (!proc || !proc.stdin || proc.stdin.destroyed) return Promise.reject(new Error('codex app-server not running'));
@@ -89,6 +92,13 @@ function createCodexVoiceAdapter({ log }) {
     ready = false;
     pending.forEach(p => p.reject(new Error(reason || 'codex app-server stopped')));
     pending = new Map();
+    // A dying process invalidates its held-open approval requests; tell the panel so the overlay
+    // never sits waiting on a request nobody can answer anymore.
+    pendingApprovals.forEach((entry, requestId) => {
+      emitter.emit('approval', { type: 'approval-timeout', requestId, decision: 'deny' });
+    });
+    pendingApprovals = new Map();
+    fileChangeItems = new Map();
     if (!old) return;
     try { old.stdin.end(); } catch (e) {}
     const killTimer = setTimeout(() => { try { old.kill(); } catch (e) {} }, 1000);
@@ -105,11 +115,42 @@ function createCodexVoiceAdapter({ log }) {
       else p.resolve(m.result);
       return;
     }
-    // Server-initiated REQUEST (has both id and method) -- the approval surface. Phase 4 runs with
-    // approvalPolicy 'never' so none should arrive; if one does anyway, decline it rather than
-    // hanging the server (fail closed, same posture as the claude hook's timeout).
+    // Server-initiated REQUEST (has both id and method) -- the approval surface, verified against
+    // the 0.128.0 protocol schema. Command and file-change approvals go to the panel overlay;
+    // everything else fails closed (same posture as the claude hook's timeout).
     if (m.id != null && m.method) {
-      say('unexpected server request ' + m.method + ' declined (approvals land in Phase 6)');
+      const p = m.params || {};
+      if (m.method === 'item/commandExecution/requestApproval') {
+        const requestId = String(m.id);
+        pendingApprovals.set(requestId, { id: m.id, method: m.method });
+        emitter.emit('approval', {
+          type: 'approval-request', requestId,
+          toolName: 'Run command',
+          toolInput: { command: p.command || '(command unavailable)', path: p.cwd || undefined, reason: p.reason || undefined },
+        });
+        return;
+      }
+      if (m.method === 'item/fileChange/requestApproval') {
+        const requestId = String(m.id);
+        pendingApprovals.set(requestId, { id: m.id, method: m.method });
+        // The request itself carries no diff -- the change detail lives in the fileChange ITEM
+        // streamed just before it. Best effort: show the stashed item, else reason/grantRoot.
+        const item = p.itemId != null ? fileChangeItems.get(p.itemId) : null;
+        emitter.emit('approval', {
+          type: 'approval-request', requestId,
+          toolName: 'Change files',
+          toolInput: item || { reason: p.reason || 'File changes in the working folder', grantRoot: p.grantRoot || undefined },
+        });
+        return;
+      }
+      if (m.method === 'item/permissions/requestApproval') {
+        // Response shape is a granted-permission PROFILE, not accept/decline -- an empty grant is
+        // the schema-valid "no" (no required props). Interactive support is a future item; rare.
+        say('permissions request auto-denied (empty grant): ' + JSON.stringify(p.reason || p.permissions || {}).slice(0, 200));
+        respond(m.id, { permissions: {} });
+        return;
+      }
+      say('unexpected server request ' + m.method + ' declined');
       respond(m.id, { decision: 'decline' });
       return;
     }
@@ -128,6 +169,15 @@ function createCodexVoiceAdapter({ log }) {
       if (typeof params.delta === 'string' && params.delta) {
         turnText += params.delta;
         emitter.emit('assistant-delta', { text: params.delta });
+      }
+      return;
+    }
+    if (method === 'item/started' || method === 'item/updated') {
+      // Stash fileChange items so a subsequent approval request can show WHAT is changing.
+      const item = params.item || {};
+      if (item.type === 'fileChange' && item.id != null) {
+        fileChangeItems.set(item.id, item);
+        while (fileChangeItems.size > 8) fileChangeItems.delete(fileChangeItems.keys().next().value);
       }
       return;
     }
@@ -251,8 +301,23 @@ function createCodexVoiceAdapter({ log }) {
       return true;
     },
 
-    // ---- mode (Phase 4: readOnly only; presets expand once approvals are wired) ----
-    setMode(pick) { return pick === mode && !!CODEX_MODE_PRESETS[pick]; },
+    // ---- mode: presets pair approvalPolicy + sandbox; a live switch re-resumes the SAME thread
+    // with the new policy over the existing connection (no process restart, conversation intact) ----
+    setMode(pick) {
+      const preset = CODEX_MODE_PRESETS[pick];
+      if (!preset) return false;
+      if (pick === mode) return true;
+      mode = pick;
+      if (ready && threadId) {
+        send('thread/resume', { threadId, cwd: projectDir, approvalPolicy: preset.approvalPolicy, sandbox: preset.sandbox })
+          .then(() => say('mode -> ' + pick + ' (' + preset.approvalPolicy + ' / ' + preset.sandbox + ')'))
+          .catch(e => {
+            say('mode switch failed: ' + e.message);
+            emitter.emit('error', { message: 'Mode switch failed: ' + e.message });
+          });
+      }
+      return true;
+    },
     mode() { return mode; },
     listModes() {
       return Object.entries(CODEX_MODE_PRESETS).map(([id, p]) => ({ id, label: p.label, desc: p.desc }));
@@ -264,9 +329,23 @@ function createCodexVoiceAdapter({ log }) {
     validModel(model) { return model === ''; },
     listModels() { return [{ id: '', label: 'Default (account setting)' }]; },
 
-    // ---- approvals (in-band; Phase 6 fills these) ----
-    decideApproval() { return false; },
-    cancelApprovals() {},
+    // ---- approvals (in-band JSON-RPC responses; no external hook, no settings.json) ----
+    decideApproval(requestId, decision) {
+      const pending = pendingApprovals.get(String(requestId));
+      if (!pending) return false;
+      pendingApprovals.delete(String(requestId));
+      respond(pending.id, { decision: decision === 'allow' ? 'accept' : 'decline' });
+      emitter.emit('approval', { type: 'approval-decision', requestId: String(requestId), decision });
+      return true;
+    },
+    cancelApprovals(reason) {
+      pendingApprovals.forEach((pending, requestId) => {
+        respond(pending.id, { decision: 'decline' });
+        emitter.emit('approval', { type: 'approval-timeout', requestId, decision: 'deny' });
+      });
+      pendingApprovals = new Map();
+      if (reason) say('pending approvals declined: ' + reason);
+    },
 
     on: emitter.on.bind(emitter),
     off: emitter.off.bind(emitter),

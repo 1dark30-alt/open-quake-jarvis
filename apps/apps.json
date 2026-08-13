@@ -6124,7 +6124,8 @@
         "type": "select",
         "default": "readOnly",
         "choices": [
-          ["readOnly", "Read only — look but never touch (no approvals needed)"]
+          ["readOnly", "Read only — look but never touch (no approvals needed)"],
+          ["manual", "Manual — can work in the folder, asks before commands and file changes"]
         ]
       },
       { "key": "chatFontSize", "label": "Chat text size (px)", "type": "text", "default": "16" },
