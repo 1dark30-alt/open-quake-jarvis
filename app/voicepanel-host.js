@@ -83,6 +83,7 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
   // ---- adapter events -> state/speech/SSE (moved verbatim from the main.js event handlers) ----
   adapter.on('model', ({ model }) => broadcast({ type: 'model', model }));
   adapter.on('models-changed', () => broadcast({ type: 'meta', meta: buildMeta() }));
+  adapter.on('notice', ({ text }) => broadcast({ type: 'notice', text }));   // plain-language user guidance on the status line
   adapter.on('assistant-start', () => {
     state.status = 'thinking';
     broadcast({ type: 'assistant-start' });
@@ -242,6 +243,7 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       turnFailedText: brand.turnFailedText || '',
       modes: adapter.listModes ? adapter.listModes() : [],
       models: adapter.listModels ? adapter.listModels() : [],
+      approvalAlways: !!adapter.supportsAlwaysApproval,   // "Always" = approve + stop asking this session (codex acceptForSession)
     };
   }
 

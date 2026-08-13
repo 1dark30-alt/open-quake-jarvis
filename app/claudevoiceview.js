@@ -162,6 +162,9 @@ function connectEvents() {
       syncPickButtons();
     } else if (msg.type === 'meta') {
       applyMeta(msg.meta);   // live refresh (e.g. codex model discovery finished after page load)
+    } else if (msg.type === 'notice') {
+      speechErrText = msg.text || '';   // same sticky status-line slot: plain-language guidance
+      setStatus($('status').textContent.toLowerCase(), '');
     } else if (msg.type === 'speech-error') {
       speechErrText = msg.error || 'Speech failed.';
       setStatus($('status').textContent.toLowerCase(), '');   // repaint the status line with the sticky notice
@@ -235,6 +238,7 @@ function decideApproval(decision) {
 }
 $('approvalApprove').onclick = function () { decideApproval('allow'); };
 $('approvalDeny').onclick = function () { decideApproval('deny'); };
+$('approvalAlways').onclick = function () { decideApproval('always'); };   // approve + stop asking this session (meta-gated)
 function updateLiveBubbleFinal(row) {
   if (!row || !liveMsg) return;
   row.querySelector('.bubble').innerHTML = renderContent(liveMsg.text);
@@ -248,6 +252,7 @@ function applyMeta(meta) {
   if (meta.title) { $('title').textContent = meta.title; document.title = meta.title; }
   if (meta.approvalTitle) $('approvalTitle').textContent = meta.approvalTitle;
   if (meta.turnFailedText) turnFailedText = meta.turnFailedText;
+  $('approvalAlways').classList.toggle('hidden', !meta.approvalAlways);   // only agents whose protocol supports session-wide approval
   if (meta.modes && meta.modes.length) {
     MODE_LABELS = {};
     var wrap = $('modeOpts');

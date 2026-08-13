@@ -504,7 +504,9 @@ async function handler(req, res) {
     if (voicePath === '/approval-decision' && req.method === 'POST') {
       let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
       const requestId = body && body.requestId, decision = body && body.decision;
-      if (!requestId || (decision !== 'allow' && decision !== 'deny') || !h.approvalDecision) return done(res, false);
+      // 'always' = approve and stop asking for similar requests this session (adapters that don't
+      // support it never advertise the button, and would treat it as a plain allow at worst).
+      if (!requestId || (decision !== 'allow' && decision !== 'deny' && decision !== 'always') || !h.approvalDecision) return done(res, false);
       let ok = false; try { ok = !!h.approvalDecision(requestId, decision); } catch (e) {}
       return done(res, ok);
     }

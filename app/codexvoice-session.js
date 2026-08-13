@@ -35,31 +35,33 @@ function findCodexExe(execFileSync) {
 // Mode presets pair codex's two knobs (approval policy + sandbox) into the single mode id the
 // panel's Mode overlay works with. Phase 4 exposes ONLY readOnly -- the others need the approval
 // flow (Phase 6) before they are safe to offer on the panel.
-// Each preset carries both param forms: `sandbox` (SandboxMode string, thread/start) and
-// `sandboxPolicy` (object, turn/start). The TURN-level overrides are what actually re-arm a live
-// session -- verified on hardware that thread/resume with new policy params is silently ignored
-// for an already-loaded thread, while turn/start overrides apply "for this turn and subsequent
-// turns" (schema wording, confirmed working).
+// EXACT mirror of the codex CLI's built-in approval presets for the installed version -- ids,
+// labels, descriptions, and policy pairs verbatim from codex-rs/utils/approval-presets/src/lib.rs
+// at rust-v0.147.0 (explicit requirement: the panel reflects the same permissions as the CLI).
+// Note Read Only pairs with ON-REQUEST, not never: that is what lets the CLI ask to escalate
+// instead of dead-ending when its (Windows-broken) sandbox blocks a command. Each preset carries
+// both param forms: `sandbox` (SandboxMode string, thread/start) and `sandboxPolicy` (object,
+// turn/start) -- turn-level overrides are what re-arm a live session.
 const CODEX_MODE_PRESETS = {
-  readOnly: {
-    label: 'Read only', desc: 'Look but never touch — no approvals needed',
-    approvalPolicy: 'never', sandbox: 'read-only', sandboxPolicy: { type: 'readOnly' },
+  'read-only': {
+    label: 'Read Only',
+    desc: 'Codex can read files in the current workspace. Approval is required to edit files or access the internet.',
+    approvalPolicy: 'on-request', sandbox: 'read-only', sandboxPolicy: { type: 'readOnly' },
   },
-  manual: {
-    label: 'Manual', desc: 'Can work in the folder — asks before commands and file changes',
+  auto: {
+    label: 'Default',
+    desc: 'Codex can read and edit files in the current workspace, and run commands. Approval is required to access the internet or edit other files.',
     approvalPolicy: 'on-request', sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
   },
-  // NO "Auto" (sandboxed-writes) preset on purpose: codex's Windows sandbox is broken for
-  // workspaces on non-system drives (openai/codex#13378, #15165, #17112 -- "Access is denied" on
-  // ordinary commands, hardware-verified here on D:\) and #17179 documents it corrupting project
-  // file ownership. Until that's fixed upstream, sandboxed writes are either dead ends or a repo
-  // hazard -- Manual (approved commands run unsandboxed) and Full are the working write modes.
-  full: {
-    label: 'Full auto', desc: 'No sandbox at all — use with care',
+  'full-access': {
+    label: 'Full Access',
+    desc: 'Codex can edit files outside this workspace and access the internet without asking for approval. Exercise caution when using.',
     approvalPolicy: 'never', sandbox: 'danger-full-access', sandboxPolicy: { type: 'dangerFullAccess' },
   },
 };
-const CODEX_DEFAULT_MODE = 'readOnly';
+const CODEX_DEFAULT_MODE = 'auto';   // the CLI's own default preset
+// Panel options saved under this app's earlier preset ids keep working.
+const CODEX_LEGACY_MODES = { readOnly: 'read-only', manual: 'auto', full: 'full-access' };
 
 // Server chatter that is expected and carries nothing the panel needs (Phase 4).
 const IGNORED_NOTIFICATIONS = new Set([
@@ -349,7 +351,7 @@ function createCodexVoiceAdapter({ log }) {
       }
       stopProc('superseded by a new session');
       projectDir = dir;
-      if (pick === 'auto') pick = 'manual';   // legacy alias: the removed sandboxed-writes preset maps to its nearest safe survivor
+      pick = CODEX_LEGACY_MODES[pick] || pick;   // earlier panel builds saved different preset ids
       mode = CODEX_MODE_PRESETS[pick] ? pick : CODEX_DEFAULT_MODE;
       threadId = null;
       resumeThreadId = null;   // a fresh start (e.g. folder switch) is a NEW conversation, never a resume of the old folder's
@@ -420,11 +422,13 @@ function createCodexVoiceAdapter({ log }) {
     },
 
     // ---- approvals (in-band JSON-RPC responses; no external hook, no settings.json) ----
+    supportsAlwaysApproval: true,   // acceptForSession: approve + stop asking for similar requests this session
     decideApproval(requestId, decision) {
       const pending = pendingApprovals.get(String(requestId));
       if (!pending) return false;
       pendingApprovals.delete(String(requestId));
-      respond(pending.id, { decision: decision === 'allow' ? 'accept' : 'decline' });
+      const wire = decision === 'always' ? 'acceptForSession' : decision === 'allow' ? 'accept' : 'decline';
+      respond(pending.id, { decision: wire });
       emitter.emit('approval', { type: 'approval-decision', requestId: String(requestId), decision });
       return true;
     },

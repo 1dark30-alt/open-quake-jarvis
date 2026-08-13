@@ -235,9 +235,14 @@
     white-space: pre-wrap; word-break: break-word; user-select: text; }
   #approvalDetail .approvalPath { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
   #approvalBtns { display: flex; gap: 14px; margin-top: 12px; }
-  #approvalDeny, #approvalApprove { flex: 1; min-height: 64px; border-radius: 12px; border: none;
+  #approvalDeny, #approvalApprove, #approvalAlways { flex: 1; min-height: 64px; border-radius: 12px; border: none;
     font-size: 18px; font-weight: 700; cursor: pointer; }
   #approvalDeny { background: var(--surf2); color: var(--danger); border: 2px solid var(--danger); }
+  /* Always = approve AND stop asking for similar requests this session (only shown for agents
+     whose protocol supports it -- delivered via /state meta). Neutral styling: Approve alone
+     keeps the accent so the primary action stays unmistakable. */
+  #approvalAlways { background: var(--surf2); color: var(--fg); border: 1px solid var(--tile-bd); }
+  #approvalAlways.hidden { display: none; }
   #approvalApprove { background: var(--accent); color: #04120b; }
 </style>
 </head>
@@ -353,6 +358,7 @@
       <div id="approvalDetail"></div>
       <div id="approvalBtns">
         <button id="approvalDeny" type="button">✕ Deny</button>
+        <button id="approvalAlways" type="button" class="hidden">✓ Always</button>
         <button id="approvalApprove" type="button">✓ Approve</button>
       </div>
     </div>
