@@ -51,7 +51,6 @@ function createCodexVoiceAdapter({ log }) {
   const emitter = new EventEmitter();
 
   let proc = null;
-  let stopping = false;
   let nextId = 0;
   let pending = new Map();      // request id -> {resolve, reject}
   let queuedTurns = [];         // sendTurn() calls made before the thread handshake finished
@@ -77,6 +76,23 @@ function createCodexVoiceAdapter({ log }) {
   function respond(id, result) {
     if (!proc || !proc.stdin || proc.stdin.destroyed) return;
     try { proc.stdin.write(JSON.stringify({ id, result }) + '\n'); } catch (e) {}
+  }
+
+  // Retire the current process: null out `proc` FIRST so every handler still attached to the old
+  // process (line/exit/stderr) sees itself as stale and stands down -- the folder-switch race where
+  // the OLD process's exit event shot down the NEW process's in-flight handshake lived here.
+  // Shutdown is stdin-EOF first (the stdio transport's clean exit, which takes the whole shell
+  // tree with it), hard kill only as a fallback -- same discipline as claudevoice-session.
+  function stopProc(reason) {
+    const old = proc;
+    proc = null;
+    ready = false;
+    pending.forEach(p => p.reject(new Error(reason || 'codex app-server stopped')));
+    pending = new Map();
+    if (!old) return;
+    try { old.stdin.end(); } catch (e) {}
+    const killTimer = setTimeout(() => { try { old.kill(); } catch (e) {} }, 1000);
+    if (killTimer.unref) killTimer.unref();
   }
 
   function handleMessage(m) {
@@ -144,21 +160,26 @@ function createCodexVoiceAdapter({ log }) {
     const thisProc = proc;
     const lines = readline.createInterface({ input: proc.stdout });
     lines.on('line', line => {
+      if (proc !== thisProc) return;   // buffered output from a replaced process must not touch live state
       if (!line.trim()) return;
       let m; try { m = JSON.parse(line); } catch (e) { return; }
       try { handleMessage(m); } catch (e) { say('event handling failed: ' + e.message); }
     });
-    proc.stderr.on('data', b => { lastStderr = String(b).trim().slice(0, 400); });   // codex logs freely here; kept for error surfacing only
-    proc.on('error', e => { say('codex spawn error: ' + e.message); emitter.emit('error', { message: 'codex CLI failed to start: ' + e.message }); });
-    proc.on('exit', code => {
-      if (proc === thisProc) { proc = null; ready = false; }
+    thisProc.stderr.on('data', b => { if (proc === thisProc) lastStderr = String(b).trim().slice(0, 400); });   // codex logs freely here; kept for error surfacing only
+    thisProc.on('error', e => {
+      if (proc !== thisProc) return;
+      say('codex spawn error: ' + e.message);
+      emitter.emit('error', { message: 'codex CLI failed to start: ' + e.message });
+    });
+    thisProc.on('exit', code => {
+      if (proc !== thisProc) return;   // intentionally replaced/stopped: stopProc() already cleaned up
+      proc = null;
+      ready = false;
       pending.forEach(p => p.reject(new Error('codex app-server exited')));
       pending = new Map();
-      if (!stopping) {
-        say('codex app-server exited' + (code == null ? '' : ' (code ' + code + ')'));
-        resumeThreadId = threadId || resumeThreadId;   // next start() resumes the conversation
-        emitter.emit('exit', { stillRunning: false });
-      }
+      say('codex app-server exited' + (code == null ? '' : ' (code ' + code + ')'));
+      resumeThreadId = threadId || resumeThreadId;   // next start() resumes the conversation
+      emitter.emit('exit', { stillRunning: false });
     });
     // Handshake: initialize, then start (or resume) the thread. sendTurn() calls queue until this
     // finishes -- the host's lazy-start-then-send flow stays synchronous from its point of view.
@@ -208,22 +229,20 @@ function createCodexVoiceAdapter({ log }) {
         emitter.emit('error', { message: 'codex CLI not found on PATH' });
         return false;
       }
-      stopping = true;
-      if (proc) { try { proc.kill(); } catch (e) {} proc = null; }
-      stopping = false;
+      stopProc('superseded by a new session');
       projectDir = dir;
       mode = CODEX_MODE_PRESETS[pick] ? pick : CODEX_DEFAULT_MODE;
       threadId = null;
+      resumeThreadId = null;   // a fresh start (e.g. folder switch) is a NEW conversation, never a resume of the old folder's
       queuedTurns = [];
       launch({ cwd: dir, model: model || null });
       return true;
     },
     stop() {
-      stopping = true;
       queuedTurns = [];
       resumeThreadId = null;
-      if (proc) { try { proc.kill(); } catch (e) {} proc = null; }
-      ready = false;
+      threadId = null;
+      stopProc('session stopped');
     },
     sendTurn(text) {
       if (!proc) return false;
