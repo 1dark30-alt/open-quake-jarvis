@@ -258,6 +258,11 @@ function getClaudeVoiceProjects(browsePath) {
 const CLAUDE_VOICE_PANEL_OPTIONS = {
   chatFontSize: v => { const n = parseInt(v, 10); return n >= 12 && n <= 32 ? String(n) : null; },
   vadHangoverMs: v => { const n = parseInt(v, 10); return n >= 300 && n <= 3000 ? String(n) : null; },
+  // Device picks are stored as LABELS, not deviceIds -- Chromium's deviceIds are salted per origin
+  // and the served origin's port changes every launch, so an id would never match twice. The page
+  // re-matches label -> id at startup. Empty string = system default.
+  micDevice: v => typeof v === 'string' && v.length <= 200 ? v : null,
+  spkDevice: v => typeof v === 'string' && v.length <= 200 ? v : null,
 };
 function setClaudeVoiceOption(key, value) {
   const validate = CLAUDE_VOICE_PANEL_OPTIONS[key];
@@ -559,6 +564,9 @@ function isTrustedMediaRequest(wc, details) {
 }
 function handleDashboardPermissionRequest(wc, permission, cb, details) {
   if (permission === 'media' && isTrustedMediaRequest(wc, details)) return cb(true);
+  // setSinkId() -- the speaker picker in the Claude Voice settings -- needs this one; same trust
+  // gate as the mic (our own served pages, or an explicitly trusted dashboard origin).
+  if (permission === 'speaker-selection' && isTrustedMediaRequest(wc, details)) return cb(true);
   return cb(false);
 }
 

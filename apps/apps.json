@@ -6101,7 +6101,9 @@
       },
       { "key": "approvalsEnabled", "label": "Touch approval when in Manual mode", "type": "bool", "default": false },
     { "key": "chatFontSize", "label": "Chat text size (px)", "type": "text", "default": "16" },
-    { "key": "vadHangoverMs", "label": "Voice pause tolerance (ms)", "type": "text", "default": "800" }
+    { "key": "vadHangoverMs", "label": "Voice pause tolerance (ms)", "type": "text", "default": "800" },
+    { "key": "micDevice", "label": "Microphone (set from the panel Settings)", "type": "text", "default": "" },
+    { "key": "spkDevice", "label": "Speaker (set from the panel Settings)", "type": "text", "default": "" }
     ]
   }
 ]

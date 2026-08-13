@@ -225,7 +225,7 @@ function autoGrow() {
 $('textInput').addEventListener('input', autoGrow);
 
 var turnInProgress = false;   // a sent turn hasn't seen its turn-complete yet (drives status after audio ends early)
-function sendText(text, fromVoice) {
+function sendText(text) {
   if (!text) return;
   transcript.push({ role: 'user', text: text });
   renderTranscript();
@@ -234,10 +234,11 @@ function sendText(text, fromVoice) {
   fetch('/claude-voice/turn', {
     method: 'POST', cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
-    // `speak` is decided HERE, per turn (voice-initiated + speaker on) -- the server ties it to the
-    // turn, so one turn finishing can never silence a queued next turn's speech (the old
-    // lastTurnWasVoice-clobber bug). Typed turns never get spoken back unsolicited.
-    body: JSON.stringify({ text: text, speak: !!(fromVoice && speakEnabled) }),
+    // `speak` is decided HERE, per turn, by the SPEAKER toggle alone -- mic and speaker are fully
+    // independent (mic off + speaker on = type questions, hear the answers; explicitly required).
+    // Tying it to the turn server-side means one turn finishing can never silence a queued next
+    // turn's speech (the old lastTurnWasVoice-clobber bug).
+    body: JSON.stringify({ text: text, speak: !!speakEnabled }),
   }).then(function (r) { return r.json(); })
     .then(function (r) {
       if (!r || !r.ok) { turnInProgress = false; setStatus('error', 'Turn failed to send — no project set, or claude CLI not found.'); return; }
@@ -251,7 +252,7 @@ function send() {
   var text = ta.value.trim();
   if (!text) return;
   ta.value = ''; autoGrow();
-  sendText(text, false);
+  sendText(text);
 }
 $('sendBtn').onclick = send;
 $('textInput').addEventListener('keydown', function (e) {
@@ -289,13 +290,16 @@ function speak(text, onDone) {
       var audio = new Audio('/claude-voice/tts-audio?id=' + encodeURIComponent(r.id));
       audio.addEventListener('ended', function () { finish(); });
       audio.addEventListener('error', function () { finish('Speech playback failed.'); });
+      applySinkId(audio);
       audio.play().catch(function () { finish('Speech playback failed.'); });
     })
     .catch(function () { finish('Speech failed to start.'); });
 }
 $('ttsTestBtn').onclick = function () {
   var last = transcript.slice().reverse().find(function (m) { return m.role === 'assistant'; });
-  speak(last ? last.text : 'No reply yet to test with.');
+  // Match the saved speaker label first (may not have happened yet if no conversation was opened
+  // this page load) so the test actually plays on the picked device.
+  ensureDeviceIds().then(function () { speak(last ? last.text : 'No reply yet to test with.'); });
 };
 
 // ---- Turn speech (v2 -- the user's own architecture, task #26) ----
@@ -335,8 +339,107 @@ function startTurnAudio(turnId) {
   });
   a.addEventListener('ended', done);
   a.addEventListener('error', done);
+  applySinkId(a);   // route to the picked speaker (no-op on system default)
   a.play().catch(done);
 }
+
+// ---- Audio device pickers (Settings overlay) ----
+// Picks persist server-side as LABELS ('' = system default) because Chromium salts deviceIds per
+// origin and this page's origin (port) changes every app launch -- an id would never match twice.
+// Labels only become visible after a getUserMedia grant in this session, so enumeration runs
+// lazily (conversation open, settings open, Test speech) via a momentary mic grab that is closed
+// again immediately.
+var savedMicLabel = Q.get('micDevice') || '';
+var savedSpkLabel = Q.get('spkDevice') || '';
+var micDeviceId = '', spkDeviceId = '';
+var allDevices = [];
+var devicesReady = false;
+function matchDevices() {
+  var mic = allDevices.find(function (d) { return d.kind === 'audioinput' && d.label === savedMicLabel; });
+  var spk = allDevices.find(function (d) { return d.kind === 'audiooutput' && d.label === savedSpkLabel; });
+  micDeviceId = mic ? mic.deviceId : '';   // saved device missing -> system default (never a hard fail)
+  spkDeviceId = spk ? spk.deviceId : '';
+}
+function ensureDeviceIds(force) {
+  if (devicesReady && !force) return Promise.resolve();
+  return navigator.mediaDevices.getUserMedia({ audio: true }).then(function (tmp) {
+    return navigator.mediaDevices.enumerateDevices().then(function (devs) {
+      tmp.getTracks().forEach(function (t) { t.stop(); });
+      allDevices = devs || [];
+      matchDevices();
+      devicesReady = true;
+    });
+  }).catch(function () {
+    // No mic permission/hardware: carry on with system defaults. A real mic failure still
+    // surfaces where it matters -- vad.start() reports it on the status line.
+    allDevices = [];
+    matchDevices();
+    devicesReady = true;
+  });
+}
+function applySinkId(audio) {
+  if (spkDeviceId && audio.setSinkId) audio.setSinkId(spkDeviceId).catch(function () {});
+}
+// Settings shows only the CURRENT pick per device (big row, tap to change); the actual list lives
+// in its own full-size overlay -- never an always-visible scrolling list inside a dialog.
+function syncPickButtons() {
+  $('micPickVal').textContent = savedMicLabel || 'System default';
+  $('spkPickVal').textContent = savedSpkLabel || 'System default';
+}
+var devOverlayKind = '';   // 'audioinput' | 'audiooutput' while the picker overlay is open
+function renderDevOverlay() {
+  var kind = devOverlayKind;
+  var savedLabel = kind === 'audioinput' ? savedMicLabel : savedSpkLabel;
+  var el = $('devList');
+  el.innerHTML = '';
+  var devs = allDevices.filter(function (d) { return d.kind === kind && d.label; });
+  var matched = !!savedLabel && devs.some(function (d) { return d.label === savedLabel; });
+  function addRow(label, value, current) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'devRow' + (current ? ' current' : '');
+    b.textContent = label;
+    b.title = label;
+    b.onclick = function () { pickDevice(kind, value); };
+    el.appendChild(b);
+  }
+  addRow('System default', '', !matched);
+  devs.forEach(function (d) { addRow(d.label, d.label, matched && d.label === savedLabel); });
+}
+function openDevOverlay(kind) {
+  devOverlayKind = kind;
+  $('devTitle').textContent = kind === 'audioinput' ? 'Microphone' : 'Speaker';
+  renderDevOverlay();                                  // cached devices paint instantly...
+  ensureDeviceIds(true).then(function () {             // ...then a fresh enumeration replaces them
+    if (devOverlayKind === kind) renderDevOverlay();
+  });
+  $('devOverlay').classList.remove('hidden');
+}
+function pickDevice(kind, label) {
+  $('devOverlay').classList.add('hidden');
+  devOverlayKind = '';
+  if (kind === 'audioinput') {
+    savedMicLabel = label;
+    postOption('micDevice', label);
+    matchDevices();
+    if (conversationOpen && vad) {   // live conversation: reopen the mic on the new device now
+      vad.stop();
+      vad.setInputDevice(micDeviceId);
+      vad.start(onVADSpeechStart, onVADSpeechEnd, onVADLevel).catch(function (e) {
+        setStatus('error', 'Microphone switch failed: ' + (e && e.message ? e.message : e));
+      });
+    }
+  } else {
+    savedSpkLabel = label;
+    postOption('spkDevice', label);
+    matchDevices();
+    if (turnAudio) applySinkId(turnAudio);   // mid-reply switch moves the voice immediately
+  }
+  syncPickButtons();
+}
+$('micPickBtn').onclick = function () { openDevOverlay('audioinput'); };
+$('spkPickBtn').onclick = function () { openDevOverlay('audiooutput'); };
+$('devCancel').onclick = function () { $('devOverlay').classList.add('hidden'); devOverlayKind = ''; };
 
 // ---- Tap-to-toggle voice conversation (Phase 5) ----
 // Explicitly NOT push-to-talk: one tap opens a continuous conversation (VAD detects each utterance's
@@ -359,7 +462,7 @@ function onVADSpeechEnd(pcm16) {
       // flight, the utterance may have caught the speaker's first words -- drop it, never
       // ghost-send it as a turn.
       if (suppressVAD) return;
-      if (r && r.ok && r.text && r.text.trim()) { sendText(r.text.trim(), true); }
+      if (r && r.ok && r.text && r.text.trim()) { sendText(r.text.trim()); }
       else { setStatus(conversationOpen ? 'listening' : 'idle', r && r.error); }
     })
     .catch(function () { setStatus('error', 'Transcription request failed.'); });
@@ -373,10 +476,14 @@ window.oqxToggleConversation = function () {
   } else {
     conversationOpen = true;
     setStatus('listening');
-    vad.start(onVADSpeechStart, onVADSpeechEnd, onVADLevel).catch(function (e) {
+    ensureDeviceIds().then(function () {
+      if (!conversationOpen) return;   // toggled back off while devices were enumerating
+      vad.setInputDevice(micDeviceId);
+      return vad.start(onVADSpeechStart, onVADSpeechEnd, onVADLevel);
+    }).catch(function (e) {
       conversationOpen = false;
       syncMicUI();
-      setStatus('error', 'Microphone access failed: ' + e.message);
+      setStatus('error', 'Microphone access failed: ' + (e && e.message ? e.message : e));
     });
   }
   syncMicUI();
@@ -478,12 +585,12 @@ function openProjectOverlay(browsePath) {
     })
     .catch(function () { setStatus('error', 'Could not load the folder list.'); });
 }
-// ▲/▼ page buttons for the folder list -- replaced the custom drag-thumb, which only registered
+// ▲/▼ page buttons for scroll regions -- replaced the custom drag-thumb, which only registered
 // ~1 in 5 finger drags on the real panel. Tap = one page; hold = keeps paging every 400ms.
-(function wireProjScrollButtons() {
-  var list = $('projList');
+function wireScrollButtons(listId, upId, downId) {
+  var list = $(listId);
   function step(dir) { list.scrollBy({ top: dir * list.clientHeight * 0.9, behavior: 'smooth' }); }
-  [['projScrollUp', -1], ['projScrollDown', 1]].forEach(function (pair) {
+  [[upId, -1], [downId, 1]].forEach(function (pair) {
     var btn = $(pair[0]);
     var repeat = null;
     btn.addEventListener('pointerdown', function (e) {
@@ -495,7 +602,9 @@ function openProjectOverlay(browsePath) {
       btn.addEventListener(ev, function () { clearInterval(repeat); repeat = null; });
     });
   });
-})();
+}
+wireScrollButtons('projList', 'projScrollUp', 'projScrollDown');
+wireScrollButtons('devList', 'devScrollUp', 'devScrollDown');
 $('vpProject').onclick = function () { openProjectOverlay(); };
 $('projCancel').onclick = function () { $('projectOverlay').classList.add('hidden'); };
 $('projCreate').onclick = function () {
@@ -504,7 +613,10 @@ $('projCreate').onclick = function () {
   if (/[<>:"|?*\\/]/.test(name)) { setStatus(conversationOpen ? 'listening' : 'idle', 'Folder names can\'t contain < > : " | ? * \\ /'); return; }
   pickProject(projRoot.replace(/[\\/]+$/, '') + '\\' + name);
 };
-$('vpSettings').onclick = function () { $('settingsOverlay').classList.remove('hidden'); };
+$('vpSettings').onclick = function () {
+  syncPickButtons();   // labels come from saved options -- no mic grab needed just to open Settings
+  $('settingsOverlay').classList.remove('hidden');
+};
 $('settingsClose').onclick = function () { $('settingsOverlay').classList.add('hidden'); };
 
 // ---- Panel-tunable settings (persisted server-side into the page's options in config.json) ----
@@ -567,3 +679,4 @@ document.querySelectorAll('.modeOpt').forEach(function (btn) {
 syncMicUI();
 syncSpkUI();
 syncModeUI();
+syncPickButtons();

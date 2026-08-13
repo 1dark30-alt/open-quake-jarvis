@@ -24,6 +24,7 @@ function createVAD(opts) {
   let stream = null, audioCtx = null, source = null, processor = null, silentGain = null;
   let speaking = false, speechStartedAt = 0, hangoverTimer = null;
   let chunks = [];   // Float32Array pieces captured since the current utterance began
+  let inputDeviceId = '';   // '' = system default; set via setInputDevice() before start()
 
   function rms(float32) {
     let sum = 0;
@@ -47,7 +48,11 @@ function createVAD(opts) {
   // drives the mic visualizer's ripples, which should react to ANY sound the mic hears, not just
   // audio that crosses the utterance threshold.
   async function start(onSpeechStart, onSpeechEnd, onLevel) {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: SAMPLE_RATE } });
+    // deviceId as `ideal`, never `exact`: if the picked mic was unplugged, fall back to the system
+    // default rather than failing the whole conversation toggle.
+    const audio = { channelCount: 1, sampleRate: SAMPLE_RATE };
+    if (inputDeviceId) audio.deviceId = { ideal: inputDeviceId };
+    stream = await navigator.mediaDevices.getUserMedia({ audio });
     audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
     source = audioCtx.createMediaStreamSource(stream);
     processor = audioCtx.createScriptProcessor(bufferSize, 1, 1);
@@ -102,8 +107,11 @@ function createVAD(opts) {
   // Live-tunable pause tolerance (the settings overlay's "Voice pause tolerance" stepper): the
   // hangover closure reads the current value on every silence check, so this applies immediately.
   function setHangoverMs(ms) { ms = parseInt(ms, 10); if (ms > 0) hangoverMs = ms; }
+  // Mic pick from the settings overlay; takes effect on the next start() (the caller restarts a
+  // live conversation itself so the change applies immediately).
+  function setInputDevice(id) { inputDeviceId = id || ''; }
 
-  return { start, stop, setHangoverMs };
+  return { start, stop, setHangoverMs, setInputDevice };
 }
 
 window.createClaudeVoiceVAD = createVAD;

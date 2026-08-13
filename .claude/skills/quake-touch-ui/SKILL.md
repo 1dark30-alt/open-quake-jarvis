@@ -35,6 +35,10 @@ Read `docs/design-system.md` first; this file adds the touch/kiosk numbers and p
   (When the dominant use is picking one of N siblings, tap-name = select with a separate `›`
   browse zone is acceptable — but the `›` zone must itself be a full-size ≥48px target.)
 - **Filter-as-you-type** beats scrolling for known names, but only where a keyboard is natural.
+- **Pick-one settings (device, voice, theme…): show the CURRENT value on one big row ("Speaker —
+  System default ›"); tapping opens a dedicated full-size picker overlay** with uniform rows and
+  ▲/▼ paging. NEVER embed always-visible scrollable lists inside a settings dialog — they crowd
+  the dialog, truncate labels, and force native scrollbars (violated + corrected 2026-08-12).
 
 ## Scrolling
 
