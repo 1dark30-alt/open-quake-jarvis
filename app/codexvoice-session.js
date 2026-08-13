@@ -35,9 +35,20 @@ function findCodexExe(execFileSync) {
 // Mode presets pair codex's two knobs (approval policy + sandbox) into the single mode id the
 // panel's Mode overlay works with. Phase 4 exposes ONLY readOnly -- the others need the approval
 // flow (Phase 6) before they are safe to offer on the panel.
+// Each preset carries both param forms: `sandbox` (SandboxMode string, thread/start) and
+// `sandboxPolicy` (object, turn/start). The TURN-level overrides are what actually re-arm a live
+// session -- verified on hardware that thread/resume with new policy params is silently ignored
+// for an already-loaded thread, while turn/start overrides apply "for this turn and subsequent
+// turns" (schema wording, confirmed working).
 const CODEX_MODE_PRESETS = {
-  readOnly: { label: 'Read only', desc: 'Look but never touch — no approvals needed', approvalPolicy: 'never', sandbox: 'read-only' },
-  manual: { label: 'Manual', desc: 'Can work in the folder — asks before commands and file changes', approvalPolicy: 'on-request', sandbox: 'workspace-write' },
+  readOnly: {
+    label: 'Read only', desc: 'Look but never touch — no approvals needed',
+    approvalPolicy: 'never', sandbox: 'read-only', sandboxPolicy: { type: 'readOnly' },
+  },
+  manual: {
+    label: 'Manual', desc: 'Can work in the folder — asks before commands and file changes',
+    approvalPolicy: 'on-request', sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
+  },
 };
 const CODEX_DEFAULT_MODE = 'readOnly';
 
@@ -233,6 +244,16 @@ function createCodexVoiceAdapter({ log }) {
     });
     // Handshake: initialize, then start (or resume) the thread. sendTurn() calls queue until this
     // finishes -- the host's lazy-start-then-send flow stays synchronous from its point of view.
+    // Deadline: a wedged handshake (seen live: codex hung on thread/start during a model-registry
+    // hiccup) must surface as a panel error, never an eternal silent "thinking".
+    const handshakeDeadline = setTimeout(() => {
+      if (proc === thisProc && !ready) {
+        say('handshake timed out; stopping the app-server');
+        stopProc('handshake timed out');
+        emitter.emit('error', { message: 'Codex session failed to start: timed out — try switching folders to retry.' });
+      }
+    }, 30000);
+    if (handshakeDeadline.unref) handshakeDeadline.unref();
     const preset = CODEX_MODE_PRESETS[mode] || CODEX_MODE_PRESETS[CODEX_DEFAULT_MODE];
     send('initialize', { clientInfo: { name: 'open-quake', version: '0' } })
       .then(() => {
@@ -240,6 +261,7 @@ function createCodexVoiceAdapter({ log }) {
         return send('thread/start', { cwd, approvalPolicy: preset.approvalPolicy, sandbox: preset.sandbox, model: model || null });
       })
       .then(result => {
+        clearTimeout(handshakeDeadline);
         threadId = (result && result.thread && result.thread.id) || (result && result.threadId) || null;
         resumeThreadId = null;
         if (!threadId) throw new Error('no thread id in thread/start response');
@@ -258,7 +280,15 @@ function createCodexVoiceAdapter({ log }) {
     // The host serializes turns (CLI semantics: one in flight, later entries queue), so a
     // concurrent turn/start can't happen. turn/interrupt stays available via interrupt() for an
     // explicit Stop control someday -- it is deliberately NOT wired to new turns or mute.
-    send('turn/start', { threadId, input: [{ type: 'text', text }] })
+    // The current mode preset rides on EVERY turn: turn-level overrides are the only mechanism
+    // that reliably re-arms a live session's policy (thread/resume ignores them once loaded).
+    const preset = CODEX_MODE_PRESETS[mode] || CODEX_MODE_PRESETS[CODEX_DEFAULT_MODE];
+    send('turn/start', {
+      threadId,
+      input: [{ type: 'text', text }],
+      approvalPolicy: preset.approvalPolicy,
+      sandboxPolicy: preset.sandboxPolicy,
+    })
       .then(result => { activeTurnId = (result && result.turn && result.turn.id) || activeTurnId; })
       .catch(e => emitter.emit('turn-complete', { text: null, error: 'turn failed to start: ' + e.message }));
   }
@@ -301,20 +331,14 @@ function createCodexVoiceAdapter({ log }) {
       return true;
     },
 
-    // ---- mode: presets pair approvalPolicy + sandbox; a live switch re-resumes the SAME thread
-    // with the new policy over the existing connection (no process restart, conversation intact) ----
+    // ---- mode: presets pair approvalPolicy + sandbox. Switching just updates the stored preset;
+    // startTurn() sends it as turn-level overrides, which is the mechanism that actually applies
+    // to a live session (thread/resume policy params are ignored once a thread is loaded). ----
     setMode(pick) {
-      const preset = CODEX_MODE_PRESETS[pick];
-      if (!preset) return false;
-      if (pick === mode) return true;
-      mode = pick;
-      if (ready && threadId) {
-        send('thread/resume', { threadId, cwd: projectDir, approvalPolicy: preset.approvalPolicy, sandbox: preset.sandbox })
-          .then(() => say('mode -> ' + pick + ' (' + preset.approvalPolicy + ' / ' + preset.sandbox + ')'))
-          .catch(e => {
-            say('mode switch failed: ' + e.message);
-            emitter.emit('error', { message: 'Mode switch failed: ' + e.message });
-          });
+      if (!CODEX_MODE_PRESETS[pick]) return false;
+      if (pick !== mode) {
+        mode = pick;
+        say('mode -> ' + pick + ' (applies from the next turn)');
       }
       return true;
     },
