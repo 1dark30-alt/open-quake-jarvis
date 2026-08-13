@@ -150,6 +150,9 @@ function connectEvents() {
       syncPickButtons();
     } else if (msg.type === 'session-started') {
       // New session (folder switch or fresh start): new conversation, new header, silence.
+      // The mode rides along -- the page-load snapshot predates a lazily-started session, so
+      // without this the Mode button shows a stale default until the first manual switch.
+      if (msg.permissionMode) { currentMode = msg.permissionMode; syncModeUI(); }
       stopTurnAudio();
       turnInProgress = false;
       transcript = [];

@@ -157,7 +157,9 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, deps }) {
     return Object.assign({}, state, {
       running: adapter.isRunning(),
       sessionId: adapter.sessionId(),
-      permissionMode: adapter.mode(),
+      // Before a session exists the adapter only knows its built-in default -- the page's
+      // CONFIGURED mode is the truth the panel should show (the lazy first-turn start uses it).
+      permissionMode: adapter.isRunning() ? adapter.mode() : ((opts && opts.options.permissionMode) || adapter.mode()),
       model: adapter.currentModel(),
       projectDir: adapter.projectDir() || (opts && opts.options.projectDir) || '',
       transcript,
@@ -242,7 +244,9 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, deps }) {
     state = { running: true, status: 'idle', lastUserText: '', lastAssistantText: '', error: null };
     transcript = [];   // new session, fresh conversation
     speech.abortActive('new session started');   // a folder switch mid-reply silences the old folder's voice
-    broadcast({ type: 'session-started', projectDir });
+    // permissionMode rides along so the page's Mode button is corrected the moment a lazy first-turn
+    // start lands (the page-load /state snapshot predates the session and can go stale).
+    broadcast({ type: 'session-started', projectDir, permissionMode: adapter.mode() });
     return true;
   }
 
