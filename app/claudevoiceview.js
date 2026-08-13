@@ -153,6 +153,12 @@ function connectEvents() {
     } else if (msg.type === 'model') {
       liveModel = msg.model || '';   // what's ACTUALLY running, from the session's init event
       syncPickButtons();
+    } else if (msg.type === 'user-turn') {
+      // A lazily-started session's session-started broadcast just wiped this page's transcript,
+      // taking the freshly-drawn user bubble with it -- the host echoes the turn text back so the
+      // first spoken instruction of a session stays visible.
+      transcript.push({ role: 'user', text: msg.text });
+      renderTranscript();
     } else if (msg.type === 'session-started') {
       // New session (folder switch or fresh start): new conversation, new header, silence.
       // The mode rides along -- the page-load snapshot predates a lazily-started session, so

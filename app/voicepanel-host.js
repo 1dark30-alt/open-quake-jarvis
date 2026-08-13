@@ -142,12 +142,17 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
   function onTurn(text, speak) {
     const opts = deps.activeServedAppConfig(appId);
     if (!opts) return { ok: false };
-    if (!adapter.isRunning() && !startSession()) return { ok: false };
+    const lazyStart = !adapter.isRunning();
+    if (lazyStart && !startSession()) return { ok: false };
     state.status = 'thinking';
     state.lastUserText = text;
     const sent = adapter.sendTurn(text);
     if (!sent) return { ok: false };
     transcript.push({ role: 'user', text });
+    // A lazy session start just broadcast session-started, which wipes the page's local transcript
+    // -- INCLUDING the user bubble the page drew for this very turn ("my first spoken instruction
+    // flashes then disappears"). Send the turn text back so the page can redraw it.
+    if (lazyStart) broadcast({ type: 'user-turn', text });
     // New input always supersedes whatever the panel was still saying (barge-in by construction).
     let speechId = null;
     if (speak) speechId = speech.beginTurn();
