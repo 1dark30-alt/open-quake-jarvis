@@ -68,7 +68,8 @@ let sysHtml = FALLBACK, musicHtml = FALLBACK, chatHtml = FALLBACK, hascheduleHtm
 let onClaudeVoiceTurn = null, getClaudeVoiceState = null, onClaudeVoiceAudio = null, onClaudeVoiceApprovalRequest = null,
   onClaudeVoiceApprovalDecision = null, onClaudeVoiceSessionStart = null, onClaudeVoiceSessionStop = null,
   onClaudeVoiceSubscribe = null, getClaudeVoiceProjects = null, onClaudeVoiceSynthesize = null,
-  onClaudeVoicePermissionMode = null, onClaudeVoiceOption = null, onClaudeVoiceTurnAudio = null, voiceToken = null;
+  onClaudeVoicePermissionMode = null, onClaudeVoiceOption = null, onClaudeVoiceTurnAudio = null,
+  onClaudeVoiceModel = null, voiceToken = null;
 const staticAssets = {};   // request path -> { body, type }; populated at start()
 let appFolders = {};        // drop-in served app id -> { root, proxy }; supplied by main.js
 const appServers = {};      // app id -> required server module
@@ -344,6 +345,7 @@ const CLAUDE_VOICE_POST_ROUTES = new Set([
   '/claude-voice/session/start',
   '/claude-voice/session/stop',
   '/claude-voice/permission-mode',
+  '/claude-voice/model',
   '/claude-voice/tts',
   '/claude-voice/option',
 ]);
@@ -482,6 +484,13 @@ async function handler(req, res) {
     let ok = false; try { ok = !!onClaudeVoicePermissionMode(mode); } catch (e) {}
     return done(res, ok);
   }
+  if (url === '/claude-voice/model' && req.method === 'POST') {
+    let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+    const model = body && typeof body.model === 'string' ? body.model : null;   // '' = account default, so null-check not truthiness
+    if (model == null || !onClaudeVoiceModel) return done(res, false);
+    let ok = false; try { ok = !!onClaudeVoiceModel(model); } catch (e) {}
+    return done(res, ok);
+  }
   if (url === '/claude-voice/approval-decision' && req.method === 'POST') {
     let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
     const requestId = body && body.requestId, decision = body && body.decision;
@@ -546,6 +555,7 @@ function start(opts) {
   onClaudeVoiceSynthesize = opts.onClaudeVoiceSynthesize || null;
   onClaudeVoiceTurnAudio = opts.onClaudeVoiceTurnAudio || null;
   onClaudeVoicePermissionMode = opts.onClaudeVoicePermissionMode || null;
+  onClaudeVoiceModel = opts.onClaudeVoiceModel || null;
   onClaudeVoiceOption = opts.onClaudeVoiceOption || null;
   voiceToken = opts.voiceToken || null;
   setAppFolders(opts.appFolders);

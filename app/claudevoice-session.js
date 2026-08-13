@@ -57,6 +57,8 @@ function createClaudeVoiceSession(options) {
   let resumeSessionId = null;   // when set, launch() resumes this session instead of starting fresh
   let projectDir = null;
   let permissionMode = 'bypassPermissions';
+  let model = '';            // '' = account default (no --model flag); alias like 'sonnet' otherwise
+  let currentModel = null;   // authoritative model id from the init event (what's ACTUALLY running)
   let voicePort = null;
   let voiceToken = null;
   let systemPromptAppend = '';   // voice-panel behavior prompt, injected on every spawn
@@ -72,7 +74,11 @@ function createClaudeVoiceSession(options) {
       catch (e) { log('claude output (unparsed): ' + line.slice(0, 300)); return; }
       // The init event is authoritative for the session id -- on --resume the id normally carries
       // over, but if the CLI ever forks to a new one, tracking init keeps later resumes correct.
-      if (event.type === 'system' && event.subtype === 'init' && event.session_id) sessionId = event.session_id;
+      // Same for the model: init reports what's ACTUALLY running (the panel shows this, not the pick).
+      if (event.type === 'system' && event.subtype === 'init') {
+        if (event.session_id) sessionId = event.session_id;
+        if (event.model) currentModel = event.model;
+      }
       try { emitter.emit('event', event); } catch (e) {}
     });
   }
@@ -94,6 +100,7 @@ function createClaudeVoiceSession(options) {
         '--verbose',                              // required by the CLI when -p + stream-json output are combined
         '--include-partial-messages',              // real token-level streaming (content_block_delta events)
         '--permission-mode', permissionMode,
+        ...(model ? ['--model', model] : []),   // omit entirely for the account default
         // Voice-panel behavior prompt (app/claudevoice-voice-prompt.md), injected per-spawn so it
         // ONLY affects panel sessions -- deliberately NOT a user-level skill, which would leak into
         // the user's normal terminal/app Claude usage.
@@ -160,12 +167,14 @@ function createClaudeVoiceSession(options) {
     // Starts a fresh session (new session-id) scoped to `dir`. If a session is already running
     // (e.g. switching projects), it's stopped first -- one active claude process at a time, matching
     // "the session lives entirely on the Quake" (no multi-session juggling in v1).
-    start({ projectDir: dir, permissionMode: mode, port, token, systemPrompt }) {
+    start({ projectDir: dir, permissionMode: mode, model: pick, port, token, systemPrompt }) {
       stopping = true; stopChild(); stopping = false;
       sessionId = crypto.randomUUID();
       resumeSessionId = null;
       projectDir = dir;
       permissionMode = mode || 'bypassPermissions';
+      model = pick || '';
+      currentModel = null;
       voicePort = port;
       voiceToken = token;
       systemPromptAppend = systemPrompt || '';
@@ -183,6 +192,16 @@ function createClaudeVoiceSession(options) {
       return true;
     },
     permissionMode() { return permissionMode; },
+    // Same resume-restart trick for the model ('' switches back to the account default).
+    setModel(pick) {
+      if (!sessionId) return false;
+      stopping = true; stopChild(); stopping = false;
+      model = pick || '';
+      resumeSessionId = sessionId;
+      launch();
+      return true;
+    },
+    currentModel() { return currentModel; },
     stop() {
       stopping = true;
       stopChild();

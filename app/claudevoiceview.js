@@ -145,6 +145,9 @@ function connectEvents() {
     } else if (msg.type === 'permission-mode') {
       currentMode = msg.mode || currentMode;
       syncModeUI();
+    } else if (msg.type === 'model') {
+      liveModel = msg.model || '';   // what's ACTUALLY running, from the session's init event
+      syncPickButtons();
     } else if (msg.type === 'session-started') {
       // New session (folder switch or fresh start): new conversation, new header, silence.
       stopTurnAudio();
@@ -212,6 +215,7 @@ fetch('/claude-voice/state', { cache: 'no-store' }).then(function (r) { return r
     // page switch, so without this a rotate-away-and-back would blank the whole conversation.
     if (s.transcript && s.transcript.length) { transcript = s.transcript.slice(); renderTranscript(); }
     if (s.permissionMode) { currentMode = s.permissionMode; syncModeUI(); }
+    if (s.model) { liveModel = s.model; syncPickButtons(); }
     if (s.projectDir) setProjectHeader(s.projectDir);   // live truth beats the (possibly stale) page-load query param
     setStatus(s.status, s.error);
   }).catch(function () {});
@@ -380,20 +384,30 @@ function ensureDeviceIds(force) {
 function applySinkId(audio) {
   if (spkDeviceId && audio.setSinkId) audio.setSinkId(spkDeviceId).catch(function () {});
 }
-// Settings shows only the CURRENT pick per device (big row, tap to change); the actual list lives
+// Model picker state: the pick is an alias ('' = account default) persisted like the device
+// labels; `liveModel` is the model ACTUALLY running, reported by the session's init event.
+var MODEL_PICKS = [['', 'Default (account setting)'], ['fable', 'Fable'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']];
+var savedModelPick = Q.get('modelPick') || '';
+var liveModel = '';
+function modelPrettyName(id) {   // 'claude-sonnet-5' -> 'Sonnet' (best-effort; falls back to the raw id)
+  var m = MODEL_PICKS.find(function (p) { return p[0] && String(id || '').indexOf(p[0]) >= 0; });
+  return m ? m[1] : (id || '');
+}
+// Settings shows only the CURRENT pick per row (big row, tap to change); the actual list lives
 // in its own full-size overlay -- never an always-visible scrolling list inside a dialog.
 function syncPickButtons() {
   $('micPickVal').textContent = savedMicLabel || 'System default';
   $('spkPickVal').textContent = savedSpkLabel || 'System default';
+  var pick = MODEL_PICKS.find(function (p) { return p[0] === savedModelPick; });
+  var label = savedModelPick ? (pick ? pick[1] : savedModelPick) : 'Default';
+  if (!savedModelPick && liveModel) label = 'Default — ' + modelPrettyName(liveModel);
+  $('modelPickVal').textContent = label;
 }
-var devOverlayKind = '';   // 'audioinput' | 'audiooutput' while the picker overlay is open
+var devOverlayKind = '';   // 'audioinput' | 'audiooutput' | 'model' while the picker overlay is open
 function renderDevOverlay() {
   var kind = devOverlayKind;
-  var savedLabel = kind === 'audioinput' ? savedMicLabel : savedSpkLabel;
   var el = $('devList');
   el.innerHTML = '';
-  var devs = allDevices.filter(function (d) { return d.kind === kind && d.label; });
-  var matched = !!savedLabel && devs.some(function (d) { return d.label === savedLabel; });
   function addRow(label, value, current) {
     var b = document.createElement('button');
     b.type = 'button';
@@ -403,21 +417,43 @@ function renderDevOverlay() {
     b.onclick = function () { pickDevice(kind, value); };
     el.appendChild(b);
   }
+  if (kind === 'model') {
+    MODEL_PICKS.forEach(function (p) { addRow(p[1], p[0], p[0] === savedModelPick); });
+    return;
+  }
+  var savedLabel = kind === 'audioinput' ? savedMicLabel : savedSpkLabel;
+  var devs = allDevices.filter(function (d) { return d.kind === kind && d.label; });
+  var matched = !!savedLabel && devs.some(function (d) { return d.label === savedLabel; });
   addRow('System default', '', !matched);
   devs.forEach(function (d) { addRow(d.label, d.label, matched && d.label === savedLabel); });
 }
 function openDevOverlay(kind) {
   devOverlayKind = kind;
-  $('devTitle').textContent = kind === 'audioinput' ? 'Microphone' : 'Speaker';
-  renderDevOverlay();                                  // cached devices paint instantly...
-  ensureDeviceIds(true).then(function () {             // ...then a fresh enumeration replaces them
-    if (devOverlayKind === kind) renderDevOverlay();
-  });
+  $('devTitle').textContent = kind === 'audioinput' ? 'Microphone' : kind === 'audiooutput' ? 'Speaker' : 'Model';
+  renderDevOverlay();                                  // cached entries paint instantly...
+  if (kind !== 'model') {                              // (the model list is static -- no mic grab)
+    ensureDeviceIds(true).then(function () {           // ...then a fresh enumeration replaces them
+      if (devOverlayKind === kind) renderDevOverlay();
+    });
+  }
   $('devOverlay').classList.remove('hidden');
 }
 function pickDevice(kind, label) {
   $('devOverlay').classList.add('hidden');
   devOverlayKind = '';
+  if (kind === 'model') {
+    savedModelPick = label;
+    postOption('modelPick', label);   // persists; also what a fresh session start reads
+    // Live session: resume-restart onto the new model (same trick as the Mode button, ~2s pause).
+    fetch('/claude-voice/model', {
+      method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: label }),
+    }).then(function (r) { return r.json(); })
+      .then(function (r) { if (!r || !r.ok) setStatus(conversationOpen ? 'listening' : 'idle', 'Model switch failed.'); })
+      .catch(function () { setStatus('error', 'Could not reach the panel server.'); });
+    syncPickButtons();
+    return;
+  }
   if (kind === 'audioinput') {
     savedMicLabel = label;
     postOption('micDevice', label);
@@ -439,6 +475,7 @@ function pickDevice(kind, label) {
 }
 $('micPickBtn').onclick = function () { openDevOverlay('audioinput'); };
 $('spkPickBtn').onclick = function () { openDevOverlay('audiooutput'); };
+$('modelPickBtn').onclick = function () { openDevOverlay('model'); };
 $('devCancel').onclick = function () { $('devOverlay').classList.add('hidden'); devOverlayKind = ''; };
 
 // ---- Tap-to-toggle voice conversation (Phase 5) ----

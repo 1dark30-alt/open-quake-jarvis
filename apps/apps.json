@@ -6103,7 +6103,8 @@
     { "key": "chatFontSize", "label": "Chat text size (px)", "type": "text", "default": "16" },
     { "key": "vadHangoverMs", "label": "Voice pause tolerance (ms)", "type": "text", "default": "800" },
     { "key": "micDevice", "label": "Microphone (set from the panel Settings)", "type": "text", "default": "" },
-    { "key": "spkDevice", "label": "Speaker (set from the panel Settings)", "type": "text", "default": "" }
+    { "key": "spkDevice", "label": "Speaker (set from the panel Settings)", "type": "text", "default": "" },
+    { "key": "modelPick", "label": "Model (set from the panel Settings; blank = account default)", "type": "text", "default": "" }
     ]
   }
 ]

@@ -144,6 +144,11 @@ function broadcastClaudeVoice(payload) {
 // only -- an ended session's transcript stays readable until a new one replaces it.
 let claudeVoiceTranscript = [];   // [{role:'user'|'assistant', text}]
 claudeVoiceSession.on('event', event => {
+  if (event.type === 'system' && event.subtype === 'init') {
+    // Init reports the model that's ACTUALLY running -- the panel displays this, never the pick.
+    broadcastClaudeVoice({ type: 'model', model: event.model || '' });
+    return;
+  }
   if (event.type === 'stream_event' && event.event) {
     const se = event.event;
     if (se.type === 'message_start') {
@@ -223,6 +228,7 @@ function getClaudeVoiceState() {
     running: claudeVoiceSession.isRunning(),
     sessionId: claudeVoiceSession.sessionId(),
     permissionMode: claudeVoiceSession.permissionMode(),
+    model: claudeVoiceSession.currentModel(),
     projectDir: claudeVoiceSession.projectDir() || (opts && opts.options.projectDir) || '',
     transcript: claudeVoiceTranscript,
   });
@@ -263,7 +269,12 @@ const CLAUDE_VOICE_PANEL_OPTIONS = {
   // re-matches label -> id at startup. Empty string = system default.
   micDevice: v => typeof v === 'string' && v.length <= 200 ? v : null,
   spkDevice: v => typeof v === 'string' && v.length <= 200 ? v : null,
+  modelPick: v => CLAUDE_VOICE_MODEL_PICKS.includes(v) ? v : null,
 };
+// Model aliases the panel may pick ('' = account default, no --model flag). Aliases only, never
+// full model ids: aliases track "latest of the family" and can't go stale. All four verified
+// accepted by the installed CLI (2.1.228) -- an invalid --model would crash-loop the child.
+const CLAUDE_VOICE_MODEL_PICKS = ['', 'fable', 'opus', 'sonnet', 'haiku'];
 function setClaudeVoiceOption(key, value) {
   const validate = CLAUDE_VOICE_PANEL_OPTIONS[key];
   if (!validate) return false;
@@ -286,6 +297,14 @@ function setClaudeVoicePermissionMode(mode) {
   const ok = claudeVoiceSession.setPermissionMode(mode);
   if (ok) broadcastClaudeVoice({ type: 'permission-mode', mode });
   return ok;
+}
+// Model switch (panel Settings): same resume-restart as the mode switch. With no session running
+// this is still a success -- the pick persists via the modelPick option and the next session start
+// picks it up.
+function setClaudeVoiceModel(model) {
+  if (!CLAUDE_VOICE_MODEL_PICKS.includes(model)) return false;
+  if (!claudeVoiceSession.isRunning()) return true;
+  return claudeVoiceSession.setModel(model);
 }
 // Explicit session start/stop (Phase 3): switching projects in the editor, or the future
 // tap-to-toggle gesture (Phase 5), both want "start now" / "end this conversation" rather than
@@ -326,6 +345,7 @@ function startClaudeVoiceSession(dir) {
   claudeVoiceSession.start({
     projectDir,
     permissionMode: opts.options.permissionMode || 'bypassPermissions',
+    model: CLAUDE_VOICE_MODEL_PICKS.includes(opts.options.modelPick) ? opts.options.modelPick : '',
     port: serverPort,
     token: claudeVoiceToken,
     systemPrompt: voicePrompt,
@@ -1861,7 +1881,7 @@ app.whenReady().then(async () => {
   // Lazy-required so a metrics/load failure can never crash the rest of the app.
   try {
     sysserver = require('./sysserver');
-    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(), getShortcuts: keyboardShortcutsSnapshot, onClaudeVoiceTurn, getClaudeVoiceState, onClaudeVoiceSubscribe, onClaudeVoiceSessionStart: startClaudeVoiceSession, onClaudeVoiceSessionStop: stopClaudeVoiceSession, onClaudeVoiceAudio: transcribeClaudeVoiceAudio, onClaudeVoiceSynthesize: synthesizeClaudeVoiceSpeech, onClaudeVoiceTurnAudio, onClaudeVoiceApprovalRequest, onClaudeVoiceApprovalDecision, onClaudeVoicePermissionMode: setClaudeVoicePermissionMode, onClaudeVoiceOption: setClaudeVoiceOption, getClaudeVoiceProjects, voiceToken: claudeVoiceToken });
+    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(), getShortcuts: keyboardShortcutsSnapshot, onClaudeVoiceTurn, getClaudeVoiceState, onClaudeVoiceSubscribe, onClaudeVoiceSessionStart: startClaudeVoiceSession, onClaudeVoiceSessionStop: stopClaudeVoiceSession, onClaudeVoiceAudio: transcribeClaudeVoiceAudio, onClaudeVoiceSynthesize: synthesizeClaudeVoiceSpeech, onClaudeVoiceTurnAudio, onClaudeVoiceApprovalRequest, onClaudeVoiceApprovalDecision, onClaudeVoicePermissionMode: setClaudeVoicePermissionMode, onClaudeVoiceModel: setClaudeVoiceModel, onClaudeVoiceOption: setClaudeVoiceOption, getClaudeVoiceProjects, voiceToken: claudeVoiceToken });
     ensureSystemViewPage(serverPort); ensureMusicPage(); ensureDropInDir();
     const haUrl = configureHaSchedule();
     console.log('SystemView + Music on http://127.0.0.1:' + serverPort + (haUrl ? ' · HA Schedule -> ' + haUrl : ''));
