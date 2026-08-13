@@ -6122,10 +6122,11 @@
         "key": "permissionMode",
         "label": "Mode",
         "type": "select",
-        "default": "auto",
+        "default": "ask-for-approval",
         "choices": [
           ["read-only", "Read Only — Codex can read files in the workspace; approval required to edit files or access the internet"],
-          ["auto", "Default — Codex can read, edit, and run commands in the workspace; approval required for the internet or other files"],
+          ["ask-for-approval", "Ask for approval — Codex can read, edit, and run commands in the workspace; approval required for the internet or other files"],
+          ["approve-for-me", "Approve for me — only ask for actions detected as potentially unsafe"],
           ["full-access", "Full Access — Codex can edit files outside the workspace and use the internet without asking (use with caution)"]
         ]
       },

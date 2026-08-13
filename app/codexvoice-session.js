@@ -35,33 +35,39 @@ function findCodexExe(execFileSync) {
 // Mode presets pair codex's two knobs (approval policy + sandbox) into the single mode id the
 // panel's Mode overlay works with. Phase 4 exposes ONLY readOnly -- the others need the approval
 // flow (Phase 6) before they are safe to offer on the panel.
-// EXACT mirror of the codex CLI's built-in approval presets for the installed version -- ids,
-// labels, descriptions, and policy pairs verbatim from codex-rs/utils/approval-presets/src/lib.rs
-// at rust-v0.147.0 (explicit requirement: the panel reflects the same permissions as the CLI).
-// Note Read Only pairs with ON-REQUEST, not never: that is what lets the CLI ask to escalate
-// instead of dead-ending when its (Windows-broken) sandbox blocks a command. Each preset carries
-// both param forms: `sandbox` (SandboxMode string, thread/start) and `sandboxPolicy` (object,
-// turn/start) -- turn-level overrides are what re-arm a live session.
+// EXACT mirror of the four permission modes the INSTALLED CLI's own menu offers (verified against
+// the running binary, not repo archaeology: permissionProfile/list gives the three sandbox
+// profiles, and "Approve for me" is the same workspace profile with approvals routed to the
+// auto_review subagent -- ApprovalsReviewer enum, which only escalates actions it judges unsafe).
+// Labels and descriptions verbatim from the TUI's Update Model Permissions menu. Read Only pairs
+// with ON-REQUEST so codex asks to escalate instead of dead-ending when its (Windows-broken)
+// sandbox blocks a command. Each preset carries both sandbox param forms: `sandbox` (SandboxMode
+// string, thread/start) and `sandboxPolicy` (object, turn/start overrides).
 const CODEX_MODE_PRESETS = {
   'read-only': {
     label: 'Read Only',
     desc: 'Codex can read files in the current workspace. Approval is required to edit files or access the internet.',
-    approvalPolicy: 'on-request', sandbox: 'read-only', sandboxPolicy: { type: 'readOnly' },
+    approvalPolicy: 'on-request', reviewer: 'user', sandbox: 'read-only', sandboxPolicy: { type: 'readOnly' },
   },
-  auto: {
-    label: 'Default',
+  'ask-for-approval': {
+    label: 'Ask for approval',
     desc: 'Codex can read and edit files in the current workspace, and run commands. Approval is required to access the internet or edit other files.',
-    approvalPolicy: 'on-request', sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
+    approvalPolicy: 'on-request', reviewer: 'user', sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
+  },
+  'approve-for-me': {
+    label: 'Approve for me',
+    desc: 'Only ask for actions detected as potentially unsafe.',
+    approvalPolicy: 'on-request', reviewer: 'auto_review', sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
   },
   'full-access': {
     label: 'Full Access',
     desc: 'Codex can edit files outside this workspace and access the internet without asking for approval. Exercise caution when using.',
-    approvalPolicy: 'never', sandbox: 'danger-full-access', sandboxPolicy: { type: 'dangerFullAccess' },
+    approvalPolicy: 'never', reviewer: 'user', sandbox: 'danger-full-access', sandboxPolicy: { type: 'dangerFullAccess' },
   },
 };
-const CODEX_DEFAULT_MODE = 'auto';   // the CLI's own default preset
+const CODEX_DEFAULT_MODE = 'ask-for-approval';   // "(current)" in the CLI's own menu
 // Panel options saved under this app's earlier preset ids keep working.
-const CODEX_LEGACY_MODES = { readOnly: 'read-only', manual: 'auto', full: 'full-access' };
+const CODEX_LEGACY_MODES = { readOnly: 'read-only', manual: 'ask-for-approval', auto: 'ask-for-approval', full: 'full-access' };
 
 // Server chatter that is expected and carries nothing the panel needs (Phase 4).
 const IGNORED_NOTIFICATIONS = new Set([
@@ -284,8 +290,8 @@ function createCodexVoiceAdapter({ log }) {
       .then(() => {
         // Required by the protocol contract (MCP-style two-step): acknowledge before anything else.
         try { thisProc.stdin.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n'); } catch (e) {}
-        if (resumeThreadId) return send('thread/resume', { threadId: resumeThreadId, cwd, approvalPolicy: preset.approvalPolicy, sandbox: preset.sandbox });
-        return send('thread/start', { cwd, approvalPolicy: preset.approvalPolicy, sandbox: preset.sandbox, model: model || null });
+        if (resumeThreadId) return send('thread/resume', { threadId: resumeThreadId, cwd, approvalPolicy: preset.approvalPolicy, approvalsReviewer: preset.reviewer, sandbox: preset.sandbox });
+        return send('thread/start', { cwd, approvalPolicy: preset.approvalPolicy, approvalsReviewer: preset.reviewer, sandbox: preset.sandbox, model: model || null });
       })
       .then(result => {
         clearTimeout(handshakeDeadline);
@@ -331,6 +337,7 @@ function createCodexVoiceAdapter({ log }) {
       threadId,
       input: [{ type: 'text', text }],
       approvalPolicy: preset.approvalPolicy,
+      approvalsReviewer: preset.reviewer,
       sandboxPolicy: preset.sandboxPolicy,
       model: modelPick || null,   // null = the account default
     })
