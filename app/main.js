@@ -47,6 +47,7 @@ const ahk = require('./ahk');                  // macro "ahk" step backend (shel
 const { createReservedDisplay } = require('./reservedDisplay'); // Windows helper that keeps foreign windows off the panel display
 const { createVoicePanelHost } = require('./voicepanel-host'); // generic voice-panel app host (state/SSE/speech/STT-TTS plumbing)
 const { createClaudeVoiceAdapter } = require('./claudevoice-adapter'); // Claude Code session adapter (CLI spawn, events, approval hook)
+const { createCodexVoiceAdapter } = require('./codexvoice-session'); // OpenAI Codex session adapter (app-server JSON-RPC over stdio)
 const claudeVoiceApprovals = require('./claudevoice-approvals'); // required directly ONLY for the boot-time leftover-hook sweep below
 const HA_SCHEDULE_APPS = ['haschedule', 'agenda', 'events'];   // dev apps backed by the shared HA /haschedule-data snapshot
 
@@ -104,16 +105,36 @@ const claudeVoiceHost = createVoicePanelHost({
     getUserDataPath: () => app.getPath('userData'),
     log: claudeVoiceLog,
   }),
-  deps: {
+  deps: voicePanelDeps('claude-voice'),
+});
+const codexVoiceLog = message => console.log('[codex-voice] ' + message);
+const codexVoiceHost = createVoicePanelHost({
+  appId: 'codex-voice',
+  storageKey: 'codexVoice',
+  log: codexVoiceLog,
+  branding: {
+    title: 'Codex',
+    approvalTitle: '⚠ Codex wants to do something',
+    turnFailedText: 'Turn failed to send — no folder set, or codex CLI not found.',
+  },
+  adapter: createCodexVoiceAdapter({ log: codexVoiceLog }),
+  deps: voicePanelDeps('codex-voice'),
+});
+// Shared main.js plumbing for a voice-panel host. The ring guards are the two-app arbitration:
+// only the ON-SCREEN voice app may drive (or clear) the ring override -- a background app's
+// session finishing must never repaint the ring under the active page. (Page changes already
+// clear any override via gotoGrid.)
+function voicePanelDeps(appId) {
+  return {
     activeServedAppConfig: id => activeServedAppConfig(id),
     activeGrid: () => activeGrid(),
     getConfig: () => config,
     saveConfig: () => saveConfig(),
-    setRingState: state => setRingState(state),
-    clearRingOverride: () => clearRingOverride(),
+    setRingState: state => { const g = activeGrid(); if (g && g.kind === 'app' && g.app === appId) setRingState(state); },
+    clearRingOverride: () => { const g = activeGrid(); if (g && g.kind === 'app' && g.app === appId) clearRingOverride(); },
     getDocumentsPath: () => app.getPath('documents'),
-  },
-});
+  };
+}
 function appSettings() { return Object.assign({}, DEFAULT_SETTINGS, config.settings || {}); }
 // ---- theme (global light/dark + accent, with per-card overrides) ----
 function themeGlobal() { return Object.assign({}, THEME_DEFAULT, (config.settings || {}).theme || {}); }
@@ -1580,6 +1601,12 @@ app.whenReady().then(async () => {
           handlers: claudeVoiceHost.handlers,
           voiceToken: claudeVoiceHost.adapter.hookToken(),
         },
+        // Same page, same route surface, codex adapter behind it. No voiceToken: codex approvals
+        // are in-band protocol requests, so the external-hook route doesn't exist for it.
+        'codex-voice': {
+          htmlFile: 'claudevoiceview.html',
+          handlers: codexVoiceHost.handlers,
+        },
       },
     });
     ensureSystemViewPage(serverPort); ensureMusicPage(); ensureDropInDir();
@@ -1830,6 +1857,7 @@ app.on('window-all-closed', () => {});
 app.on('before-quit', () => {
   try { reservedDisplay.stop(); } catch (e) {}                // release WinEvent hooks and terminate the native helper
   try { claudeVoiceHost.shutdown(); } catch (e) {}       // terminate the claude CLI child, release held approvals, remove the global hook
+  try { codexVoiceHost.shutdown(); } catch (e) {}        // terminate the codex app-server child
   try { claudeVoiceApprovals.ensureHookRemoved(claudeVoiceLog); } catch (e) {}    // belt-and-braces: never leave our entry behind in the user's global Claude settings
   try { dev.stop(); } catch (e) {}                       // close HID devices + clear keep-alive/rescan timers — an open node-hid handle blocks process exit (Cmd+Q would hang -> force-quit)
   try { if (sysserver) sysserver.stop(); } catch (e) {}  // stop metrics timers + close the local server

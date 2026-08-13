@@ -354,8 +354,11 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       turnAudio: (turnId, req, res) => speech.attach(turnId, req, res),
       approvalDecision: (requestId, decision) => adapter.decideApproval(requestId, decision),
       // claude-only extra: the external PreToolUse hook's long-poll entry point. Wired solely to
-      // this app's /approval-request route; adapters without hooks simply never receive it.
-      approvalRequest: (body, res) => adapter.handleHookRequest(body, res),
+      // this app's /approval-request route (token-gated); adapters without hooks fail it closed.
+      approvalRequest: (body, res) => {
+        if (adapter.handleHookRequest) return adapter.handleHookRequest(body, res);
+        try { res.writeHead(403); res.end(); } catch (e) {}
+      },
     },
     shutdown,
   };
