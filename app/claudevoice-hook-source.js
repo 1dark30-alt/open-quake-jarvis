@@ -27,7 +27,11 @@ function readStdin() {
   if (process.env.OQX_VOICE_SESSION !== '1') { process.exit(0); return; }
   var input;
   try { input = JSON.parse(await readStdin()); } catch (e) { process.exit(0); return; }
-  if (input.permission_mode !== 'manual') { process.exit(0); return; }
+  // The CLI normalizes the 'manual' launch alias to 'default' in hook input (verified empirically
+  // 2026-08-13 against 2.1.228 -- checking only 'manual' made the hook stand aside every time, so
+  // Manual mode headless-denied everything and the agent begged for permission in text instead).
+  // Both names mean "ask before acting": prompt the panel.
+  if (input.permission_mode !== 'manual' && input.permission_mode !== 'default') { process.exit(0); return; }
   var port = process.env.OQX_VOICE_PORT, token = process.env.OQX_VOICE_TOKEN;
   if (!port || !token) { process.exit(0); return; }   // orphaned/misconfigured env -- fail open to Claude Code's own default rather than hang
 
