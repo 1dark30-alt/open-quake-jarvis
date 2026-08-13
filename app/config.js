@@ -1384,6 +1384,9 @@
           <select id="cvPermMode" style="flex:1">${cvPermChoices.map(c => `<option value="${esc(c[0])}" ${cvVal('permissionMode', 'bypassPermissions') === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>
         <div class="row"><label>Touch approval</label>
           <label class="iconopt" style="width:auto"><input type="checkbox" id="cvApprovals" ${cvVal('approvalsEnabled', false) ? 'checked' : ''}> when in Manual mode</label></div>
+        <div class="row" style="margin-top:10px"><label>Panel prompt</label>
+          <button id="cvEditPrompt" type="button">Edit prompt file</button></div>
+        <p class="hint">Your own instructions for panel sessions (claude-panel-prompt.md, opens in your default editor). Appended to the built-in voice prompt; text inside &lt;!-- comment markers --&gt; is ignored. Applies from the next session start. Never affects terminal Claude Code.</p>
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
@@ -1458,6 +1461,7 @@
       document.getElementById('cvTtsPort').oninput = e => setOpt('wyomingTtsPort', e.target.value.trim());
       document.getElementById('cvPermMode').onchange = e => setOpt('permissionMode', e.target.value);
       document.getElementById('cvApprovals').onchange = e => setOpt('approvalsEnabled', e.target.checked);
+      document.getElementById('cvEditPrompt').onclick = () => configApi.editClaudeVoicePrompt();
     } else {
       renderAppOpts(g, def);
     }

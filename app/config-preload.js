@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld('openQuakeConfig', {
   fetchHaEntityState(entityId) { return ipcRenderer.invoke('fetchHaEntityState', entityId); },
   // Claude Code voice app: candidate project directories under the configured projects root (Phase 3).
   listProjectDirs(root) { return ipcRenderer.invoke('listProjectDirs', root); },
+  // Claude Code voice app: open the user-customizable panel prompt file in the default editor.
+  editClaudeVoicePrompt() { return ipcRenderer.invoke('editClaudeVoicePrompt'); },
   pathToFileURL(filePath) {
     try { return pathToFileURL(filePath).href; }
     catch (e) { return ''; }

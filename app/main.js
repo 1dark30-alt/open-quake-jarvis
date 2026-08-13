@@ -342,6 +342,10 @@ function startClaudeVoiceSession(dir) {
   let voicePrompt = '';
   try { voicePrompt = fs.readFileSync(path.join(__dirname, 'claudevoice-voice-prompt.md'), 'utf8'); }
   catch (e) { claudeVoiceLog('voice prompt not loaded: ' + e.message); }
+  try {
+    const userPrompt = readClaudeVoiceUserPrompt();
+    if (userPrompt) voicePrompt += (voicePrompt ? '\n\n' : '') + userPrompt;
+  } catch (e) { claudeVoiceLog('panel prompt file not loaded: ' + e.message); }
   claudeVoiceSession.start({
     projectDir,
     permissionMode: opts.options.permissionMode || 'bypassPermissions',
@@ -355,6 +359,35 @@ function startClaudeVoiceSession(dir) {
   claudeVoiceSpeech.abortActive('new session started');   // a folder switch mid-reply silences the old folder's voice
   broadcastClaudeVoice({ type: 'session-started', projectDir });
   return true;
+}
+// User-customizable panel prompt (task #25): a real file in the app's data folder, appended to the
+// bundled voice prompt on every session spawn. APPEND, not replace -- the bundled prompt carries
+// load-bearing voice behavior, and appended text comes later so the user's instructions win any
+// conflict in practice. The seeded template is entirely HTML comments, so it adds nothing until
+// actually edited; comments are stripped before the prompt is sent.
+const CLAUDE_VOICE_USER_PROMPT_TEMPLATE = `<!--
+open-quake Claude voice panel: your custom instructions.
+
+Anything OUTSIDE comment markers like these is appended to the panel session's
+system prompt, after open-quake's built-in voice-behavior prompt. Typical uses:
+tone, language, brevity rules ("answer in one sentence unless asked"), context
+about you or your setup.
+
+Changes apply the next time a panel session STARTS -- a folder switch or an
+app restart. (Mode/model switches keep the running session's prompt.) This
+file never affects terminal or desktop Claude Code sessions -- only the
+open-quake panel.
+-->
+`;
+function claudeVoiceUserPromptPath() { return path.join(app.getPath('userData'), 'claude-panel-prompt.md'); }
+function ensureClaudeVoiceUserPrompt() {
+  const p = claudeVoiceUserPromptPath();
+  if (!fs.existsSync(p)) fs.writeFileSync(p, CLAUDE_VOICE_USER_PROMPT_TEMPLATE, 'utf8');
+  return p;
+}
+function readClaudeVoiceUserPrompt() {
+  const raw = fs.readFileSync(ensureClaudeVoiceUserPrompt(), 'utf8');
+  return raw.replace(/<!--[\s\S]*?-->/g, '').trim();
 }
 // Transcribes one VAD-trimmed utterance (raw 16kHz/16-bit/mono PCM, matching claudevoiceview.js's
 // mic pipeline -- see claudevoice-vad.js) via the configured wyoming-faster-whisper host/port.
@@ -1983,6 +2016,13 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('getHaCache', (e) => isFrom(e, configWin) ? haCache : null);
   ipcMain.handle('refreshHaCache', (e) => isFrom(e, configWin) ? refreshHaCache() : null);
+  // "Edit prompt file" in the Claude Code page options: seed the template if needed, then open the
+  // file in whatever the user's default .md editor is.
+  ipcMain.handle('editClaudeVoicePrompt', (e) => {
+    if (!isFrom(e, configWin)) return null;
+    try { const p = ensureClaudeVoiceUserPrompt(); shell.openPath(p); return p; }
+    catch (err) { claudeVoiceLog('panel prompt open failed: ' + err.message); return null; }
+  });
   ipcMain.handle('fetchHaEntityState', (e, entityId) => {
     if (!isFrom(e, configWin)) return null;
     return fetchHaEntityState(entityId).catch(err => ({ error: err.message || String(err) }));
