@@ -184,9 +184,20 @@ function createCodexVoiceAdapter({ log }) {
   }
 
   function startTurn(text) {
-    send('turn/start', { threadId, input: [{ type: 'text', text }] })
+    const go = () => send('turn/start', { threadId, input: [{ type: 'text', text }] })
       .then(result => { activeTurnId = (result && result.turn && result.turn.id) || activeTurnId; })
       .catch(e => emitter.emit('turn-complete', { text: null, error: 'turn failed to start: ' + e.message }));
+    const prev = activeTurnId;
+    if (prev) {
+      // Codex-native barge-in: a new turn while the previous one is still generating cancels the
+      // old turn FIRST (turn/interrupt), so the superseded reply stops burning tokens -- the host
+      // already killed its speech stream when it superseded the audio. Done here, inside the
+      // adapter, because only it knows the old turn's id race-free. (Mute deliberately does NOT
+      // interrupt: like the claude app, muting silences the voice but lets the text finish.)
+      send('turn/interrupt', { threadId, turnId: prev }).catch(() => {}).then(go);
+      return;
+    }
+    go();
   }
 
   return {
