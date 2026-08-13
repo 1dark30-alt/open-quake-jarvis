@@ -144,3 +144,34 @@ client exists).
   session (same as a terminal), and Wyoming has no auth of its own. The one secret involved is a
   random per-launch token used only to let the approval hook prove its requests are legitimate to
   the panel's local server — it's never written to disk.
+
+## Hardware regression checklist
+
+The claude-voice regression suite for any change to the shared voice-panel plumbing (host
+factory, sysserver routes, the shared page files). Run on the real panel against the real
+Wyoming services; every line must pass before the next phase of shared-core work lands.
+
+1. **Voice turn end-to-end** — tap knob (or mic icon), speak a question, transcript shows your
+   words, reply streams into the transcript, reply is spoken.
+2. **Sentence-streaming speech** — a long reply starts speaking before the text finishes
+   streaming; sentences flow without gaps; no doubled/overlapping voices.
+3. **Barge-in** — mute (speaker icon) mid-reply cuts speech instantly; folder switch mid-reply
+   silences the old session's voice.
+4. **Typed turn with speaker on** — mic OFF, type a question: reply is still spoken. Speaker OFF:
+   nothing is spoken, text still renders.
+5. **Approval overlay** — Mode → Manual, ask for a command: overlay appears with full command
+   text + amber ring; Approve runs it, Deny refuses it.
+6. **Mode switch** — Mode button changes mode mid-session; conversation context survives
+   (~2s pause on next turn).
+7. **Model switch** — Settings → Model: pick applies (row shows the actually-running model after
+   the next turn), conversation survives.
+8. **Folder switch** — Change folder: recents chips commit in one tap; grid rows navigate;
+   "Use this folder" starts a fresh session; folder name updates bottom-right.
+9. **Settings persist** — change text size, pause tolerance, mic, speaker; quit and relaunch the
+   app: all four survive. Test speech honors the picked speaker.
+10. **Transcript survives page switches** — rotate away and back: conversation repaints.
+11. **Ring states** — idle → listening (green) → thinking (breathing) → speaking (blue) →
+    approval (amber) across one Manual-mode voice turn.
+12. **Hook lifecycle** — while a session runs, `~/.claude/settings.json` has the PreToolUse
+    entry; quitting the app removes it (empty `"PreToolUse": []` is fine).
+13. **Slash command** — send `/model` typed: reply renders (result-only turns).
