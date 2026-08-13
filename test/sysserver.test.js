@@ -11,46 +11,57 @@ const http = require('node:http');
 const sysserver = require('../app/sysserver');
 
 let port;
-let calls = [];
+const calls = [];
+const otherCalls = [];   // second registered voice app -- proves per-app isolation
 const TOKEN = 'test-voice-token';
+const OTHER_TOKEN = 'other-voice-token';
 
-test.before(async () => {
-  port = await sysserver.start({
-    onClaudeVoiceTurn: (text, speak) => { calls.push(['turn', text, speak]); return { ok: true, speech: '7' }; },
-    getClaudeVoiceState: () => ({ running: true, status: 'idle' }),
-    onClaudeVoiceSubscribe: (req, res) => {
-      calls.push(['subscribe']);
+// Handlers follow the voicepanel-host.js `handlers` contract (the registry form).
+function makeHandlers(sink) {
+  return {
+    onTurn: (text, speak) => { sink.push(['turn', text, speak]); return { ok: true, speech: '7' }; },
+    getState: () => ({ running: true, status: 'idle' }),
+    subscribe: (req, res) => {
+      sink.push(['subscribe']);
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
       res.end(': connected\n\n');   // the real handler holds this open; ending lets fetch() complete
     },
-    onClaudeVoiceAudio: async pcm => { calls.push(['audio', pcm.length]); return { ok: true, text: 'hi' }; },
-    onClaudeVoiceSynthesize: (text, res) => {
-      calls.push(['synth', text]);
+    transcribe: async pcm => { sink.push(['audio', pcm.length]); return { ok: true, text: 'hi' }; },
+    synthesize: (text, res) => {
+      sink.push(['synth', text]);
       res.writeHead(200, { 'Content-Type': 'audio/wav' });
       res.end('RIFF');
     },
-    onClaudeVoiceTurnAudio: (turnId, req, res) => {
-      calls.push(['turn-audio', turnId]);
+    turnAudio: (turnId, req, res) => {
+      sink.push(['turn-audio', turnId]);
       res.writeHead(200, { 'Content-Type': 'audio/wav' });
       res.end();
     },
-    onClaudeVoiceApprovalRequest: (body, res) => {
-      calls.push(['approval-request', body && body.toolName]);
+    approvalRequest: (body, res) => {
+      sink.push(['approval-request', body && body.toolName]);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
     },
-    onClaudeVoiceApprovalDecision: (id, decision) => { calls.push(['decision', id, decision]); return true; },
-    onClaudeVoiceSessionStart: dir => { calls.push(['session-start', dir]); return true; },
-    onClaudeVoiceSessionStop: () => { calls.push(['session-stop']); return true; },
-    onClaudeVoicePermissionMode: mode => { calls.push(['mode', mode]); return true; },
-    onClaudeVoiceModel: model => { calls.push(['model', model]); return true; },
-    onClaudeVoiceOption: (key, value) => { calls.push(['option', key, value]); return true; },
-    getClaudeVoiceProjects: () => ({ root: 'r', parent: null, dirs: [], current: '', recents: [] }),
-    voiceToken: TOKEN,
+    approvalDecision: (id, decision) => { sink.push(['decision', id, decision]); return true; },
+    sessionStart: dir => { sink.push(['session-start', dir]); return true; },
+    sessionStop: () => { sink.push(['session-stop']); return true; },
+    setPermissionMode: mode => { sink.push(['mode', mode]); return true; },
+    setModel: model => { sink.push(['model', model]); return true; },
+    setOption: (key, value) => { sink.push(['option', key, value]); return true; },
+    getProjects: () => ({ root: 'r', parent: null, dirs: [], current: '', recents: [] }),
+  };
+}
+
+test.before(async () => {
+  port = await sysserver.start({
+    voiceApps: {
+      'claude-voice': { htmlFile: 'claudevoiceview.html', handlers: makeHandlers(calls), voiceToken: TOKEN },
+      'other-voice': { htmlFile: 'claudevoiceview.html', handlers: makeHandlers(otherCalls), voiceToken: OTHER_TOKEN },
+    },
   });
 });
 test.after(() => sysserver.stop());
-test.beforeEach(() => { calls = []; });
+test.beforeEach(() => { calls.length = 0; otherCalls.length = 0; });
 
 const base = () => 'http://127.0.0.1:' + port;
 // Browser-shaped request: our served pages always send Sec-Fetch-Site: same-origin.
@@ -189,4 +200,50 @@ test('model route accepts the empty string (account default) but rejects a missi
   const missing = await postJson('/claude-voice/model', {});
   assert.deepEqual(await missing.json(), { ok: false });
   assert.deepEqual(calls, [['model', '']]);
+});
+
+// ---- registry semantics (Phase 2): per-app dispatch, isolation, and unknown prefixes ----
+
+test('unregistered voice prefix gets no voice routes (404 fallthrough, 405 for POST)', async () => {
+  const state = await pageFetch('/codex-voice/state');
+  assert.equal(state.status, 404);
+  const turn = await postJson('/codex-voice/turn', { text: 'x' });
+  assert.equal(turn.status, 405);   // not in any app's POST allowlist -> the GET-only wall
+  assert.deepEqual(calls, []);
+  assert.deepEqual(otherCalls, []);
+});
+
+test('two registered apps dispatch to their own handlers only', async () => {
+  await postJson('/claude-voice/turn', { text: 'to claude', speak: false });
+  await postJson('/other-voice/turn', { text: 'to other', speak: true });
+  assert.deepEqual(calls, [['turn', 'to claude', false]]);
+  assert.deepEqual(otherCalls, [['turn', 'to other', true]]);
+});
+
+test('approval tokens do not cross apps', async () => {
+  // claude's token against the other app's approval route -> rejected, handler untouched.
+  const crossed = await fetch(base() + '/other-voice/approval-request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-oqx-voice-token': TOKEN },
+    body: JSON.stringify({ toolName: 'Bash' }),
+  });
+  assert.equal(crossed.status, 403);
+  assert.deepEqual(otherCalls, []);
+  // the right token still works.
+  const ok = await fetch(base() + '/other-voice/approval-request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-oqx-voice-token': OTHER_TOKEN },
+    body: JSON.stringify({ toolName: 'Bash' }),
+  });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(otherCalls, [['approval-request', 'Bash']]);
+  assert.deepEqual(calls, []);
+});
+
+test('both apps serve the page at their own prefix', async () => {
+  for (const prefix of ['/claude-voice', '/other-voice']) {
+    const r = await pageFetch(prefix);
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get('content-type'), /text\/html/);
+  }
 });

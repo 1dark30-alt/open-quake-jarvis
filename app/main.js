@@ -1563,8 +1563,20 @@ app.whenReady().then(async () => {
   // Lazy-required so a metrics/load failure can never crash the rest of the app.
   try {
     sysserver = require('./sysserver');
-    const cvh = claudeVoiceHost.handlers;   // the voice-panel host's HTTP surface (see voicepanel-host.js)
-    serverPort = await sysserver.start({ onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig, onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(), getShortcuts: keyboardShortcutsSnapshot, onClaudeVoiceTurn: cvh.onTurn, getClaudeVoiceState: cvh.getState, onClaudeVoiceSubscribe: cvh.subscribe, onClaudeVoiceSessionStart: cvh.sessionStart, onClaudeVoiceSessionStop: cvh.sessionStop, onClaudeVoiceAudio: cvh.transcribe, onClaudeVoiceSynthesize: cvh.synthesize, onClaudeVoiceTurnAudio: cvh.turnAudio, onClaudeVoiceApprovalRequest: cvh.approvalRequest, onClaudeVoiceApprovalDecision: cvh.approvalDecision, onClaudeVoicePermissionMode: cvh.setPermissionMode, onClaudeVoiceModel: cvh.setModel, onClaudeVoiceOption: cvh.setOption, getClaudeVoiceProjects: cvh.getProjects, voiceToken: claudeVoiceHost.adapter.hookToken() });
+    serverPort = await sysserver.start({
+      onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig,
+      onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(),
+      getShortcuts: keyboardShortcutsSnapshot,
+      // Voice-panel app registry: each entry gets the full /<appId>/* route surface (see
+      // sysserver.js). voiceToken gates the claude approval hook's /approval-request long-poll.
+      voiceApps: {
+        'claude-voice': {
+          htmlFile: 'claudevoiceview.html',
+          handlers: claudeVoiceHost.handlers,
+          voiceToken: claudeVoiceHost.adapter.hookToken(),
+        },
+      },
+    });
     ensureSystemViewPage(serverPort); ensureMusicPage(); ensureDropInDir();
     const haUrl = configureHaSchedule();
     console.log('SystemView + Music on http://127.0.0.1:' + serverPort + (haUrl ? ' · HA Schedule -> ' + haUrl : ''));

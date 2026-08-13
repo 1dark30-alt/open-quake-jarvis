@@ -63,13 +63,14 @@ const STATIC_FILES = {
 };
 
 let server = null, onMedia = null, onLaunch = null, getGridTiles = null, getAppConfig = null, onOpenExternal = null, onMeetingAction = null, getShortcuts = null;
-let sysHtml = FALLBACK, musicHtml = FALLBACK, chatHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, claudeVoiceHtml = FALLBACK;
+let sysHtml = FALLBACK, musicHtml = FALLBACK, chatHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK;
 // Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
-let onClaudeVoiceTurn = null, getClaudeVoiceState = null, onClaudeVoiceAudio = null, onClaudeVoiceApprovalRequest = null,
-  onClaudeVoiceApprovalDecision = null, onClaudeVoiceSessionStart = null, onClaudeVoiceSessionStop = null,
-  onClaudeVoiceSubscribe = null, getClaudeVoiceProjects = null, onClaudeVoiceSynthesize = null,
-  onClaudeVoicePermissionMode = null, onClaudeVoiceOption = null, onClaudeVoiceTurnAudio = null,
-  onClaudeVoiceModel = null, voiceToken = null;
+// Voice-panel app registry: appId (also the URL path prefix) -> { handlers, voiceToken, htmlFile,
+// htmlContent }. `handlers` is a voicepanel-host.js handlers object; every voice app shares the
+// exact same route suffixes below, so the one shared page works for all of them. `voiceToken`
+// (per app, per boot) gates that app's /approval-request route -- entries without one (agents
+// whose approvals are in-band) simply have no such route.
+let voiceApps = {};
 const staticAssets = {};   // request path -> { body, type }; populated at start()
 let appFolders = {};        // drop-in served app id -> { root, proxy }; supplied by main.js
 const appServers = {};      // app id -> required server module
@@ -333,21 +334,22 @@ function sameOrigin(req) {
   catch (e) { return false; }
 }
 
-// Claude Code voice app: the only routes in this server that need a request body (turn text, raw
-// PCM audio) rather than a query string -- so they're the only ones allowed to be POST. Everything
-// else stays GET-only, unchanged. /claude-voice/approval-request (called by the PreToolUse hook
-// process, not the browser guest page) is intentionally NOT in this set -- it has no Origin/
-// Sec-Fetch-Site header at all and is gated separately by OQX_VOICE_TOKEN (see handler() below).
-const CLAUDE_VOICE_POST_ROUTES = new Set([
-  '/claude-voice/turn',
-  '/claude-voice/audio',
-  '/claude-voice/approval-decision',
-  '/claude-voice/session/start',
-  '/claude-voice/session/stop',
-  '/claude-voice/permission-mode',
-  '/claude-voice/model',
-  '/claude-voice/tts',
-  '/claude-voice/option',
+// Voice-panel apps: the only routes in this server that need a request body (turn text, raw PCM
+// audio) rather than a query string -- so they're the only ones allowed to be POST. Everything
+// else stays GET-only, unchanged. Suffixes are relative to the app's own prefix (/claude-voice,
+// /codex-voice, ...). /approval-request (called by an external hook process, not the browser guest
+// page) is intentionally NOT in this set -- it has no Origin/Sec-Fetch-Site header at all and is
+// gated separately by the app's per-boot voiceToken (see handler() below).
+const VOICE_POST_SUFFIXES = new Set([
+  '/turn',
+  '/audio',
+  '/approval-decision',
+  '/session/start',
+  '/session/stop',
+  '/permission-mode',
+  '/model',
+  '/tts',
+  '/option',
 ]);
 
 // TTS handoff: reply text can be many KB -- far beyond what fits in a GET query string (Node
@@ -368,7 +370,11 @@ async function handler(req, res) {
   if (!hostOk(req)) { res.writeHead(403); res.end(); return; }   // foreign / DNS-rebinding Host -> reject (all routes)
   const full = req.url || '/';
   const url = full.split('?')[0];
-  const isAllowedPost = req.method === 'POST' && (CLAUDE_VOICE_POST_ROUTES.has(url) || url === '/claude-voice/approval-request');
+  // Voice-app dispatch: /<appId>/<suffix> where <appId> is a registered voice-panel app. All voice
+  // apps share identical suffixes; everything about the request below is resolved per-app.
+  const voiceApp = voiceApps[url.split('/')[1]] || null;
+  const voicePath = voiceApp ? (url.slice(url.split('/')[1].length + 1) || '/') : null;
+  const isAllowedPost = req.method === 'POST' && voiceApp && (VOICE_POST_SUFFIXES.has(voicePath) || voicePath === '/approval-request');
   if (req.method !== 'GET' && !isAllowedPost) { res.writeHead(405); res.end(); return; }
   if (url === '/' || url === '/index.html') return html(res, sysHtml);
   if (url === '/music') return html(res, musicHtml);
@@ -378,14 +384,16 @@ async function handler(req, res) {
   if (url === '/agenda') return html(res, agendaHtml);
   if (url === '/events') return html(res, eventsHtml);
   if (url === '/keyshortcuts') return html(res, keyshortcutsHtml);
-  if (url === '/claude-voice') return html(res, claudeVoiceHtml);
-  // /claude-voice/approval-request: called by tools/quake-approval-hook.js, a plain Node process with
-  // no Origin/Sec-Fetch-Site headers at all -- sameOrigin() below would always reject it, so it's
-  // gated here instead by the per-boot OQX_VOICE_TOKEN the hook receives via its own environment.
-  if (url === '/claude-voice/approval-request' && req.method === 'POST') {
-    const okToken = !!voiceToken && req.headers['x-oqx-voice-token'] === voiceToken;
+  if (voiceApp && voicePath === '/') return html(res, voiceApp.htmlContent);
+  // /<app>/approval-request: called by an external hook process (e.g. quake-approval-hook.js), a
+  // plain Node process with no Origin/Sec-Fetch-Site headers at all -- sameOrigin() below would
+  // always reject it, so it's gated here instead by the app's per-boot voiceToken, which the hook
+  // receives via its own environment. Apps without a token have no such route.
+  if (voiceApp && voicePath === '/approval-request' && req.method === 'POST') {
+    const h = voiceApp.handlers;
+    const okToken = !!voiceApp.voiceToken && req.headers['x-oqx-voice-token'] === voiceApp.voiceToken;
     if (!okToken) { res.writeHead(403); res.end(); return; }
-    return readJsonBody(req).then(body => onClaudeVoiceApprovalRequest ? onClaudeVoiceApprovalRequest(body, res) : done(res, false))
+    return readJsonBody(req).then(body => h.approvalRequest ? h.approvalRequest(body, res) : done(res, false))
       .catch(() => done(res, false));
   }
   const asset = staticAssets[url];
@@ -411,92 +419,95 @@ async function handler(req, res) {
   if (url === '/nowplaying') return json(res, nowplaying.getSnapshot());
   if (url === '/lyrics') { try { await lyrics.ensure(nowplaying.getSnapshot()); } catch (e) {} return json(res, lyrics.getSnapshot()); }   // synced lyrics for the current track
   if (url === '/haschedule-data') return json(res, haschedule.getSnapshot());
-  if (url === '/claude-voice/turn' && req.method === 'POST') {
-    let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
-    const text = body && typeof body.text === 'string' ? body.text.trim() : '';
-    if (!text || !onClaudeVoiceTurn) return done(res, false);
-    // `speak` = the page wants this turn's reply spoken; the response's `speech` id (when set) is
-    // what the page feeds into /claude-voice/turn-audio to receive that one continuous WAV stream.
-    let out = null; try { out = onClaudeVoiceTurn(text, !!body.speak); } catch (e) {}
-    return json(res, out && out.ok ? out : { ok: false });
-  }
-  if (url === '/claude-voice/state') {
-    return json(res, getClaudeVoiceState ? getClaudeVoiceState() : { running: false, status: 'idle' });
-  }
-  if (url === '/claude-voice/events') {
-    if (!onClaudeVoiceSubscribe) { res.writeHead(503); res.end(); return; }
-    onClaudeVoiceSubscribe(req, res);   // keeps res open itself; nothing to return/end here
-    return;
-  }
-  if (url === '/claude-voice/session/start' && req.method === 'POST') {
-    let body; try { body = await readJsonBody(req); } catch (e) { body = {}; }
-    let ok = false;
-    if (onClaudeVoiceSessionStart) { try { ok = !!onClaudeVoiceSessionStart(body && body.projectDir); } catch (e) {} }
-    return done(res, ok);
-  }
-  if (url === '/claude-voice/audio' && req.method === 'POST') {
-    let pcm; try { pcm = await readRawBody(req); } catch (e) { return done(res, false); }
-    if (!pcm.length || !onClaudeVoiceAudio) return json(res, { ok: false, text: '' });
-    let result; try { result = await onClaudeVoiceAudio(pcm); } catch (e) { result = { ok: false, error: e.message }; }
-    return json(res, result);
-  }
-  if (url === '/claude-voice/option' && req.method === 'POST') {
-    let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
-    const key = body && typeof body.key === 'string' ? body.key : '';
-    if (!key || body.value == null || !onClaudeVoiceOption) return done(res, false);
-    let ok = false; try { ok = !!onClaudeVoiceOption(key, String(body.value)); } catch (e) {}
-    return done(res, ok);
-  }
-  if (url === '/claude-voice/tts' && req.method === 'POST') {
-    let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
-    const text = body && typeof body.text === 'string' ? body.text.trim() : '';
-    if (!text) return done(res, false);
-    return json(res, { ok: true, id: storeTtsText(text) });
-  }
-  if (url === '/claude-voice/tts-audio') {
-    const id = queryValue(full, 'id');
-    const text = id ? (ttsTexts.get(id) || '') : queryValue(full, 'text');   // ?text= kept for short/manual use
-    if (!text || !onClaudeVoiceSynthesize) { res.writeHead(400); res.end(); return; }
-    return onClaudeVoiceSynthesize(text, res);   // pipes the response itself; nothing to return here
-  }
-  if (url === '/claude-voice/turn-audio') {
-    // One continuous WAV per voice turn, streamed by the main-process speech pipeline while the
-    // reply is still being generated. Long-lived response; the page closing it is the barge-in
-    // signal that aborts synthesis. A stale/unknown turn id is 404'd by the pipeline itself.
-    const turnId = queryValue(full, 'turn');
-    if (!turnId || !onClaudeVoiceTurnAudio) { res.writeHead(404); res.end(); return; }
-    onClaudeVoiceTurnAudio(turnId, req, res);   // holds res open and streams; nothing to return here
-    return;
-  }
-  if (url === '/claude-voice/session/stop' && req.method === 'POST') {
-    let ok = false;
-    if (onClaudeVoiceSessionStop) { try { ok = !!onClaudeVoiceSessionStop(); } catch (e) {} }
-    return done(res, ok);
-  }
-  if (url === '/claude-voice/projects') {
-    const browsePath = queryValue(full, 'path');
-    return json(res, getClaudeVoiceProjects ? getClaudeVoiceProjects(browsePath) : { root: '', parent: null, dirs: [], current: '', recents: [] });
-  }
-  if (url === '/claude-voice/permission-mode' && req.method === 'POST') {
-    let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
-    const mode = body && typeof body.mode === 'string' ? body.mode : '';
-    if (!mode || !onClaudeVoicePermissionMode) return done(res, false);
-    let ok = false; try { ok = !!onClaudeVoicePermissionMode(mode); } catch (e) {}
-    return done(res, ok);
-  }
-  if (url === '/claude-voice/model' && req.method === 'POST') {
-    let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
-    const model = body && typeof body.model === 'string' ? body.model : null;   // '' = account default, so null-check not truthiness
-    if (model == null || !onClaudeVoiceModel) return done(res, false);
-    let ok = false; try { ok = !!onClaudeVoiceModel(model); } catch (e) {}
-    return done(res, ok);
-  }
-  if (url === '/claude-voice/approval-decision' && req.method === 'POST') {
-    let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
-    const requestId = body && body.requestId, decision = body && body.decision;
-    if (!requestId || (decision !== 'allow' && decision !== 'deny') || !onClaudeVoiceApprovalDecision) return done(res, false);
-    let ok = false; try { ok = !!onClaudeVoiceApprovalDecision(requestId, decision); } catch (e) {}
-    return done(res, ok);
+  if (voiceApp) {
+    const h = voiceApp.handlers;
+    if (voicePath === '/turn' && req.method === 'POST') {
+      let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+      const text = body && typeof body.text === 'string' ? body.text.trim() : '';
+      if (!text || !h.onTurn) return done(res, false);
+      // `speak` = the page wants this turn's reply spoken; the response's `speech` id (when set) is
+      // what the page feeds into /<app>/turn-audio to receive that one continuous WAV stream.
+      let out = null; try { out = h.onTurn(text, !!body.speak); } catch (e) {}
+      return json(res, out && out.ok ? out : { ok: false });
+    }
+    if (voicePath === '/state') {
+      return json(res, h.getState ? h.getState() : { running: false, status: 'idle' });
+    }
+    if (voicePath === '/events') {
+      if (!h.subscribe) { res.writeHead(503); res.end(); return; }
+      h.subscribe(req, res);   // keeps res open itself; nothing to return/end here
+      return;
+    }
+    if (voicePath === '/session/start' && req.method === 'POST') {
+      let body; try { body = await readJsonBody(req); } catch (e) { body = {}; }
+      let ok = false;
+      if (h.sessionStart) { try { ok = !!h.sessionStart(body && body.projectDir); } catch (e) {} }
+      return done(res, ok);
+    }
+    if (voicePath === '/audio' && req.method === 'POST') {
+      let pcm; try { pcm = await readRawBody(req); } catch (e) { return done(res, false); }
+      if (!pcm.length || !h.transcribe) return json(res, { ok: false, text: '' });
+      let result; try { result = await h.transcribe(pcm); } catch (e) { result = { ok: false, error: e.message }; }
+      return json(res, result);
+    }
+    if (voicePath === '/option' && req.method === 'POST') {
+      let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+      const key = body && typeof body.key === 'string' ? body.key : '';
+      if (!key || body.value == null || !h.setOption) return done(res, false);
+      let ok = false; try { ok = !!h.setOption(key, String(body.value)); } catch (e) {}
+      return done(res, ok);
+    }
+    if (voicePath === '/tts' && req.method === 'POST') {
+      let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+      const text = body && typeof body.text === 'string' ? body.text.trim() : '';
+      if (!text) return done(res, false);
+      return json(res, { ok: true, id: storeTtsText(text) });
+    }
+    if (voicePath === '/tts-audio') {
+      const id = queryValue(full, 'id');
+      const text = id ? (ttsTexts.get(id) || '') : queryValue(full, 'text');   // ?text= kept for short/manual use
+      if (!text || !h.synthesize) { res.writeHead(400); res.end(); return; }
+      return h.synthesize(text, res);   // pipes the response itself; nothing to return here
+    }
+    if (voicePath === '/turn-audio') {
+      // One continuous WAV per voice turn, streamed by the main-process speech pipeline while the
+      // reply is still being generated. Long-lived response; the page closing it is the barge-in
+      // signal that aborts synthesis. A stale/unknown turn id is 404'd by the pipeline itself.
+      const turnId = queryValue(full, 'turn');
+      if (!turnId || !h.turnAudio) { res.writeHead(404); res.end(); return; }
+      h.turnAudio(turnId, req, res);   // holds res open and streams; nothing to return here
+      return;
+    }
+    if (voicePath === '/session/stop' && req.method === 'POST') {
+      let ok = false;
+      if (h.sessionStop) { try { ok = !!h.sessionStop(); } catch (e) {} }
+      return done(res, ok);
+    }
+    if (voicePath === '/projects') {
+      const browsePath = queryValue(full, 'path');
+      return json(res, h.getProjects ? h.getProjects(browsePath) : { root: '', parent: null, dirs: [], current: '', recents: [] });
+    }
+    if (voicePath === '/permission-mode' && req.method === 'POST') {
+      let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+      const mode = body && typeof body.mode === 'string' ? body.mode : '';
+      if (!mode || !h.setPermissionMode) return done(res, false);
+      let ok = false; try { ok = !!h.setPermissionMode(mode); } catch (e) {}
+      return done(res, ok);
+    }
+    if (voicePath === '/model' && req.method === 'POST') {
+      let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+      const model = body && typeof body.model === 'string' ? body.model : null;   // '' = account default, so null-check not truthiness
+      if (model == null || !h.setModel) return done(res, false);
+      let ok = false; try { ok = !!h.setModel(model); } catch (e) {}
+      return done(res, ok);
+    }
+    if (voicePath === '/approval-decision' && req.method === 'POST') {
+      let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+      const requestId = body && body.requestId, decision = body && body.decision;
+      if (!requestId || (decision !== 'allow' && decision !== 'deny') || !h.approvalDecision) return done(res, false);
+      let ok = false; try { ok = !!h.approvalDecision(requestId, decision); } catch (e) {}
+      return done(res, ok);
+    }
   }
   if (url === '/shortcuts') return json(res, getShortcuts ? getShortcuts() : { rotation: null, pages: [], custom: [] });
   if (url === '/grid-tiles') {
@@ -543,21 +554,15 @@ function start(opts) {
   onOpenExternal = opts.onOpenExternal || null;
   onMeetingAction = opts.onMeetingAction || null;
   getShortcuts = opts.getShortcuts || null;
-  onClaudeVoiceTurn = opts.onClaudeVoiceTurn || null;
-  getClaudeVoiceState = opts.getClaudeVoiceState || null;
-  onClaudeVoiceAudio = opts.onClaudeVoiceAudio || null;
-  onClaudeVoiceApprovalRequest = opts.onClaudeVoiceApprovalRequest || null;
-  onClaudeVoiceApprovalDecision = opts.onClaudeVoiceApprovalDecision || null;
-  onClaudeVoiceSessionStart = opts.onClaudeVoiceSessionStart || null;
-  onClaudeVoiceSessionStop = opts.onClaudeVoiceSessionStop || null;
-  onClaudeVoiceSubscribe = opts.onClaudeVoiceSubscribe || null;
-  getClaudeVoiceProjects = opts.getClaudeVoiceProjects || null;
-  onClaudeVoiceSynthesize = opts.onClaudeVoiceSynthesize || null;
-  onClaudeVoiceTurnAudio = opts.onClaudeVoiceTurnAudio || null;
-  onClaudeVoicePermissionMode = opts.onClaudeVoicePermissionMode || null;
-  onClaudeVoiceModel = opts.onClaudeVoiceModel || null;
-  onClaudeVoiceOption = opts.onClaudeVoiceOption || null;
-  voiceToken = opts.voiceToken || null;
+  voiceApps = {};
+  Object.entries(opts.voiceApps || {}).forEach(([id, v]) => {
+    voiceApps[id] = {
+      handlers: (v && v.handlers) || {},
+      voiceToken: (v && v.voiceToken) || null,
+      htmlFile: (v && v.htmlFile) || null,
+      htmlContent: FALLBACK,
+    };
+  });
   setAppFolders(opts.appFolders);
   nowplaying.setProvider(opts.getNowPlaying || null);
   return new Promise((resolve, reject) => {
@@ -570,7 +575,9 @@ function start(opts) {
     try { agendaHtml = fs.readFileSync(path.join(__dirname, 'agenda.html'), 'utf8'); } catch (e) {}
     try { eventsHtml = fs.readFileSync(path.join(__dirname, 'events.html'), 'utf8'); } catch (e) {}
     try { keyshortcutsHtml = fs.readFileSync(path.join(__dirname, 'keyshortcutsview.html'), 'utf8'); } catch (e) {}
-    try { claudeVoiceHtml = fs.readFileSync(path.join(__dirname, 'claudevoiceview.html'), 'utf8'); } catch (e) {}
+    Object.values(voiceApps).forEach(v => {
+      if (v.htmlFile) { try { v.htmlContent = fs.readFileSync(path.join(__dirname, v.htmlFile), 'utf8'); } catch (e) {} }
+    });
     for (const [route, type] of Object.entries(STATIC_FILES)) {
       try { staticAssets[route] = { body: fs.readFileSync(path.join(__dirname, route.slice(1)), 'utf8'), type }; } catch (e) {}
     }
