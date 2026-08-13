@@ -195,11 +195,17 @@ function createCodexVoiceAdapter({ log }) {
       return;
     }
     if (method === 'item/started' || method === 'item/updated') {
-      // Stash fileChange items so a subsequent approval request can show WHAT is changing.
       const item = params.item || {};
+      // Stash fileChange items so a subsequent approval request can show WHAT is changing.
       if (item.type === 'fileChange' && item.id != null) {
         fileChangeItems.set(item.id, item);
         while (fileChangeItems.size > 8) fileChangeItems.delete(fileChangeItems.keys().next().value);
+      }
+      // A SECOND agentMessage in the same turn (text -> tool/approval -> more text) needs a break,
+      // or the two messages' deltas jam together mid-word in the transcript and the speech.
+      if (method === 'item/started' && item.type === 'agentMessage' && turnText && !/\n$/.test(turnText)) {
+        turnText += '\n\n';
+        emitter.emit('assistant-delta', { text: '\n\n' });
       }
       return;
     }
@@ -215,7 +221,11 @@ function createCodexVoiceAdapter({ log }) {
       const turn = params.turn || {};
       activeTurnId = null;
       const err = turn.error ? (turn.error.message || String(turn.error)) : null;
-      emitter.emit('turn-complete', { text: finalText != null ? finalText : (turnText || null), error: err });
+      // Authoritative text = the ACCUMULATED deltas: a turn with tool work (e.g. an approval)
+      // produces multiple agentMessages, and item/completed only carries the LAST one -- using it
+      // alone discarded everything said before the approval ("approvals are cutting off
+      // responses", hardware-reported). turnText spans every message of the turn.
+      emitter.emit('turn-complete', { text: turnText || finalText || null, error: err });
       return;
     }
     if (method === 'error') {
