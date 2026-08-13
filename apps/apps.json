@@ -6126,7 +6126,6 @@
         "choices": [
           ["readOnly", "Read only — look but never touch (no approvals needed)"],
           ["manual", "Manual — can work in the folder, asks before commands and file changes"],
-          ["auto", "Auto — works in the folder, asks only if the sandbox blocks something"],
           ["full", "Full auto — no sandbox at all (use with care)"]
         ]
       },

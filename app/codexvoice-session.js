@@ -49,16 +49,11 @@ const CODEX_MODE_PRESETS = {
     label: 'Manual', desc: 'Can work in the folder — asks before commands and file changes',
     approvalPolicy: 'on-request', sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
   },
-  // Auto asks ONLY for sandbox escalations: codex's Windows sandbox is experimental and on this
-  // class of setup denies commands outright ("Access is denied" even for reads, hardware-verified),
-  // so a no-questions policy dead-ends the agent. 0.147 REMOVED the old 'on-failure' value (turn
-  // rejects it with "unknown variant"); its successor is the granular object, where each flag is
-  // an ask-for-this category and sandbox_approval covers exactly the escalation case.
-  auto: {
-    label: 'Auto', desc: 'Works in the folder — asks only if the sandbox blocks something',
-    approvalPolicy: { granular: { mcp_elicitations: false, rules: false, sandbox_approval: true } },
-    sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
-  },
+  // NO "Auto" (sandboxed-writes) preset on purpose: codex's Windows sandbox is broken for
+  // workspaces on non-system drives (openai/codex#13378, #15165, #17112 -- "Access is denied" on
+  // ordinary commands, hardware-verified here on D:\) and #17179 documents it corrupting project
+  // file ownership. Until that's fixed upstream, sandboxed writes are either dead ends or a repo
+  // hazard -- Manual (approved commands run unsandboxed) and Full are the working write modes.
   full: {
     label: 'Full auto', desc: 'No sandbox at all — use with care',
     approvalPolicy: 'never', sandbox: 'danger-full-access', sandboxPolicy: { type: 'dangerFullAccess' },
