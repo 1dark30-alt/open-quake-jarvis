@@ -271,6 +271,8 @@ function createCodexVoiceAdapter({ log }) {
     const preset = CODEX_MODE_PRESETS[mode] || CODEX_MODE_PRESETS[CODEX_DEFAULT_MODE];
     send('initialize', { clientInfo: { name: 'open-quake', version: '0' } })
       .then(() => {
+        // Required by the protocol contract (MCP-style two-step): acknowledge before anything else.
+        try { thisProc.stdin.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n'); } catch (e) {}
         if (resumeThreadId) return send('thread/resume', { threadId: resumeThreadId, cwd, approvalPolicy: preset.approvalPolicy, sandbox: preset.sandbox });
         return send('thread/start', { cwd, approvalPolicy: preset.approvalPolicy, sandbox: preset.sandbox, model: model || null });
       })
