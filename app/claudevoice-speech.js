@@ -62,11 +62,16 @@ function prepWholeSpeech(raw) {
   return speechSanitize(out.join(' '));
 }
 
-// createSpeechPipeline({synthesize, wavHeader, getTts, log}) -> the one pipeline instance main.js
-// owns. `synthesize`/`wavHeader` come from claudevoice-wyoming.js; `getTts()` returns the live
-// {host, port} for wyoming-piper (read per sentence so option edits apply without a restart).
-function createSpeechPipeline({ synthesize, wavHeader, getTts, log }) {
+// createSpeechPipeline({synthesize, wavHeader, getTts, log, onSpeechError}) -> the one pipeline
+// instance the host owns. `synthesize`/`wavHeader` come from claudevoice-wyoming.js; `getTts()`
+// returns the live {host, port} for wyoming-piper (read per sentence so option edits apply
+// without a restart). `onSpeechError(message)` fires ONCE per turn on its first synthesis failure
+// -- a dead TTS service fails every sentence, and without this the turn ended as a silent empty
+// stream indistinguishable from "nothing to say" (per-sentence skips are still right for
+// transient hiccups; total silence with no error was not).
+function createSpeechPipeline({ synthesize, wavHeader, getTts, log, onSpeechError }) {
   const say = log || (() => {});
+  const tellError = onSpeechError || (() => {});
   let seq = 0;
   let turn = null;   // the single active turn's state, or null
 
@@ -96,6 +101,7 @@ function createSpeechPipeline({ synthesize, wavHeader, getTts, log }) {
       headerWritten: false, format: null,
       pending: [], pendingBytes: 0,  // PCM synthesized before the listener attached
       cancelSynth: null, aborted: false,
+      errorNotified: false,          // onSpeechError fires at most once per turn
     };
     return id;
   }
@@ -189,7 +195,14 @@ function createSpeechPipeline({ synthesize, wavHeader, getTts, log }) {
       registerCancel: cancel => { t.cancelSynth = cancel; },
       onFormat: fmt => { if (turn === t) onTurnFormat(t, fmt); },
       onChunk: buf => { if (turn === t) onTurnChunk(t, buf); },
-    })).catch(e => { if (!t.aborted) say('speech sentence synth failed (skipped): ' + e.message); })
+    })).catch(e => {
+      if (t.aborted) return;
+      say('speech sentence synth failed (skipped): ' + e.message);
+      if (!t.errorNotified) {
+        t.errorNotified = true;
+        tellError(e.message);
+      }
+    })
       .then(() => {
         t.cancelSynth = null;
         t.synthesizing = false;

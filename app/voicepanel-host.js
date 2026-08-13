@@ -75,6 +75,9 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       return host && port ? { host, port } : null;
     },
     log: say,
+    // A dead/disabled TTS service must never be a SILENT nothing (it fails every sentence and the
+    // turn ends as an empty stream) -- surface the first failure on the panel's status line.
+    onSpeechError: message => broadcast({ type: 'speech-error', error: 'Speech failed: ' + message }),
   });
 
   // ---- adapter events -> state/speech/SSE (moved verbatim from the main.js event handlers) ----

@@ -75,12 +75,16 @@ function renderTranscript() {
 // Ring states the host (main.js) knows how to render — anything else (idle, error, ...) clears the
 // override back to the user's normal theme-driven ring. Keep in sync with RING_STATES in main.js.
 var RING_SIGNAL_STATES = { listening: 1, thinking: 1, speaking: 1, approval: 1 };
+// Speech-only failure notice (TTS service down/off). Sticky: status changes don't wipe it -- it
+// clears only when speech actually plays again or a new session starts. Without this, a dead TTS
+// port was indistinguishable from "nothing to say".
+var speechErrText = '';
 function setStatus(status, errorText) {
   var el = $('status');
   el.textContent = (status || 'idle').toUpperCase();
   el.className = status === 'thinking' ? 'thinking' : status === 'listening' ? 'listening' :
     status === 'error' ? 'error' : status === 'approval' ? 'approval' : '';
-  $('err').textContent = errorText || '';
+  $('err').textContent = errorText || speechErrText || '';
   console.log('OQX_RING::' + (RING_SIGNAL_STATES[status] ? status : 'idle'));
 }
 
@@ -156,6 +160,9 @@ function connectEvents() {
     } else if (msg.type === 'model') {
       liveModel = msg.model || '';   // what's ACTUALLY running, from the session's init event
       syncPickButtons();
+    } else if (msg.type === 'speech-error') {
+      speechErrText = msg.error || 'Speech failed.';
+      setStatus($('status').textContent.toLowerCase(), '');   // repaint the status line with the sticky notice
     } else if (msg.type === 'turn-speech') {
       // A queued turn just started generating: its speech stream id arrives here rather than on
       // the POST /turn response (that turn was parked behind the previous one -- CLI semantics).
@@ -171,6 +178,7 @@ function connectEvents() {
       // The mode rides along -- the page-load snapshot predates a lazily-started session, so
       // without this the Mode button shows a stale default until the first manual switch.
       if (msg.permissionMode) { currentMode = msg.permissionMode; syncModeUI(); }
+      speechErrText = '';
       stopTurnAudio();
       turnInProgress = false;
       transcript = [];
@@ -394,6 +402,7 @@ function startTurnAudio(turnId) {
   };
   a.addEventListener('playing', function () {
     if (turnAudio !== a) return;
+    speechErrText = '';   // speech audibly works again -- retire the sticky TTS-failure notice
     suppressVAD = true;   // the mic must never hear Claude's own voice through the speaker
     setStatus('speaking');
     $('spkBtn').classList.add('pulsing');
