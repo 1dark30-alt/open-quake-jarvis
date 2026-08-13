@@ -6091,15 +6091,15 @@
         "key": "permissionMode",
         "label": "Permission mode",
         "type": "select",
-        "default": "bypassPermissions",
+        "default": "manual",
         "choices": [
-          ["manual", "Manual — ask before every action (requires touch-approval hook, Phase 7)"],
+          ["manual", "Manual — ask before every action (touch approval on the panel)"],
           ["acceptEdits", "Accept edits — auto-approve file changes"],
           ["plan", "Plan — describe, don't act, until approved"],
-          ["bypassPermissions", "Full auto — no prompts (dev default until Phase 7 ships)"]
+          ["bypassPermissions", "Full auto — no prompts (use with care)"]
         ]
       },
-      { "key": "approvalsEnabled", "label": "Touch approval when in Manual mode", "type": "bool", "default": false },
+      { "key": "approvalsEnabled", "label": "Touch approval when in Manual mode", "type": "bool", "default": true },
     { "key": "chatFontSize", "label": "Chat text size (px)", "type": "text", "default": "16" },
     { "key": "vadHangoverMs", "label": "Voice pause tolerance (ms)", "type": "text", "default": "800" },
     { "key": "micDevice", "label": "Microphone (set from the panel Settings)", "type": "text", "default": "" },

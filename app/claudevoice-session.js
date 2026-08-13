@@ -56,7 +56,7 @@ function createClaudeVoiceSession(options) {
   let sessionId = null;
   let resumeSessionId = null;   // when set, launch() resumes this session instead of starting fresh
   let projectDir = null;
-  let permissionMode = 'bypassPermissions';
+  let permissionMode = 'manual';   // fail safe: ask, never bypass
   let model = '';            // '' = account default (no --model flag); alias like 'sonnet' otherwise
   let currentModel = null;   // authoritative model id from the init event (what's ACTUALLY running)
   let voicePort = null;
@@ -172,7 +172,7 @@ function createClaudeVoiceSession(options) {
       sessionId = crypto.randomUUID();
       resumeSessionId = null;
       projectDir = dir;
-      permissionMode = mode || 'bypassPermissions';
+      permissionMode = mode || 'manual';
       model = pick || '';
       currentModel = null;
       voicePort = port;

@@ -348,7 +348,7 @@ function startClaudeVoiceSession(dir) {
   } catch (e) { claudeVoiceLog('panel prompt file not loaded: ' + e.message); }
   claudeVoiceSession.start({
     projectDir,
-    permissionMode: opts.options.permissionMode || 'bypassPermissions',
+    permissionMode: opts.options.permissionMode || 'manual',   // fail safe: ask, never bypass
     model: CLAUDE_VOICE_MODEL_PICKS.includes(opts.options.modelPick) ? opts.options.modelPick : '',
     port: serverPort,
     token: claudeVoiceToken,
