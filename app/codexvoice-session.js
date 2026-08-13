@@ -370,6 +370,11 @@ function createCodexVoiceAdapter({ log }) {
     // to a live session (thread/resume policy params are ignored once a thread is loaded). ----
     setMode(pick) {
       if (!CODEX_MODE_PRESETS[pick]) return false;
+      // No session yet -> refuse, same as the claude adapter: a pre-session pick would only be
+      // clobbered by the lazy start applying the editor-configured mode (hardware-verified
+      // confusion: "switched to auto, asked a question, panel is back to manual"). The page
+      // already shows "send a message first" for this.
+      if (!proc) return false;
       if (pick !== mode) {
         mode = pick;
         say('mode -> ' + pick + ' (applies from the next turn)');
