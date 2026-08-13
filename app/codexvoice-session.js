@@ -49,9 +49,13 @@ const CODEX_MODE_PRESETS = {
     label: 'Manual', desc: 'Can work in the folder — asks before commands and file changes',
     approvalPolicy: 'on-request', sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
   },
+  // Auto is 'on-failure', not 'never': codex's Windows sandbox is experimental and on this class
+  // of setup denies commands outright ("Access is denied" even for reads, hardware-verified).
+  // on-failure keeps Auto hands-off in the happy path but raises the approval overlay when the
+  // sandbox blocks something, so the agent escalates instead of dead-ending.
   auto: {
-    label: 'Auto', desc: 'Works in the folder without asking',
-    approvalPolicy: 'never', sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
+    label: 'Auto', desc: 'Works in the folder — asks only if the sandbox blocks something',
+    approvalPolicy: 'on-failure', sandbox: 'workspace-write', sandboxPolicy: { type: 'workspaceWrite' },
   },
   full: {
     label: 'Full auto', desc: 'No sandbox at all — use with care',
