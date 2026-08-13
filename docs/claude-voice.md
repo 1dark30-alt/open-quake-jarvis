@@ -20,7 +20,7 @@ In the editor, open the **Claude Code** app page and fill in:
 |---|---|
 | **Project directory** | pick from the dropdown (scanned from **Projects folder**) or type a new path |
 | **Projects folder (for the picker)** | the parent folder to scan, e.g. `D:\Github` |
-| **Wyoming host (STT/TTS)** | your `wyoming-faster-whisper` / `wyoming-piper` host |
+| **Wyoming host (STT/TTS)** | `127.0.0.1` with [tts-sst](https://github.com/TeeJS/tts-stt-windows) installed, or your own `wyoming-faster-whisper` / `wyoming-piper` host |
 | **Wyoming STT port** / **TTS port** | default `10300` / `10200` |
 | **Permission mode** | same meaning as `claude --permission-mode` — see below |
 | **Touch approval when in Manual mode** | see [Touch approvals](#touch-approvals) |
@@ -104,10 +104,18 @@ never an unattended auto-allow.
 
 ## Wyoming STT/TTS
 
-Speech-to-text and text-to-speech run against **your own** [Wyoming](https://github.com/rhasspy/wyoming)
-services (`wyoming-faster-whisper`, `wyoming-piper`) — not a cloud API, not Open WebUI. Audio sent
-for transcription is 16kHz/16-bit/mono PCM; the reply's playback format is always read from the
-server live rather than assumed, since Piper's sample rate varies by voice model.
+Speech-to-text and text-to-speech run against [Wyoming](https://github.com/rhasspy/wyoming)
+services — not a cloud API, not Open WebUI. Two ways to get them:
+
+- **No servers of your own (default):** install [tts-sst](https://github.com/TeeJS/tts-stt-windows),
+  a small Windows tray app that serves Whisper STT and a Piper voice locally on 127.0.0.1:10300 /
+  10200 — the defaults these fields ship with. It downloads its models on first run; nothing else
+  to configure.
+- **Your own homelab services:** point the host/port fields at your `wyoming-faster-whisper` and
+  `wyoming-piper` instances.
+
+Audio sent for transcription is 16kHz/16-bit/mono PCM; the reply's playback format is always read
+from the server live rather than assumed, since Piper's sample rate varies by voice model.
 
 ## How it works
 
@@ -127,8 +135,9 @@ client exists).
   (run `claude` once from a terminal to complete OAuth login).
 - **Voice does nothing on tap** — check the page's Knob → Override → Click is set to **Enter**,
   and that the device mic is on (tray → mic).
-- **No transcription / no speech playback** — check the Wyoming host/port fields; confirm
-  `wyoming-faster-whisper`/`wyoming-piper` are reachable from this machine.
+- **No transcription / no speech playback** — check the Wyoming host/port fields; confirm the
+  services are reachable from this machine (with tts-sst, check its tray status line — on first
+  run it's downloading models and won't answer until that finishes).
 - **Approvals never show up on the panel** — Permission mode must be **Manual** *and* Touch
   approval must be on; toggling either one only takes effect for the *next* session you start.
 - **Security note** — nothing in this app stores a credential: Claude auth is your existing OAuth

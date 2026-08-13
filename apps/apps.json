@@ -6084,7 +6084,7 @@
     "options": [
       { "key": "projectDir", "label": "Default folder", "type": "text", "default": "" },
       { "key": "projectsRoot", "label": "Folders root (for the panel picker)", "type": "text", "default": "D:\\Github" },
-      { "key": "wyomingHost", "label": "Wyoming host (STT/TTS)", "type": "text", "default": "192.168.1.25" },
+      { "key": "wyomingHost", "label": "Wyoming host (STT/TTS)", "type": "text", "default": "127.0.0.1" },
       { "key": "wyomingSttPort", "label": "Wyoming STT port", "type": "text", "default": "10300" },
       { "key": "wyomingTtsPort", "label": "Wyoming TTS port", "type": "text", "default": "10200" },
       {
