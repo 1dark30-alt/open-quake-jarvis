@@ -254,7 +254,9 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
   function getProjects(browsePath) {
     const opts = deps.activeServedAppConfig(appId);
     if (!opts) return { root: '', parent: null, dirs: [], current: '', recents: [] };
-    const root = path.resolve(browsePath || opts.options.projectsRoot || '');
+    // Folders-root default: empty option -> the user's Documents folder, resolved at runtime so
+    // nothing machine-specific is baked into the shipped defaults.
+    const root = path.resolve(browsePath || opts.options.projectsRoot || deps.getDocumentsPath() || '');
     let dirs = [];
     try {
       dirs = fs.readdirSync(root, { withFileTypes: true })

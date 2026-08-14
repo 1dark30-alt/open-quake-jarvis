@@ -5,6 +5,7 @@ const { pathToFileURL } = require('url');
 
 contextBridge.exposeInMainWorld('openQuakeConfig', {
   getConfig() { return ipcRenderer.invoke('getConfig'); },
+  getAppVersion() { return ipcRenderer.invoke('getAppVersion'); },
   getApps() { return ipcRenderer.invoke('getApps'); },
   saveConfig(config) { ipcRenderer.send('saveConfigFromEditor', config); },
   pickProgram() { return ipcRenderer.invoke('pickProgram'); },

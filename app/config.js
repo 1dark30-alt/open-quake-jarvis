@@ -1374,15 +1374,16 @@
     const claudeVoiceBox = `<div id="cvBox" style="margin-top:10px">
         <p id="cvCliWarn" class="hint" style="display:none;color:#ff8a8a;font-weight:600"></p>
         <div class="row"><label>Default folder</label>
-          <input id="cvProjectPath" value="${esc(cvVal('projectDir', ''))}" placeholder="D:\\Github\\my-folder" style="flex:1"></div>
+          <input id="cvProjectPath" value="${esc(cvVal('projectDir', ''))}" style="flex:1"></div>
         <p class="hint">Where new sessions start until a folder is picked on the panel (Change folder). The panel's pick updates this. Created automatically if it doesn't exist yet.</p>
         <div class="row" style="margin-top:10px"><label style="width:auto">Folders root</label>
-          <input id="cvProjectsRoot" value="${esc(cvVal('projectsRoot', 'D:\\\\Github'))}" style="flex:1"></div>
+          <input id="cvProjectsRoot" value="${esc(cvVal('projectsRoot', ''))}" style="flex:1"></div>
         <p class="hint">The folder the panel's Change folder list scans.</p>
         <div class="row"><label>Wyoming host</label><input id="cvWyomingHost" value="${esc(cvVal('wyomingHost', ''))}" style="flex:1"></div>
         <div class="row"><label>STT / TTS ports</label>
           <input id="cvSttPort" value="${esc(cvVal('wyomingSttPort', ''))}" style="width:90px">
           <input id="cvTtsPort" value="${esc(cvVal('wyomingTtsPort', ''))}" style="width:90px;margin-left:8px"></div>
+        <p class="hint">Voice needs Piper (TTS) and Whisper (STT) hosts. Please enter the IP of your server or use <a href="#" id="cvTtsLink">tts-stt-windows</a> to provide both on any Windows machine — install it and set the host to <code>127.0.0.1</code>.</p>
         <div class="row" style="margin-top:10px"><label>Permission mode</label>
           <select id="cvPermMode" style="flex:1">${cvPermChoices.map(c => `<option value="${esc(c[0])}" ${cvVal('permissionMode', cvOptDef('permissionMode').default || '') === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>` + (isClaudeVoice ? `
         <div class="row"><label>Touch approval</label>
@@ -1467,6 +1468,8 @@
       if (cvApprovals) cvApprovals.onchange = e => setOpt('approvalsEnabled', e.target.checked);
       const cvEditPrompt = document.getElementById('cvEditPrompt');
       if (cvEditPrompt) cvEditPrompt.onclick = () => configApi.editClaudeVoicePrompt();
+      const cvTtsLink = document.getElementById('cvTtsLink');
+      if (cvTtsLink) cvTtsLink.onclick = e => { e.preventDefault(); configApi.openExternal('https://github.com/TeeJS/tts-stt-windows/releases'); };
       // Warn at add-time if the agent CLI this page drives isn't installed -- otherwise the user
       // only finds out when the panel page errors on first use.
       configApi.probeVoiceCli(g.app).then(p => {
@@ -2189,6 +2192,7 @@
   (async () => {
     config = await configApi.getConfig(); if (!config.grids) config.grids = [];
     if (!Array.isArray(config.groups)) config.groups = [];
+    try { const v = await configApi.getAppVersion(); const el = document.getElementById('appVer'); if (el && v) el.textContent = 'v' + v; } catch (e) {}
     try { appDefs = await configApi.getApps(); } catch (e) {}
     try { haCacheLocal = await configApi.getHaCache(); } catch (e) {}   // for iconHtml's HA icon resolution
     render(); setState('');
