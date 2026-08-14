@@ -27,9 +27,20 @@ Included apps:
   convert automatically. Sticky: keeps the last-set times across restarts and never snaps
   to the current time (that's the World Clock's job). 12/24-hour option.
 - **[Music controller](music.md)** — now-playing + transport + a programmable app grid.
+- **[System monitor](system-monitor.md)** — live CPU/GPU/RAM/disk/network/battery gauges.
 - **[Open WebUI chat + voice](ai-chat.md)** — talk to your own LLM, with knob push-to-talk.
+- **[Claude Code](claude-voice.md)** — a real Claude Code session on the panel: type or talk,
+  watch replies stream, approve/deny actions from the touchscreen, tap the knob to start/stop.
+- **[Codex](codex-voice.md)** — the same panel experience driving the OpenAI **Codex** CLI
+  (ChatGPT sign-in, no API key). Shares one page, one voice pipeline, and one design with the
+  Claude Code app — only the agent differs.
 - **[Meeting](meeting.md)** — one-tap mute/video/accept/decline/leave for Zoom and Teams,
   no keyboard or mouse.
+- **Microsoft 365** — a read-only Microsoft 365 dashboard: your profile, live presence, and
+  upcoming calendar entries pulled from Microsoft Graph after you sign in with your Microsoft
+  account (**Settings → Auth**), plus up to **eight** configurable app shortcuts (Teams,
+  Outlook, Word, Excel, PowerPoint, OneNote, OneDrive, Microsoft 365) that either focus an
+  already-open window or launch it, and a one-tap **Join meeting** for the current/next event.
 - **[Home Assistant Dashboard](home-assistant.md)** — pick a Lovelace dashboard from your
   HA server in a dropdown, no hand-typed URLs. Requires **Use Home Assistant** in
   **Settings → Auth**; hidden from the App picker otherwise. Uses your global HA token

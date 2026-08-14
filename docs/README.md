@@ -14,6 +14,8 @@ Detailed guides for open-quake. Back to the [project README](../README.md).
 - **[System monitor](system-monitor.md)** — live CPU/GPU/RAM/disk/network/battery
 - **[Open WebUI chat + voice](ai-chat.md)** — chat to your LLM, hold the knob to talk
 - **[Claude Code voice + text](claude-voice.md)** — a real Claude Code session on the panel: talk or type, touch approvals, tap the knob to start/stop
+- **[Codex voice + text](codex-voice.md)** — the same panel session driving the OpenAI Codex CLI (ChatGPT sign-in, no API key)
+- **[Microsoft 365 panel](apps.md)** — profile, presence, and upcoming calendar via Microsoft Graph, plus configurable app shortcuts and one-tap Join meeting
 - **[Settings & knob](settings.md)** — launch mode, rotation, RGB ring, knob behavior, mic
 - **[Reserved Display](reserved-display.md)** — keep normal Windows apps off the Quake display
 

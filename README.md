@@ -39,9 +39,12 @@ It gives you:
   transport + app grid), a **[Meeting](docs/meeting.md)** app (one-tap mute/video/accept
   /decline/leave for Zoom and Teams), a **[System Monitor](docs/system-monitor.md)** (live
   CPU/GPU/RAM/disk/network/battery), an **[Open WebUI chat](docs/ai-chat.md)** you can
-  **talk to by holding the knob**, and a **[Claude Code](docs/claude-voice.md)** app — a real
-  Claude Code session on the panel, tap the knob to start/stop a hands-free conversation, with
-  touch approvals and a full text transcript. → [Apps](docs/apps.md)
+  **talk to by holding the knob**, a **[Microsoft 365](docs/apps.md)** panel (sign in with
+  your Microsoft account for live profile, presence, and upcoming-calendar view, plus up to
+  eight configurable app shortcuts and one-tap **Join meeting**), and two agent apps that put
+  a real coding session on the panel — **[Claude Code](docs/claude-voice.md)** and
+  **[Codex](docs/codex-voice.md)** — tap the knob to start/stop a hands-free conversation,
+  with touch approvals and a full text transcript. → [Apps](docs/apps.md)
 - **Theming** — a global **light / dark / system** mode and an **accent color** (with savable
   presets) that drives the panel, the bundled apps, and the knob's RGB ring; web dashboards
   follow the light/dark mode, and any page can override the theme in its Advanced settings.
@@ -56,8 +59,8 @@ It gives you:
 
 > **Status:** early but capable. Touch, knob (incl. RGB ring + hold-to-talk), grids, merged
 > buttons, web dashboards, the bundled apps (clock / world clock / music / meeting / system
-> monitor / AI chat), light/dark + accent theming, the on-board mic, and the editor are
-> working and validated against real hardware. The panel is
+> monitor / AI chat / Microsoft 365 / Claude Code / Codex), light/dark + accent theming, the
+> on-board mic, and the editor are working and validated against real hardware. The panel is
 > driven as a normal external monitor (Windows sees a 480×1920 / 1920×480 display); pushing
 > frames over the HID resource channel is not implemented.
 
@@ -66,7 +69,7 @@ It gives you:
 Detailed guides live in **[docs/](docs/README.md)**:
 
 - [The editor](docs/editor.md) · [Web dashboards](docs/dashboards.md) · [Bundled apps](docs/apps.md)
-- [Music controller](docs/music.md) · [System monitor](docs/system-monitor.md) · [Open WebUI chat + voice](docs/ai-chat.md) · [Claude Code voice + text](docs/claude-voice.md)
+- [Music controller](docs/music.md) · [System monitor](docs/system-monitor.md) · [Open WebUI chat + voice](docs/ai-chat.md) · [Claude Code voice + text](docs/claude-voice.md) · [Codex voice + text](docs/codex-voice.md)
 - [Home Assistant integration](docs/home-assistant.md) · [Settings & knob lighting](docs/settings.md) · [Reserved Display](docs/reserved-display.md) · [Building & how it works](docs/building.md) · [Device protocol](docs/DEVICE_PROTOCOL.md)
 
 ## Companion project
