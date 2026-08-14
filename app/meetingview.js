@@ -29,6 +29,7 @@ var ICON = {
   open:   '<svg viewBox="0 0 24 24"><path d="M14 3v2h3.6l-9 9 1.4 1.4 9-9V10h2V3h-7zM5 5h5V3H3v18h18v-7h-2v5H5V5z"/></svg>',
   speaker:'<svg viewBox="0 0 24 24"><path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zm-2.5-8.8v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>',
   share:  '<svg viewBox="0 0 24 24"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-6v2h2v2H8v-2h2v-2H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm8 3l-4 4h2.5v3h3v-3H16l-4-4z"/></svg>',
+  fullscreen:'<svg viewBox="0 0 24 24"><path d="M4 4h6v2H6v4H4V4zm10 0h6v6h-2V6h-4V4zM6 14v4h4v2H4v-6h2zm14 0v6h-6v-2h4v-4h2z"/></svg>',
 };
 
 // AUDIO & VIDEO controls are constant. CALL controls are per-platform. cls drives the semantic
@@ -86,7 +87,6 @@ function renderDeck() {
   var av = $('avRow'); av.innerHTML = ''; AV.forEach(function (a) { av.appendChild(buildCtl(a)); });
   var call = $('callRow'); call.innerHTML = ''; (CALL[platform] || []).forEach(function (a) { call.appendChild(buildCtl(a)); });
   document.querySelectorAll('.seg').forEach(function (b) { b.classList.toggle('active', b.dataset.platform === platform); });
-  $('openLbl').textContent = 'Open ' + PLATFORM_LABEL[platform];
 }
 document.querySelectorAll('.seg').forEach(function (b) {
   b.onclick = function () { platform = b.dataset.platform; renderDeck(); statusReady(); };
@@ -95,11 +95,11 @@ document.querySelectorAll('.seg').forEach(function (b) {
 // ---- utility rail ----
 $('volDown').innerHTML = '<span class="ic">' + ICON.minus + '</span>';
 $('volUp').innerHTML = '<span class="ic">' + ICON.plus + '</span>';
-$('ic-open').innerHTML = ICON.open;
+$('ic-full').innerHTML = ICON.fullscreen;
 $('ic-share').innerHTML = ICON.share;
 $('volDown').onclick = function () { fireAction('system', 'voldown', 'Volume down').then(pollState); };
 $('volUp').onclick = function () { fireAction('system', 'volup', 'Volume up').then(pollState); };
-$('openApp').onclick = function () { fireAction(platform, 'open', 'Open ' + PLATFORM_LABEL[platform]); };
+$('fullscreen').onclick = function () { fireAction(platform, 'fullscreen', 'Full screen'); };
 $('shareScreen').onclick = function () { fireAction(platform, 'share', 'Share screen'); };
 
 // =====================================================================================

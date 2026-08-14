@@ -1147,14 +1147,9 @@ async function onMeetingActionRequest(platform, action) {
     if (action === 'voldown') { mediaKeys.volume(-1); sysVolAt = 0; return { ok: true }; }
     return { ok: false, error: 'unknown system action: ' + action };
   }
-  // Utility-rail launchers, platform-agnostic. Open focuses/launches the app's window; Share fires
-  // the app's screen-share shortcut (Zoom Alt+S; Teams Ctrl+Shift+E — both depend on that shortcut
-  // being enabled in the app, same as the other keystroke actions here).
-  if (action === 'open') {
-    if (platform === 'teams') return meetingControl.focusTeamsWindow();
-    if (platform === 'zoom') return meetingControl.focusProcessWindow(['Zoom']);
-    return { ok: false, error: 'no launcher for ' + platform };
-  }
+  // Utility-rail actions. Share fires the app's screen-share shortcut (Zoom Alt+S; Teams
+  // Ctrl+Shift+E — both depend on that shortcut being enabled in the app, same as the other
+  // keystroke actions here).
   if (action === 'share') {
     if (platform === 'zoom') return meetingControl.sendZoomAction('alt+s', { mediaKeys });
     if (platform === 'teams') {
@@ -1163,6 +1158,17 @@ async function onMeetingActionRequest(platform, action) {
       return { ok: mediaKeys.tapCombo('control+shift+e'), focused: focus.ok };
     }
     return { ok: false, error: 'no share for ' + platform };
+  }
+  // Full screen is an in-app (not global) shortcut for both, so focus the window first, then tap:
+  // Zoom = Alt+F, Teams = F11.
+  if (action === 'fullscreen') {
+    const combo = platform === 'zoom' ? 'alt+f' : platform === 'teams' ? 'f11' : null;
+    if (!combo) return { ok: false, error: 'no fullscreen for ' + platform };
+    const focus = platform === 'teams'
+      ? await meetingControl.focusTeamsWindow()
+      : await meetingControl.focusProcessWindow(['Zoom']);
+    await new Promise(r => setTimeout(r, 150));
+    return { ok: mediaKeys.tapCombo(combo), focused: focus.ok };
   }
   if (platform === 'zoom') {
     const optKey = ZOOM_OPTION_KEY[action];
