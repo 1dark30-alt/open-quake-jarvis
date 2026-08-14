@@ -1921,6 +1921,31 @@ app.whenReady().then(async () => {
     return touchSetup.clearAllCalibrations();
   });
 
+  // Knob RGB ring (QMK VIA / Bedrock). The editor's Settings page reads the device's current lighting,
+  // then live-previews edits as the user drags. Both are gated to the config window (isFrom) like every
+  // other device-control channel. (These were dropped by mistake in the b2ae172 security rewrite, which
+  // kept the preload channels + renderer callers but lost the main-process handlers.)
+  ipcMain.handle('getLighting', async (e) => {
+    if (!isFrom(e, configWin)) return null;
+    let cur = null;
+    try { cur = await dev.getLighting(); } catch (er) {}
+    return Object.assign({}, lighting(), cur && Object.keys(cur).length ? cur : {});
+  });
+  ipcMain.on('setLighting', (e, L) => {
+    if (!isFrom(e, configWin)) return;
+    if (!L) return;
+    if (!config.settings) config.settings = {};
+    config.settings.lighting = Object.assign({}, lighting(), L);
+    if (config.settings.lighting.effect) lastRingEffect = config.settings.lighting.effect;
+    saveConfig();
+    try {
+      if (L.effect != null) dev.setLedEffect(L.effect & 0xFF);
+      if (L.brightness != null) dev.setLedBrightness(L.brightness & 0xFF);
+      if (L.speed != null) dev.setLedSpeed(L.speed & 0xFF);
+      if (L.hue != null && L.sat != null) dev.setLedColor(L.hue & 0xFF, L.sat & 0xFF);
+    } catch (er) {}
+    refreshTray();
+  });
   ipcMain.handle('saveLightingToDevice', (e) => { if (!isFrom(e, configWin)) return false; try { return dev.saveLighting(); } catch (er) { return false; } });
   ipcMain.handle('listRunningApps', async (e) => isFrom(e, configWin) ? await desktopFocus.listRunningApps() : []);
 
