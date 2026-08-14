@@ -1374,10 +1374,12 @@
     const claudeVoiceBox = `<div id="cvBox" style="margin-top:10px">
         <p id="cvCliWarn" class="hint" style="display:none;color:#ff8a8a;font-weight:600"></p>
         <div class="row"><label>Default folder</label>
-          <input id="cvProjectPath" value="${esc(cvVal('projectDir', ''))}" style="flex:1"></div>
+          <input id="cvProjectPath" value="${esc(cvVal('projectDir', ''))}" style="flex:1">
+          <button id="cvProjectPathBrowse" type="button">Browse…</button></div>
         <p class="hint">Where new sessions start until a folder is picked on the panel (Change folder). The panel's pick updates this. Created automatically if it doesn't exist yet.</p>
         <div class="row" style="margin-top:10px"><label style="width:auto">Folders root</label>
-          <input id="cvProjectsRoot" value="${esc(cvVal('projectsRoot', ''))}" style="flex:1"></div>
+          <input id="cvProjectsRoot" value="${esc(cvVal('projectsRoot', ''))}" style="flex:1">
+          <button id="cvProjectsRootBrowse" type="button">Browse…</button></div>
         <p class="hint">The folder the panel's Change folder list scans.</p>
         <div class="row"><label>Wyoming host</label><input id="cvWyomingHost" value="${esc(cvVal('wyomingHost', ''))}" style="flex:1"></div>
         <div class="row"><label>STT / TTS ports</label>
@@ -1460,6 +1462,8 @@
       // (Change folder), which writes its pick back into this same option.
       document.getElementById('cvProjectPath').oninput = e => setOpt('projectDir', e.target.value.trim());
       document.getElementById('cvProjectsRoot').oninput = e => setOpt('projectsRoot', e.target.value.trim());
+      document.getElementById('cvProjectPathBrowse').onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('cvProjectPath').value = p; setOpt('projectDir', p); } };
+      document.getElementById('cvProjectsRootBrowse').onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('cvProjectsRoot').value = p; setOpt('projectsRoot', p); } };
       document.getElementById('cvWyomingHost').oninput = e => setOpt('wyomingHost', e.target.value.trim());
       document.getElementById('cvSttPort').oninput = e => setOpt('wyomingSttPort', e.target.value.trim());
       document.getElementById('cvTtsPort').oninput = e => setOpt('wyomingTtsPort', e.target.value.trim());
