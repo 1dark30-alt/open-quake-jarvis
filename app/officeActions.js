@@ -145,7 +145,9 @@ function createOfficeActions({ getOptions, launchApp, openExternal, focusTeams, 
         const focused = typeof focusTeams === 'function' ? await focusTeams() : { ok: false };
         if (focused && focused.ok) return { ok: true, method: 'desktop', focused: true };
       }
-      const opened = await openExternal('msteams://teams.microsoft.com');
+      // Launch the Teams desktop app by its registered URL protocol. The OS layer resolves the
+      // right scheme (new Teams = ms-teams:, classic = msteams:); we just express the intent.
+      const opened = await openExternal('ms-teams:');
       return { ok: !!opened, method: 'desktop', focused: false, error: opened ? undefined : 'Teams desktop app was not found.' };
     }
 

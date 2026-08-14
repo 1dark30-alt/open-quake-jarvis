@@ -518,10 +518,17 @@ const officeActions = createOfficeActions({
     return active ? active.options : {};
   },
   launchApp: value => actionRunner.launchApp(value, actionDeps),
-  openExternal: value => {
-    if (value === 'msteams://teams.microsoft.com') {
-      shell.openExternal(value).catch(e => console.log('Teams protocol launch error:', e.message));
-      return true;
+  openExternal: async value => {
+    // Teams desktop: `start ms-teams:` (via cmd, exactly as a Shell-command tile runs it) is the
+    // invocation that reliably restores a CLOSED new-Teams window from the tray. shell.openExternal
+    // and `start "" ms-teams:` (empty title) do NOT — they leave the window hidden. User-validated.
+    if (value.startsWith('ms-teams:') || value.startsWith('msteams:')) {
+      return new Promise(resolve => {
+        exec('start ' + value, { windowsHide: true }, err => {
+          if (err) console.log('Teams launch error:', err.message);
+          resolve(!err);
+        });
+      });
     }
     return openExternalUrl(value);
   },
