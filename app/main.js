@@ -17,9 +17,8 @@
 // `ws` library's WebSocket connections, which build their own TLS socket via tls.createSecureContext
 // directly. inject:'+' patches tls.createSecureContext itself, so it's picked up by every TLS
 // connection regardless of which higher-level module opened it. fallback:true skips the native
-// N-API cert reader in favor of shelling out — consistent with this app's existing preference for
-// PowerShell-backed helpers (dpapi.js, desktopFocus.js) over native binaries, which corporate EDR
-// products are more prone to flag.
+// N-API cert reader in favor of shelling out. This is unrelated to secret storage: DPAPI operations
+// use the in-process first-party binding and never create a PowerShell child process.
 if (process.platform === 'win32') {
   try { require('win-ca/api')({ inject: '+', fallback: true }); }
   catch (e) { console.log('win-ca load failed:', e.message); }
@@ -37,6 +36,12 @@ const http = require('http');
 const actionRunner = require('./actionRunner');
 const { createMediaKeys } = require('./mediaKeys');
 const { createSecretStore } = require('./secretStore');
+const { OAuthHandler } = require('../src/auth/oauth-handler');
+const { TokenStorage } = require('../src/auth/token-storage');
+const { providers: oauthProviders } = require('../src/auth/providers');
+const { createOfficeGraph } = require('./officeGraph');
+const { createOfficeActions } = require('./officeActions');
+const { configForRenderer } = require('./oauthConfigBoundary');
 const nowplaying = require('./nowplaying');   // same singleton sysserver polls — read its snapshot to target transport
 const haschedule = require('./haschedule');   // HA Schedule dev app — fed HA creds from .env, polled while shown
 const haClient = require('./haClient');       // Global HA cache (registries + dashboards); per-entity states fetched lazily
@@ -194,6 +199,16 @@ function migrateConfig(c) {
     if (g.kind === 'web') {
       if (!g.auth) g.auth = g.haToken ? { type: 'ha', token: g.haToken } : { type: 'none' };
       delete g.haToken;
+    }
+    if (g.kind === 'app' && g.app === 'office' && g.options) {
+      for (let index = 1; index <= 4; index += 1) {
+        for (const suffix of ['Label', 'Keys']) {
+          const legacyKey = 'shortcut' + index + suffix;
+          const appKey = 'app1Shortcut' + index + suffix;
+          if (!(appKey in g.options) && legacyKey in g.options) g.options[appKey] = g.options[legacyKey];
+          delete g.options[legacyKey];
+        }
+      }
     }
   });
   return c;
@@ -480,6 +495,30 @@ const secretStore = createSecretStore({
   loadApps,
   log: m => console.log(m),
 });
+const oauthStorage = new TokenStorage({ getConfig: () => config, saveConfig });
+const oauthHandler = new OAuthHandler({ storage: oauthStorage, openExternal: openExternalUrl, log: m => console.log(m) });
+const officeGraph = createOfficeGraph({
+  getAccessToken: (provider, scopes) => oauthHandler.getValidAccessToken(provider, scopes),
+  connectOAuth: (provider, scopes) => oauthHandler.connect(provider, scopes),
+});
+const officeActions = createOfficeActions({
+  getOptions: () => {
+    const active = activeServedAppConfig('office');
+    return active ? active.options : {};
+  },
+  launchApp: value => actionRunner.launchApp(value, actionDeps),
+  openExternal: value => {
+    if (value === 'msteams://teams.microsoft.com') {
+      shell.openExternal(value).catch(e => console.log('Teams protocol launch error:', e.message));
+      return true;
+    }
+    return openExternalUrl(value);
+  },
+  focusTeams: () => meetingControl.focusTeamsWindow(),
+  focusApp: names => meetingControl.focusProcessWindow(names),
+  tapCombo: combo => mediaKeys.tapCombo(combo),
+  fs,
+});
 
 // Build the file: URL for an app page, encoding its options as a #hash (file:// drops a ?query).
 function appOptionQuery(def, opts, include) {
@@ -503,7 +542,8 @@ function appPageUrl(page) {
     const opts = page.options || {};                                         // non-secret options only; secrets are served by /app-config
     const qs = [appOptionQuery(def, opts, o => o.type !== 'secret' && !o.serverOnly), themeParams(page)].filter(Boolean).join('&');
     if (def._folder) return 'http://127.0.0.1:' + serverPort + '/apps/' + encodeURIComponent(def.id) + '/' + appEntryUrlPath(def.entry || def.file) + (qs ? '?' + qs : '');
-    return 'http://127.0.0.1:' + serverPort + '/' + def.id + (qs ? '?' + qs : '');
+    const capability = def.id === 'office' && sysserver ? sysserver.issueOfficeCapability() : '';
+    return 'http://127.0.0.1:' + serverPort + '/' + def.id + (qs ? '?' + qs : '') + (capability ? '#_cap=' + encodeURIComponent(capability) : '');
   }
   const file = def._folder ? path.join(def._dir, def.entry || def.file) : path.join(APPS_DIR, def.file);
   const opts = page.options || {};
@@ -519,6 +559,10 @@ function activeServedAppConfig(appId) {
   const opts = g.options || {};
   const options = {};
   (def.options || []).forEach(o => {
+    // Office shortcut defaults depend on the app chosen for that header slot. When a key has
+    // never been saved, leave it absent so both renderer and host action code can select the
+    // chosen app's defaults instead of the manifest's original Teams/Outlook/Word/Excel values.
+    if (appId === 'office' && /^app[1-4]Shortcut[1-4](Icon|Label|Keys)$/.test(o.key) && !(o.key in opts)) return;
     let v = (o.key in opts) ? opts[o.key] : o.default;
     if (o.type === 'bool') v = !!v;
     options[o.key] = v == null ? '' : v;
@@ -527,9 +571,20 @@ function activeServedAppConfig(appId) {
 }
 // Persist config with secret fields encrypted at rest. encryptConfig clones, so the in-memory
 // `config` keeps its plaintext secrets — consumers (renderer HA token, Basic/header auth, served
-// app config) read the live plaintext. When safeStorage is unavailable, encryptValue logs nothing
-// itself but falls back to plaintext on disk (see decrypt passthrough on the next load).
-function saveConfig() { try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(secretStore.encryptConfig(config), null, 2)); } catch (e) { console.log('config save error:', e.message); } }
+// app config) read the live plaintext. Encryption is fail-closed: the existing file is left intact.
+function saveConfig() {
+  const temporaryPath = CONFIG_PATH + '.tmp';
+  try {
+    const serialized = JSON.stringify(secretStore.encryptConfig(config), null, 2);
+    fs.writeFileSync(temporaryPath, serialized);
+    fs.renameSync(temporaryPath, CONFIG_PATH);
+    return true;
+  } catch (e) {
+    try { fs.rmSync(temporaryPath, { force: true }); } catch (cleanupError) {}
+    console.log('config save error: secure persistence failed');
+    return false;
+  }
+}
 function activeGrid() { return config.grids.find(g => g.id === config.activeGridId) || config.grids[0] || { cols: 8, rows: 2, tiles: [] }; }
 function gridList() { return config.grids.filter(g => !g.hidden).map(g => ({ id: g.id, name: g.name })); }
 // Tell the local server which served page is on screen so it runs only that page's poller
@@ -539,6 +594,7 @@ function syncPollers(g) {
   const which = monitorMode ? null                                  // panel hidden (monitor mode) -> idle every page poller
     : (g && g.id === 'sysview') ? 'sysview'
     : (g && g.kind === 'app' && g.app === 'music') ? 'music'
+    : (g && g.kind === 'app' && g.app === 'office') ? 'office'
     : null;
   try { sysserver.setActivePage(which); } catch (e) {}
   // HA-backed dev apps (HA Schedule / Agenda / Events): poll HA only while one is shown, at the page's
@@ -556,6 +612,21 @@ function configureHaSchedule() {
   haschedule.configure({ url: ha.url || '', token: ha.token || '' });
   return ha.url || '';
 }
+
+function oauthProviderPayload() {
+  return Object.keys(oauthProviders).map(id => {
+    const p = oauthProviders[id];
+    const settings = oauthStorage.getProviderSettings(id);
+    return Object.assign({}, oauthHandler.status(id), {
+      name: p.name,
+      scopes: p.suggestedScopes || p.scopes,
+      managedClient: !!p.clientId,
+      hasClientSecret: !!settings.clientSecret,
+      enabled: id === 'microsoft',
+    });
+  });
+}
+
 async function pushToPanel() {
   if (panelWin && !panelWin.isDestroyed()) {
     const g = activeGrid();
@@ -1061,6 +1132,15 @@ async function onMeetingActionRequest(platform, action) {
     // only fall through to the user's custom combo when they've explicitly turned defaults off.
     const combo = opts.zoomUseDefaults === false ? opts[optKey] : meetingControl.ZOOM_DEFAULT_COMBO[action];
     return meetingControl.sendZoomAction(combo, { mediaKeys });
+  }
+  if (platform === 'teams' && action === 'focus') {
+    const focused = await meetingControl.focusTeamsWindow();
+    if (focused.ok) return focused;
+    return {
+      ok: openExternalUrl('https://teams.microsoft.com/v2/'),
+      focused: false,
+      focusError: focused.error,
+    };
   }
   if (platform === 'teams') return meetingControl.sendTeamsAction(action, { mediaKeys });
   return { ok: false, error: 'unknown platform: ' + platform };
@@ -1581,9 +1661,7 @@ app.whenReady().then(async () => {
   config = secretStore.decryptConfig(config);
   if (secretStore.available()) {
     if (needsMigration) saveConfig();                        // migrate plaintext/legacy config to current at-rest form
-  } else if (needsMigration) {
-    console.log('secret encryption unavailable — config secrets kept in plaintext on disk (fallback)');
-  }
+  } else if (needsMigration) console.log('secret encryption unavailable — refusing to rewrite config secrets');
   try { powerSaveBlocker.start('prevent-display-sleep'); } catch (e) {}
   createTray();
   // SystemView: live local metrics server on 127.0.0.1 (OS-assigned port) + ensure the dashboard page.
@@ -1592,6 +1670,7 @@ app.whenReady().then(async () => {
     sysserver = require('./sysserver');
     serverPort = await sysserver.start({
       onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig,
+      getOfficeData: officeGraph.getData, connectOffice: officeGraph.connect, onOfficeAction: officeActions.run,
       onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(),
       getShortcuts: keyboardShortcutsSnapshot,
       // Voice-panel app registry: each entry gets the full /<appId>/* route surface (see
@@ -1667,6 +1746,7 @@ app.whenReady().then(async () => {
   // future entity pickers) will see ok:false until this resolves; they can also kick a manual
   // refresh from the Auth tab. Skipped when Use HA is off or credentials are missing.
   if ((config.settings && config.settings.haAuth && config.settings.haAuth.useHa)) refreshHaCache();
+  oauthHandler.scheduleAll();
 
   ipcMain.on('launch', (e, a) => { if (!isFrom(e, panelWin)) return; runAction(a); });
   ipcMain.on('volume', (e, v) => { if (!isFrom(e, panelWin)) return; mediaKeys.volume(v); });
@@ -1694,8 +1774,26 @@ app.whenReady().then(async () => {
   });
   ipcMain.on('openExternal', (e, url) => { if (!isFrom(e, panelWin) && !isFrom(e, configWin)) return; openExternalUrl(url); });
   ipcMain.on('ringState', (e, state) => { if (!isFrom(e, panelWin)) return; setRingState(state); });
-  ipcMain.handle('getConfig', (e) => isFrom(e, configWin) ? config : null);
+  ipcMain.handle('getConfig', (e) => isFrom(e, configWin) ? configForRenderer(config) : null);
   ipcMain.handle('getAppVersion', (e) => isFrom(e, configWin) ? app.getVersion() : null);
+  ipcMain.handle('listOAuthProviders', (e) => isFrom(e, configWin) ? oauthProviderPayload() : []);
+  ipcMain.handle('connectOAuthProvider', async (e, provider, scopes) => {
+    if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
+    try { await oauthHandler.connect(provider, scopes); return { ok: true, providers: oauthProviderPayload() }; }
+    catch (err) { return { ok: false, error: err.message || String(err) }; }
+  });
+  ipcMain.handle('disconnectOAuthProvider', async (e, provider) => {
+    if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
+    try {
+      const r = await oauthHandler.revokeToken(provider);
+      if (String(provider || '').toLowerCase() === 'microsoft' && sysserver) {
+        sysserver.clearOfficeCapability();
+        pushToPanel();
+      }
+      return Object.assign({}, r, { providers: oauthProviderPayload() });
+    }
+    catch (err) { return { ok: false, error: err.message || String(err) }; }
+  });
   // HA cache: editor reads the registries + dashboards for picker UIs; refresh kicks a new fetchAll.
   // fetchHaEntityState is wired now for phase-2 features that assign an entity to a button.
   // Claude Code voice app: candidate project directories under `root` for the editor's picker
@@ -1739,16 +1837,24 @@ app.whenReady().then(async () => {
     try { if (sysserver && sysserver.setAppFolders) sysserver.setAppFolders(catalog.servedApps); } catch (er) {}
     return catalog.apps;
   });
-  ipcMain.on('saveConfigFromEditor', (e, newCfg) => {
-    if (!isFrom(e, configWin) || !newCfg || typeof newCfg !== 'object' || !Array.isArray(newCfg.grids)) return;
+  ipcMain.handle('saveConfigFromEditor', (e, newCfg) => {
+    if (!isFrom(e, configWin) || !newCfg || typeof newCfg !== 'object' || !Array.isArray(newCfg.grids)) return { ok: false, error: 'invalid configuration' };
+    const previousConfig = config;
     const active = config.activeGridId;                          // the knob owns the live page — editor edits never change it
     const wasRot = rotationCfg().enabled;                        // detect a fresh off->on to auto-start (else keep the runtime pause)
+    const oauth = config.settings && config.settings.oauth;
+    if (oauth) {
+      if (!newCfg.settings) newCfg.settings = {};
+      newCfg.settings.oauth = oauth;
+    }
     config = newCfg;
     if (config.grids.some(g => g.id === active)) config.activeGridId = active;
     else if (!config.grids.some(g => g.id === config.activeGridId)) config.activeGridId = (config.grids[0] || {}).id || null;
-    saveConfig(); pushToPanel(); applyKnobSettings(); refreshTray(); applyRotationSettings(wasRot); applyFocusFollowSettings(); applyShortcuts(); applyTheme();
+    if (!saveConfig()) { config = previousConfig; return { ok: false, error: 'secure persistence failed' }; }
+    pushToPanel(); applyKnobSettings(); refreshTray(); applyRotationSettings(wasRot); applyFocusFollowSettings(); applyShortcuts(); applyTheme();
     reservedDisplay.setEnabled(!!appSettings().reservedDisplay);
     configureHaSchedule();                                          // pick up any haAuth edits without a restart
+    return { ok: true };
   });
   ipcMain.handle('pickProgram', async (e) => {
     if (!isFrom(e, configWin)) return null;
@@ -1872,6 +1978,7 @@ app.on('before-quit', () => {
   try { codexVoiceHost.shutdown(); } catch (e) {}        // terminate the codex app-server child
   try { claudeVoiceApprovals.ensureHookRemoved(claudeVoiceLog); } catch (e) {}    // belt-and-braces: never leave our entry behind in the user's global Claude settings
   try { dev.stop(); } catch (e) {}                       // close HID devices + clear keep-alive/rescan timers — an open node-hid handle blocks process exit (Cmd+Q would hang -> force-quit)
+  try { oauthHandler.stop(); } catch (e) {}              // stop OAuth callback server + background refresh timers
   try { if (sysserver) sysserver.stop(); } catch (e) {}  // stop metrics timers + close the local server
   try { if (dashSession) dashSession.cookies.flushStore(); } catch (e) {}   // commit a fresh webview login to disk before exit
   try { globalShortcut.unregisterAll(); } catch (e) {}   // drop per-page hotkeys

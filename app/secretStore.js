@@ -18,6 +18,8 @@
 //   settings:
 //     settings.spotify.refreshToken                   (NOT settings.spotify.clientId — clientId is public)
 //     settings.haAuth.token                           (NOT settings.haAuth.url — the URL is not sensitive)
+//     settings.oauth.providers[*].clientSecret        (optional confidential OAuth clients)
+//     settings.oauth.tokens[*].accessToken / refreshToken
 const MARKER = 'oqenc:v1:';    // legacy: Electron safeStorage — still decrypted, never written on Windows
 const MARKER2 = 'oqenc:v2:';   // Windows: raw DPAPI per-value blobs (app/dpapi.js), no key file
 
@@ -32,18 +34,18 @@ function createSecretStore({ safeStorage, dpapi, loadApps, log = () => {} }) {
   }
 
   // Encrypt one value for at-rest storage. Idempotent (already-marked values pass through), and a
-  // no-op for non-strings / empty strings. Falls back to plaintext (caller logs) when unavailable.
+  // no-op for non-strings / empty strings. Encryption failure aborts the enclosing save.
   function encryptValue(plain) {
     if (typeof plain !== 'string' || plain === '') return plain;
     if (plain.startsWith(MARKER) || plain.startsWith(MARKER2)) return plain;   // already encrypted — don't double-wrap
     if (dp) {
       const blob = dp.protectOne(plain);
       if (blob) return MARKER2 + blob;
-      log('dpapi protect failed — storing plaintext (fallback)');
-      return plain;
+      throw new Error('Secret encryption failed');
     }
-    if (!available()) return plain;                          // fallback: store plaintext (logged by saveConfig path)
-    return MARKER + safeStorage.encryptString(plain).toString('base64');
+    if (!available()) throw new Error('Secret encryption is unavailable');
+    try { return MARKER + safeStorage.encryptString(plain).toString('base64'); }
+    catch (e) { throw new Error('Secret encryption failed'); }
   }
 
   // Decrypt one stored value. Plaintext (unmarked) values pass through unchanged — this is also the
@@ -100,6 +102,23 @@ function createSecretStore({ safeStorage, dpapi, loadApps, log = () => {} }) {
     const ha = config && config.settings && config.settings.haAuth;
     if (ha && typeof ha === 'object' && typeof ha.token === 'string' && ha.token !== '') {
       ha.token = fn(ha.token);
+    }
+    const oauth = config && config.settings && config.settings.oauth;
+    if (oauth && typeof oauth === 'object') {
+      const providers = oauth.providers && typeof oauth.providers === 'object' ? oauth.providers : {};
+      Object.keys(providers).forEach(id => {
+        const p = providers[id];
+        if (p && typeof p === 'object' && typeof p.clientSecret === 'string' && p.clientSecret !== '') {
+          p.clientSecret = fn(p.clientSecret);
+        }
+      });
+      const tokens = oauth.tokens && typeof oauth.tokens === 'object' ? oauth.tokens : {};
+      Object.keys(tokens).forEach(id => {
+        const t = tokens[id];
+        if (!t || typeof t !== 'object') return;
+        if (typeof t.accessToken === 'string' && t.accessToken !== '') t.accessToken = fn(t.accessToken);
+        if (typeof t.refreshToken === 'string' && t.refreshToken !== '') t.refreshToken = fn(t.refreshToken);
+      });
     }
   }
 

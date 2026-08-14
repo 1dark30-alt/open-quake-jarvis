@@ -345,15 +345,16 @@
     const nr = document.getElementById('gShortcutNoRot');
     if (nr) nr.onchange = e => { if (e.target.checked) g.shortcutStopsRotation = true; else delete g.shortcutStopsRotation; markDirty(); };
   }
-  // Build an Electron accelerator from a keydown. Requires a modifier (so we never bind a bare global key).
-  function accelFromEvent(e) {
+  // Build an Electron accelerator from a keydown. Global bindings require a modifier;
+  // focused-app actions may also use bare keys such as F5.
+  function accelFromEvent(e, allowBare) {
     if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return null;   // wait for the non-modifier key
     const mods = [];
     if (e.ctrlKey) mods.push('Ctrl');
     if (e.altKey) mods.push('Alt');
     if (e.shiftKey) mods.push('Shift');
     if (e.metaKey) mods.push('Super');
-    if (!mods.length) return null;
+    if (!mods.length && !allowBare) return null;
     const arrow = { ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right' };
     let key = arrow[e.key] || e.key;
     if (key === ' ') key = 'Space';
@@ -448,6 +449,119 @@
       const inputs = host.querySelectorAll('.scShortcut');
       if (inputs.length) inputs[inputs.length - 1].focus();
     };
+  }
+  function officeOptionDefault(def, key) {
+    const option = (def.options || []).find(item => item.key === key);
+    return option ? option.default : '';
+  }
+  const OFFICE_SHORTCUT_DEFAULTS = {
+    teams: [['Mute', 'Ctrl+Shift+M', '🎙️'], ['Camera', 'Ctrl+Shift+O', '📹'], ['Accept audio', 'Ctrl+Shift+S', '📞'], ['Hang up', 'Ctrl+Shift+H', '📴']],
+    outlook: [['New message', 'Ctrl+N', '✉️'], ['Reply', 'Ctrl+R', '↩️'], ['Forward', 'Ctrl+F', '↪️'], ['Send', 'Alt+S', '🚀']],
+    word: [['New document', 'Ctrl+N', '📄'], ['Save', 'Ctrl+S', '💾'], ['Find', 'Ctrl+F', '🔍'], ['Undo', 'Ctrl+Z', '↶']],
+    excel: [['New workbook', 'Ctrl+N', '📊'], ['Save', 'Ctrl+S', '💾'], ['Find', 'Ctrl+F', '🔍'], ['Undo', 'Ctrl+Z', '↶']],
+    powerpoint: [['New presentation', 'Ctrl+N', '🖥️'], ['Save', 'Ctrl+S', '💾'], ['New slide', 'Ctrl+M', '➕'], ['Start slideshow', 'F5', '▶️']],
+    onenote: [['New page', 'Ctrl+N', '📝'], ['Search', 'Ctrl+E', '🔍'], ['To-do tag', 'Ctrl+1', '☑️'], ['Undo', 'Ctrl+Z', '↶']],
+    onedrive: [['New folder', 'Ctrl+Shift+N', '📁'], ['Copy', 'Ctrl+C', '📋'], ['Paste', 'Ctrl+V', '📥'], ['Refresh', 'F5', '↻']],
+    office: [['New', 'Ctrl+N', '✨'], ['Save', 'Ctrl+S', '💾'], ['Find', 'Ctrl+F', '🔍'], ['Undo', 'Ctrl+Z', '↶']],
+  };
+  function officeShortcutDefault(appId, shortcutIndex, suffix) {
+    const set = OFFICE_SHORTCUT_DEFAULTS[appId] || OFFICE_SHORTCUT_DEFAULTS.office;
+    return set[shortcutIndex - 1][suffix === 'Label' ? 0 : suffix === 'Keys' ? 1 : 2];
+  }
+  function officeChoiceHtml(def, key, value) {
+    const option = (def.options || []).find(item => item.key === key);
+    return ((option && option.choices) || []).map(choice => {
+      const val = Array.isArray(choice) ? choice[0] : choice;
+      const label = Array.isArray(choice) ? choice[1] : choice;
+      return `<option value="${esc(val)}" ${String(value) === String(val) ? 'selected' : ''}>${esc(label)}</option>`;
+    }).join('');
+  }
+  function officeOptionsHtml(g, def) {
+    if (!g.options) g.options = {};
+    const value = key => (key in g.options) ? g.options[key] : officeOptionDefault(def, key);
+    const shortcutValue = (appIndex, shortcutIndex, suffix) => {
+      const key = `app${appIndex}Shortcut${shortcutIndex}${suffix}`;
+      return (key in g.options) ? g.options[key] : officeShortcutDefault(value('app' + appIndex), shortcutIndex, suffix);
+    };
+    const appRows = [1, 2, 3, 4].map(index => {
+      const shortcuts = [1, 2, 3, 4].map(shortcutIndex => `<div class="row" style="margin-top:6px">
+          <input class="officeShortcutIcon" data-app-index="${index}" data-shortcut-index="${shortcutIndex}" list="officeShortcutIcons" value="${esc(shortcutValue(index, shortcutIndex, 'Icon'))}" maxlength="8" aria-label="Shortcut icon" title="Choose or paste an emoji" style="width:58px;font:20px 'Segoe UI Emoji';text-align:center">
+          <input class="officeShortcutLabel" data-app-index="${index}" data-shortcut-index="${shortcutIndex}" value="${esc(shortcutValue(index, shortcutIndex, 'Label'))}" placeholder="button label" style="width:160px">
+          <input class="officeShortcutKeys" data-app-index="${index}" data-shortcut-index="${shortcutIndex}" readonly value="${esc(shortcutValue(index, shortcutIndex, 'Keys'))}" placeholder="click, then press keys" style="width:200px;margin-left:8px">
+          <button class="officeShortcutClear" data-app-index="${index}" data-shortcut-index="${shortcutIndex}" type="button" style="margin-left:8px">Clear</button>
+        </div>`).join('');
+      return `<fieldset style="border:1px solid #2a3a4e;border-radius:8px;padding:8px 12px;margin:8px 0">
+        <legend style="padding:0 6px;color:#9fb3c8;font-size:13px">Header app ${index}</legend>
+        <div class="row"><label>Application</label><select class="officeApp" data-index="${index}">${officeChoiceHtml(def, 'app' + index, value('app' + index))}</select></div>
+        <div class="row"><label>Open with</label><select class="officeMode" data-index="${index}">${officeChoiceHtml(def, 'mode' + index, value('mode' + index))}</select></div>
+        <p class="hint" style="margin:8px 0 4px">Bottom-row shortcuts when this app is selected</p>
+        ${shortcuts}
+      </fieldset>`;
+    }).join('');
+    return `<div id="officeOptions" style="margin-top:10px">
+        <p class="sectitle">Office header applications</p>
+        <p class="hint">These four apps appear in the panel header. Selecting one opens it and changes the four bottom buttons to that app's shortcuts. Changing an application restores sensible defaults for its four shortcuts. <b>Prefer desktop</b> falls back to the web app when needed.</p>
+        ${appRows}
+        <datalist id="officeShortcutIcons">
+          ${['🎙️','📹','📞','📴','✉️','↩️','↪️','🚀','📄','💾','🔍','↶','📊','🖥️','➕','▶️','📝','☑️','📁','📋','📥','↻','✨','⚡','⭐','🔒','🔔','✅'].map(icon => `<option value="${icon}">`).join('')}
+        </datalist>
+      </div>`;
+  }
+  function wireOfficeOptions(g) {
+    if (!g.options) g.options = {};
+    document.querySelectorAll('.officeApp').forEach(select => {
+      select.onchange = event => {
+        const appIndex = event.target.dataset.index;
+        g.options['app' + appIndex] = event.target.value;
+        [1, 2, 3, 4].forEach(shortcutIndex => {
+          ['Icon', 'Label', 'Keys'].forEach(suffix => {
+            const key = `app${appIndex}Shortcut${shortcutIndex}${suffix}`;
+            const next = officeShortcutDefault(event.target.value, shortcutIndex, suffix);
+            g.options[key] = next;
+            const input = document.querySelector(`.officeShortcut${suffix}[data-app-index="${appIndex}"][data-shortcut-index="${shortcutIndex}"]`);
+            if (input) input.value = next;
+          });
+        });
+        markDirty();
+      };
+    });
+    document.querySelectorAll('.officeMode').forEach(select => {
+      select.onchange = event => { g.options['mode' + event.target.dataset.index] = event.target.value; markDirty(); };
+    });
+    document.querySelectorAll('.officeShortcutLabel').forEach(input => {
+      input.oninput = event => {
+        const target = event.target;
+        g.options[`app${target.dataset.appIndex}Shortcut${target.dataset.shortcutIndex}Label`] = target.value;
+        markDirty();
+      };
+    });
+    document.querySelectorAll('.officeShortcutIcon').forEach(input => {
+      input.oninput = event => {
+        const target = event.target;
+        g.options[`app${target.dataset.appIndex}Shortcut${target.dataset.shortcutIndex}Icon`] = target.value;
+        markDirty();
+      };
+    });
+    document.querySelectorAll('.officeShortcutKeys').forEach(input => {
+      input.onkeydown = event => {
+        event.preventDefault();
+        const accelerator = accelFromEvent(event, true);
+        if (!accelerator) return;
+        g.options[`app${event.target.dataset.appIndex}Shortcut${event.target.dataset.shortcutIndex}Keys`] = accelerator;
+        event.target.value = accelerator;
+        markDirty();
+      };
+    });
+    document.querySelectorAll('.officeShortcutClear').forEach(button => {
+      button.onclick = event => {
+        const appIndex = event.currentTarget.dataset.appIndex;
+        const shortcutIndex = event.currentTarget.dataset.shortcutIndex;
+        g.options[`app${appIndex}Shortcut${shortcutIndex}Keys`] = '';
+        const input = document.querySelector(`.officeShortcutKeys[data-app-index="${appIndex}"][data-shortcut-index="${shortcutIndex}"]`);
+        if (input) input.value = '';
+        markDirty();
+      };
+    });
   }
   function wireFocusRow(g) {
     const chips = document.getElementById('gFocusChips');
@@ -564,7 +678,21 @@
   // ---- save model (no live edit) ----
   function setState(text, cls) { const el = document.getElementById('state'); el.textContent = text; el.className = 'state' + (cls ? ' ' + cls : ''); }
   function markDirty() { dirty = true; setState('● unsaved changes', 'dirty'); document.getElementById('saveBtn').disabled = false; }
-  function doSave() { configApi.saveConfig(config); dirty = false; document.getElementById('saveBtn').disabled = true; setState('saved ✓', 'saved'); }
+  async function doSave() {
+    try {
+      const result = await configApi.saveConfig(config);
+      if (!(result && result.ok)) throw new Error(result && result.error || 'secure persistence failed');
+      dirty = false;
+      document.getElementById('saveBtn').disabled = true;
+      setState('saved ✓', 'saved');
+      return true;
+    } catch (e) {
+      dirty = true;
+      document.getElementById('saveBtn').disabled = false;
+      setState('save failed: secrets could not be stored securely', 'dirty');
+      return false;
+    }
+  }
 
   // ---- tiles / icons ----
   function blankTile() { return { label: '', icon: '', type: '', value: '', iconType: 'emoji', iconImage: '', iconUrl: '', iconCache: '' }; }
@@ -1305,7 +1433,7 @@
     const g = curGrid();
     const def = appDefs.find(a => a.id === g.app);
     const builtinGrid = !!(def && def.grid);          // music/agenda/events: in-page grid, always on
-    const canGrid = !!def && !builtinGrid;            // other apps (clocks, …) can opt into a native button strip
+    const canGrid = !!def && !builtinGrid && g.app !== 'office'; // Office owns four configured app controls; no unrelated generic grid
     const onButtons = canGrid && g.gridOn && dashTab === 'buttons';
     // Tile editor shows for a built-in grid, or on the Buttons tab of an opted-in grid; clear it otherwise.
     if (!builtinGrid && !onButtons) ['tilegrid', 'mergebar', 'tileform', 'iconpane'].forEach(id => { document.getElementById(id).innerHTML = ''; });
@@ -1330,6 +1458,7 @@
     const isClaudeVoice = g.app === 'claude-voice';
     const isCodexVoice = g.app === 'codex-voice';
     const isVoiceApp = isClaudeVoice || isCodexVoice;   // both share the hand-rendered options box below
+    const isOffice = g.app === 'office';
     const musicBox = `<fieldset style="border:1px solid #2a3a4e; border-radius:8px; padding:6px 14px 10px; margin:10px 0">
         <legend style="padding:0 6px; color:#9fb3c8; font-size:13px">Panels</legend>
         <div><label class="iconopt" style="width:auto"><input type="checkbox" id="pArt" ${optVal(g, 'art', true) ? 'checked' : ''}> Show album art</label></div>
@@ -1396,7 +1525,7 @@
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
-    const optsBlock = isMusic ? musicBox : isHaDash ? haBox : isKeyShortcuts ? keyShortcutsBox : isVoiceApp ? claudeVoiceBox : ('<div id="appOpts"></div>' + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
+    const optsBlock = isMusic ? musicBox : isHaDash ? haBox : isKeyShortcuts ? keyShortcutsBox : isVoiceApp ? claudeVoiceBox : isOffice ? officeOptionsHtml(g, def) : ('<div id="appOpts"></div>' + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : ''));
     el.innerHTML = tabBar + `
@@ -1483,6 +1612,8 @@
           warn.style.display = '';
         }
       }).catch(() => {});
+    } else if (isOffice) {
+      wireOfficeOptions(g);
     } else {
       renderAppOpts(g, def);
     }
@@ -1848,7 +1979,11 @@
         <input type="text" id="sHaUrl" value="${esc(ha.url || '')}" placeholder="http://homeassistant.local:8123" style="flex:1"></div>
       <div class="row"><label>Long-Lived Access Token</label>
         <input type="password" id="sHaToken" value="${esc(ha.token || '')}" placeholder="paste your long-lived access token" style="flex:1"></div>
-      <p class="hint">The token is stored encrypted at rest (same secret store as your dashboard tokens). It only leaves the main process for features that need it.</p>`;
+      <p class="hint">The token is stored encrypted at rest (same secret store as your dashboard tokens). It only leaves the main process for features that need it.</p>
+
+      <p class="sectitle" style="margin-top:22px">OAuth 2.0</p>
+      <p class="hint">Connect services once for built-in integrations. OAuth tokens stay in the main process, are encrypted at rest, and are refreshed before expiry; drop-in apps cannot request them.</p>
+      <div id="sOauthList"><p class="hint">Loading OAuth providers...</p></div>`;
 
     // Drop-In Apps tab — manage user-installed app folders (import/export/delete) + storage location
     const diHtml = `
@@ -1994,7 +2129,10 @@
         // Auto-save first so toggling Use HA and clicking Refresh "just works" without remembering
         // to Save between. IPC is ordered, so the save (ipc.send) is processed before the refresh
         // (ipc.invoke) reaches main's handler.
-        if (dirty) { statusEl.textContent = 'Saving, then refreshing…'; statusEl.style.color = '#7e93ab'; doSave(); }
+        if (dirty) {
+          statusEl.textContent = 'Saving, then refreshing…'; statusEl.style.color = '#7e93ab';
+          if (!await doSave()) throw new Error('settings were not saved securely');
+        }
         else { statusEl.textContent = 'Refreshing…'; statusEl.style.color = '#7e93ab'; }
         try {
           const c = await configApi.refreshHaCache();
@@ -2016,6 +2154,64 @@
       document.getElementById('sHaUrl').oninput = e => saveHa({ url: e.target.value.trim() });
       document.getElementById('sHaToken').oninput = e => saveHa({ token: e.target.value.trim() });
       configApi.getHaCache().then(showStatus);   // initial status from whatever main has cached
+
+      let oauthPoll = null;
+      const oauthMsg = (id, text, bad) => {
+        const el = document.getElementById('oauthMsg_' + id);
+        if (el) { el.textContent = text || ''; el.style.color = bad ? '#c98' : '#7e93ab'; }
+      };
+      const fmtExpiry = ts => {
+        if (!ts) return 'not connected';
+        const mins = Math.round((Number(ts) - Date.now()) / 60000);
+        if (mins < 0) return 'expired';
+        if (mins < 60) return 'expires in ' + mins + ' min';
+        return 'expires in ' + Math.round(mins / 60) + ' h';
+      };
+      const renderOauth = async () => {
+        const host = document.getElementById('sOauthList'); if (!host) return;
+        let providers = [];
+        try { providers = await configApi.listOAuthProviders(); } catch (e) {}
+        if (!providers.length) { host.innerHTML = '<p class="hint">No OAuth providers available.</p>'; return; }
+        host.innerHTML = providers.map(p => `
+          <div class="advsec" style="margin-top:10px;padding:10px;border:1px solid #213145;border-radius:8px">
+            <div class="row" style="gap:8px;align-items:center">
+              <label style="width:auto;font-weight:bold">${esc(p.name || p.provider)}</label>
+              <span class="hint" style="margin:0">${p.connected ? 'Connected, ' + esc(fmtExpiry(p.expiresAt)) : (p.configured ? 'Ready to connect' : 'Not configured')}</span>
+              <span id="oauthMsg_${esc(p.provider)}" class="hint" style="margin:0 0 0 auto"></span>
+            </div>
+            ${p.managedClient ? '<div class="row"><label>Application</label><span class="hint" style="margin:0">Built into Open-Quake</span></div>' : ''}
+            <div class="row"><label>Scopes</label><span class="hint" style="margin:0">${esc((p.scopes || []).join(' '))}</span></div>
+            <div class="row" style="gap:8px">
+              <button class="oauthConnect" data-provider="${esc(p.provider)}" ${p.enabled ? '' : 'disabled'}>${p.connected ? 'Reconnect' : 'Connect'}</button>
+              <button class="oauthDisconnect danger" data-provider="${esc(p.provider)}" ${p.connected && p.enabled ? '' : 'disabled'}>Disconnect</button>
+              ${p.enabled ? '' : '<span class="hint" style="margin:0">Framework placeholder</span>'}
+            </div>
+          </div>`).join('');
+        host.querySelectorAll('.oauthConnect').forEach(btn => {
+          btn.onclick = async e => {
+            const id = e.currentTarget.dataset.provider;
+            e.currentTarget.disabled = true;
+            oauthMsg(id, 'Opening browser...');
+            const r = await configApi.connectOAuthProvider(id, ['User.Read', 'Presence.Read', 'Calendars.Read', 'offline_access']);
+            oauthMsg(id, r && r.ok ? 'Finish sign-in in your browser.' : 'Connect failed: ' + ((r && r.error) || ''), !(r && r.ok));
+            e.currentTarget.disabled = false;
+            if (oauthPoll) clearInterval(oauthPoll);
+            let tries = 0;
+            oauthPoll = setInterval(() => { tries += 1; renderOauth(); if (tries >= 15) { clearInterval(oauthPoll); oauthPoll = null; } }, 2000);
+          };
+        });
+        host.querySelectorAll('.oauthDisconnect').forEach(btn => {
+          btn.onclick = async e => {
+            const id = e.currentTarget.dataset.provider;
+            if (!window.confirm('Disconnect ' + id + ' and remove stored OAuth tokens?')) return;
+            oauthMsg(id, 'Disconnecting...');
+            const r = await configApi.disconnectOAuthProvider(id);
+            oauthMsg(id, r && r.ok ? 'Disconnected' : 'Disconnect failed: ' + ((r && r.error) || ''), !(r && r.ok));
+            renderOauth();
+          };
+        });
+      };
+      renderOauth();
     }
 
     if (tab === 'software') {
