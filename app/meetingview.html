@@ -4,71 +4,176 @@
 <meta charset="utf-8">
 <title>Meeting</title>
 <style>
-  * { box-sizing: border-box; }
-  :root { --bg:#05080d; --fg:#e8eef6; --muted:#9fb3c8; --dim:#7e93ab; --surf:#131f2c; --surf2:#0e1822;
-    --tile-bd:#233245; --accent:#7CFFB2; --danger:#ff5a5a; --accept:#3ddc84; }
-  body.light { --bg:#e6ecf3; --fg:#12202c; --muted:#566573; --dim:#68798a; --surf:#f3f6f9; --surf2:#e6ecf2; --tile-bd:#c7d2dc; }
-  html, body { margin: 0; width: 100%; height: 100%; }
-  body { background: var(--bg); color: var(--fg); overflow: hidden; user-select: none;
-    font-family: "Segoe UI", system-ui, sans-serif; }
-  #wrap { display: flex; flex-direction: column; width: 100vw; height: 100vh; padding: 22px 34px 16px; gap: 16px; }
+  * { box-sizing:border-box; }
+  :root {
+    --bg:#05080d; --fg:#e8eef6; --muted:#c2d1e0; --dim:#8194a8; --surf:#16232f; --surf2:#0e1822;
+    --tile-bd:#2a3b4e; --accent:#7CFFB2; --danger:#ff5a5a; --accept:#3ddc84;
+    --danger-tint:rgba(255,90,90,.16);
+  }
+  body.light { --bg:#e6ecf3; --fg:#12202c; --muted:#37485a; --dim:#5b6b7a; --surf:#ffffff; --surf2:#dde5ee;
+    --tile-bd:#c3cfdb; --accept:#1fae5f; --danger:#e23b3b; --danger-tint:rgba(226,59,59,.12); }
+  html, body { margin:0; width:100%; height:100%; }
+  /* one typeface everywhere, including form controls */
+  html, body, button, input, select, textarea { font-family:"Segoe UI", system-ui, sans-serif; }
+  body { background:var(--bg); color:var(--fg); overflow:hidden; user-select:none; touch-action:manipulation; }
+  button { border:none; background:none; color:inherit; cursor:pointer; }
+  .ic svg { width:100%; height:100%; fill:currentColor; display:block; }
 
-  /* ---- top bar: segmented platform control ---- */
-  #topbar { display: flex; align-items: center; flex: 0 0 auto; }
-  .segctl { display: flex; background: var(--surf); border: 1px solid var(--tile-bd); border-radius: 12px; padding: 4px; }
-  .seg { padding: 11px 30px; border-radius: 9px; font-size: 17px; font-weight: 700; color: var(--dim);
-    cursor: pointer; transition: background .12s ease, color .12s ease; }
-  .seg.active { background: var(--accent); color: #04121f; }
+  /* accent focus for keyboard + knob; press feedback ~120ms */
+  :focus-visible { outline:none; }
+  .foc:focus-visible, .foc.kfocus { box-shadow:0 0 0 4px var(--accent); }
+  .press { transition:transform .12s ease, filter .12s ease, box-shadow .12s ease, background .12s ease; }
+  .press:active { transform:scale(.96); filter:brightness(1.12); }
 
-  /* ---- main row: EVERY slot (action cards, the Teams accept stack, the volume stack) is a
-     direct child of this one flex row, all sharing the same flex:1/max-width rule -- that's what
-     guarantees identical computed widths, not eyeballed pixel values on separate containers.
-     #actions is display:contents so its JS-rendered children join this row directly. ---- */
-  #mainrow { flex: 1; display: flex; gap: 18px; align-items: stretch; justify-content: center; min-height: 0; }
-  #actions { display: contents; }
+  #wrap { display:flex; flex-direction:column; width:100vw; height:100vh; padding:22px; gap:16px; }
 
-  /* ---- action buttons: unified icon+label cards. ---- */
-  .abtn { flex: 1; max-width: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 14px; border-radius: 18px; border: 1px solid var(--tile-bd); background: var(--surf); color: var(--fg);
-    cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,.22); transition: transform .08s ease, filter .1s ease; overflow: hidden; }
-  .abtn:active { transform: scale(.97); filter: brightness(1.08); }
-  .abtn .ic { width: 68px; height: 68px; }
-  .abtn .ic svg { width: 100%; height: 100%; fill: currentColor; }
-  .abtn .ic.rot135 svg { transform: rotate(135deg); }
-  .abtn .cap { font-size: 20px; font-weight: 700; }
-  .abtn.accept { background: var(--accept); color: #04160d; border-color: transparent; }
-  .abtn.danger { background: var(--danger); color: #1a0505; border-color: transparent; }
+  /* ---- header ---- */
+  #topbar { flex:0 0 auto; display:flex; align-items:center; gap:20px; min-height:52px; }
+  #segctl { display:flex; background:var(--surf); border-radius:12px; padding:5px; gap:4px; }
+  .seg { height:48px; padding:0 32px; border-radius:9px; background:transparent; color:var(--muted);
+    font-size:20px; font-weight:700; }
+  .seg.active { background:var(--accent); color:var(--accent-fg,#04121f); }
+  #status { font-size:16px; color:var(--dim); font-weight:600; }
+  #spacer { flex:1; }
+  #recHost { display:flex; }
+  #recToggle { display:flex; align-items:center; gap:12px; height:48px; padding:0 22px; border-radius:11px;
+    background:var(--surf); color:var(--fg); font-size:18px; font-weight:700; }
+  #recToggle .dot { width:14px; height:14px; border-radius:50%; background:var(--danger); }
+  #pill { display:flex; align-items:center; gap:16px; height:48px; padding:0 10px 0 20px; border-radius:11px; background:var(--danger-tint); }
+  #pill .dot { width:14px; height:14px; border-radius:50%; background:var(--danger); animation:pulse 1.4s infinite; }
+  #pill .txt { font-size:18px; font-weight:700; }
+  #pill .t { font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:.5px; }
+  #pill .stop { display:flex; align-items:center; gap:9px; height:38px; padding:0 18px; border-radius:8px; background:var(--danger); color:#1a0505; font-size:16px; font-weight:800; position:relative; }
+  #pill .stop .sq { width:14px; height:14px; border-radius:3px; background:#1a0505; }
+  /* invisible hit-area expansion: visible pill Stop is 38px tall, touches land on a ≥48px zone */
+  #pill .stop::after { content:''; position:absolute; left:-6px; right:-6px; top:-8px; bottom:-8px; }
 
-  /* ---- stack: two genuinely separate half-height cards with a real gap between them, occupying
-     one grid slot. Used for Teams' accept audio/video AND the volume up/down pair -- same pattern,
-     same sizing, so there's exactly one way "two related actions" ever get grouped in this UI. ---- */
-  .stackwrap { flex: 1; max-width: 320px; display: flex; flex-direction: column; gap: 18px; }
-  .stackwrap .abtn { max-width: none; }
-  .stackwrap .abtn .ic { width: 52px; height: 52px; }
-  .stackwrap .abtn .cap { font-size: 16px; }
+  /* ---- body: control deck + utility rail ---- */
+  #body { flex:1; display:flex; gap:16px; min-height:0; position:relative; }
+  #deck { flex:1; background:var(--surf2); border-radius:18px; display:flex; align-items:center; justify-content:center; }
+  .cluster { display:flex; flex-direction:column; gap:20px; }
+  .clabel { font-size:13px; font-weight:800; letter-spacing:1.5px; color:var(--dim); padding-left:6px; }
+  .crow { display:flex; gap:34px; }
+  .sep { width:1px; height:186px; background:var(--tile-bd); opacity:.55; margin:0 48px; }
+  .ctl { display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .ctl .btn { width:112px; height:112px; border-radius:50%; background:var(--surf); display:flex; align-items:center; justify-content:center; color:var(--fg); }
+  .ctl .btn .ic { width:42px; height:42px; }
+  .ctl.rot .btn .ic svg { transform:rotate(135deg); }
+  .ctl .lab { font-size:18px; font-weight:700; color:var(--fg); }
+  /* Accept/Decline carry semantic ICON color only — strong rings/fills are reserved for a real,
+     confirmed incoming-call state (none is available yet; see PROJECT.md no-fabricated-state rule).
+     End is the one persistent destructive action: solid red with contrast-safe dark foreground. */
+  .ctl.accept .btn { color:var(--accept); }
+  .ctl.decline .btn { color:var(--danger); }
+  .ctl.end .btn { background:var(--danger); color:#1a0505; }
+  .ctl.foc:focus-visible .btn { box-shadow:0 0 0 4px var(--accent); }
 
-  /* ---- status strip: only ever shows real data (last action + result), never fabricated call state ---- */
-  #status { flex: 0 0 auto; text-align: center; font-size: 14px; font-weight: 600; color: var(--dim); }
-  #status.err { color: var(--danger); }
+  #rail { flex:0 0 330px; background:var(--surf2); border-radius:18px; padding:18px; display:flex; flex-direction:column; gap:14px; }
+  .rlabel { font-size:13px; font-weight:800; letter-spacing:1.5px; color:var(--dim); }
+  #vol { display:flex; align-items:stretch; gap:12px; }
+  #vol .vb { width:82px; height:104px; border-radius:14px; background:var(--surf); display:flex; align-items:center; justify-content:center; color:var(--fg); }
+  #vol .vb .ic { width:40px; height:40px; }
+  #vol .lvl { flex:1; background:var(--surf); border-radius:14px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:0 10px; }
+  #vol .lvl .pct { font-size:36px; font-weight:800; font-variant-numeric:tabular-nums; }
+  #vol .lvl .pct.unknown .ic { width:38px; height:38px; color:var(--muted); margin:0 auto; }
+  #vol .lvl .track { width:78%; height:8px; border-radius:4px; background:var(--surf2); overflow:hidden; }
+  #vol .lvl .track i { display:block; height:100%; width:0%; background:var(--accent); transition:width .15s ease; }
+  .rsep { height:1px; background:var(--tile-bd); opacity:.5; }
+  .rrow { height:64px; display:flex; align-items:center; gap:14px; padding:0 16px; border-radius:12px; background:var(--surf);
+    color:var(--fg); font-size:18px; font-weight:600; }
+  .rrow .ic { width:26px; height:26px; color:var(--muted); flex:0 0 auto; }
+
+  /* ---- recording popover (anchored under Record, over the rail) ---- */
+  #scrim { position:absolute; inset:0; background:rgba(3,6,10,.28); border-radius:18px; display:none; }
+  body.light #scrim { background:rgba(210,220,230,.34); }
+  #recPanel { position:absolute; top:0; right:0; width:540px; background:var(--surf); border-radius:16px; padding:22px;
+    display:none; flex-direction:column; gap:16px; box-shadow:0 18px 50px rgba(0,0,0,.5); border:1px solid var(--tile-bd); }
+  #wrap.drawer-open #scrim, #wrap.drawer-open #recPanel { display:flex; }
+  #recPanel .phead { display:flex; align-items:center; }
+  #recPanel .phead .h { font-size:24px; font-weight:800; flex:1; }
+  #recClose { width:48px; height:48px; border-radius:10px; color:var(--dim); font-size:28px; display:flex; align-items:center; justify-content:center; position:relative; }
+  #recClose::after { content:''; position:absolute; inset:-6px; }   /* generous 60px hit zone around the small × glyph */
+  #micRow { display:flex; align-items:center; gap:12px; height:62px; padding:0 18px; border-radius:11px; background:var(--surf2); font-size:18px; font-weight:600; }
+  #micRow .lbl { color:var(--dim); font-weight:700; } #micRow .val { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } #micRow .chev { color:var(--dim); font-size:22px; }
+  #recStart { height:88px; border-radius:13px; background:var(--accent); color:var(--accent-fg,#04121f); font-size:24px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:14px; }
+  #recStart .dot { width:20px; height:20px; border-radius:50%; background:var(--accent-fg,#04121f); }
+  #recHint { font-size:13px; color:var(--dim); text-align:center; }
+  /* recording-details view (filename + Stop) — replaces Start while live and the popover is reopened */
+  #recFile { font-size:13px; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #recStopBig { height:88px; border-radius:13px; background:var(--danger); color:#1a0505; font-size:24px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:14px; }
+  #recStopBig .sq { width:20px; height:20px; border-radius:5px; background:#1a0505; }
+  #recPanel.details #recStart, #recPanel.details #recHint { display:none; }
+  #recPanel:not(.details) #recFile, #recPanel:not(.details) #recStopBig { display:none; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* ---- device (microphone) picker overlay ---- */
+  #devOverlay { position:fixed; inset:0; background:rgba(3,6,10,.86); display:none; flex-direction:column; padding:24px 40px; z-index:20; }
+  body.light #devOverlay { background:rgba(210,220,230,.9); }
+  #devOverlay.show { display:flex; }
+  #devHead { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  #devTitle { font-size:26px; font-weight:800; }
+  #devCancel { height:56px; padding:0 26px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:18px; font-weight:700; }
+  #devList { flex:1; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:12px; }
+  .devRow { display:flex; align-items:center; height:68px; padding:0 22px; border-radius:12px; background:var(--surf); color:var(--fg);
+    font-size:22px; font-weight:600; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .devRow.current { background:var(--accent); color:var(--accent-fg,#04121f); }
 </style>
 </head>
 <body>
   <div id="wrap">
     <div id="topbar">
-      <div class="segctl" id="segctl">
-        <div class="seg" data-platform="zoom">Zoom</div>
-        <div class="seg" data-platform="teams">Teams</div>
+      <div id="segctl">
+        <button class="seg press foc" type="button" data-platform="zoom">Zoom</button>
+        <button class="seg press foc" type="button" data-platform="teams">Teams</button>
+      </div>
+      <div id="status">Ready</div>
+      <div id="spacer"></div>
+      <div id="recHost"></div>
+    </div>
+
+    <div id="body">
+      <div id="deck">
+        <div class="cluster">
+          <div class="clabel">AUDIO &amp; VIDEO</div>
+          <div class="crow" id="avRow"></div>
+        </div>
+        <div class="sep"></div>
+        <div class="cluster">
+          <div class="clabel">CALL</div>
+          <div class="crow" id="callRow"></div>
+        </div>
+      </div>
+
+      <div id="rail">
+        <div class="rlabel">VOLUME</div>
+        <div id="vol">
+          <button class="vb press foc" id="volDown" type="button"></button>
+          <div class="lvl"><div class="pct unknown" id="volPct"></div><div class="track" id="volTrack" style="display:none"><i id="volFill"></i></div></div>
+          <button class="vb press foc" id="volUp" type="button"></button>
+        </div>
+        <div class="rsep"></div>
+        <button class="rrow press foc" id="openApp" type="button"><span class="ic" id="ic-open"></span><span id="openLbl">Open Zoom</span></button>
+        <button class="rrow press foc" id="shareScreen" type="button"><span class="ic" id="ic-share"></span>Share screen</button>
+      </div>
+
+      <div id="scrim"></div>
+      <div id="recPanel">
+        <div class="phead"><div class="h">Recording</div><button id="recClose" class="foc" type="button">&times;</button></div>
+        <button id="micRow" class="press foc" type="button"><span class="lbl">Microphone</span><span class="val" id="micVal">System default</span><span class="chev">&rsaquo;</span></button>
+        <button id="recStart" class="press foc" type="button"><span class="dot"></span>Start recording</button>
+        <div id="recHint">Starts automatically during Zoom and Teams calls</div>
+        <div id="recFile">&nbsp;</div>
+        <button id="recStopBig" class="press foc" type="button"><span class="sq"></span>Stop recording</button>
       </div>
     </div>
-    <div id="mainrow">
-      <div id="actions"></div>
-      <div class="stackwrap">
-        <div id="volUp" class="abtn"></div>
-        <div id="volDown" class="abtn"></div>
-      </div>
-    </div>
-    <div id="status">Ready</div>
   </div>
+
+  <div id="devOverlay">
+    <div id="devHead"><div id="devTitle">Microphone</div><button id="devCancel" class="foc" type="button">Cancel</button></div>
+    <div id="devList"></div>
+  </div>
+
   <script src="meetingview.js"></script>
 </body>
 </html>

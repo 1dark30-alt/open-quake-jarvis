@@ -65,13 +65,16 @@ const STATIC_FILES = {
   '/keyshortcutsview.js': 'application/javascript; charset=utf-8',
   '/claudevoiceview.js': 'application/javascript; charset=utf-8',
   '/claudevoice-vad.js': 'application/javascript; charset=utf-8',
+  '/recorderview.js': 'application/javascript; charset=utf-8',
+  '/system-audio-capture.js': 'application/javascript; charset=utf-8',
 };
 for (const appId of ['teams', 'outlook', 'word', 'excel', 'powerpoint', 'onenote', 'onedrive', 'office']) {
   STATIC_FILES['/office-icons/' + appId + '.svg'] = 'image/svg+xml; charset=utf-8';
 }
 
 let server = null, onMedia = null, onLaunch = null, getGridTiles = null, getAppConfig = null, getOfficeData = null, connectOffice = null, onOpenExternal = null, onMeetingAction = null, onOfficeAction = null, getShortcuts = null;
-let sysHtml = FALLBACK, musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK;
+let getMeetingState = null, onMeetingRecord = null;   // meeting recorder: panel poller + start/stop/setMic remote
+let sysHtml = FALLBACK, musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK;
 // Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
 // Voice-panel app registry: appId (also the URL path prefix) -> { handlers, voiceToken, htmlFile,
 // htmlContent }. `handlers` is a voicepanel-host.js handlers object; every voice app shares the
@@ -443,6 +446,7 @@ async function handler(req, res) {
   if (url === '/' || url === '/index.html') return html(res, sysHtml);
   if (url === '/music') return html(res, musicHtml);
   if (url === '/meeting') return html(res, meetingHtml);
+  if (url === '/recorder') return html(res, recorderHtml);   // hidden meeting-recorder capture page
   if (url === '/chat') return html(res, chatHtml);
   if (url === '/office') return html(res, officeHtml);
   if (url === '/haschedule') return html(res, hascheduleHtml);
@@ -617,6 +621,26 @@ async function handler(req, res) {
     }
     return json(res, result);
   }
+  // Meeting recorder: the panel page polls /meeting-state and drives start/stop/setMic here.
+  if (url === '/meeting-state') {
+    return json(res, typeof getMeetingState === 'function' ? getMeetingState() : { recording: false });
+  }
+  if (url === '/meeting-record/start' || url === '/meeting-record/stop') {
+    const cmd = url.endsWith('/start') ? 'start' : 'stop';
+    let result = { ok: false, error: 'not wired' };
+    if (typeof onMeetingRecord === 'function') {
+      try { result = await onMeetingRecord(cmd); } catch (e) { result = { ok: false, error: e.message || 'record command failed' }; }
+    }
+    return json(res, result);
+  }
+  if (url.indexOf('/meeting-set-mic/') === 0) {
+    const label = decodeURIComponent(url.slice('/meeting-set-mic/'.length));
+    let result = { ok: false, error: 'not wired' };
+    if (typeof onMeetingRecord === 'function') {
+      try { result = await onMeetingRecord('setMic', label); } catch (e) { result = { ok: false, error: e.message || 'set-mic failed' }; }
+    }
+    return json(res, result);
+  }
   if (url.indexOf('/api/office/action/') === 0) {
     const match = /^\/api\/office\/action\/(app)\/([0-3])$/.exec(url)
       || /^\/api\/office\/action\/(shortcut)\/([0-3])\/([0-7])$/.exec(url);
@@ -652,6 +676,8 @@ function start(opts) {
     ? opts.officeCapabilityTtlMs : DEFAULT_OFFICE_CAPABILITY_TTL_MS;
   onOpenExternal = opts.onOpenExternal || null;
   onMeetingAction = opts.onMeetingAction || null;
+  getMeetingState = opts.getMeetingState || null;
+  onMeetingRecord = opts.onMeetingRecord || null;
   onOfficeAction = opts.onOfficeAction || null;
   getShortcuts = opts.getShortcuts || null;
   voiceApps = {};
@@ -670,6 +696,7 @@ function start(opts) {
     try { sysHtml = fs.readFileSync(path.join(__dirname, 'sysview.html'), 'utf8'); } catch (e) {}
     try { musicHtml = fs.readFileSync(path.join(__dirname, 'musicview.html'), 'utf8'); } catch (e) {}
     try { meetingHtml = fs.readFileSync(path.join(__dirname, 'meetingview.html'), 'utf8'); } catch (e) {}
+    try { recorderHtml = fs.readFileSync(path.join(__dirname, 'recorderview.html'), 'utf8'); } catch (e) {}
     try { chatHtml = fs.readFileSync(path.join(__dirname, 'chatview.html'), 'utf8'); } catch (e) {}
     try { officeHtml = fs.readFileSync(path.join(__dirname, 'office.html'), 'utf8'); } catch (e) {}
     try { hascheduleHtml = fs.readFileSync(path.join(__dirname, 'haschedule.html'), 'utf8'); } catch (e) {}

@@ -1,85 +1,69 @@
-# PROJECT — Desktop focus (panel auto-follows the foreground PC app)
+# PROJECT — Meeting recording (Phase 1)
 
-When a configured desktop application becomes the foreground/focused window on the
-PC, the panel automatically switches to the page mapped to that app — no manual
-navigation needed. Focus Spotify → panel jumps to Music. Focus Teams → panel jumps
-to Meeting. Focus something unmapped → panel stays where it is.
+Turns the **Meeting** app from a stateless Zoom/Teams remote control into a meeting
+*recorder*. It captures your microphone and the system (speaker) audio, merges them into
+one stereo WAV per meeting (you = left channel, everyone else = right), and can start on
+its own the moment a real call begins. Phase 1 is recording only; a later phase adds the
+transcription/analysis pipeline.
 
 ## Charter
 
 **1. What is the one thing this must do?**
-Track which application has OS-level foreground focus on the PC, and when it
-changes to an app the user has mapped to a panel page, switch the panel to that
-page automatically.
+Record a meeting — your mic (left) + everyone else's system audio (right) — to a playable
+file in a chosen folder, started manually from the panel **and** automatically when a real
+Zoom/Teams call begins.
 
 **2. What would be wrong if we shipped "working" software without it?**
-- **Must not fight manual navigation.** If the user deliberately navigates the
-  panel away (knob turn, page-menu double-tap) while the mapped app is *still*
-  focused, the feature must not immediately snap back — that would make the panel
-  feel broken/uncontrollable. It should only re-trigger on the next genuine focus
-  *change* to a mapped app, not re-assert an already-satisfied match.
-- **Must not fight itself on rapid alt-tabbing.** Switching panel pages on every
-  transient focus flicker (e.g. holding Alt+Tab through several windows) would be
-  visually chaotic. Needs debounce.
-- **Must be fully optional per-page and globally.** A page with no mapped app(s)
-  is never auto-selected; the whole feature must have a global off switch.
+- **Both channels must actually be captured.** A file that's silent on the mic or the
+  system side is a failed recording. Mic = left, system = right, both non-zero.
+- **Auto-record must be app-scoped.** It must start for Zoom/Teams calls and NEVER for a
+  Claude-voice session or other incidental mic use. A sound/VAD trigger can't tell these
+  apart, so this is non-negotiably driven by *which app* holds an active capture session.
+- **Background recording must not depend on the meeting page being on-screen.** The panel
+  is one WebView that navigates between apps; recording has to keep running when the panel
+  shows something else.
 
 **3. What is explicitly off-limits as a workaround?**
-- No requiring cooperation/plugins from the target desktop apps (no "Spotify must
-  install X") — this is OS-level foreground-window tracking only, same spirit as
-  the existing SMTC now-playing read and the Teams force-focus mechanism already
-  in this codebase.
-- No polling so aggressively it becomes a noticeable CPU/battery cost — match the
-  cadence of existing pollers in this app (SMTC now-playing polls every 2.5s;
-  auto-rotation's own interval is user-configurable).
+- No recording all microphone use indiscriminately (would capture Claude sessions).
+- No requiring the meeting page to be focused/open to record in the background.
+- No VAD/sound-level "mic is active" trigger standing in for real app-scoped detection.
+- No capping capture below the agreed 16 kHz stereo.
 
 **4. Deployment target and backup location?**
-- Target: bundled into **open-quake** (Windows desktop, Electron).
-- Backup: the git repo, `desktop-focus` branch — commits are the backup.
+- Target: bundled into **open-quake** (Windows desktop, Electron kiosk).
+- Backup: the git repo, `meeting-dev` branch — commits are the backup.
 
 **5. How will we verify it's done?**
-- Map Spotify → Music page, Teams → Meeting page. Focus Spotify on the PC (any
-  window of it) → panel switches to Music within the poll interval. Focus Teams →
-  panel switches to Meeting. Focus an unmapped app (e.g. a text editor) → panel
-  stays on whatever page it was last on.
-- While Spotify is focused and Music is showing, manually navigate the panel to a
-  different page — it stays there (doesn't snap back) until focus changes to
-  something else and back to Spotify again.
-- Global toggle off → no auto-switching occurs regardless of focus changes.
-- Rapid alt-tabbing between two mapped apps doesn't cause visible page-switch
-  flicker faster than the debounce window.
+- Manual: Meeting app → Record (split opens) → Start → play audio + talk → Stop → a WAV
+  named `YYYY-MM-DD-HH-MM-SS.wav` appears in the meeting folder with both channels non-zero.
+- Auto: with auto-record on, starting a real Zoom (and Teams) call auto-starts recording
+  even with the panel on another app; ending the call / going silent auto-stops.
+- Negative: starting a Claude-voice session does **not** begin a recording.
+- Mic: the mic picked in the editor is the panel's default; changing it on the panel
+  applies live. Split UI reads correctly on the 1920×480 panel in light and dark.
 
-## Decisions (signed off 2026-07-02)
+## Architecture (as built)
 
-1. **Detection mechanism**: polling, ~1.5s interval (matches `nowplaying.js`'s cadence).
-2. **Matching key**: process executable name (e.g. `spotify.exe`). Plus a
-   "browse running apps" picker (`Get-Process | Where-Object MainWindowTitle`,
-   same technique `meetingControl.js`'s Teams-focus script already uses to find
-   processes with a real window) so the user doesn't have to know/type exact exe
-   names — free-text entry stays available too, for mapping an app that isn't
-   currently running.
-3. **Mapping location**: new "Focus trigger app(s)" field in each page's existing
-   Advanced settings section.
-4. **Global toggle**: sibling to the existing auto-rotation on/off switch in Settings.
+- **Hidden recorder window** (`app/meetingRecorder.js` + `app/recorderview.*`,
+  `app/recorder-preload.js`): a main-owned `show:false` BrowserWindow on its **own**
+  `persist:recorder` session partition — the loopback display-media handler
+  (`app/loopback-audio.js`) is registered only there, never on the shared dashboards
+  session. It is the single audio-capture path; `app/system-audio-capture.js` merges mic +
+  system loopback into interleaved stereo int16 PCM and streams it to main, which writes a
+  16 kHz stereo WAV.
+- **Native app-scoped trigger** (`native/mic-session-monitor.cs` → `app/native/
+  mic-session-monitor.exe`, built by `build-smtc.js`): a WASAPI audio-session poller that
+  reports when an allowlisted process (default `Zoom.exe`, `Teams.exe`, `ms-teams.exe`)
+  holds an *active* capture session. main spawns it and auto-starts/stops on its signal.
+- **Panel** (`app/meetingview.*`): UI/remote only. A right-aligned **Record** button in the
+  top row toggles a split — action cards collapse to the top half, recording controls fill
+  the bottom half; the zone also opens automatically whenever a recording is live. It polls
+  `/meeting-state` and drives start/stop/mic over HTTP (`app/sysserver.js`). No capture here.
+- **Settings** (`app/config.js`, Meeting tab): stored under `config.settings.meeting`
+  (folder, mic label, auto-record, call-app allowlist, silence-stop minutes, echo gate) —
+  global, so auto-record works regardless of the active app.
 
-## Approach
-
-- **`app/desktopFocus.js`** (new) — `getForegroundProcessName()` (adapt the
-  P/Invoke `GetForegroundWindow`/`GetWindowThreadProcessId` pattern already
-  proven in `meetingControl.js`, reading instead of setting), `listRunningApps()`
-  (the picker query), and a poll loop that emits only on process-name *change*
-  (not every tick) — this is what naturally satisfies "don't fight manual
-  navigation while the same app stays focused."
-- **Debounce**: require the same new foreground process to be stable across 2
-  consecutive polls (~3s) before triggering, so rapid alt-tabbing doesn't cause
-  page-switch flicker.
-- **Data model**: `g.focusApps` (array of process name strings) per page.
-  `config.settings.focusFollow = { enabled: bool }` alongside the existing
-  rotation settings shape.
-- **Editor**: `focusApps` list editor in `advRowHtml`/`wireAdvRow` (add/remove
-  chips, each addable by free-text or via the running-apps picker) + the global
-  toggle placed next to Settings' existing rotation controls.
-- **Main process**: on a genuine foreground-change event (from the poll loop),
-  if `focusFollow.enabled` and some page's `focusApps` includes the new process
-  name, `gotoGrid()` to it. No action on unmapped processes or steady-state
-  (same app still focused) polls.
+## Known follow-ups (later phases)
+- Transcription / diarization / analysis pipeline over the recorded WAVs.
+- macOS support (loopback = ScreenCaptureKit perms; the native monitor is Windows-only).
+- Optional AudioWorklet capture path (current uses ScriptProcessorNode — deprecated but fine).

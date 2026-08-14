@@ -19,6 +19,8 @@ const TARGETS = [
   { src: path.join(NATIVE, 'smtc-art.cs'), out: path.join(OUT_DIR, 'smtc-art.exe') },
   { src: path.join(NATIVE, 'smtc-control.cs'), out: path.join(OUT_DIR, 'smtc-control.exe') },
   { src: path.join(NATIVE, 'reserved-display.cs'), out: path.join(OUT_DIR, 'reserved-display.exe') },
+  { src: path.join(NATIVE, 'mic-session-monitor.cs'), out: path.join(OUT_DIR, 'mic-session-monitor.exe') },
+  { src: path.join(NATIVE, 'sysvolume.cs'), out: path.join(OUT_DIR, 'sysvolume.exe') },
 ];
 const log = m => console.log('[build:smtc] ' + m);
 // Non-fatal for development: if the native toolchain is absent, JS/Electron still starts and each
@@ -61,6 +63,10 @@ for (const c of ['System.Runtime.WindowsRuntime', 'System.Runtime', 'System.Runt
 const webExtensions = path.join('C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319', 'System.Web.Extensions.dll');
 if (!fs.existsSync(webExtensions)) bail('.NET Framework System.Web.Extensions.dll not found.');
 refs.push(webExtensions);
+// System.dll: mic-session-monitor.cs uses System.Diagnostics.Process (not auto-referenced by csc).
+// Harmless for the WinRT helpers, which simply don't use it.
+const systemDll = path.join('C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319', 'System.dll');
+if (fs.existsSync(systemDll)) refs.push(systemDll);
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
 for (const t of stale) {

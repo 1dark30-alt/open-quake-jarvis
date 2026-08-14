@@ -48,6 +48,8 @@ const haschedule = require('./haschedule');   // HA Schedule dev app — fed HA 
 const haClient = require('./haClient');       // Global HA cache (registries + dashboards); per-entity states fetched lazily
 const touchSetup = require('./touchSetup');   // Bind a touchscreen to its physical display via tabcal.exe (Windows)
 const meetingControl = require('./meetingControl');   // Zoom/Teams call-control keystrokes (Meeting app page)
+const { createMeetingRecorder } = require('./meetingRecorder'); // hidden-window meeting recorder (mic + system loopback -> WAV)
+const { enableLoopbackAudioCapture } = require('./loopback-audio'); // system-audio loopback display-media handler (recorder session only)
 const desktopFocus = require('./desktopFocus');   // tracks the PC's OS-level foreground app; auto-switches the panel to a mapped page
 const ahk = require('./ahk');                  // macro "ahk" step backend (shells out to an installed AutoHotkey.exe)
 const { createReservedDisplay } = require('./reservedDisplay'); // Windows helper that keeps foreign windows off the panel display
@@ -64,6 +66,8 @@ const DEFAULT_CONFIG_PATH = path.join(__dirname, 'config.default.json'); // bund
 const LEGACY_CONFIG_PATH = path.join(__dirname, 'config.json');          // pre-userData dev location, migrated once
 const APPS_DIR = path.join(__dirname, '..', 'apps').replace('app.asar', 'app.asar.unpacked'); // unpacked when packaged
 const SMTC_CTL_EXE = path.join(__dirname, 'native', 'smtc-control.exe').replace('app.asar', 'app.asar.unpacked'); // SMTC transport helper (Windows)
+const MIC_MONITOR_EXE = path.join(__dirname, 'native', 'mic-session-monitor.exe').replace('app.asar', 'app.asar.unpacked'); // app-scoped mic-in-use monitor (Windows)
+const SYSVOL_EXE = path.join(__dirname, 'native', 'sysvolume.exe').replace('app.asar', 'app.asar.unpacked'); // reads the real system volume for the meeting rail
 const LED_DEFAULT = { effect: 1, brightness: 200, speed: 128, hue: 128, sat: 255 }; // ring lighting fallback (effect 1 = Solid Color)
 const THEME_DEFAULT = { appearance: 'system', accent: '#7CFFB2', presets: ['#7CFFB2', '#38B6FF', '#FF4040', '#FFB000'] };
 const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false, reservedDisplay: false, lighting: Object.assign({}, LED_DEFAULT), theme: Object.assign({}, THEME_DEFAULT) };
@@ -71,6 +75,9 @@ const actionDeps = { fs, shell, exec, execFile, spawn, platform: process.platfor
 const mediaKeys = createMediaKeys({ log: message => console.log(message) });
 let firstRun = false;     // set by loadConfig when there was no prior config (fresh install)
 let micState = false;     // current device mic state (LED follows it)
+let meetingRecorder = null;   // hidden-window meeting recorder (created once the panel server is up)
+let micMonitorProc = null;    // native app-scoped mic-in-use monitor child process
+let sysVolCache = null, sysVolAt = 0, sysVolBusy = false;   // throttled cache of the real system volume (0-100)
 let lastRingEffect = LED_DEFAULT.effect; // remembered so the tray on/off toggle can restore the prior effect
 let rotateRunning = false;               // screen-rotation runtime on/off (starts per settings on launch)
 let rotationSuspended = false;           // temporarily held off by desktop-focus (a mapped app currently has focus)
@@ -1126,9 +1133,26 @@ function mediaKey(cmd) {
 const ZOOM_OPTION_KEY = { mute: 'zoomMute', video: 'zoomVideo', accept: 'zoomAccept', decline: 'zoomDecline', leave: 'zoomLeave' };
 async function onMeetingActionRequest(platform, action) {
   if (platform === 'system') {
-    if (action === 'volup') { mediaKeys.volume(1); return { ok: true }; }
-    if (action === 'voldown') { mediaKeys.volume(-1); return { ok: true }; }
+    if (action === 'volup') { mediaKeys.volume(1); sysVolAt = 0; return { ok: true }; }
+    if (action === 'voldown') { mediaKeys.volume(-1); sysVolAt = 0; return { ok: true }; }
     return { ok: false, error: 'unknown system action: ' + action };
+  }
+  // Utility-rail launchers, platform-agnostic. Open focuses/launches the app's window; Share fires
+  // the app's screen-share shortcut (Zoom Alt+S; Teams Ctrl+Shift+E — both depend on that shortcut
+  // being enabled in the app, same as the other keystroke actions here).
+  if (action === 'open') {
+    if (platform === 'teams') return meetingControl.focusTeamsWindow();
+    if (platform === 'zoom') return meetingControl.focusProcessWindow(['Zoom']);
+    return { ok: false, error: 'no launcher for ' + platform };
+  }
+  if (action === 'share') {
+    if (platform === 'zoom') return meetingControl.sendZoomAction('alt+s', { mediaKeys });
+    if (platform === 'teams') {
+      const focus = await meetingControl.focusTeamsWindow();
+      await new Promise(r => setTimeout(r, 150));
+      return { ok: mediaKeys.tapCombo('control+shift+e'), focused: focus.ok };
+    }
+    return { ok: false, error: 'no share for ' + platform };
   }
   if (platform === 'zoom') {
     const optKey = ZOOM_OPTION_KEY[action];
@@ -1151,6 +1175,89 @@ async function onMeetingActionRequest(platform, action) {
   }
   if (platform === 'teams') return meetingControl.sendTeamsAction(action, { mediaKeys });
   return { ok: false, error: 'unknown platform: ' + platform };
+}
+
+// ---- meeting recording (Phase 1) ----
+// Settings live under config.settings.meeting (global, like config.settings.monitor) so auto-record
+// works regardless of which app the panel is showing — the meeting page's per-grid options only
+// exist while it's the active app, which is useless for background recording.
+const MEETING_DEFAULTS = { folder: '', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe' };
+function meetingSettings() { return Object.assign({}, MEETING_DEFAULTS, (config.settings || {}).meeting || {}); }
+function defaultMeetingFolder() { return path.join(app.getPath('documents'), 'OpenQuake Meetings'); }
+
+// Real system-volume read for the meeting OUTPUT rail — throttled + cached so the 1 s panel poll
+// never spawns a process more than ~once a second. Never fabricates a level: cache stays null (panel
+// shows "—") until the helper answers, and on any failure.
+function refreshSystemVolume() {
+  if (process.platform !== 'win32') return;
+  const now = Date.now();
+  if (sysVolBusy || (now - sysVolAt) < 900 || !fs.existsSync(SYSVOL_EXE)) return;
+  sysVolBusy = true; sysVolAt = now;
+  execFile(SYSVOL_EXE, [], { timeout: 1500, windowsHide: true }, (err, stdout) => {
+    sysVolBusy = false;
+    if (err) return;
+    const n = parseInt(String(stdout).trim(), 10);
+    sysVolCache = (Number.isFinite(n) && n >= 0) ? n : null;
+  });
+}
+
+// State the panel poller reads: recorder runtime state + the configured mic (so the page loads with
+// the editor-chosen mic as its default even when idle) + the auto-record flag.
+function meetingStateForPanel() {
+  const st = meetingRecorder ? meetingRecorder.getState() : { recording: false, startedAt: null, durationMs: 0, file: null, app: null, mic: '' };
+  const m = meetingSettings();
+  st.mic = st.mic || m.micDevice || '';
+  st.autoRecord = !!m.autoRecord;
+  refreshSystemVolume();       // throttled; updates sysVolCache in the background
+  st.volume = sysVolCache;     // 0-100, or null when unavailable (panel shows "—")
+  return st;
+}
+// Panel remote for the recorder (start/stop/state/setMic), reached over HTTP via sysserver.
+function onMeetingRecordRequest(cmd, arg) {
+  if (!meetingRecorder) return { ok: false, error: 'recorder unavailable' };
+  if (cmd === 'start') return { ok: true, state: meetingRecorder.start('manual') };
+  if (cmd === 'stop') return { ok: true, state: meetingRecorder.stop('manual') };
+  if (cmd === 'state') return { ok: true, state: meetingStateForPanel() };
+  if (cmd === 'setMic') { setMeetingMic(arg); return { ok: true, state: meetingStateForPanel() }; }
+  return { ok: false, error: 'unknown record command: ' + cmd };
+}
+function setMeetingMic(label) {
+  if (!config.settings) config.settings = {};
+  if (!config.settings.meeting) config.settings.meeting = {};
+  config.settings.meeting.micDevice = label || '';
+  saveConfig();
+  if (meetingRecorder) meetingRecorder.setMic(label || '');
+}
+
+// Native app-scoped monitor: emits a JSON line whenever an allowlisted app (Zoom/Teams) starts or
+// stops holding an ACTIVE capture session. That, not raw mic sound, is what auto-starts recording —
+// so a Claude-voice session (or any other mic use) never triggers it.
+function startMicMonitor() {
+  if (process.platform !== 'win32') return;
+  stopMicMonitor();
+  if (!fs.existsSync(MIC_MONITOR_EXE)) { console.log('[meeting] mic-session-monitor.exe missing — auto-record disabled (manual still works)'); return; }
+  const allow = meetingSettings().recordApps || MEETING_DEFAULTS.recordApps;
+  try {
+    micMonitorProc = spawn(MIC_MONITOR_EXE, [allow], { stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch (e) { console.log('[meeting] mic monitor spawn failed:', e.message); micMonitorProc = null; return; }
+  let buf = '';
+  micMonitorProc.stdout.on('data', d => {
+    buf += d.toString();
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+      if (!line) continue;
+      let msg; try { msg = JSON.parse(line); } catch (e) { continue; }
+      if (!meetingRecorder) continue;
+      if (msg.active) meetingRecorder.autoStart(msg.app || null);
+      else meetingRecorder.autoStop('call-ended');
+    }
+  });
+  micMonitorProc.on('exit', () => { micMonitorProc = null; });
+  console.log('[meeting] mic monitor watching: ' + allow);
+}
+function stopMicMonitor() {
+  if (micMonitorProc) { try { micMonitorProc.kill(); } catch (e) {} micMonitorProc = null; }
 }
 
 function isDeviceDisplay(d) {
@@ -1679,6 +1786,7 @@ app.whenReady().then(async () => {
       onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig,
       getOfficeData: officeGraph.getData, connectOffice: officeGraph.connect, onOfficeAction: officeActions.run,
       onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(),
+      getMeetingState: meetingStateForPanel, onMeetingRecord: onMeetingRecordRequest,
       getShortcuts: keyboardShortcutsSnapshot,
       // Voice-panel app registry: each entry gets the full /<appId>/* route surface (see
       // sysserver.js). voiceToken gates the claude approval hook's /approval-request long-poll.
@@ -1699,6 +1807,26 @@ app.whenReady().then(async () => {
     ensureSystemViewPage(serverPort); ensureMusicPage(); ensureDropInDir();
     const haUrl = configureHaSchedule();
     console.log('SystemView + Music on http://127.0.0.1:' + serverPort + (haUrl ? ' · HA Schedule -> ' + haUrl : ''));
+
+    // Meeting recorder: hidden capture window on its OWN session partition (persist:recorder) with
+    // the loopback handler registered ONLY there (never the shared dashboards session). Created once
+    // the server is up so it can load the served /recorder page from a trusted local origin.
+    meetingRecorder = createMeetingRecorder({
+      recorderUrl: () => 'http://127.0.0.1:' + serverPort + '/recorder',
+      preloadPath: path.join(__dirname, 'recorder-preload.js'),
+      setupRecorderSession: (sess) => {
+        sess.setPermissionRequestHandler(handleDashboardPermissionRequest);   // grants getUserMedia mic for our local page
+        enableLoopbackAudioCapture(sess, { onError: err => console.log('[meeting] loopback handler error:', err && err.message) });
+      },
+      resolveSettings: () => {
+        const m = meetingSettings();
+        return { meetingFolder: m.folder, micDevice: m.micDevice, echoGate: !!m.echoGate, silenceStopMin: m.silenceStopMin, autoRecord: !!m.autoRecord };
+      },
+      defaultFolder: defaultMeetingFolder,
+      log: msg => console.log('[meeting] ' + msg),
+    });
+    meetingRecorder.ensureWindow();   // arm the hidden window so a call can start recording instantly
+    startMicMonitor();
   } catch (e) { console.log('local panel services failed to start:', e.message); }
   sweepIconCache();   // clean up orphaned URL-icon cache files left by prior sessions
   // Same idea for the approval hook: a crash (or a force-kill) skips before-quit's removal and strands
@@ -1861,6 +1989,8 @@ app.whenReady().then(async () => {
     pushToPanel(); applyKnobSettings(); refreshTray(); applyRotationSettings(wasRot); applyFocusFollowSettings(); applyShortcuts(); applyTheme();
     reservedDisplay.setEnabled(!!appSettings().reservedDisplay);
     configureHaSchedule();                                          // pick up any haAuth edits without a restart
+    startMicMonitor();                                              // re-arm with any edited app allowlist
+    if (meetingRecorder) meetingRecorder.setMic(meetingSettings().micDevice);   // push an edited mic to the recorder
     return { ok: true };
   });
   ipcMain.handle('pickProgram', async (e) => {
@@ -1910,6 +2040,14 @@ app.whenReady().then(async () => {
   // Sync: editor preview reads a local image as a data: URL through main (the config preload is sandboxed,
   // so it can't touch fs). Same conversion the panel uses, so editor previews match the panel.
   ipcMain.on('imageToDataUrl', (e, filePath) => { e.returnValue = isFrom(e, configWin) ? (imageFileToDataUrl(filePath) || '') : ''; });
+  // Meeting recorder window -> main. Guarded to the recorder window's own webContents so no other
+  // page can inject PCM or spoof capture state.
+  const fromRecorder = e => meetingRecorder && meetingRecorder.isRecorderSender(e.sender);
+  ipcMain.on('recorder-ready', e => { if (fromRecorder(e)) meetingRecorder.onReady(); });
+  ipcMain.on('recorder-pcm', (e, buf, meta) => { if (fromRecorder(e)) meetingRecorder.onPcm(buf, meta); });
+  ipcMain.on('recorder-state', (e, state, detail) => { if (fromRecorder(e)) meetingRecorder.onRecorderState(state, detail); });
+  ipcMain.on('recorder-ended', e => { if (fromRecorder(e)) meetingRecorder.onEnded(); });
+  ipcMain.on('recorder-error', (e, m) => { if (fromRecorder(e)) meetingRecorder.onError(m); });
   ipcMain.handle('fetchIconUrl', (e, url) => isFrom(e, configWin) ? fetchIconToCache(url) : { ok: false, error: 'unauthorized' });
   ipcMain.handle('fetchMdiIcon', (e, name) => isFrom(e, configWin) ? fetchMdiToCache(name) : { ok: false, error: 'unauthorized' });
   // Bind the touchscreen to its physical display via multidigimon -touch (Windows). This launches
@@ -2011,6 +2149,8 @@ app.on('before-quit', () => {
   try { claudeVoiceApprovals.ensureHookRemoved(claudeVoiceLog); } catch (e) {}    // belt-and-braces: never leave our entry behind in the user's global Claude settings
   try { dev.stop(); } catch (e) {}                       // close HID devices + clear keep-alive/rescan timers — an open node-hid handle blocks process exit (Cmd+Q would hang -> force-quit)
   try { oauthHandler.stop(); } catch (e) {}              // stop OAuth callback server + background refresh timers
+  try { stopMicMonitor(); } catch (e) {}                 // terminate the native mic-in-use monitor child
+  try { if (meetingRecorder) meetingRecorder.dispose(); } catch (e) {}   // stop any recording + destroy the hidden capture window
   try { if (sysserver) sysserver.stop(); } catch (e) {}  // stop metrics timers + close the local server
   try { if (dashSession) dashSession.cookies.flushStore(); } catch (e) {}   // commit a fresh webview login to disk before exit
   try { globalShortcut.unregisterAll(); } catch (e) {}   // drop per-page hotkeys

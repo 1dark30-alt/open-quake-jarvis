@@ -69,6 +69,53 @@ A mouse also happens to work on this panel; that is never a reason to design for
   checkmark. Never an outline/border — thin strokes read as focus rings and are weak at distance.
   Exactly ONE thing on screen may carry the selected fill.
 
+## Composition: control consoles, not tile walls (litigated 2026-08-14, Meeting app)
+
+The one-card-per-action tile grid was rejected TWICE on the Meeting redesign. Don't rebuild it.
+
+- **Group controls into a few shared surfaces with internal hierarchy** — e.g. one control deck
+  (related actions as ~112px circular buttons, 38-42px icons, 18px labels under each, clusters
+  split by spacing + a 1px hairline and a 13px letterspaced group label) plus one narrow utility
+  rail (300-360px). Never seven bordered cards of equal weight; never huge empty slabs around
+  tiny icons; no cards nested inside cards.
+- **Header = context strip** (~48-56px): segmented platform/mode control + readiness status +
+  compact utility action. Don't spend a vertical column on what a segmented control does.
+- **Exactly one permanently-prominent destructive action** (solid red). Other semantic controls
+  get *icon color only* (green accept, red decline) until a real confirmed state justifies more.
+  Reserve the runtime accent for selection/active/focus + the single primary action.
+- **Overlays never move the layout.** A panel opened from a control is a floating popover
+  anchored to it, overlaying the utility region with a LIGHT scrim (underlying controls must stay
+  recognizable — rgba(3,6,10,.28) dark / rgba(210,220,230,.34) light). Primary controls must be
+  pixel-identical across every state; when the action starts, collapse the popover into a compact
+  header status pill (● label · tabular timer · small Stop) rather than keeping a panel open.
+- **Platform-specific verbs**: "Leave" (Zoom) / "Hang up" (Teams); end/decline = handset rotated
+  135° (`transform:rotate(135deg)` on the phone glyph).
+
+## State & color honesty
+
+- **Never fabricate state.** No volume % without a real read (fallback = a centered muted speaker
+  icon, never placeholder text that wraps, never an empty meter). No active/muted/camera-off
+  styling unless confirmed by real application state. Filenames/diagnostics stay OUT of the
+  header status line — they live in the detail popover.
+- **Accent foreground must be computed**, not hard-coded: the accent is runtime-configurable, so
+  set `--accent-fg` by relative luminance (>0.45 → dark text, else light) and use it for every
+  on-accent foreground (selected segment, primary button + its glyphs).
+- **Icons must inherit color**: `.ic svg { fill:currentColor; display:block; }` — injected SVGs
+  without this render near-invisible on dark surfaces (real bug, Meeting console).
+- **Hit areas ≥48px even when the visible shape is smaller**: expand with an invisible
+  `::after { content:''; position:absolute; inset:-Npx; }` on a `position:relative` control
+  (used on the header pill's 38px Stop and the popover's × close).
+
+## Verifying panel UI (how this actually gets approved)
+
+Render the REAL page file at exactly 1920x480 and screenshot every state (idle per platform,
+each overlay/active state, long-label, light theme, unknown-data fallbacks) — the user approves
+screenshots, and mockups drift. Working harness: headless Electron, `win.showInactive()` at
+x:-4000 (hidden windows don't composite → stale captures), drive states through the page's own
+`applyState()` via `executeJavaScript`, force two rAFs before `capturePage()`. In this sandbox
+Chromium's network service dies after the first load — run ONE Electron process per state.
+Diff the states: primary controls must not move or resize between any two.
+
 ## Checklist before shipping any panel UI
 
 1. Every tappable thing ≥48px, standard ones 64–80px, ≥12px apart?
@@ -78,6 +125,12 @@ A mouse also happens to work on this panel; that is never a reason to design for
 5. No focus rings after tap; selection shown by fill; only one selected fill on screen?
 6. Wide-screen layout actually used (columns/panels), not a phone layout stretched?
 7. Words match the device's vocabulary ("folder" not "project"; match Music/Meeting phrasing).
+8. Grouped surfaces, not a tile wall? One solid-red destructive action max? Accent only for
+   selection/active/primary?
+9. Primary controls pixel-identical across every state (overlays float + collapse to a pill,
+   never reflow the layout)?
+10. Nothing on screen fabricated — every level/state shown is a real read, with an honest
+    fallback when unreadable?
 
 Sources: Android Auto/AAOS design system (sizing, typography), Apple HIG, Material 3 (targets,
 selection), Fluent (targeting), WCAG 2.5.8, NN/g (alphabetical sorting, very-large touchscreens),

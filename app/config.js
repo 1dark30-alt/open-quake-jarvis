@@ -1872,6 +1872,10 @@
     const mon = currentMon();
     const currentTheme = () => Object.assign({ appearance: 'system', accent: '#7CFFB2', presets: ['#7CFFB2', '#38B6FF', '#FF4040', '#FFB000'] }, (config.settings || {}).theme || {});
     const th = currentTheme();
+    // Meeting recording settings (config.settings.meeting) — global so auto-record works regardless of
+    // which app the panel is showing. Same shape as MEETING_DEFAULTS in main.js.
+    const currentMe = () => Object.assign({ folder: '', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe' }, (config.settings || {}).meeting || {});
+    const me = currentMe();
     // ledState = the device's live lighting (loaded when the page opens); fall back to saved config / defaults.
     const L = Object.assign({}, LED_DEFAULT, (config.settings || {}).lighting || {}, ledState || {});
     const effOpts = LED_EFFECTS.map((n, i) => `<option value="${i}">${esc(n)}</option>`).join('');
@@ -1989,6 +1993,32 @@
         </select></div>
       <p class="hint">A single knob press does the “tap” action. Double-press is unbound in monitor mode.</p>`;
 
+    // Meeting tab — recording folder, mic, auto-record + app allowlist, silence auto-stop, echo gate
+    const meHtml = `
+      <p class="sectitle">Meeting recording</p>
+      <div class="row"><label>Meeting folder</label>
+        <input id="meFolder" value="${esc(me.folder)}" placeholder="Documents\\OpenQuake Meetings" style="flex:1">
+        <button id="meFolderBrowse" type="button">Browse…</button></div>
+      <p class="hint">Where recordings are saved — one stereo WAV per meeting (your mic = left, everyone else = right), named by date and time. Leave blank to use Documents\\OpenQuake Meetings.</p>
+
+      <div class="row" style="margin-top:12px"><label>Microphone</label>
+        <select id="meMic" style="flex:1"><option value="">System default</option></select></div>
+      <p class="hint">The mic recorded as your channel. This is the default the Meeting panel loads with; it can also be changed on the panel.</p>
+
+      <p class="sectitle" style="margin-top:22px">Auto-record</p>
+      <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meAuto" ${me.autoRecord ? 'checked' : ''}> Start recording automatically when a call begins</label></div>
+      <p class="hint">Detects when an app below has an active call (its microphone goes live) and starts recording — even if the panel is on another app. It never triggers on Claude voice or other microphone use.</p>
+      <div class="row"><label>Call apps</label>
+        <input id="meApps" value="${esc(me.recordApps)}" style="flex:1"></div>
+      <p class="hint">Comma-separated Windows process names that count as a call, e.g. Zoom.exe, Teams.exe, ms-teams.exe.</p>
+      <div class="row" style="margin-top:12px"><label>Stop after silence</label>
+        <input type="number" id="meSilence" min="0" step="1" value="${Number(me.silenceStopMin) || 0}" style="width:90px"> <span class="hint" style="margin:0 0 0 8px">minutes (0 = never)</span></div>
+      <p class="hint">Automatically stop a recording after this many minutes with no audio on either channel.</p>
+
+      <p class="sectitle" style="margin-top:22px">Capture</p>
+      <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meEcho" ${me.echoGate ? 'checked' : ''}> Echo-gate your microphone</label></div>
+      <p class="hint">Mutes your mic in the recording while the speakers are loud (and you're not on headphones), to stop the far end bleeding back in. Off = faithful capture of everything you say, even when others are talking.</p>`;
+
     // Theme tab — global light/dark + accent color
     const thHtml = `
       <p class="sectitle">Appearance</p>
@@ -2067,9 +2097,10 @@
         <button id="tabApps" class="tab${tab === 'apps' ? ' on' : ''}">Apps</button>
         <button id="tabDi" class="tab${tab === 'dropin' ? ' on' : ''}">Drop-In Apps</button>
         <button id="tabAuth" class="tab${tab === 'auth' ? ' on' : ''}">Auth</button>
+        <button id="tabMe" class="tab${tab === 'meeting' ? ' on' : ''}">Meeting</button>
         <button id="tabMon" class="tab${tab === 'monitor' ? ' on' : ''}">Monitor</button>
       </div>
-      ${tab === 'software' ? swHtml : tab === 'hardware' ? hwHtml : tab === 'theme' ? thHtml : tab === 'apps' ? appsHtml : tab === 'dropin' ? diHtml : tab === 'auth' ? authHtml : monHtml}
+      ${tab === 'software' ? swHtml : tab === 'hardware' ? hwHtml : tab === 'theme' ? thHtml : tab === 'apps' ? appsHtml : tab === 'dropin' ? diHtml : tab === 'auth' ? authHtml : tab === 'meeting' ? meHtml : monHtml}
       <div class="row" style="margin-top:22px"><button id="sBack">← Back to pages</button></div>`;
 
     document.getElementById('tabSw').onclick = () => { settingsTab = 'software'; renderSettings(); };
@@ -2078,6 +2109,7 @@
     document.getElementById('tabApps').onclick = () => { settingsTab = 'apps'; renderSettings(); };
     document.getElementById('tabDi').onclick = () => { settingsTab = 'dropin'; renderSettings(); };
     document.getElementById('tabAuth').onclick = () => { settingsTab = 'auth'; renderSettings(); };
+    document.getElementById('tabMe').onclick = () => { settingsTab = 'meeting'; renderSettings(); };
     document.getElementById('tabMon').onclick = () => { settingsTab = 'monitor'; renderSettings(); };
     document.getElementById('sBack').onclick = () => { view = 'pages'; render(); };
     const setS = (k, v) => { if (!config.settings) config.settings = {}; config.settings[k] = v; markDirty(); };
@@ -2368,6 +2400,38 @@
       document.getElementById('sMonTap').value = mon.knobTap;
       document.getElementById('sMonTurn').onchange = e => saveMon({ knobTurn: e.target.value });
       document.getElementById('sMonTap').onchange = e => saveMon({ knobTap: e.target.value });
+    } else if (tab === 'meeting') {
+      const saveMe = patch => { if (!config.settings) config.settings = {}; config.settings.meeting = Object.assign(currentMe(), patch); markDirty(); };
+      document.getElementById('meFolder').oninput = e => saveMe({ folder: e.target.value.trim() });
+      document.getElementById('meFolderBrowse').onclick = async () => {
+        const p = await configApi.pickFolder();
+        if (p) { document.getElementById('meFolder').value = p; saveMe({ folder: p }); }
+      };
+      document.getElementById('meAuto').onchange = e => saveMe({ autoRecord: e.target.checked });
+      document.getElementById('meApps').oninput = e => saveMe({ recordApps: e.target.value });
+      document.getElementById('meSilence').onchange = e => saveMe({ silenceStopMin: Math.max(0, parseInt(e.target.value, 10) || 0) });
+      document.getElementById('meEcho').onchange = e => saveMe({ echoGate: e.target.checked });
+      // Populate the mic dropdown with device LABELS (persisted, not deviceIds). Labels are only
+      // visible after a getUserMedia grant, so enumerate first and momentarily grab the mic if the
+      // labels come back blank — same lazy-enumeration trick as the panel's picker.
+      (function () {
+        const sel = document.getElementById('meMic');
+        const cur = me.micDevice || '';
+        const fill = devs => {
+          const inputs = (devs || []).filter(d => d.kind === 'audioinput' && d.label);
+          sel.innerHTML = '<option value="">System default</option>';
+          inputs.forEach(d => { const o = document.createElement('option'); o.value = d.label; o.textContent = d.label; sel.appendChild(o); });
+          if (cur && !inputs.some(d => d.label === cur)) { const o = document.createElement('option'); o.value = cur; o.textContent = cur + ' (not connected)'; sel.appendChild(o); }
+          sel.value = cur;
+          sel.onchange = e => saveMe({ micDevice: e.target.value });
+        };
+        navigator.mediaDevices.enumerateDevices().then(devs => {
+          if ((devs || []).some(d => d.kind === 'audioinput' && d.label)) return fill(devs);
+          navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(tmp => navigator.mediaDevices.enumerateDevices().then(d2 => { tmp.getTracks().forEach(t => t.stop()); fill(d2); }))
+            .catch(() => fill(devs));
+        }).catch(() => fill([]));
+      })();
     } else {
       // Theme — global appearance + accent (applied on Save, via the main process)
       const saveTheme = patch => { if (!config.settings) config.settings = {}; config.settings.theme = Object.assign(currentTheme(), patch); markDirty(); };
