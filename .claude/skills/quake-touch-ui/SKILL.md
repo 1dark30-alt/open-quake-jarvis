@@ -1,137 +1,177 @@
 ---
 name: quake-touch-ui
-description: Design rules for building touch UI on the Quake panel (1920x480 kiosk touchscreen viewed at arm's length). MUST be followed when creating or restyling any on-panel page, overlay, or control. Complements docs/design-system.md.
+description: Design, critique, implement, and verify UI for the open-quake 1920x480 touchscreen-and-knob panel. Use when creating or restyling any on-panel Electron page, control console, dashboard, picker, overlay, recording flow, theme, touch target, scrollbar, focus state, or screenshot-based UI revision. Complements docs/design-system.md.
 ---
 
-# Touch UI on the Quake panel
+# Design UI for the Quake panel
 
-The panel is a 1920x480 landscape touchscreen viewed at ~24" (arm's length on a desk) — farther
-than a phone (~13"). Phone-scale UI is ~1.6x too small here. The distance-calibrated references
-are Android Auto/Automotive (76dp targets, 24dp minimum body text), not phone Material/HIG.
-Read `docs/design-system.md` first; this file adds the touch/kiosk numbers and patterns.
+Treat the panel as a purpose-built appliance, not a desktop app or phone UI stretched into a 1920x480 viewport. It is viewed at arm's length through glare and fingerprints and operated by touch and a physical knob.
 
-## Sizes (CSS px on this panel)
+Read `AGENTS.md` and `docs/design-system.md` first. Verify documentation against current source.
 
-| Thing | Number |
+## Work from evidence
+
+1. Inspect the real HTML, CSS, renderer logic, theme parameters, and state transitions.
+2. Inspect attached screenshots at original resolution. Distinguish browser captures from photos of the physical device.
+3. Enumerate important states before changing the layout.
+4. Rank content as primary, contextual, utility, status, or diagnostic.
+5. For critique-only requests, explain the cause and provide a concrete brief without editing. For build requests, preserve behavior and validate the real page.
+
+Review revisions in this order:
+
+1. Composition: regions, proportions, focal point, and hierarchy.
+2. Interaction: touch safety, knob focus, state transitions, and disclosure.
+3. Surface: color, contrast, typography, icons, and separators.
+4. Polish: animation, truncation, hit areas, boot states, and physical-device behavior.
+
+Do not polish a structurally bad card grid. Once the composition works, freeze it and make focused corrections instead of repeatedly redesigning it.
+
+## Size for the physical panel
+
+Use these as starting values, then verify on the device:
+
+| Element | Guidance |
 |---|---|
-| Touch target minimum | 48px (never below; WCAG floor is 24 — that is a floor, not a goal) |
-| Touch target standard | **64–80px** rows/buttons (Android Auto's 76dp is the anchor) |
-| Gap between adjacent targets | **≥12px** |
-| Body / list-item text | **22–28px** (26px is the proven size here — Keyboard Shortcuts app) |
-| Primary labels / focal text | 28–32px |
-| Tertiary metadata only | ≤18px — never for anything the user must read to act |
-| Icons inside targets | ~44px primary, 36px secondary |
+| Minimum touch target | 48x48px; never smaller |
+| Standard row or button | 64-80px high |
+| Primary console control | 96-112px |
+| Gap between adjacent targets | At least 12px |
+| Primary icon | 38-44px |
+| Short action label | 18-22px, weight 600-700 |
+| Body or list text | 22-28px |
+| Group label, status, metadata | 13-18px only when non-critical |
 
-## Patterns
+Short, predictable action labels do not need to be oversized. Nothing the user must read to act may be treated as tiny metadata.
 
-- **Long selection lists (pick 1 of N names): uniform-width, left-aligned rows.** Eyes scan the
-  left edge; ragged variable-width chips/pills break the scan column. Chips are for filters, not
-  selection sets. Alphabetical order only when users know the name they want.
-- **50+ items: add jump navigation** — an A–Z strip (horizontal on this panel) that scrolls to the
-  section. Long swipes on large screens are strenuous; never rely on flinging alone.
-- **Always pair with a recents/favorites row** so the common 5–10 picks are one tap, no scrolling.
-- **Folder/tree pickers:** the standard mobile pattern is tap-row = navigate in, plus a persistent
-  "Use this folder" button that selects the *current* directory, breadcrumb + Up for location.
-  (When the dominant use is picking one of N siblings, tap-name = select with a separate `›`
-  browse zone is acceptable — but the `›` zone must itself be a full-size ≥48px target.)
-- **Filter-as-you-type** beats scrolling for known names, but only where a keyboard is natural.
-- **Pick-one settings (device, voice, theme…): show the CURRENT value on one big row ("Speaker —
-  System default ›"); tapping opens a dedicated full-size picker overlay** with uniform rows and
-  ▲/▼ paging. NEVER embed always-visible scrollable lists inside a settings dialog — they crowd
-  the dialog, truncate labels, and force native scrollbars (violated + corrected 2026-08-12).
+Use the repository spacing scale: 8, 16, 24, 32, 48, and 64px. Avoid arbitrary spacing unless optical alignment requires it.
 
-## Scrolling
+## Choose the right composition
 
-**Every control on the Quake is designed for FINGERS — including the scroll control itself.**
-A mouse also happens to work on this panel; that is never a reason to design for one.
+Every page should answer within one second:
 
-- Every scroll region gets a **fat, finger-draggable scrollbar (~44px track, rounded thumb)**.
-  **It MUST be a real DOM element driven by pointer events** — Chromium's
-  `::-webkit-scrollbar`-styled bars are mouse-only and silently ignore touch, and native
-  unstyled bars accept touch but can't be made finger-sized. Reference implementation:
-  `syncProjThumb`/`wireProjScroll` in app/claudevoiceview.js (thumb drag + tap-track-to-page).
-  (Generic mobile guidance says thumbs are decorative because phones fling — do NOT import that
-  assumption here; the fat thumb is the established, user-preferred pattern on this panel.
-  This was litigated 2026-08-12; don't relitigate it.)
-- On scroll regions: `overscroll-behavior: contain;`. Globally: `touch-action: manipulation;`
-  (kills double-tap-zoom tap delay).
-- Scroll only the region that needs it (design-system rule); never the page.
-- Do NOT add letter-index strips / jump rails — tried, rejected as too small to touch reliably
-  on this screen height. Recents rows + the fat scrollbar are the navigation aids here.
+- Where am I?
+- What is happening?
+- What can I do?
 
-## Focus vs selection (Chromium kiosk)
+For information-rich pages, prefer:
 
-- Chromium shows a focus ring after tap. Suppress it the standard way — style `:focus-visible`
-  for keyboard and remove the ring for pointer/touch:
-  `button:focus:not(:focus-visible) { outline: none; }`
-  Never blanket-remove `:focus` outlines (breaks keyboard use in the editor-hosted pages).
-- **Selected state = container fill** (accent background + contrasting text), optionally with a
-  checkmark. Never an outline/border — thin strokes read as focus rings and are weak at distance.
-  Exactly ONE thing on screen may carry the selected fill.
+```text
+Context | Primary content | Secondary content
+```
 
-## Composition: control consoles, not tile walls (litigated 2026-08-14, Meeting app)
+For control-heavy pages, use one shared control deck plus a narrow utility rail. Group related actions with spacing and subtle separators inside the deck. Use a compact horizontal selector for modes or platforms.
 
-The one-card-per-action tile grid was rejected TWICE on the Meeting redesign. Don't rebuild it.
+Do not build:
 
-- **Group controls into a few shared surfaces with internal hierarchy** — e.g. one control deck
-  (related actions as ~112px circular buttons, 38-42px icons, 18px labels under each, clusters
-  split by spacing + a 1px hairline and a 13px letterspaced group label) plus one narrow utility
-  rail (300-360px). Never seven bordered cards of equal weight; never huge empty slabs around
-  tiny icons; no cards nested inside cards.
-- **Header = context strip** (~48-56px): segmented platform/mode control + readiness status +
-  compact utility action. Don't spend a vertical column on what a segmented control does.
-- **Exactly one permanently-prominent destructive action** (solid red). Other semantic controls
-  get *icon color only* (green accept, red decline) until a real confirmed state justifies more.
-  Reserve the runtime accent for selection/active/focus + the single primary action.
-- **Overlays never move the layout.** A panel opened from a control is a floating popover
-  anchored to it, overlaying the utility region with a LIGHT scrim (underlying controls must stay
-  recognizable — rgba(3,6,10,.28) dark / rgba(210,220,230,.34) light). Primary controls must be
-  pixel-identical across every state; when the action starts, collapse the popover into a compact
-  header status pill (● label · tabular timer · small Stop) rather than keeping a panel open.
-- **Platform-specific verbs**: "Leave" (Zoom) / "Hang up" (Teams); end/decline = handset rotated
-  135° (`transform:rotate(135deg)` on the phone glyph).
+- One card per action
+- Cards nested inside cards
+- Huge empty slabs around small icons
+- A utility region that consumes primary-action space
+- A permanently dominant destructive area larger than its peers
+- A vertical column for two mode tabs
 
-## State & color honesty
+Calm negative space is useful when it improves recognition. Empty cards are not.
 
-- **Never fabricate state.** No volume % without a real read (fallback = a centered muted speaker
-  icon, never placeholder text that wraps, never an empty meter). No active/muted/camera-off
-  styling unless confirmed by real application state. Filenames/diagnostics stay OUT of the
-  header status line — they live in the detail popover.
-- **Accent foreground must be computed**, not hard-coded: the accent is runtime-configurable, so
-  set `--accent-fg` by relative luminance (>0.45 → dark text, else light) and use it for every
-  on-accent foreground (selected segment, primary button + its glyphs).
-- **Icons must inherit color**: `.ic svg { fill:currentColor; display:block; }` — injected SVGs
-  without this render near-invisible on dark surfaces (real bug, Meeting console).
-- **Hit areas ≥48px even when the visible shape is smaller**: expand with an invisible
-  `::after { content:''; position:absolute; inset:-Npx; }` on a `position:relative` control
-  (used on the header pill's 38px Stop and the popover's × close).
+### Proven meeting-console pattern
 
-## Verifying panel UI (how this actually gets approved)
+- Use a 48-56px context strip with Zoom/Teams selection, readiness status, and Record/status.
+- Use one control deck for Audio & Video and Call clusters.
+- Use approximately 112px circular controls with 38-42px icons and labels below.
+- Use a 300-360px utility rail for volume and app shortcuts.
+- Keep one solid-red destructive control. Use icon color or a restrained ring for Accept and Decline until real state justifies stronger treatment.
+- Use `Leave` for Zoom and `Hang up` for Teams.
+- Fit Teams `Accept audio` and `Accept video` without shrinking the primary control size.
 
-Render the REAL page file at exactly 1920x480 and screenshot every state (idle per platform,
-each overlay/active state, long-label, light theme, unknown-data fallbacks) — the user approves
-screenshots, and mockups drift. Working harness: headless Electron, `win.showInactive()` at
-x:-4000 (hidden windows don't composite → stale captures), drive states through the page's own
-`applyState()` via `executeJavaScript`, force two rAFs before `capturePage()`. In this sandbox
-Chromium's network service dies after the first load — run ONE Electron process per state.
-Diff the states: primary controls must not move or resize between any two.
+## Keep state spatially stable
 
-## Checklist before shipping any panel UI
+Keep primary controls pixel-identical across idle, active, recording, loading, and error states.
 
-1. Every tappable thing ≥48px, standard ones 64–80px, ≥12px apart?
-2. All action-critical text ≥22px, primary content ≥26px?
-3. Lists: uniform rows, left-aligned, recents row, jump nav if 50+?
-4. Scroll regions fling properly (`touch-action`, `overscroll-behavior`), no interactive-scrollbar dependence?
-5. No focus rings after tap; selection shown by fill; only one selected fill on screen?
-6. Wide-screen layout actually used (columns/panels), not a phone layout stretched?
-7. Words match the device's vocabulary ("folder" not "project"; match Music/Meeting phrasing).
-8. Grouped surfaces, not a tile wall? One solid-red destructive action max? Accent only for
-   selection/active/primary?
-9. Primary controls pixel-identical across every state (overlays float + collapse to a pill,
-   never reflow the layout)?
-10. Nothing on screen fabricated — every level/state shown is a real read, with an honest
-    fallback when unreadable?
+- Float overlays above secondary content; never shrink or reflow the primary deck.
+- Anchor temporary configuration over the utility region.
+- After setup, collapse persistent activity into a compact header status pill.
+- Keep diagnostic strings and filenames out of the persistent status line.
+- Truncate long values on one line and reveal the full value in a picker or details view.
+- Preserve established regions when an integration is unavailable; show an honest neutral or disabled state.
 
-Sources: Android Auto/AAOS design system (sizing, typography), Apple HIG, Material 3 (targets,
-selection), Fluent (targeting), WCAG 2.5.8, NN/g (alphabetical sorting, very-large touchscreens),
-Chrome scrollbar/overscroll docs, MDN touch-action/:focus-visible.
+Never fabricate state:
+
+- Do not show a volume percentage or meter until a real value is known.
+- At boot, unknown volume is a centered approximately 38px muted speaker icon with no meter or wrapped placeholder text.
+- Do not show muted, camera-off, incoming-call, or active styling until confirmed by application state.
+
+Distinguish available, selected, active, pressed, focused, disabled, and unknown states. Selection, activity, and knob focus must not look identical.
+
+## Use progressive disclosure
+
+For pick-one settings such as microphone, speaker, voice, or theme, show the current value on one large row. Tapping it opens a dedicated picker overlay with uniform full-width rows. Do not embed a permanently scrollable device list inside a compact dialog.
+
+For recording:
+
+- Closed: show a compact Record control with a small red indicator.
+- Setup: open an approximately 520-600px anchored panel over the utility region. Keep the underlying structure recognizable through a modest scrim.
+- Show `Microphone`, a one-line ellipsized value, one dominant accent-colored `Start recording` action, and tertiary auto-start guidance.
+- Active: collapse setup into a persistent `Recording`, tabular timer, and Stop pill. Keep filenames in details.
+- Keep Stop directly accessible. Do not hide the only stop action.
+
+Compact visible controls may use larger invisible hit zones. A 38px visible pill Stop may expand to roughly 54px tall. A 48px close button may use a roughly 60px surrounding zone. Ensure pseudo-element hit zones do not overlap adjacent targets.
+
+## Handle lists and scrolling for fingers
+
+- Use uniform-width, left-aligned rows for long pick-one lists. Chips are for filters, not primary selection sets.
+- Consider recents or favorites for frequently chosen values.
+- Prefer filtering when a keyboard is already natural. Do not add tiny alphabet jump rails to this short screen.
+- For folder pickers, let row taps navigate and provide a persistent `Use this folder` action, breadcrumb, and Up control.
+- Scroll only the region that needs it; never the entire page.
+- Apply `overscroll-behavior: contain` to scroll regions and `touch-action: manipulation` globally.
+
+When a visible scrollbar is needed, use the established finger-draggable custom control: an approximately 44px track and rounded thumb implemented as real DOM with pointer events, thumb drag, and tap-track-to-page behavior. Chromium scrollbar styling alone does not provide this touch behavior. See `syncProjThumb` and `wireProjScroll` in `app/claudevoiceview.js`.
+
+## Keep focus and selection honest
+
+Suppress the pointer-created Chromium focus ring without breaking keyboard or knob focus:
+
+```css
+button:focus:not(:focus-visible) { outline: none; }
+```
+
+Never blanket-remove focus outlines. Use a filled runtime-accent treatment for the selected item in a mutually exclusive group, with a contrast-safe foreground. Use a distinct focus ring for keyboard or knob navigation.
+
+## Apply color, typography, and icons consistently
+
+- Reserve the runtime accent for selection, focus, confirmed active state, and the single primary action.
+- Reserve green for accept/success and red for decline, leave/hang up, errors, and live recording.
+- Avoid painting every clickable surface with a bright semantic color.
+- Compute a contrast-safe `--accent-fg`; do not assume every configured accent accepts dark text.
+- Verify light and dark themes independently rather than inverting colors mechanically.
+- Use one font family everywhere, including buttons and form controls: `"Segoe UI", system-ui, sans-serif`.
+- Use one icon family with consistent optical weight and semantics.
+- Make injected SVGs inherit color: `.ic svg { fill: currentColor; display: block; }`.
+- Use a handset-down glyph for leaving or ending a call; do not substitute an application-exit icon.
+
+## Preserve application boundaries
+
+When implementing:
+
+- Preserve renderer isolation and existing main/preload/renderer contracts.
+- Preserve IDs, HTTP routes, IPC shapes, option delivery, and theme parameters unless a coordinated behavior change is required.
+- Keep optional integrations and unavailable hardware graceful.
+- Avoid adding frameworks or build steps to plain HTML/CSS/JavaScript pages.
+
+## Verify the real page
+
+Capture the real page at exactly 1920x480, one screenshot per state. Do not stack variants in a scrolling preview or approve only a detached mockup.
+
+Cover at least:
+
+| Area | Required states |
+|---|---|
+| Platform/content | Every variant and the maximum action count |
+| Overlays | Closed, open, active, and stop/close controls |
+| Data | Known values, unknown boot values, and long labels |
+| Theme | Dark, light, and runtime accent contrast |
+| Interaction | Pressed, focused, knob-focused, selected, and disabled |
+| Runtime | Idle, active, loading, error, and unavailable integration |
+
+For Electron captures, use the real page and drive its own state functions. A proven repository harness uses an offscreen shown window (`showInactive()` rather than a hidden non-composited window), waits two animation frames, then calls `capturePage()`. Use one Electron process per state if Chromium's network service becomes unreliable after repeated loads.
+
+Diff state captures to confirm primary controls do not move or resize. Then test the physical panel for arm's-length readability, glare resistance, bezel reach, touch feedback, destructive-action safety, and knob navigation. Run `npm test` and exercise the relevant Electron flow after implementation.
