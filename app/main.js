@@ -309,7 +309,10 @@ function isLocalAppUrl(value) {
 }
 function isTrustedMediaRequest(wc, details) {
   const requestingUrl = (details && (details.requestingUrl || details.securityOrigin)) || (wc && wc.getURL && wc.getURL()) || '';
-  if (details && Array.isArray(details.mediaTypes) && !details.mediaTypes.includes('audio')) return false;
+  // Reject an explicit video-only ask (non-empty mediaTypes without audio). getDisplayMedia's
+  // system-audio loopback request arrives with mediaTypes [] — that must fall through to the
+  // origin trust check below, not be rejected here, or the meeting recorder gets no loopback.
+  if (details && Array.isArray(details.mediaTypes) && details.mediaTypes.length > 0 && !details.mediaTypes.includes('audio')) return false;
   if (isLocalAppUrl(requestingUrl)) return true;
   try { return trustedMediaOrigins().includes(new URL(requestingUrl).origin); }
   catch (e) { return false; }
