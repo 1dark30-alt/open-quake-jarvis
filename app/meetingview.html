@@ -188,7 +188,6 @@
       <div id="status">Ready</div>
       <div id="spacer"></div>
       <button class="topBtn press foc" id="btnAnalysis" type="button">Analysis</button>
-      <button class="topBtn press foc" id="btnTranscribe" type="button">Transcription</button>
       <button class="topBtn press foc" id="btnUnprocessed" type="button">Unprocessed</button>
       <div id="recHost"></div>
     </div>
@@ -235,32 +234,19 @@
     <div id="devList"></div>
   </div>
 
-  <!-- Unprocessed recordings: list / play / delete -->
+  <!-- Unprocessed recordings: list / play / transcribe / delete (transcription queue lives here) -->
   <div class="fsOverlay" id="libOverlay">
     <div class="ovHead"><div class="ovTitle">Unprocessed Recordings</div>
       <button class="ovBtn press foc" id="libSelAll" type="button">Select all</button>
+      <button class="ovBtn primary press foc" id="libGoSel" type="button" disabled>Transcribe selected</button>
       <button class="ovBtn danger press foc" id="libDelSel" type="button" disabled>Delete selected</button>
       <div class="ovNote" id="libNote"></div>
       <button class="ovClose press foc" id="libClose" type="button">Close</button></div>
+    <div id="txStatus"></div>
     <div class="ovBody">
       <div class="ovList" id="libList"></div>
       <div class="ovScroll"><button class="ovScrollBtn press foc" id="libUp" type="button">&#9650;</button>
         <button class="ovScrollBtn press foc" id="libDown" type="button">&#9660;</button></div>
-    </div>
-  </div>
-
-  <!-- Transcription: queue unprocessed recordings to the diarizer -->
-  <div class="fsOverlay" id="txOverlay">
-    <div class="ovHead"><div class="ovTitle">Transcription</div>
-      <button class="ovBtn press foc" id="txSelAll" type="button">Select all</button>
-      <button class="ovBtn primary press foc" id="txGoSel" type="button" disabled>Transcribe selected</button>
-      <div class="ovNote" id="txNote"></div>
-      <button class="ovClose press foc" id="txClose" type="button">Close</button></div>
-    <div id="txStatus"></div>
-    <div class="ovBody">
-      <div class="ovList" id="txList"></div>
-      <div class="ovScroll"><button class="ovScrollBtn press foc" id="txUp" type="button">&#9650;</button>
-        <button class="ovScrollBtn press foc" id="txDown" type="button">&#9660;</button></div>
     </div>
   </div>
 

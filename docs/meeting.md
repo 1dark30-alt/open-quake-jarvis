@@ -45,17 +45,19 @@ can send them to a diarizing transcription server, then to an AI for meeting not
 
 - Recordings land in the **Unprocessed Recordings** folder (Settings → Meeting; default
   `Documents\OpenQuake Meetings\unprocessed`).
-- The top row reads **Analysis | Transcription | Unprocessed | Record**; each of the
-  three screens opens as its own full page and has per-row select boxes with **Select
-  all** and an act-on-selected button in the header.
-- **Unprocessed** — list, play, and delete recordings. Delete (per-row or Delete
-  selected) is two-tap (`Delete` → `Confirm?`).
-- **Transcription** (top row) — sends a recording to the transcription server
-  (tts-sst or meeting-diarizer, Settings → Meeting → Transcription Server; protocol in
-  [meetings-api.md](meetings-api.md)). Jobs queue and run one at a time; a job takes
-  roughly ⅓ of the recording's length. On success the WAV moves to the **Processed
-  Recordings** folder with its transcript (`<name>.json`) beside it; on failure the WAV
-  stays put and the error shows on the row (tap **Retry**).
+- The top row reads **Analysis | Unprocessed | Record**; both screens open as their own
+  full page with per-row select boxes, **Select all**, and act-on-selected buttons in
+  the header.
+- **Unprocessed** — list, play, transcribe, and delete recordings in one screen. Each
+  row has **Transcribe / Play / Delete**; the header adds **Transcribe selected** and
+  **Delete selected** (deletes are two-tap: `Delete` → `Confirm?`). Transcription sends
+  the WAV to the transcription server (tts-sst or meeting-diarizer, Settings → Meeting →
+  Transcription Server; protocol in [meetings-api.md](meetings-api.md)); jobs queue and
+  run one at a time (roughly ⅓ of the recording's length each), with the running job,
+  elapsed time, and server health shown in the strip under the header. On success the
+  WAV moves to the **Processed Recordings** folder with its transcript
+  (`<name>-diarizer-response.json`) beside it; on failure the WAV stays put and the
+  error shows on the row (tap **Retry**). A running or queued file can't be deleted.
 - **Analysis** (top row) — browses the Processed folder one directory at a time (tap a
   folder to enter it, **⬆ Up** to go back; no recursive sweep), and runs the chosen
   **Analysis AI** (Settings → Meeting: Claude or ChatGPT Codex — the locally installed

@@ -289,7 +289,7 @@ function wireScrollButtons(listId, upId, downId) {
   });
 }
 
-// ---- Unprocessed: list / play / delete ----
+// ---- Unprocessed: list / play / transcribe / delete (the transcription queue lives here) ----
 var libAudio = $('libAudio');
 var libPlaying = '';        // name whose audio is loaded
 var libSyncs = [];          // per-row repaint hooks, rebuilt on each render
@@ -298,22 +298,60 @@ libAudio.onplay = libSyncAll; libAudio.onpause = libSyncAll;
 libAudio.onended = function () { libPlaying = ''; libAudio.removeAttribute('src'); libSyncAll(); };
 function stopPlayback() { try { libAudio.pause(); } catch (e) {} libPlaying = ''; libAudio.removeAttribute('src'); }
 function libMsg(msg, isError) { var n = $('libNote'); n.textContent = msg || ''; n.classList.toggle('err', !!isError); }
-var libSel = selMake('libSelAll', 'libDelSel');
+var libSel = selMake('libSelAll', 'libGoSel');
+var libTimer = null, txState = null, txLastFinished = 0;
+var libTxRows = {};         // name -> { btn, sub } for transcription-state repaints
+function libPoll() {
+  fetchJson('/meeting-transcribe/state').then(function (st) {
+    txState = st;
+    var s = $('txStatus');
+    var queued = (st.queue || []).length;
+    if (st.current) {
+      s.classList.remove('err');
+      s.innerHTML = 'Transcribing ' + escHtml(st.current.name) + ' — <span class="t">' + fmtDur(Date.now() - st.current.startedAt) + '</span>' +
+        '&nbsp;&nbsp;(takes about ⅓ of the recording length)' + (queued ? ' · ' + queued + ' queued' : '');
+    } else if (queued) {
+      s.classList.remove('err'); s.textContent = queued + ' queued';
+    } else if (st.health === 'down') {
+      s.classList.add('err'); s.textContent = 'Transcription server unreachable';
+    } else {
+      s.classList.remove('err');
+      s.textContent = st.health === 'ok' ? 'Transcription server connected' : '';
+    }
+    // a finished job moves files — refresh the list once per completion, not every second
+    var fin = (st.recent && st.recent.length) ? st.recent[0].finishedAt : 0;
+    if (fin && fin !== txLastFinished) { txLastFinished = fin; renderLibrary(); }
+    else updateLibTxButtons();
+  }).catch(function () {});
+}
 function renderLibrary() {
   fetchJson('/meeting-files?kind=unprocessed').then(function (r) {
-    var el = $('libList'); el.innerHTML = ''; libSyncs = [];
+    var el = $('libList'); el.innerHTML = ''; libSyncs = []; libTxRows = {};
     var files = ((r && r.files) || []).filter(function (f) { return /\.wav$/i.test(f.name); });
     libMsg(files.length ? files.length + ' recording' + (files.length === 1 ? '' : 's') : '');
     selReset(libSel, files.map(function (f) { return f.name; }));
     if (!files.length) { el.innerHTML = '<div class="ovEmpty">No unprocessed recordings.</div>'; selSync(libSel); return; }
     files.forEach(function (f) { el.appendChild(buildLibRow(f)); });
+    updateLibTxButtons();
     selSync(libSel);
   }).catch(function () { libMsg('Could not load recordings', true); });
 }
 function buildLibRow(f) {
   var row = document.createElement('div'); row.className = 'fileRow';
   row.appendChild(selBox(libSel, f.name));
-  row.appendChild(fileMeta(f));
+  var meta = fileMeta(f);
+  row.appendChild(meta);
+  function setSub(msg, isError) { var s2 = meta.querySelector('.fsub'); s2.textContent = msg; s2.classList.toggle('err', !!isError); }
+  var tx = rowBtn('Transcribe', 'primary');
+  tx.onclick = function () {
+    tx.disabled = true;
+    fetchJson('/meeting-transcribe/start?name=' + encodeURIComponent(f.name))
+      .then(function (r2) {
+        if (r2 && r2.ok === false) { setSub(r2.error || 'Could not queue', true); tx.disabled = false; }
+        libPoll();
+      })
+      .catch(function () { setSub('Could not queue', true); tx.disabled = false; });
+  };
   var play = rowBtn('Play');
   play.onclick = function () {
     if (libPlaying === f.name) {
@@ -347,9 +385,38 @@ function buildLibRow(f) {
     row.classList.toggle('playing', libPlaying === f.name);
     play.textContent = (libPlaying === f.name && !libAudio.paused) ? 'Pause' : 'Play';
   });
-  row.appendChild(play); row.appendChild(del);
+  libTxRows[f.name] = { btn: tx, del: del, sub: meta.querySelector('.fsub') };
+  row.appendChild(tx); row.appendChild(play); row.appendChild(del);
   return row;
 }
+// Per-row Transcribe button states from the shared queue; a running/queued file also can't be
+// deleted out from under the diarizer, so Delete disables alongside.
+function updateLibTxButtons() {
+  if (!txState) return;
+  Object.keys(libTxRows).forEach(function (name) {
+    var r = libTxRows[name];
+    var busy = (txState.current && txState.current.name === name) || (txState.queue || []).indexOf(name) >= 0;
+    if (txState.current && txState.current.name === name) {
+      r.btn.textContent = 'Transcribing…'; r.btn.disabled = true; r.btn.classList.remove('primary');
+    } else if (busy) {
+      r.btn.textContent = 'Queued'; r.btn.disabled = true; r.btn.classList.remove('primary');
+    } else {
+      var err = (txState.recent || []).find(function (j) { return j.name === name && j.status === 'error'; });
+      r.btn.textContent = err ? 'Retry' : 'Transcribe'; r.btn.disabled = false; r.btn.classList.add('primary');
+      if (err) { r.sub.textContent = err.error || 'failed'; r.sub.classList.add('err'); }
+    }
+    r.del.disabled = busy;   // can't delete a file the diarizer is using / about to use
+  });
+}
+$('libGoSel').onclick = function () {
+  // Enqueue every selected file; the server FIFO dedupes anything already queued/running.
+  var names = selNames(libSel);
+  if (!names.length) return;
+  $('libGoSel').disabled = true;
+  Promise.all(names.map(function (n) {
+    return fetchJson('/meeting-transcribe/start?name=' + encodeURIComponent(n)).catch(function () { return null; });
+  })).then(function () { libSel.set = {}; selSync(libSel); libPoll(); });
+};
 var libDelT = null;
 $('libDelSel').onclick = function () {
   var btn = $('libDelSel');
@@ -372,95 +439,15 @@ $('libDelSel').onclick = function () {
     libMsg(fails ? (names.length - fails) + ' deleted, ' + fails + ' failed' : 'Deleted ' + names.length + ' recording' + (names.length === 1 ? '' : 's'), !!fails);
   });
 };
-$('btnUnprocessed').onclick = function () { $('libOverlay').classList.add('show'); renderLibrary(); };
-$('libClose').onclick = function () { $('libOverlay').classList.remove('show'); stopPlayback(); };
-
-// ---- Transcription: queue WAVs to the diarizer, watch honest progress (elapsed only) ----
-var txTimer = null, txState = null, txLastFinished = 0;
-var txRows = {};            // name -> { btn, sub }
-function txPoll() {
-  fetchJson('/meeting-transcribe/state').then(function (st) {
-    txState = st;
-    var n = $('txNote');
-    if (st.health === 'ok') { n.textContent = 'Server connected'; n.classList.remove('err'); }
-    else if (st.health === 'down') { n.textContent = 'Transcription server unreachable'; n.classList.add('err'); }
-    else { n.textContent = ''; n.classList.remove('err'); }
-    var s = $('txStatus');
-    var queued = (st.queue || []).length;
-    if (st.current) {
-      s.innerHTML = 'Transcribing ' + escHtml(st.current.name) + ' — <span class="t">' + fmtDur(Date.now() - st.current.startedAt) + '</span>' +
-        '&nbsp;&nbsp;(takes about ⅓ of the recording length)' + (queued ? ' · ' + queued + ' queued' : '');
-    } else {
-      s.textContent = queued ? queued + ' queued' : 'Idle — tap Transcribe on a recording below';
-    }
-    // a finished job moves files — refresh the list once per completion, not every second
-    var fin = (st.recent && st.recent.length) ? st.recent[0].finishedAt : 0;
-    if (fin && fin !== txLastFinished) { txLastFinished = fin; renderTxList(); }
-    else updateTxButtons();
-  }).catch(function () {});
-}
-var txSel = selMake('txSelAll', 'txGoSel');
-function renderTxList() {
-  fetchJson('/meeting-files?kind=unprocessed').then(function (r) {
-    var el = $('txList'); el.innerHTML = ''; txRows = {};
-    var files = ((r && r.files) || []).filter(function (f) { return /\.wav$/i.test(f.name); });
-    selReset(txSel, files.map(function (f) { return f.name; }));
-    if (!files.length) { el.innerHTML = '<div class="ovEmpty">Nothing to transcribe — new recordings land here.</div>'; selSync(txSel); return; }
-    files.forEach(function (f) {
-      var row = document.createElement('div'); row.className = 'fileRow';
-      row.appendChild(selBox(txSel, f.name));
-      var meta = fileMeta(f);
-      var btn = rowBtn('Transcribe', 'primary');
-      btn.onclick = function () {
-        btn.disabled = true;
-        fetchJson('/meeting-transcribe/start?name=' + encodeURIComponent(f.name))
-          .then(function (r2) {
-            if (r2 && r2.ok === false) { setSub(r2.error || 'Could not queue', true); btn.disabled = false; }
-            txPoll();
-          })
-          .catch(function () { setSub('Could not queue', true); btn.disabled = false; });
-      };
-      function setSub(msg, isError) { var s2 = meta.querySelector('.fsub'); s2.textContent = msg; s2.classList.toggle('err', !!isError); }
-      row.appendChild(meta); row.appendChild(btn);
-      txRows[f.name] = { btn: btn, sub: meta.querySelector('.fsub') };
-      el.appendChild(row);
-    });
-    updateTxButtons();
-    selSync(txSel);
-  }).catch(function () {});
-}
-$('txGoSel').onclick = function () {
-  // Enqueue every selected file; the server FIFO dedupes anything already queued/running.
-  var names = selNames(txSel);
-  if (!names.length) return;
-  $('txGoSel').disabled = true;
-  Promise.all(names.map(function (n) {
-    return fetchJson('/meeting-transcribe/start?name=' + encodeURIComponent(n)).catch(function () { return null; });
-  })).then(function () { txSel.set = {}; selSync(txSel); txPoll(); });
+$('btnUnprocessed').onclick = function () {
+  $('libOverlay').classList.add('show');
+  renderLibrary(); libPoll();
+  if (!libTimer) libTimer = setInterval(libPoll, 1000);   // drives the status strip + row states while shown
 };
-function updateTxButtons() {
-  if (!txState) return;
-  Object.keys(txRows).forEach(function (name) {
-    var r = txRows[name];
-    if (txState.current && txState.current.name === name) {
-      r.btn.textContent = 'Transcribing…'; r.btn.disabled = true; r.btn.classList.remove('primary');
-    } else if ((txState.queue || []).indexOf(name) >= 0) {
-      r.btn.textContent = 'Queued'; r.btn.disabled = true; r.btn.classList.remove('primary');
-    } else {
-      var err = (txState.recent || []).find(function (j) { return j.name === name && j.status === 'error'; });
-      r.btn.textContent = err ? 'Retry' : 'Transcribe'; r.btn.disabled = false; r.btn.classList.add('primary');
-      if (err) { r.sub.textContent = err.error || 'failed'; r.sub.classList.add('err'); }
-    }
-  });
-}
-$('btnTranscribe').onclick = function () {
-  $('txOverlay').classList.add('show');
-  renderTxList(); txPoll();
-  if (!txTimer) txTimer = setInterval(txPoll, 1000);
-};
-$('txClose').onclick = function () {
-  $('txOverlay').classList.remove('show');
-  clearInterval(txTimer); txTimer = null;
+$('libClose').onclick = function () {
+  $('libOverlay').classList.remove('show');
+  stopPlayback();
+  clearInterval(libTimer); libTimer = null;
 };
 
 // ---- Analysis: run the AI over a transcript, read the result ----
@@ -599,7 +586,6 @@ $('anClose').onclick = function () {
 $('anViewBack').onclick = function () { $('anViewOverlay').classList.remove('show'); };
 
 wireScrollButtons('libList', 'libUp', 'libDown');
-wireScrollButtons('txList', 'txUp', 'txDown');
 wireScrollButtons('anList', 'anUp', 'anDown');
 wireScrollButtons('anView', 'anViewUp', 'anViewDown');
 
