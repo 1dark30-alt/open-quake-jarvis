@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createMeetingLibrary, safeName, wavDurationMs } = require('../app/meetingLibrary');
+const { createMeetingLibrary, safeName, safeRelPath, wavDurationMs } = require('../app/meetingLibrary');
 
 function tempDirs() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oqx-lib-'));
@@ -89,4 +89,31 @@ test('resolvePath stays inside the folder', () => {
   assert.equal(lib.resolvePath('unprocessed', 'ok.wav'), path.join(dirs.unprocessed, 'ok.wav'));
   assert.equal(lib.resolvePath('unprocessed', '..\\..\\config.json'), null);
   assert.equal(lib.resolvePath('nope', 'ok.wav'), null);
+  // processed accepts the YYYY/MM layout; unprocessed stays flat
+  assert.equal(lib.resolvePath('processed', '2026/08/m.json'), path.join(dirs.processed, '2026', '08', 'm.json'));
+  assert.equal(lib.resolvePath('unprocessed', '2026/08/m.wav'), null);
+  assert.equal(lib.resolvePath('processed', '../08/m.json'), null);
+});
+
+test('safeRelPath allows YYYY/MM subpaths but nothing sneaky', () => {
+  assert.equal(safeRelPath('2026/08/m.json'), '2026/08/m.json');
+  assert.equal(safeRelPath('m.json'), 'm.json');
+  for (const bad of ['../m.json', '2026/../m.json', 'a/b/c/d.json', '2026\\08\\m.json', '2026/08/m.exe', '2026//m.json']) {
+    assert.equal(safeRelPath(bad), null, 'should reject: ' + bad);
+  }
+});
+
+test('listFiles(processed) walks YYYY/MM subfolders and returns relative names', () => {
+  const dirs = tempDirs();
+  const lib = createMeetingLibrary({ resolveFolders: () => ({ unprocessed: dirs.unprocessed, processed: dirs.processed }) });
+  fs.mkdirSync(path.join(dirs.processed, '2026', '08'), { recursive: true });
+  fs.writeFileSync(path.join(dirs.processed, '2026', '08', 'm.json'), '{}');
+  fs.writeFileSync(path.join(dirs.processed, '2026', '08', 'm.md'), '# x');
+  fs.writeFileSync(path.join(dirs.processed, 'legacy.json'), '{}');
+  const names = lib.listFiles('processed').files.map(f => f.name).sort();
+  assert.deepEqual(names, ['2026/08/m.json', '2026/08/m.md', 'legacy.json']);
+  // unprocessed listing does not recurse
+  fs.mkdirSync(path.join(dirs.unprocessed, 'sub'));
+  fs.writeFileSync(path.join(dirs.unprocessed, 'sub', 'x.wav'), makeWav(1));
+  assert.deepEqual(lib.listFiles('unprocessed').files, []);
 });

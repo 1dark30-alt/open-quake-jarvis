@@ -11,7 +11,7 @@
 
 const path = require('path');
 const os = require('os');
-const { safeName } = require('./meetingLibrary');
+const { safeRelPath } = require('./meetingLibrary');
 
 const ANALYZE_TIMEOUT_MS = 10 * 60 * 1000;   // generous; a transcript is small but CLIs cold-start
 
@@ -28,6 +28,7 @@ function createMeetingAnalyzer(deps) {
   const now = deps.now || Date.now;
   const timeoutMs = deps.timeoutMs || ANALYZE_TIMEOUT_MS;
 
+  const queue = [];      // names waiting (supports the panel's Analyze Selected)
   let running = null;    // { name, ai, startedAt } while a job runs
   let lastError = null;  // { name, error, finishedAt }
   let lastDone = null;   // { name, finishedAt }
@@ -38,26 +39,34 @@ function createMeetingAnalyzer(deps) {
       running: !!running,
       name: running ? running.name : null,
       startedAt: running ? running.startedAt : null,
+      queue: queue.slice(),
       error: lastError,
       lastDone,
     };
   }
 
   function start(name) {
-    if (running) return { ok: false, error: 'analysis already running: ' + running.name };
-    const n = safeName(name);
+    const n = safeRelPath(name);
     if (!n || !/\.json$/i.test(n)) return { ok: false, error: 'bad name' };
+    if ((running && running.name === n) || queue.includes(n)) return { ok: false, error: 'already queued' };
+    if (!fsMod.existsSync(path.join(resolveFolders().processed, n))) return { ok: false, error: 'not found' };
+    queue.push(n);
+    pump();
+    return Object.assign({}, getState());
+  }
+
+  function pump() {
+    if (running || !queue.length) return;
+    const n = queue.shift();
     const processed = resolveFolders().processed;
     const jsonPath = path.join(processed, n);
-    if (!fsMod.existsSync(jsonPath)) return { ok: false, error: 'not found' };
     const ai = resolveAi() === 'codex' ? 'codex' : 'claude';
     running = { name: n, ai, startedAt: now() };
     log('analysis started (' + ai + '): ' + n);
-    runJob(n, ai, jsonPath, path.join(processed, n.replace(/\.json$/i, '') + '.md'))
+    runJob(n, ai, jsonPath, jsonPath.replace(/\.json$/i, '') + '.md')
       .then(() => { lastDone = { name: n, finishedAt: now() }; lastError = null; log('analysis done: ' + n); })
       .catch(e => { lastError = { name: n, error: (e && e.message) || 'failed', finishedAt: now() }; log('analysis failed: ' + n + ' — ' + lastError.error); })
-      .finally(() => { running = null; });
-    return Object.assign({}, getState());
+      .finally(() => { running = null; pump(); });
   }
 
   async function runJob(name, ai, jsonPath, mdPath) {
@@ -120,7 +129,7 @@ function createMeetingAnalyzer(deps) {
 
   // Read a finished analysis for the panel's View action.
   function result(name) {
-    const n = safeName(name);
+    const n = safeRelPath(name);
     if (!n) return { ok: false, error: 'bad name' };
     const mdPath = path.join(resolveFolders().processed, n.replace(/\.(json|md)$/i, '') + '.md');
     try { return { ok: true, markdown: fsMod.readFileSync(mdPath, 'utf8') }; }

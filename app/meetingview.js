@@ -227,6 +227,49 @@ function rowBtn(label, extraCls) {
   b.textContent = label;
   return b;
 }
+// ---- shared multi-select (Select all / <action> selected in each overlay header) ----
+function selMake(allId, actId) {
+  var sel = { set: {}, names: [], boxes: {}, allBtn: $(allId), actBtn: $(actId) };
+  sel.allBtn.onclick = function () {
+    var all = sel.names.length && selCount(sel) === sel.names.length;
+    sel.set = {};
+    if (!all) sel.names.forEach(function (n) { sel.set[n] = true; });
+    selSync(sel);
+  };
+  return sel;
+}
+function selCount(sel) { return Object.keys(sel.set).length; }
+function selNames(sel) { return Object.keys(sel.set); }
+function selSync(sel) {
+  sel.names.forEach(function (n) {
+    var b = sel.boxes[n];
+    if (b) { b.classList.toggle('on', !!sel.set[n]); b.textContent = sel.set[n] ? '✓' : ''; }
+  });
+  sel.allBtn.textContent = (sel.names.length && selCount(sel) === sel.names.length) ? 'Clear all' : 'Select all';
+  if (!sel.actBtn.classList.contains('confirm')) sel.actBtn.disabled = !selCount(sel);
+}
+// Reset for a fresh render: keep selections for names still present, drop the rest.
+function selReset(sel, names) {
+  var kept = {};
+  names.forEach(function (n) { if (sel.set[n]) kept[n] = true; });
+  sel.set = kept; sel.names = names; sel.boxes = {};
+}
+function selBox(sel, name) {
+  var b = document.createElement('button');
+  b.type = 'button'; b.className = 'selBox press foc';
+  b.onclick = function () {
+    if (sel.set[name]) delete sel.set[name]; else sel.set[name] = true;
+    selSync(sel);
+  };
+  sel.boxes[name] = b;
+  return b;
+}
+// Processed names may carry the Organize-by-date prefix (2026/08/x.json) — show the filename big
+// and the folder in the sub line.
+function splitRel(name) {
+  var i = name.lastIndexOf('/');
+  return { base: i < 0 ? name : name.slice(i + 1), folder: i < 0 ? '' : name.slice(0, i) };
+}
 // ▲/▼ page buttons for scroll regions — tap = one page, hold = keeps paging (claudevoiceview pattern;
 // drag-thumbs are unreliable on the physical panel).
 function wireScrollButtons(listId, upId, downId) {
@@ -255,17 +298,21 @@ libAudio.onplay = libSyncAll; libAudio.onpause = libSyncAll;
 libAudio.onended = function () { libPlaying = ''; libAudio.removeAttribute('src'); libSyncAll(); };
 function stopPlayback() { try { libAudio.pause(); } catch (e) {} libPlaying = ''; libAudio.removeAttribute('src'); }
 function libMsg(msg, isError) { var n = $('libNote'); n.textContent = msg || ''; n.classList.toggle('err', !!isError); }
+var libSel = selMake('libSelAll', 'libDelSel');
 function renderLibrary() {
   fetchJson('/meeting-files?kind=unprocessed').then(function (r) {
     var el = $('libList'); el.innerHTML = ''; libSyncs = [];
     var files = ((r && r.files) || []).filter(function (f) { return /\.wav$/i.test(f.name); });
     libMsg(files.length ? files.length + ' recording' + (files.length === 1 ? '' : 's') : '');
-    if (!files.length) { el.innerHTML = '<div class="ovEmpty">No unprocessed recordings.</div>'; return; }
+    selReset(libSel, files.map(function (f) { return f.name; }));
+    if (!files.length) { el.innerHTML = '<div class="ovEmpty">No unprocessed recordings.</div>'; selSync(libSel); return; }
     files.forEach(function (f) { el.appendChild(buildLibRow(f)); });
+    selSync(libSel);
   }).catch(function () { libMsg('Could not load recordings', true); });
 }
 function buildLibRow(f) {
   var row = document.createElement('div'); row.className = 'fileRow';
+  row.appendChild(selBox(libSel, f.name));
   row.appendChild(fileMeta(f));
   var play = rowBtn('Play');
   play.onclick = function () {
@@ -303,6 +350,28 @@ function buildLibRow(f) {
   row.appendChild(play); row.appendChild(del);
   return row;
 }
+var libDelT = null;
+$('libDelSel').onclick = function () {
+  var btn = $('libDelSel');
+  var names = selNames(libSel);
+  if (!names.length) return;
+  if (!btn.classList.contains('confirm')) {   // two-tap confirm, same as the per-row Delete
+    btn.classList.add('confirm'); btn.textContent = 'Confirm delete ' + names.length + '?';
+    clearTimeout(libDelT);
+    libDelT = setTimeout(function () { btn.classList.remove('confirm'); btn.textContent = 'Delete selected'; selSync(libSel); }, 3000);
+    return;
+  }
+  clearTimeout(libDelT); btn.classList.remove('confirm'); btn.textContent = 'Delete selected';
+  if (names.indexOf(libPlaying) >= 0) stopPlayback();
+  Promise.all(names.map(function (n) {
+    return fetchJson('/meeting-file-delete?kind=unprocessed&name=' + encodeURIComponent(n)).catch(function () { return { ok: false }; });
+  })).then(function (rs) {
+    var fails = rs.filter(function (r) { return !(r && r.ok); }).length;
+    libSel.set = {};
+    renderLibrary();
+    libMsg(fails ? (names.length - fails) + ' deleted, ' + fails + ' failed' : 'Deleted ' + names.length + ' recording' + (names.length === 1 ? '' : 's'), !!fails);
+  });
+};
 $('btnUnprocessed').onclick = function () { $('libOverlay').classList.add('show'); renderLibrary(); };
 $('libClose').onclick = function () { $('libOverlay').classList.remove('show'); stopPlayback(); };
 
@@ -330,13 +399,16 @@ function txPoll() {
     else updateTxButtons();
   }).catch(function () {});
 }
+var txSel = selMake('txSelAll', 'txGoSel');
 function renderTxList() {
   fetchJson('/meeting-files?kind=unprocessed').then(function (r) {
     var el = $('txList'); el.innerHTML = ''; txRows = {};
     var files = ((r && r.files) || []).filter(function (f) { return /\.wav$/i.test(f.name); });
-    if (!files.length) { el.innerHTML = '<div class="ovEmpty">Nothing to transcribe — new recordings land here.</div>'; return; }
+    selReset(txSel, files.map(function (f) { return f.name; }));
+    if (!files.length) { el.innerHTML = '<div class="ovEmpty">Nothing to transcribe — new recordings land here.</div>'; selSync(txSel); return; }
     files.forEach(function (f) {
       var row = document.createElement('div'); row.className = 'fileRow';
+      row.appendChild(selBox(txSel, f.name));
       var meta = fileMeta(f);
       var btn = rowBtn('Transcribe', 'primary');
       btn.onclick = function () {
@@ -354,8 +426,18 @@ function renderTxList() {
       el.appendChild(row);
     });
     updateTxButtons();
+    selSync(txSel);
   }).catch(function () {});
 }
+$('txGoSel').onclick = function () {
+  // Enqueue every selected file; the server FIFO dedupes anything already queued/running.
+  var names = selNames(txSel);
+  if (!names.length) return;
+  $('txGoSel').disabled = true;
+  Promise.all(names.map(function (n) {
+    return fetchJson('/meeting-transcribe/start?name=' + encodeURIComponent(n)).catch(function () { return null; });
+  })).then(function () { txSel.set = {}; selSync(txSel); txPoll(); });
+};
 function updateTxButtons() {
   if (!txState) return;
   Object.keys(txRows).forEach(function (name) {
@@ -388,8 +470,9 @@ function anPoll() {
   fetchJson('/meeting-analyze/state').then(function (st) {
     anState = st;
     var n = $('anNote');
-    if (st.running) { n.textContent = 'Analyzing ' + st.name + ' — ' + fmtDur(Date.now() - st.startedAt); n.classList.remove('err'); }
-    else if (st.error) { n.textContent = st.error.name + ': ' + st.error.error; n.classList.add('err'); }
+    var queued = (st.queue || []).length;
+    if (st.running) { n.textContent = 'Analyzing ' + splitRel(st.name).base + ' — ' + fmtDur(Date.now() - st.startedAt) + (queued ? ' · ' + queued + ' queued' : ''); n.classList.remove('err'); }
+    else if (st.error) { n.textContent = splitRel(st.error.name).base + ': ' + st.error.error; n.classList.add('err'); }
     else { n.textContent = ''; n.classList.remove('err'); }
     var fin = (st.lastDone && st.lastDone.finishedAt) || 0;
     var finErr = (st.error && st.error.finishedAt) || 0;
@@ -398,6 +481,7 @@ function anPoll() {
     else updateAnButtons();
   }).catch(function () {});
 }
+var anSel = selMake('anSelAll', 'anGoSel');
 function renderAnList() {
   fetchJson('/meeting-files?kind=processed').then(function (r) {
     var el = $('anList'); el.innerHTML = ''; anRows = {};
@@ -405,13 +489,16 @@ function renderAnList() {
     var mdSet = {};
     files.forEach(function (f) { if (/\.md$/i.test(f.name)) mdSet[f.name.replace(/\.md$/i, '')] = 1; });
     var jsons = files.filter(function (f) { return /\.json$/i.test(f.name); });
-    if (!jsons.length) { el.innerHTML = '<div class="ovEmpty">No transcripts yet — transcribe a recording first.</div>'; return; }
+    selReset(anSel, jsons.map(function (f) { return f.name; }));
+    if (!jsons.length) { el.innerHTML = '<div class="ovEmpty">No transcripts yet — transcribe a recording first.</div>'; selSync(anSel); return; }
     jsons.forEach(function (f) {
       var base = f.name.replace(/\.json$/i, '');
+      var rel = splitRel(base);
       var analyzed = !!mdSet[base];
       var row = document.createElement('div'); row.className = 'fileRow';
+      row.appendChild(selBox(anSel, f.name));
       var meta = document.createElement('div'); meta.className = 'meta';
-      meta.innerHTML = '<div class="fname">' + escHtml(base) + '</div><div class="fsub">' + (analyzed ? 'Analyzed' : 'Not analyzed') + '</div>';
+      meta.innerHTML = '<div class="fname">' + escHtml(rel.base) + '</div><div class="fsub">' + (analyzed ? 'Analyzed' : 'Not analyzed') + (rel.folder ? ' · ' + escHtml(rel.folder) : '') + '</div>';
       var btnA = rowBtn(analyzed ? 'Re-analyze' : 'Analyze', analyzed ? '' : 'primary');
       btnA.onclick = function () {
         btnA.disabled = true;
@@ -433,14 +520,25 @@ function renderAnList() {
       el.appendChild(row);
     });
     updateAnButtons();
+    selSync(anSel);
   }).catch(function () {});
 }
+$('anGoSel').onclick = function () {
+  // Queue every selected transcript; the analyzer FIFO runs them one at a time.
+  var names = selNames(anSel);
+  if (!names.length) return;
+  $('anGoSel').disabled = true;
+  Promise.all(names.map(function (n) {
+    return fetchJson('/meeting-analyze/start?name=' + encodeURIComponent(n)).catch(function () { return null; });
+  })).then(function () { anSel.set = {}; selSync(anSel); anPoll(); });
+};
 function updateAnButtons() {
   if (!anState) return;
   Object.keys(anRows).forEach(function (name) {
     var r = anRows[name];
     if (anState.running && anState.name === name) { r.btnA.textContent = 'Analyzing…'; r.btnA.disabled = true; }
-    else { r.btnA.textContent = r.analyzed ? 'Re-analyze' : 'Analyze'; r.btnA.disabled = !!anState.running; }
+    else if ((anState.queue || []).indexOf(name) >= 0) { r.btnA.textContent = 'Queued'; r.btnA.disabled = true; }
+    else { r.btnA.textContent = r.analyzed ? 'Re-analyze' : 'Analyze'; r.btnA.disabled = false; }
   });
 }
 // Minimal markdown treatment (escape-first, matching the voice panel's renderContent discipline):
@@ -460,7 +558,7 @@ function renderMarkdown(src) {
 function openAnalysisView(base) {
   fetchJson('/meeting-analysis?name=' + encodeURIComponent(base + '.json')).then(function (r) {
     if (!r || !r.ok) { var n = $('anNote'); n.textContent = (r && r.error) || 'Could not load analysis'; n.classList.add('err'); return; }
-    $('anViewTitle').textContent = base;
+    $('anViewTitle').textContent = splitRel(base).base;
     $('anView').innerHTML = renderMarkdown(r.markdown);
     $('anView').scrollTop = 0;
     $('anViewOverlay').classList.add('show');

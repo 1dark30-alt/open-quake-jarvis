@@ -1200,7 +1200,7 @@ async function onMeetingActionRequest(platform, action) {
 // Settings live under config.settings.meeting (global, like config.settings.monitor) so auto-record
 // works regardless of which app the panel is showing — the meeting page's per-grid options only
 // exist while it's the active app, which is useless for background recording.
-const MEETING_DEFAULTS = { folder: '', processedFolder: '', transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe' };
+const MEETING_DEFAULTS = { folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe' };
 function meetingSettings() { return Object.assign({}, MEETING_DEFAULTS, (config.settings || {}).meeting || {}); }
 function defaultMeetingFolder() { return path.join(app.getPath('documents'), 'OpenQuake Meetings', 'unprocessed'); }
 function defaultProcessedFolder() { return path.join(app.getPath('documents'), 'OpenQuake Meetings', 'processed'); }
@@ -1918,6 +1918,7 @@ app.whenReady().then(async () => {
       meetingTranscriber = require('./meetingTranscribe').createMeetingTranscriber({
         resolveFolders: resolveMeetingFolders,
         resolveBaseUrl: resolveTranscribeBaseUrl,
+        organizeByDate: () => !!meetingSettings().processedByDate,
         log: msg => console.log('[meeting] ' + msg),
       });
       meetingAnalyzer = require('./meetingAnalyze').createMeetingAnalyzer({

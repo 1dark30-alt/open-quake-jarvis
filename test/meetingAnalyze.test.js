@@ -96,6 +96,32 @@ test('nonzero exit surfaces stderr; no .md written', async () => {
   assert.equal(fs.existsSync(path.join(s.processed, 'm.md')), false);
 });
 
+test('queue: second transcript waits its turn; rel-path names work', async () => {
+  const processed = fs.mkdtempSync(path.join(os.tmpdir(), 'oqx-anq-'));
+  fs.mkdirSync(path.join(processed, '2026', '08'), { recursive: true });
+  fs.writeFileSync(path.join(processed, 'a.json'), '{}');
+  fs.writeFileSync(path.join(processed, '2026', '08', 'b.json'), '{}');
+  const spawns = [];
+  const an = createMeetingAnalyzer({
+    resolveFolders: () => ({ unprocessed: processed, processed }),
+    resolveAi: () => 'claude',
+    findClaudeExe: () => 'claude.exe', findCodexExe: () => null,
+    spawn: fakeSpawnFactory(spawns, () => ({ stdout: 'notes', code: 0 })),
+  });
+  assert.equal(an.start('a.json').ok, true);
+  const second = an.start('2026/08/b.json');
+  assert.equal(second.ok, true);                       // queued, not rejected
+  assert.deepEqual(second.queue, ['2026/08/b.json']);
+  assert.equal(an.start('2026/08/b.json').ok, false);  // dedupe
+  await settle();
+  await settle();
+  assert.equal(an.getState().running, false);
+  assert.deepEqual(an.getState().queue, []);
+  assert.equal(fs.existsSync(path.join(processed, 'a.md')), true);
+  assert.equal(fs.existsSync(path.join(processed, '2026', '08', 'b.md')), true);
+  assert.deepEqual(an.result('2026/08/b.json'), { ok: true, markdown: 'notes' });
+});
+
 test('one at a time; bad names and missing transcripts rejected up front', async () => {
   let release;
   const gate = new Promise(r => { release = r; });

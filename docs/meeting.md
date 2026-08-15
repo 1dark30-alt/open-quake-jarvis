@@ -45,8 +45,11 @@ can send them to a diarizing transcription server, then to an AI for meeting not
 
 - Recordings land in the **Unprocessed Recordings** folder (Settings → Meeting; default
   `Documents\OpenQuake Meetings\unprocessed`).
-- **Unprocessed** (top row) — list, play, and delete recordings. Delete is two-tap
-  (`Delete` → `Confirm?`).
+- The top row reads **Analysis | Transcription | Unprocessed | Record**; each of the
+  three screens opens as its own full page and has per-row select boxes with **Select
+  all** and an act-on-selected button in the header.
+- **Unprocessed** — list, play, and delete recordings. Delete (per-row or Delete
+  selected) is two-tap (`Delete` → `Confirm?`).
 - **Transcription** (top row) — sends a recording to the transcription server
   (tts-sst or meeting-diarizer, Settings → Meeting → Transcription Server; protocol in
   [meetings-api.md](meetings-api.md)). Jobs queue and run one at a time; a job takes

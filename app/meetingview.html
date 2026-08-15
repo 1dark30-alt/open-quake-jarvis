@@ -121,16 +121,27 @@
     font-size:22px; font-weight:600; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .devRow.current { background:var(--accent); color:var(--accent-fg,#04121f); }
 
-  /* ---- library / transcription / analysis overlays (same full-screen pattern as #devOverlay) ---- */
+  /* ---- library / transcription / analysis overlays: full-screen, OPAQUE — each reads as its own
+     page, not a veil over the console (user direction, 2026-08-14) ---- */
   button:focus:not(:focus-visible) { outline:none; }
-  .fsOverlay { position:fixed; inset:0; background:rgba(3,6,10,.86); display:none; flex-direction:column; padding:24px 40px; z-index:20; }
-  body.light .fsOverlay { background:rgba(210,220,230,.9); }
+  .fsOverlay { position:fixed; inset:0; background:var(--bg); display:none; flex-direction:column; padding:24px 40px; z-index:20; }
   .fsOverlay.show { display:flex; }
   .ovHead { display:flex; align-items:center; gap:18px; margin-bottom:16px; }
   .ovTitle { font-size:26px; font-weight:800; }
   .ovNote { flex:1; font-size:16px; color:var(--dim); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .ovNote.err { color:var(--danger); }
   .ovClose { height:56px; padding:0 26px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:18px; font-weight:700; flex:0 0 auto; }
+  /* header bulk-action buttons (Select all / Delete-Transcribe-Analyze selected) */
+  .ovBtn { height:56px; padding:0 22px; border-radius:12px; background:var(--surf); border:1px solid var(--tile-bd);
+    color:var(--fg); font-size:18px; font-weight:700; flex:0 0 auto; }
+  .ovBtn:disabled { opacity:.4; }
+  .ovBtn.danger { color:var(--danger); }
+  .ovBtn.confirm { background:var(--danger); border-color:transparent; color:#1a0505; }
+  .ovBtn.primary { background:var(--accent); border-color:transparent; color:var(--accent-fg,#04121f); }
+  /* per-row selection box: 48px square, accent-filled check when on */
+  .selBox { width:48px; height:48px; border-radius:10px; border:2px solid var(--tile-bd); background:var(--surf2);
+    color:transparent; font-size:26px; font-weight:800; flex:0 0 auto; display:flex; align-items:center; justify-content:center; }
+  .selBox.on { background:var(--accent); border-color:transparent; color:var(--accent-fg,#04121f); }
   .ovBody { flex:1; min-height:0; display:flex; gap:12px; }
   /* ▲/▼ page buttons, not drag thumbs — the reliable touch-scroll control on the panel */
   .ovList { flex:1; min-width:0; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:12px; scrollbar-width:none; }
@@ -171,9 +182,9 @@
       </div>
       <div id="status">Ready</div>
       <div id="spacer"></div>
-      <button class="topBtn press foc" id="btnUnprocessed" type="button">Unprocessed</button>
-      <button class="topBtn press foc" id="btnTranscribe" type="button">Transcription</button>
       <button class="topBtn press foc" id="btnAnalysis" type="button">Analysis</button>
+      <button class="topBtn press foc" id="btnTranscribe" type="button">Transcription</button>
+      <button class="topBtn press foc" id="btnUnprocessed" type="button">Unprocessed</button>
       <div id="recHost"></div>
     </div>
 
@@ -221,7 +232,10 @@
 
   <!-- Unprocessed recordings: list / play / delete -->
   <div class="fsOverlay" id="libOverlay">
-    <div class="ovHead"><div class="ovTitle">Unprocessed Recordings</div><div class="ovNote" id="libNote"></div>
+    <div class="ovHead"><div class="ovTitle">Unprocessed Recordings</div>
+      <button class="ovBtn press foc" id="libSelAll" type="button">Select all</button>
+      <button class="ovBtn danger press foc" id="libDelSel" type="button" disabled>Delete selected</button>
+      <div class="ovNote" id="libNote"></div>
       <button class="ovClose press foc" id="libClose" type="button">Close</button></div>
     <div class="ovBody">
       <div class="ovList" id="libList"></div>
@@ -232,7 +246,10 @@
 
   <!-- Transcription: queue unprocessed recordings to the diarizer -->
   <div class="fsOverlay" id="txOverlay">
-    <div class="ovHead"><div class="ovTitle">Transcription</div><div class="ovNote" id="txNote"></div>
+    <div class="ovHead"><div class="ovTitle">Transcription</div>
+      <button class="ovBtn press foc" id="txSelAll" type="button">Select all</button>
+      <button class="ovBtn primary press foc" id="txGoSel" type="button" disabled>Transcribe selected</button>
+      <div class="ovNote" id="txNote"></div>
       <button class="ovClose press foc" id="txClose" type="button">Close</button></div>
     <div id="txStatus"></div>
     <div class="ovBody">
@@ -244,7 +261,10 @@
 
   <!-- Analysis: send transcripts to the AI, then read the result -->
   <div class="fsOverlay" id="anOverlay">
-    <div class="ovHead"><div class="ovTitle">Analysis</div><div class="ovNote" id="anNote"></div>
+    <div class="ovHead"><div class="ovTitle">Analysis</div>
+      <button class="ovBtn press foc" id="anSelAll" type="button">Select all</button>
+      <button class="ovBtn primary press foc" id="anGoSel" type="button" disabled>Analyze selected</button>
+      <div class="ovNote" id="anNote"></div>
       <button class="ovClose press foc" id="anClose" type="button">Close</button></div>
     <div class="ovBody">
       <div class="ovList" id="anList"></div>

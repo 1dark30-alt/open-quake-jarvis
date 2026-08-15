@@ -95,11 +95,14 @@ Recording and transcription for the Meeting panel (details in [meeting.md](meeti
   automatically at launch, only when this setting is blank.)
 - **Processed Recordings** — where transcribed recordings and their transcripts are
   moved. Blank = `Documents\OpenQuake Meetings\processed`.
+- **Organize by date** — files each processed recording into `YYYY\MM\` subfolders under
+  the Processed folder, keyed to the date it was processed.
 - **Microphone** — the mic recorded as your channel. This must be the same mic you use
   with Teams; it can also be changed from the panel's Settings row.
-- **Transcription Server** — the tts-sst / meeting-diarizer URL. Blank =
-  `http://127.0.0.1:10301/transcribe` (either the base URL or the full `/transcribe`
-  URL works). Wire protocol: [meetings-api.md](meetings-api.md).
+- **Transcription Server** — the tts-sst / meeting-diarizer URL (either the base URL or
+  the full `/transcribe` URL works; default `http://127.0.0.1:10301/transcribe`). Wire
+  protocol: [meetings-api.md](meetings-api.md). Changes apply when you **Save** (button
+  at the top of the settings page and in the footer).
 - **Analysis AI** — **Claude** or **ChatGPT Codex**: which locally installed CLI turns a
   transcript into meeting notes. Uses that tool's own login; open-quake stores no API key.
 - **Auto-record / Call apps / Stop after silence / Echo-gate** — unchanged recording

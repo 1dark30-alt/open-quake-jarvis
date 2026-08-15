@@ -11,6 +11,7 @@
 const path = require('path');
 
 const SAFE_NAME = /^[A-Za-z0-9 ._()-]+\.(wav|json|md)$/i;
+const SAFE_SEGMENT = /^[A-Za-z0-9 ._()-]+$/;
 const KINDS = ['unprocessed', 'processed'];
 
 function safeName(name) {
@@ -18,6 +19,21 @@ function safeName(name) {
   if (!SAFE_NAME.test(n)) return null;
   if (n.includes('..') || n.includes('/') || n.includes('\\')) return null;
   return n;
+}
+
+// Like safeName but allows forward-slash subfolders (the processed folder's optional YYYY/MM
+// layout): every segment validated, last segment must be a safeName. Max 3 levels deep.
+function safeRelPath(name) {
+  const n = String(name || '');
+  if (n.includes('\\') || n.includes('..')) return null;
+  const parts = n.split('/');
+  if (parts.length > 3) return null;
+  const file = parts[parts.length - 1];
+  if (!safeName(file)) return null;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!SAFE_SEGMENT.test(parts[i])) return null;
+  }
+  return parts.join('/');
 }
 
 // Best-effort duration from the WAV header: walk RIFF chunks for fmt (byteRate) + data (size).
@@ -48,11 +64,12 @@ function createMeetingLibrary(deps) {
     return resolveFolders()[kind] || null;
   }
 
-  // Absolute path for a validated (kind, name), or null. The startsWith re-check is belt and
-  // braces on top of SAFE_NAME — a folder setting containing tricks can't escape either.
+  // Absolute path for a validated (kind, name), or null. Processed accepts YYYY/MM subpaths;
+  // unprocessed stays flat. The startsWith re-check is belt and braces on top of the name
+  // validation — a folder setting containing tricks can't escape either.
   function resolvePath(kind, name) {
     const dir = folderFor(kind);
-    const n = safeName(name);
+    const n = kind === 'processed' ? safeRelPath(name) : safeName(name);
     if (!dir || !n) return null;
     const p = path.resolve(dir, n);
     if (!p.startsWith(path.resolve(dir) + path.sep)) return null;
@@ -62,27 +79,39 @@ function createMeetingLibrary(deps) {
   function listFiles(kind, ext) {
     const dir = folderFor(kind);
     if (!dir) return { ok: false, error: 'unknown kind' };
-    let names = [];
-    try { names = fsMod.readdirSync(dir); } catch (e) { return { ok: true, files: [] }; }   // folder not created yet = empty
     const want = ext ? new RegExp('\\.' + ext + '$', 'i') : /\.(wav|json|md)$/i;   // .md presence = "analyzed" marker for the panel
     const files = [];
-    for (const n of names) {
-      if (!want.test(n) || !safeName(n)) continue;
-      try {
-        const st = fsMod.statSync(path.join(dir, n));
-        if (!st.isFile()) continue;
-        let durationMs = null;
-        if (/\.wav$/i.test(n)) {
-          const fd = fsMod.openSync(path.join(dir, n), 'r');
-          try {
-            const head = Buffer.alloc(64 * 1024);
-            const read = fsMod.readSync(fd, head, 0, head.length, 0);
-            durationMs = wavDurationMs(head.slice(0, read));
-          } finally { fsMod.closeSync(fd); }
+    // Processed may use the Organize-by-date YYYY/MM layout, so walk two levels deep there;
+    // `name` comes back as the forward-slash relative path (what resolvePath expects back).
+    const maxDepth = kind === 'processed' ? 2 : 0;
+    const walk = (d, rel, depth) => {
+      let entries = [];
+      try { entries = fsMod.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }   // folder not created yet = empty
+      for (const ent of entries) {
+        const relName = rel ? rel + '/' + ent.name : ent.name;
+        if (ent.isDirectory()) {
+          if (depth < maxDepth && SAFE_SEGMENT.test(ent.name)) walk(path.join(d, ent.name), relName, depth + 1);
+          continue;
         }
-        files.push({ name: n, size: st.size, mtimeMs: st.mtimeMs, durationMs });
-      } catch (e) { /* raced deletion — skip */ }
-    }
+        if (!want.test(ent.name) || !safeName(ent.name)) continue;
+        try {
+          const abs = path.join(d, ent.name);
+          const st = fsMod.statSync(abs);
+          if (!st.isFile()) continue;
+          let durationMs = null;
+          if (/\.wav$/i.test(ent.name)) {
+            const fd = fsMod.openSync(abs, 'r');
+            try {
+              const head = Buffer.alloc(64 * 1024);
+              const read = fsMod.readSync(fd, head, 0, head.length, 0);
+              durationMs = wavDurationMs(head.slice(0, read));
+            } finally { fsMod.closeSync(fd); }
+          }
+          files.push({ name: relName, size: st.size, mtimeMs: st.mtimeMs, durationMs });
+        } catch (e) { /* raced deletion — skip */ }
+      }
+    };
+    walk(dir, '', 0);
     files.sort((a, b) => b.mtimeMs - a.mtimeMs);
     return { ok: true, files };
   }
@@ -101,4 +130,4 @@ function createMeetingLibrary(deps) {
   return { listFiles, deleteFile, resolvePath, safeName };
 }
 
-module.exports = { createMeetingLibrary, safeName, wavDurationMs };
+module.exports = { createMeetingLibrary, safeName, safeRelPath, wavDurationMs };

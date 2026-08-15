@@ -24,6 +24,7 @@ function createMeetingTranscriber(deps) {
   const fetchImpl = deps.fetchImpl || fetch;
   const resolveFolders = deps.resolveFolders;   // () => { unprocessed, processed }
   const resolveBaseUrl = deps.resolveBaseUrl;   // () => 'http://127.0.0.1:10301'
+  const organizeByDate = deps.organizeByDate || (() => false);   // () => bool: file results into YYYY/MM subfolders
   const log = deps.log || (() => {});
   const now = deps.now || Date.now;
   const timeoutMs = deps.timeoutMs || TIMEOUT_MS;
@@ -107,13 +108,19 @@ function createMeetingTranscriber(deps) {
 
     // File the results: transcript JSON first (atomic tmp+rename, same discipline as saveConfig),
     // then move the WAV. If the move fails the transcript still exists and the WAV stays visible
-    // in unprocessed — nothing is lost either way.
-    await fsp.mkdir(folders.processed, { recursive: true });
-    const jsonPath = path.join(folders.processed, name.replace(/\.wav$/i, '') + '.json');
+    // in unprocessed — nothing is lost either way. With Organize-by-date on, both land in
+    // <processed>/YYYY/MM/ keyed to the processing date.
+    let destDir = folders.processed;
+    if (organizeByDate()) {
+      const d = new Date(now());
+      destDir = path.join(destDir, String(d.getFullYear()), String(d.getMonth() + 1).padStart(2, '0'));
+    }
+    await fsp.mkdir(destDir, { recursive: true });
+    const jsonPath = path.join(destDir, name.replace(/\.wav$/i, '') + '.json');
     const tmp = jsonPath + '.tmp';
     await fsp.writeFile(tmp, JSON.stringify(result, null, 2));
     await fsp.rename(tmp, jsonPath);
-    const dest = path.join(folders.processed, name);
+    const dest = path.join(destDir, name);
     try {
       await fsp.rename(src, dest);
     } catch (e) {   // cross-volume folders — copy+unlink

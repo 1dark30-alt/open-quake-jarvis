@@ -123,6 +123,28 @@ test('enqueue validates names, requires the file, and dedupes against queue + cu
   await drained(s.tx);
 });
 
+test('organizeByDate files results into YYYY/MM under processed', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oqx-tx-date-'));
+  const unprocessed = path.join(root, 'unprocessed');
+  const processed = path.join(root, 'processed');
+  fs.mkdirSync(unprocessed);
+  const fixedNow = new Date(2026, 7, 14).getTime();   // Aug 14 2026 -> 2026/08
+  const tx = createMeetingTranscriber({
+    resolveFolders: () => ({ unprocessed, processed }),
+    resolveBaseUrl: () => 'http://fake:1',
+    organizeByDate: () => true,
+    now: () => fixedNow,
+    fetchImpl: async url => url.endsWith('/health') ? jsonResponse(true, {}) : jsonResponse(true, GOOD_RESPONSE),
+    healthTtlMs: 0,
+  });
+  addWav(unprocessed, 'm.wav');
+  tx.enqueue('m.wav');
+  await drained(tx);
+  assert.equal(fs.existsSync(path.join(processed, '2026', '08', 'm.wav')), true);
+  assert.equal(fs.existsSync(path.join(processed, '2026', '08', 'm.json')), true);
+  assert.equal(fs.existsSync(path.join(unprocessed, 'm.wav')), false);
+});
+
 test('health is unknown until a probe answers, then reflects reality', async () => {
   let healthy = false;
   const s = setup(async (url) => {

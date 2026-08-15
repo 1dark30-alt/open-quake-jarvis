@@ -733,18 +733,23 @@
 
   // ---- save model (no live edit) ----
   function setState(text, cls) { const el = document.getElementById('state'); el.textContent = text; el.className = 'state' + (cls ? ' ' + cls : ''); }
-  function markDirty() { dirty = true; setState('● unsaved changes', 'dirty'); document.getElementById('saveBtn').disabled = false; }
+  function markDirty() { dirty = true; setState('● unsaved changes', 'dirty'); document.getElementById('saveBtn').disabled = false; syncSaveMirror(); }
+  // The settings page carries its own Save button (re-rendered on tab switches) — keep it in step
+  // with the footer button.
+  function syncSaveMirror() { const s = document.getElementById('settingsSave'); if (s) s.disabled = !dirty; }
   async function doSave() {
     try {
       const result = await configApi.saveConfig(config);
       if (!(result && result.ok)) throw new Error(result && result.error || 'secure persistence failed');
       dirty = false;
       document.getElementById('saveBtn').disabled = true;
+      syncSaveMirror();
       setState('saved ✓', 'saved');
       return true;
     } catch (e) {
       dirty = true;
       document.getElementById('saveBtn').disabled = false;
+      syncSaveMirror();
       setState('save failed: secrets could not be stored securely', 'dirty');
       return false;
     }
@@ -1874,7 +1879,7 @@
     const th = currentTheme();
     // Meeting recording settings (config.settings.meeting) — global so auto-record works regardless of
     // which app the panel is showing. Same shape as MEETING_DEFAULTS in main.js.
-    const currentMe = () => Object.assign({ folder: '', processedFolder: '', transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe' }, (config.settings || {}).meeting || {});
+    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe' }, (config.settings || {}).meeting || {});
     const me = currentMe();
     // ledState = the device's live lighting (loaded when the page opens); fall back to saved config / defaults.
     const L = Object.assign({}, LED_DEFAULT, (config.settings || {}).lighting || {}, ledState || {});
@@ -2005,6 +2010,8 @@
         <input id="meProcessed" value="${esc(me.processedFolder)}" placeholder="Documents\\OpenQuake Meetings\\processed" style="flex:1">
         <button id="meProcessedBrowse" type="button">Browse…</button></div>
       <p class="hint">Transcribed recordings and their transcripts are moved here. Leave blank to use Documents\\OpenQuake Meetings\\processed.</p>
+      <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meByDate" ${me.processedByDate ? 'checked' : ''}> Organize by date</label></div>
+      <p class="hint">Files each processed recording into year and month subfolders (e.g. 2026\\08\\) under the folder above, by the date it was processed.</p>
 
       <div class="row" style="margin-top:12px"><label>Microphone</label>
         <select id="meMic" style="flex:1"><option value="">System default</option></select></div>
@@ -2012,8 +2019,8 @@
 
       <p class="sectitle" style="margin-top:22px">Transcription Server</p>
       <div class="row"><label>URL</label>
-        <input id="meTransUrl" value="${esc(me.transcribeUrl)}" placeholder="http://127.0.0.1:10301/transcribe" style="flex:1"></div>
-      <p class="hint">The tts-sst or meeting-diarizer endpoint that turns recordings into speaker-labeled transcripts. Leave blank for http://127.0.0.1:10301/transcribe on this machine; the panel checks its /health before sending.</p>
+        <input id="meTransUrl" value="${esc(me.transcribeUrl || 'http://127.0.0.1:10301/transcribe')}" style="flex:1"></div>
+      <p class="hint">The tts-sst or meeting-diarizer endpoint that turns recordings into speaker-labeled transcripts. Edit the host/port to match your server; the panel checks its /health before sending. Remember to Save.</p>
       <div class="row" style="margin-top:12px"><label>Analysis AI</label>
         <select id="meAnalysisAi" style="flex:1">
           <option value="claude" ${me.analysisAi === 'codex' ? '' : 'selected'}>Claude</option>
@@ -2115,6 +2122,7 @@
         <button id="tabAuth" class="tab${tab === 'auth' ? ' on' : ''}">Auth</button>
         <button id="tabMe" class="tab${tab === 'meeting' ? ' on' : ''}">Meeting</button>
         <button id="tabMon" class="tab${tab === 'monitor' ? ' on' : ''}">Monitor</button>
+        <button id="settingsSave" class="primary" style="margin-left:auto"${dirty ? '' : ' disabled'}>Save</button>
       </div>
       ${tab === 'software' ? swHtml : tab === 'hardware' ? hwHtml : tab === 'theme' ? thHtml : tab === 'apps' ? appsHtml : tab === 'dropin' ? diHtml : tab === 'auth' ? authHtml : tab === 'meeting' ? meHtml : monHtml}
       <div class="row" style="margin-top:22px"><button id="sBack">← Back to pages</button></div>`;
@@ -2128,6 +2136,8 @@
     document.getElementById('tabMe').onclick = () => { settingsTab = 'meeting'; renderSettings(); };
     document.getElementById('tabMon').onclick = () => { settingsTab = 'monitor'; renderSettings(); };
     document.getElementById('sBack').onclick = () => { view = 'pages'; render(); };
+    // In-page Save (mirrors the footer button — same doSave, same dirty state).
+    document.getElementById('settingsSave').onclick = () => doSave();
     const setS = (k, v) => { if (!config.settings) config.settings = {}; config.settings[k] = v; markDirty(); };
 
     if (tab === 'apps') {
@@ -2428,6 +2438,7 @@
         const p = await configApi.pickFolder();
         if (p) { document.getElementById('meProcessed').value = p; saveMe({ processedFolder: p }); }
       };
+      document.getElementById('meByDate').onchange = e => saveMe({ processedByDate: e.target.checked });
       document.getElementById('meTransUrl').oninput = e => saveMe({ transcribeUrl: e.target.value.trim() });
       document.getElementById('meAnalysisAi').onchange = e => saveMe({ analysisAi: e.target.value });
       document.getElementById('meAuto').onchange = e => saveMe({ autoRecord: e.target.checked });
