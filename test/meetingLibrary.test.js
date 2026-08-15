@@ -56,7 +56,7 @@ test('listFiles returns WAV metadata with duration, newest first; missing folder
   assert.equal(r.files.find(f => f.name === 'a.wav').durationMs, 2000);
 
   const empty = createMeetingLibrary({ resolveFolders: () => ({ unprocessed: path.join(dirs.root, 'nope'), processed: dirs.processed }) });
-  assert.deepEqual(empty.listFiles('unprocessed'), { ok: true, files: [] });
+  assert.deepEqual(empty.listFiles('unprocessed'), { ok: true, dirs: [], files: [] });
   assert.equal(lib.listFiles('bogus').ok, false);
 });
 
@@ -103,17 +103,29 @@ test('safeRelPath allows YYYY/MM subpaths but nothing sneaky', () => {
   }
 });
 
-test('listFiles(processed) walks YYYY/MM subfolders and returns relative names', () => {
+test('listFiles(processed) shows one folder at a time with navigable subdirs', () => {
   const dirs = tempDirs();
   const lib = createMeetingLibrary({ resolveFolders: () => ({ unprocessed: dirs.unprocessed, processed: dirs.processed }) });
   fs.mkdirSync(path.join(dirs.processed, '2026', '08'), { recursive: true });
+  fs.mkdirSync(path.join(dirs.processed, '.archive'));
   fs.writeFileSync(path.join(dirs.processed, '2026', '08', 'm.json'), '{}');
-  fs.writeFileSync(path.join(dirs.processed, '2026', '08', 'm.md'), '# x');
+  fs.writeFileSync(path.join(dirs.processed, '2026', '08', 'm-analysis.md'), '# x');
   fs.writeFileSync(path.join(dirs.processed, 'legacy.json'), '{}');
-  const names = lib.listFiles('processed').files.map(f => f.name).sort();
-  assert.deepEqual(names, ['2026/08/m.json', '2026/08/m.md', 'legacy.json']);
-  // unprocessed listing does not recurse
+
+  const root = lib.listFiles('processed');
+  assert.deepEqual(root.dirs, ['2026']);                                       // dot-folders hidden, no recursion
+  assert.deepEqual(root.files.map(f => f.name), ['legacy.json']);
+  const y = lib.listFiles('processed', '2026');
+  assert.deepEqual(y.dirs, ['08']);
+  assert.deepEqual(y.files, []);
+  const m = lib.listFiles('processed', '2026/08');
+  assert.deepEqual(m.dirs, []);                                                // depth limit: no deeper navigation
+  assert.deepEqual(m.files.map(f => f.name).sort(), ['2026/08/m-analysis.md', '2026/08/m.json']);
+
+  assert.equal(lib.listFiles('processed', '../x').ok, false);                  // traversal rejected
+  assert.equal(lib.listFiles('processed', 'a/b/c').ok, false);                 // too deep
+  // unprocessed stays flat: dir param ignored, subfolders invisible
   fs.mkdirSync(path.join(dirs.unprocessed, 'sub'));
   fs.writeFileSync(path.join(dirs.unprocessed, 'sub', 'x.wav'), makeWav(1));
-  assert.deepEqual(lib.listFiles('unprocessed').files, []);
+  assert.deepEqual(lib.listFiles('unprocessed', 'sub'), { ok: true, dirs: [], files: [] });
 });

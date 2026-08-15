@@ -161,6 +161,11 @@
   .rowBtn.danger { color:var(--danger); }
   .rowBtn.confirm { background:var(--danger); border-color:transparent; color:#1a0505; }
   .rowBtn.primary { background:var(--accent); border-color:transparent; color:var(--accent-fg,#04121f); }
+  /* analysis folder navigation: Up + breadcrumb (one folder shown at a time, no recursion) */
+  #anNav { flex:0 0 auto; display:flex; align-items:center; gap:14px; margin-bottom:12px; }
+  #anPath { font-size:18px; color:var(--muted); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fileRow.folder { width:100%; text-align:left; color:var(--fg); }
+  .fileRow.folder .chev { color:var(--dim); font-size:26px; }
   /* transcription status strip: current job + honest elapsed time (no fabricated percent) */
   #txStatus { flex:0 0 auto; min-height:56px; display:flex; align-items:center; gap:14px; padding:0 22px; margin-bottom:12px;
     border-radius:12px; background:var(--surf); font-size:18px; font-weight:600; color:var(--muted); }
@@ -266,6 +271,7 @@
       <button class="ovBtn primary press foc" id="anGoSel" type="button" disabled>Analyze selected</button>
       <div class="ovNote" id="anNote"></div>
       <button class="ovClose press foc" id="anClose" type="button">Close</button></div>
+    <div id="anNav"><button class="ovBtn press foc" id="anUp" type="button" disabled>&#11014; Up</button><div id="anPath"></div></div>
     <div class="ovBody">
       <div class="ovList" id="anList"></div>
       <div class="ovScroll"><button class="ovScrollBtn press foc" id="anUp" type="button">&#9650;</button>

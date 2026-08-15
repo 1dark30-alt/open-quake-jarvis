@@ -1298,7 +1298,7 @@ function setMeetingMic(label) {
 function onMeetingLibraryRequest(op, params) {
   const p = params || {};
   try {
-    if (op === 'files') return meetingLibrary ? meetingLibrary.listFiles(p.kind) : { ok: false, error: 'library unavailable' };
+    if (op === 'files') return meetingLibrary ? meetingLibrary.listFiles(p.kind, p.dir) : { ok: false, error: 'library unavailable' };
     if (op === 'delete') return meetingLibrary ? meetingLibrary.deleteFile(p.kind, p.name) : { ok: false, error: 'library unavailable' };
     if (op === 'transcribeStart') return meetingTranscriber ? meetingTranscriber.enqueue(p.name) : { ok: false, error: 'transcriber unavailable' };
     if (op === 'transcribeState') return meetingTranscriber ? meetingTranscriber.getState() : { ok: false, error: 'transcriber unavailable' };

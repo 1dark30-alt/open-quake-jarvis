@@ -482,25 +482,40 @@ function anPoll() {
   }).catch(function () {});
 }
 var anSel = selMake('anSelAll', 'anGoSel');
+var anDir = '';   // current subfolder inside processed ('' = root); one folder shown at a time
 function renderAnList() {
-  fetchJson('/meeting-files?kind=processed').then(function (r) {
+  var url = '/meeting-files?kind=processed' + (anDir ? '&dir=' + encodeURIComponent(anDir) : '');
+  fetchJson(url).then(function (r) {
     var el = $('anList'); el.innerHTML = ''; anRows = {};
+    $('anPath').textContent = 'Processed' + (anDir ? ' › ' + anDir.split('/').join(' › ') : '');
+    $('anUp').disabled = !anDir;
     var files = (r && r.files) || [];
+    var dirs = (r && r.dirs) || [];
     var mdSet = {};   // analyses are <base>-analysis.md (plain <base>.md accepted for early files)
     files.forEach(function (f) { if (/\.md$/i.test(f.name)) mdSet[f.name.replace(/(-analysis)?\.md$/i, '')] = 1; });
     var jsons = files.filter(function (f) { return /\.json$/i.test(f.name); });
     selReset(anSel, jsons.map(function (f) { return f.name; }));
-    if (!jsons.length) { el.innerHTML = '<div class="ovEmpty">No transcripts yet — transcribe a recording first.</div>'; selSync(anSel); return; }
+    dirs.forEach(function (d) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'fileRow folder press foc';
+      b.innerHTML = '<div class="meta"><div class="fname">&#128193; ' + escHtml(d) + '</div></div><span class="chev">&rsaquo;</span>';
+      b.onclick = function () { anDir = anDir ? anDir + '/' + d : d; renderAnList(); };
+      el.appendChild(b);
+    });
+    if (!jsons.length) {
+      if (!dirs.length) el.innerHTML = '<div class="ovEmpty">No transcripts here' + (anDir ? '.' : ' yet — transcribe a recording first.') + '</div>';
+      selSync(anSel); return;
+    }
     jsons.forEach(function (f) {
       // Raw transcripts are <base>-diarizer-response.json (legacy plain .json accepted);
-      // the analysis is <base>.md, so match/display on the stripped base.
+      // the analysis is <base>-analysis.md, so match/display on the stripped base.
       var base = f.name.replace(/(-diarizer-response)?\.json$/i, '');
       var rel = splitRel(base);
       var analyzed = !!mdSet[base];
       var row = document.createElement('div'); row.className = 'fileRow';
       row.appendChild(selBox(anSel, f.name));
       var meta = document.createElement('div'); meta.className = 'meta';
-      meta.innerHTML = '<div class="fname">' + escHtml(rel.base) + '</div><div class="fsub">' + (analyzed ? 'Analyzed' : 'Not analyzed') + (rel.folder ? ' · ' + escHtml(rel.folder) : '') + '</div>';
+      meta.innerHTML = '<div class="fname">' + escHtml(rel.base) + '</div><div class="fsub">' + (analyzed ? 'Analyzed' : 'Not analyzed') + '</div>';
       var btnA = rowBtn(analyzed ? 'Re-analyze' : 'Analyze', analyzed ? '' : 'primary');
       btnA.onclick = function () {
         btnA.disabled = true;
@@ -566,6 +581,12 @@ function openAnalysisView(jsonName, title) {
     $('anViewOverlay').classList.add('show');
   }).catch(function () {});
 }
+$('anUp').onclick = function () {
+  if (!anDir) return;
+  var parts = anDir.split('/'); parts.pop();
+  anDir = parts.join('/');
+  renderAnList();
+};
 $('btnAnalysis').onclick = function () {
   $('anOverlay').classList.add('show');
   renderAnList(); anPoll();

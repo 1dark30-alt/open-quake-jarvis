@@ -661,7 +661,7 @@ async function handler(req, res) {
     const q = new URL(full, 'http://local').searchParams;
     let result = { ok: false, error: 'not wired' };
     if (typeof onMeetingLibrary === 'function') {
-      try { result = await onMeetingLibrary(MEETING_LIBRARY_OPS[url], { kind: q.get('kind') || '', name: q.get('name') || '' }); }
+      try { result = await onMeetingLibrary(MEETING_LIBRARY_OPS[url], { kind: q.get('kind') || '', name: q.get('name') || '', dir: q.get('dir') || '' }); }
       catch (e) { result = { ok: false, error: e.message || 'library request failed' }; }
     }
     return json(res, result);

@@ -76,44 +76,51 @@ function createMeetingLibrary(deps) {
     return p;
   }
 
-  function listFiles(kind, ext) {
-    const dir = folderFor(kind);
-    if (!dir) return { ok: false, error: 'unknown kind' };
-    const want = ext ? new RegExp('\\.' + ext + '$', 'i') : /\.(wav|json|md)$/i;   // .md presence = "analyzed" marker for the panel
+  // One directory at a time — no recursion (user direction: meeting-name folders will hold
+  // special data, so the panel navigates rather than sweeping). `dir` is a forward-slash
+  // relative subpath inside the processed folder (unprocessed is always flat); the returned
+  // `dirs` are the navigable subfolders and file `name`s are relative paths resolvePath accepts.
+  function listFiles(kind, subDir) {
+    const base = folderFor(kind);
+    if (!base) return { ok: false, error: 'unknown kind' };
+    let rel = '';
+    if (kind === 'processed' && subDir) {
+      const parts = String(subDir).split('/').filter(Boolean);
+      if (parts.length > 2 || parts.some(s => s === '..' || !SAFE_SEGMENT.test(s))) return { ok: false, error: 'bad dir' };
+      rel = parts.join('/');
+    }
+    const depth = rel ? rel.split('/').length : 0;
+    let entries = [];
+    try { entries = fsMod.readdirSync(rel ? path.join(base, rel) : base, { withFileTypes: true }); }
+    catch (e) { return { ok: true, dirs: [], files: [] }; }   // folder not created yet = empty
+    const dirs = [];
     const files = [];
-    // Processed may use the Organize-by-date YYYY/MM layout, so walk two levels deep there;
-    // `name` comes back as the forward-slash relative path (what resolvePath expects back).
-    const maxDepth = kind === 'processed' ? 2 : 0;
-    const walk = (d, rel, depth) => {
-      let entries = [];
-      try { entries = fsMod.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }   // folder not created yet = empty
-      for (const ent of entries) {
-        const relName = rel ? rel + '/' + ent.name : ent.name;
-        if (ent.isDirectory()) {
-          if (depth < maxDepth && SAFE_SEGMENT.test(ent.name)) walk(path.join(d, ent.name), relName, depth + 1);
-          continue;
-        }
-        if (!want.test(ent.name) || !safeName(ent.name)) continue;
-        try {
-          const abs = path.join(d, ent.name);
-          const st = fsMod.statSync(abs);
-          if (!st.isFile()) continue;
-          let durationMs = null;
-          if (/\.wav$/i.test(ent.name)) {
-            const fd = fsMod.openSync(abs, 'r');
-            try {
-              const head = Buffer.alloc(64 * 1024);
-              const read = fsMod.readSync(fd, head, 0, head.length, 0);
-              durationMs = wavDurationMs(head.slice(0, read));
-            } finally { fsMod.closeSync(fd); }
-          }
-          files.push({ name: relName, size: st.size, mtimeMs: st.mtimeMs, durationMs });
-        } catch (e) { /* raced deletion — skip */ }
+    for (const ent of entries) {
+      if (ent.isDirectory()) {
+        // navigable while files inside remain valid rel paths (≤2 dirs); dot-folders stay hidden
+        if (kind === 'processed' && depth < 2 && SAFE_SEGMENT.test(ent.name) && ent.name[0] !== '.') dirs.push(ent.name);
+        continue;
       }
-    };
-    walk(dir, '', 0);
+      if (!/\.(wav|json|md)$/i.test(ent.name) || !safeName(ent.name)) continue;
+      try {
+        const abs = path.join(base, rel, ent.name);
+        const st = fsMod.statSync(abs);
+        if (!st.isFile()) continue;
+        let durationMs = null;
+        if (/\.wav$/i.test(ent.name)) {
+          const fd = fsMod.openSync(abs, 'r');
+          try {
+            const head = Buffer.alloc(64 * 1024);
+            const read = fsMod.readSync(fd, head, 0, head.length, 0);
+            durationMs = wavDurationMs(head.slice(0, read));
+          } finally { fsMod.closeSync(fd); }
+        }
+        files.push({ name: rel ? rel + '/' + ent.name : ent.name, size: st.size, mtimeMs: st.mtimeMs, durationMs });
+      } catch (e) { /* raced deletion — skip */ }
+    }
+    dirs.sort();
     files.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    return { ok: true, files };
+    return { ok: true, dirs, files };
   }
 
   // Deletion is only offered for unprocessed recordings — processed WAVs and their transcripts are

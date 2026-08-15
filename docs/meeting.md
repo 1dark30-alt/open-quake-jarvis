@@ -56,9 +56,11 @@ can send them to a diarizing transcription server, then to an AI for meeting not
   roughly ⅓ of the recording's length. On success the WAV moves to the **Processed
   Recordings** folder with its transcript (`<name>.json`) beside it; on failure the WAV
   stays put and the error shows on the row (tap **Retry**).
-- **Analysis** (top row) — runs the chosen **Analysis AI** (Settings → Meeting: Claude
-  or ChatGPT Codex — the locally installed CLI, using its own login) over a transcript
-  and files the result as `<name>.md` next to it. **View** renders it on the panel.
+- **Analysis** (top row) — browses the Processed folder one directory at a time (tap a
+  folder to enter it, **⬆ Up** to go back; no recursive sweep), and runs the chosen
+  **Analysis AI** (Settings → Meeting: Claude or ChatGPT Codex — the locally installed
+  CLI, using its own login) over a transcript, filing the result as
+  `<name>-analysis.md` next to it. **View** renders it on the panel.
 - **Settings** (utility rail, replaces the old Full screen row) — picks the recording
   microphone. It must be the same mic Teams is using; if you switch mics in Teams,
   switch here too.
