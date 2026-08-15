@@ -142,6 +142,28 @@ test('organizeByDate files results into YYYY/MM under processed', async () => {
   assert.equal(fs.existsSync(path.join(unprocessed, 'm.wav')), false);
 });
 
+test('re-transcribing the same meeting files as _1, _2 — never overwrites', async () => {
+  const s = setup();
+  fs.mkdirSync(s.processed, { recursive: true });
+  fs.writeFileSync(path.join(s.processed, 'm.wav'), 'ORIGINAL WAV');
+  fs.writeFileSync(path.join(s.processed, 'm-diarizer-response.json'), '"ORIGINAL JSON"');
+  addWav(s.unprocessed, 'm.wav');
+  s.tx.enqueue('m.wav');
+  await drained(s.tx);
+  assert.equal(s.tx.getState().recent[0].status, 'done');
+  assert.equal(fs.readFileSync(path.join(s.processed, 'm.wav'), 'utf8'), 'ORIGINAL WAV');                 // untouched
+  assert.equal(fs.readFileSync(path.join(s.processed, 'm-diarizer-response.json'), 'utf8'), '"ORIGINAL JSON"');
+  assert.equal(fs.existsSync(path.join(s.processed, 'm_1.wav')), true);
+  assert.equal(fs.existsSync(path.join(s.processed, 'm_1-diarizer-response.json')), true);
+  assert.equal(fs.existsSync(path.join(s.unprocessed, 'm.wav')), false);
+  // a third run steps to _2
+  addWav(s.unprocessed, 'm.wav');
+  s.tx.enqueue('m.wav');
+  await drained(s.tx);
+  assert.equal(fs.existsSync(path.join(s.processed, 'm_2.wav')), true);
+  assert.equal(fs.existsSync(path.join(s.processed, 'm_2-diarizer-response.json')), true);
+});
+
 test('health is unknown until a probe answers, then reflects reality', async () => {
   let healthy = false;
   const s = setup(async () => {

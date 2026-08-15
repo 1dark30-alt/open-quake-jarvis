@@ -147,11 +147,19 @@ function createMeetingTranscriber(deps) {
       destDir = path.join(destDir, String(d.getFullYear()), String(d.getMonth() + 1).padStart(2, '0'));
     }
     await fsp.mkdir(destDir, { recursive: true });
-    const jsonPath = path.join(destDir, name.replace(/\.wav$/i, '') + '-diarizer-response.json');
+    // Re-tests of the same meeting must never overwrite an existing set: if <base>.wav or its
+    // transcript already exists at the destination, file this run as <base>_1, <base>_2, …
+    const base = name.replace(/\.wav$/i, '');
+    let finalBase = base;
+    for (let i = 1; fsMod.existsSync(path.join(destDir, finalBase + '.wav')) || fsMod.existsSync(path.join(destDir, finalBase + '-diarizer-response.json')); i++) {
+      finalBase = base + '_' + i;
+    }
+    if (finalBase !== base) log('destination exists — filing as ' + finalBase);
+    const jsonPath = path.join(destDir, finalBase + '-diarizer-response.json');
     const tmp = jsonPath + '.tmp';
     await fsp.writeFile(tmp, JSON.stringify(result, null, 2));
     await fsp.rename(tmp, jsonPath);
-    const dest = path.join(destDir, name);
+    const dest = path.join(destDir, finalBase + '.wav');
     try {
       await fsp.rename(src, dest);
     } catch (e) {   // cross-volume folders — copy+unlink
