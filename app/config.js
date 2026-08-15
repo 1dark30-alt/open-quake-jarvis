@@ -1874,7 +1874,7 @@
     const th = currentTheme();
     // Meeting recording settings (config.settings.meeting) — global so auto-record works regardless of
     // which app the panel is showing. Same shape as MEETING_DEFAULTS in main.js.
-    const currentMe = () => Object.assign({ folder: '', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe' }, (config.settings || {}).meeting || {});
+    const currentMe = () => Object.assign({ folder: '', processedFolder: '', transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe' }, (config.settings || {}).meeting || {});
     const me = currentMe();
     // ledState = the device's live lighting (loaded when the page opens); fall back to saved config / defaults.
     const L = Object.assign({}, LED_DEFAULT, (config.settings || {}).lighting || {}, ledState || {});
@@ -1996,14 +1996,30 @@
     // Meeting tab — recording folder, mic, auto-record + app allowlist, silence auto-stop, echo gate
     const meHtml = `
       <p class="sectitle">Meeting recording</p>
-      <div class="row"><label>Meeting folder</label>
-        <input id="meFolder" value="${esc(me.folder)}" placeholder="Documents\\OpenQuake Meetings" style="flex:1">
+      <div class="row"><label>Unprocessed Recordings</label>
+        <input id="meFolder" value="${esc(me.folder)}" placeholder="Documents\\OpenQuake Meetings\\unprocessed" style="flex:1">
         <button id="meFolderBrowse" type="button">Browse…</button></div>
-      <p class="hint">Where recordings are saved — one stereo WAV per meeting (your mic = left, everyone else = right), named by date and time. Leave blank to use Documents\\OpenQuake Meetings.</p>
+      <p class="hint">Where new recordings land — one stereo WAV per meeting (your mic = left, everyone else = right), named by date and time. Leave blank to use Documents\\OpenQuake Meetings\\unprocessed.</p>
+
+      <div class="row" style="margin-top:12px"><label>Processed Recordings</label>
+        <input id="meProcessed" value="${esc(me.processedFolder)}" placeholder="Documents\\OpenQuake Meetings\\processed" style="flex:1">
+        <button id="meProcessedBrowse" type="button">Browse…</button></div>
+      <p class="hint">Transcribed recordings and their transcripts are moved here. Leave blank to use Documents\\OpenQuake Meetings\\processed.</p>
 
       <div class="row" style="margin-top:12px"><label>Microphone</label>
         <select id="meMic" style="flex:1"><option value="">System default</option></select></div>
-      <p class="hint">The mic recorded as your channel. This is the default the Meeting panel loads with; it can also be changed on the panel.</p>
+      <p class="hint">This must be the same mic you use with Teams</p>
+
+      <p class="sectitle" style="margin-top:22px">Transcription Server</p>
+      <div class="row"><label>URL</label>
+        <input id="meTransUrl" value="${esc(me.transcribeUrl)}" placeholder="http://127.0.0.1:10301/transcribe" style="flex:1"></div>
+      <p class="hint">The tts-sst or meeting-diarizer endpoint that turns recordings into speaker-labeled transcripts. Leave blank for http://127.0.0.1:10301/transcribe on this machine; the panel checks its /health before sending.</p>
+      <div class="row" style="margin-top:12px"><label>Analysis AI</label>
+        <select id="meAnalysisAi" style="flex:1">
+          <option value="claude" ${me.analysisAi === 'codex' ? '' : 'selected'}>Claude</option>
+          <option value="codex" ${me.analysisAi === 'codex' ? 'selected' : ''}>ChatGPT Codex</option>
+        </select></div>
+      <p class="hint">Which locally installed CLI turns a transcript into meeting notes on the Analysis screen. Uses that tool's own login — no API key needed.</p>
 
       <p class="sectitle" style="margin-top:22px">Auto-record</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meAuto" ${me.autoRecord ? 'checked' : ''}> Start recording automatically when a call begins</label></div>
@@ -2407,6 +2423,13 @@
         const p = await configApi.pickFolder();
         if (p) { document.getElementById('meFolder').value = p; saveMe({ folder: p }); }
       };
+      document.getElementById('meProcessed').oninput = e => saveMe({ processedFolder: e.target.value.trim() });
+      document.getElementById('meProcessedBrowse').onclick = async () => {
+        const p = await configApi.pickFolder();
+        if (p) { document.getElementById('meProcessed').value = p; saveMe({ processedFolder: p }); }
+      };
+      document.getElementById('meTransUrl').oninput = e => saveMe({ transcribeUrl: e.target.value.trim() });
+      document.getElementById('meAnalysisAi').onchange = e => saveMe({ analysisAi: e.target.value });
       document.getElementById('meAuto').onchange = e => saveMe({ autoRecord: e.target.checked });
       document.getElementById('meApps').oninput = e => saveMe({ recordApps: e.target.value });
       document.getElementById('meSilence').onchange = e => saveMe({ silenceStopMin: Math.max(0, parseInt(e.target.value, 10) || 0) });

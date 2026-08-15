@@ -76,6 +76,9 @@ const mediaKeys = createMediaKeys({ log: message => console.log(message) });
 let firstRun = false;     // set by loadConfig when there was no prior config (fresh install)
 let micState = false;     // current device mic state (LED follows it)
 let meetingRecorder = null;   // hidden-window meeting recorder (created once the panel server is up)
+let meetingLibrary = null;    // recordings list/delete/resolve for the panel's library screens
+let meetingTranscriber = null; // FIFO diarizer-upload queue (meetingTranscribe.js)
+let meetingAnalyzer = null;   // transcript → markdown analysis via claude/codex CLI (meetingAnalyze.js)
 let micMonitorProc = null;    // native app-scoped mic-in-use monitor child process
 let sysVolCache = null, sysVolAt = 0, sysVolBusy = false;   // throttled cache of the real system volume (0-100)
 let lastRingEffect = LED_DEFAULT.effect; // remembered so the tray on/off toggle can restore the prior effect
@@ -1197,9 +1200,44 @@ async function onMeetingActionRequest(platform, action) {
 // Settings live under config.settings.meeting (global, like config.settings.monitor) so auto-record
 // works regardless of which app the panel is showing — the meeting page's per-grid options only
 // exist while it's the active app, which is useless for background recording.
-const MEETING_DEFAULTS = { folder: '', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe' };
+const MEETING_DEFAULTS = { folder: '', processedFolder: '', transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe' };
 function meetingSettings() { return Object.assign({}, MEETING_DEFAULTS, (config.settings || {}).meeting || {}); }
-function defaultMeetingFolder() { return path.join(app.getPath('documents'), 'OpenQuake Meetings'); }
+function defaultMeetingFolder() { return path.join(app.getPath('documents'), 'OpenQuake Meetings', 'unprocessed'); }
+function defaultProcessedFolder() { return path.join(app.getPath('documents'), 'OpenQuake Meetings', 'processed'); }
+// Blank folder settings mean "use the default", same convention as the recorder.
+function resolveMeetingFolders() {
+  const m = meetingSettings();
+  return {
+    unprocessed: String(m.folder || '').trim() || defaultMeetingFolder(),
+    processed: String(m.processedFolder || '').trim() || defaultProcessedFolder(),
+  };
+}
+// Accept either the base URL or the full /transcribe URL in settings; always return the base.
+function resolveTranscribeBaseUrl() {
+  let u = String(meetingSettings().transcribeUrl || '').trim() || 'http://127.0.0.1:10301';
+  u = u.replace(/\/+$/, '');
+  if (/\/transcribe$/i.test(u)) u = u.slice(0, -'/transcribe'.length);
+  return u;
+}
+// One-time best-effort migration: the default recording folder used to be the OpenQuake Meetings
+// root; it is now the unprocessed\ subfolder. Move stranded root WAVs there so they show up in the
+// panel's Unprocessed list. Only runs when the folder setting is blank (explicit folders are the
+// user's own business) and never throws.
+function migrateLegacyMeetingWavs() {
+  if (String(meetingSettings().folder || '').trim()) return;
+  try {
+    const root = path.join(app.getPath('documents'), 'OpenQuake Meetings');
+    const dest = defaultMeetingFolder();
+    if (!fs.existsSync(root)) return;
+    const wavs = fs.readdirSync(root).filter(n => /\.wav$/i.test(n) && fs.statSync(path.join(root, n)).isFile());
+    if (!wavs.length) return;
+    fs.mkdirSync(dest, { recursive: true });
+    for (const n of wavs) {
+      try { fs.renameSync(path.join(root, n), path.join(dest, n)); } catch (e) { console.log('[meeting] migrate skipped ' + n + ': ' + e.message); }
+    }
+    console.log('[meeting] migrated ' + wavs.length + ' recording(s) into unprocessed\\');
+  } catch (e) { console.log('[meeting] legacy folder migration failed: ' + e.message); }
+}
 
 // Real system-volume read for the meeting OUTPUT rail — throttled + cached so the 1 s panel poll
 // never spawns a process more than ~once a second. Never fabricates a level: cache stays null (panel
@@ -1243,6 +1281,29 @@ function setMeetingMic(label) {
   config.settings.meeting.micDevice = label || '';
   saveConfig();
   if (meetingRecorder) meetingRecorder.setMic(label || '');
+}
+
+// Panel remote for the recordings library + transcription + analysis screens (Unprocessed /
+// Transcription / Analysis overlays), reached over HTTP via sysserver. Same shape as
+// onMeetingRecordRequest: every op answers a plain JSON object, never throws.
+function onMeetingLibraryRequest(op, params) {
+  const p = params || {};
+  try {
+    if (op === 'files') return meetingLibrary ? meetingLibrary.listFiles(p.kind) : { ok: false, error: 'library unavailable' };
+    if (op === 'delete') return meetingLibrary ? meetingLibrary.deleteFile(p.kind, p.name) : { ok: false, error: 'library unavailable' };
+    if (op === 'transcribeStart') return meetingTranscriber ? meetingTranscriber.enqueue(p.name) : { ok: false, error: 'transcriber unavailable' };
+    if (op === 'transcribeState') return meetingTranscriber ? meetingTranscriber.getState() : { ok: false, error: 'transcriber unavailable' };
+    if (op === 'analyzeStart') return meetingAnalyzer ? meetingAnalyzer.start(p.name) : { ok: false, error: 'analyzer unavailable' };
+    if (op === 'analyzeState') return meetingAnalyzer ? meetingAnalyzer.getState() : { ok: false, error: 'analyzer unavailable' };
+    if (op === 'analysisResult') return meetingAnalyzer ? meetingAnalyzer.result(p.name) : { ok: false, error: 'analyzer unavailable' };
+    return { ok: false, error: 'unknown library op: ' + op };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+// Absolute path for /meeting-audio streaming, or null (sysserver answers 404). Validation lives in
+// meetingLibrary.resolvePath.
+function resolveMeetingAudioPath(kind, name) {
+  if (!meetingLibrary || !/\.wav$/i.test(String(name || ''))) return null;
+  return meetingLibrary.resolvePath(kind, name);
 }
 
 // Native app-scoped monitor: emits a JSON line whenever an allowlisted app (Zoom/Teams) starts or
@@ -1803,6 +1864,7 @@ app.whenReady().then(async () => {
       getOfficeData: officeGraph.getData, connectOffice: officeGraph.connect, onOfficeAction: officeActions.run,
       onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(),
       getMeetingState: meetingStateForPanel, onMeetingRecord: onMeetingRecordRequest,
+      onMeetingLibrary: onMeetingLibraryRequest, resolveMeetingAudio: resolveMeetingAudioPath,
       getShortcuts: keyboardShortcutsSnapshot,
       // Voice-panel app registry: each entry gets the full /<appId>/* route surface (see
       // sysserver.js). voiceToken gates the claude approval hook's /approval-request long-poll.
@@ -1843,6 +1905,27 @@ app.whenReady().then(async () => {
     });
     meetingRecorder.ensureWindow();   // arm the hidden window so a call can start recording instantly
     startMicMonitor();
+
+    // Transcription pipeline: library (list/delete), diarizer upload queue, and CLI analysis.
+    // Lazy-required + individually try/caught like the recorder so a failure here can never take
+    // down call control or recording.
+    migrateLegacyMeetingWavs();
+    try {
+      meetingLibrary = require('./meetingLibrary').createMeetingLibrary({
+        resolveFolders: resolveMeetingFolders,
+        log: msg => console.log('[meeting] ' + msg),
+      });
+      meetingTranscriber = require('./meetingTranscribe').createMeetingTranscriber({
+        resolveFolders: resolveMeetingFolders,
+        resolveBaseUrl: resolveTranscribeBaseUrl,
+        log: msg => console.log('[meeting] ' + msg),
+      });
+      meetingAnalyzer = require('./meetingAnalyze').createMeetingAnalyzer({
+        resolveFolders: resolveMeetingFolders,
+        resolveAi: () => meetingSettings().analysisAi,
+        log: msg => console.log('[meeting] ' + msg),
+      });
+    } catch (e) { console.log('[meeting] transcription services failed to start:', e.message); }
   } catch (e) { console.log('local panel services failed to start:', e.message); }
   sweepIconCache();   // clean up orphaned URL-icon cache files left by prior sessions
   // Same idea for the approval hook: a crash (or a force-kill) skips before-quit's removal and strands

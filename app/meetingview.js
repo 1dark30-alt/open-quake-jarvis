@@ -29,7 +29,7 @@ var ICON = {
   open:   '<svg viewBox="0 0 24 24"><path d="M14 3v2h3.6l-9 9 1.4 1.4 9-9V10h2V3h-7zM5 5h5V3H3v18h18v-7h-2v5H5V5z"/></svg>',
   speaker:'<svg viewBox="0 0 24 24"><path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zm-2.5-8.8v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>',
   share:  '<svg viewBox="0 0 24 24"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-6v2h2v2H8v-2h2v-2H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm8 3l-4 4h2.5v3h3v-3H16l-4-4z"/></svg>',
-  fullscreen:'<svg viewBox="0 0 24 24"><path d="M4 4h6v2H6v4H4V4zm10 0h6v6h-2V6h-4V4zM6 14v4h4v2H4v-6h2zm14 0v6h-6v-2h4v-4h2z"/></svg>',
+  gear:   '<svg viewBox="0 0 24 24"><path d="M19.4 13c.04-.33.07-.66.07-1s-.03-.67-.07-1l2.11-1.65a.5.5 0 0 0 .12-.64l-2-3.46a.5.5 0 0 0-.61-.22l-2.49 1a7.03 7.03 0 0 0-1.73-1l-.38-2.65A.5.5 0 0 0 13.93 2h-4a.5.5 0 0 0-.5.43l-.37 2.65c-.63.26-1.21.6-1.74 1l-2.49-1a.5.5 0 0 0-.6.22l-2 3.46c-.13.22-.08.5.12.64L4.46 11c-.04.33-.07.66-.07 1s.03.67.07 1l-2.11 1.65a.5.5 0 0 0-.12.64l2 3.46c.12.22.38.31.6.22l2.49-1c.53.4 1.11.74 1.74 1l.37 2.65c.05.24.25.43.5.43h4c.25 0 .46-.19.5-.43l.37-2.65c.63-.26 1.21-.6 1.73-1l2.49 1c.23.09.49 0 .61-.22l2-3.46a.5.5 0 0 0-.12-.64L19.4 13zM11.93 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>',
 };
 
 // AUDIO & VIDEO controls are constant. CALL controls are per-platform. cls drives the semantic
@@ -95,11 +95,11 @@ document.querySelectorAll('.seg').forEach(function (b) {
 // ---- utility rail ----
 $('volDown').innerHTML = '<span class="ic">' + ICON.minus + '</span>';
 $('volUp').innerHTML = '<span class="ic">' + ICON.plus + '</span>';
-$('ic-full').innerHTML = ICON.fullscreen;
+$('ic-settings').innerHTML = ICON.gear;
 $('ic-share').innerHTML = ICON.share;
 $('volDown').onclick = function () { fireAction('system', 'voldown', 'Volume down').then(pollState); };
 $('volUp').onclick = function () { fireAction('system', 'volup', 'Volume up').then(pollState); };
-$('fullscreen').onclick = function () { fireAction(platform, 'fullscreen', 'Full screen'); };
+$('settingsRow').onclick = function () { openMicPicker(); };
 $('shareScreen').onclick = function () { fireAction(platform, 'share', 'Share screen'); };
 
 // =====================================================================================
@@ -195,7 +195,10 @@ function renderDevList() {
   addRow('System default', '', !matched);
   devs.forEach(function (d) { addRow(d.label, d.label, matched && d.label === savedMicLabel); });
 }
-$('micRow').onclick = function () { renderDevList(); $('devOverlay').classList.add('show'); ensureDeviceIds().then(renderDevList); };
+// Shared by the popover's Microphone row and the rail's Settings row — the picker IS the panel's
+// settings window (the only panel-side setting is which mic gets recorded).
+function openMicPicker() { renderDevList(); $('devOverlay').classList.add('show'); ensureDeviceIds().then(renderDevList); }
+$('micRow').onclick = function () { openMicPicker(); };
 $('devCancel').onclick = function () { $('devOverlay').classList.remove('show'); };
 function pickMic(label) {
   $('devOverlay').classList.remove('show');
@@ -204,6 +207,280 @@ function pickMic(label) {
     .then(function (r) { return r.json(); }).then(function (r) { if (r && r.state) applyState(r.state); })
     .catch(function () { statusShow('Could not set microphone', true); });
 }
+
+// =====================================================================================
+// Library / Transcription / Analysis overlays — full-screen, same pattern as the mic picker.
+// The transcription and analysis pollers run ONLY while their overlay is on screen.
+// =====================================================================================
+function escHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function fmtSize(b) { return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB'; }
+function fetchJson(url) { return fetch(url, { cache: 'no-store' }).then(function (r) { return r.json(); }); }
+function fileMeta(f) {
+  var sub = (f.durationMs != null ? fmtDur(f.durationMs) + ' · ' : '') + fmtSize(f.size);
+  var meta = document.createElement('div'); meta.className = 'meta';
+  meta.innerHTML = '<div class="fname">' + escHtml(f.name) + '</div><div class="fsub">' + escHtml(sub) + '</div>';
+  return meta;
+}
+function rowBtn(label, extraCls) {
+  var b = document.createElement('button');
+  b.type = 'button'; b.className = 'rowBtn press foc' + (extraCls ? ' ' + extraCls : '');
+  b.textContent = label;
+  return b;
+}
+// ▲/▼ page buttons for scroll regions — tap = one page, hold = keeps paging (claudevoiceview pattern;
+// drag-thumbs are unreliable on the physical panel).
+function wireScrollButtons(listId, upId, downId) {
+  var list = $(listId);
+  function step(dir) { list.scrollBy({ top: dir * list.clientHeight * 0.9, behavior: 'smooth' }); }
+  [[upId, -1], [downId, 1]].forEach(function (pair) {
+    var btn = $(pair[0]);
+    var repeat = null;
+    btn.addEventListener('pointerdown', function (e) {
+      btn.setPointerCapture(e.pointerId);
+      step(pair[1]);
+      repeat = setInterval(function () { step(pair[1]); }, 400);
+    });
+    ['pointerup', 'pointercancel'].forEach(function (ev) {
+      btn.addEventListener(ev, function () { clearInterval(repeat); repeat = null; });
+    });
+  });
+}
+
+// ---- Unprocessed: list / play / delete ----
+var libAudio = $('libAudio');
+var libPlaying = '';        // name whose audio is loaded
+var libSyncs = [];          // per-row repaint hooks, rebuilt on each render
+function libSyncAll() { libSyncs.forEach(function (fn) { fn(); }); }
+libAudio.onplay = libSyncAll; libAudio.onpause = libSyncAll;
+libAudio.onended = function () { libPlaying = ''; libAudio.removeAttribute('src'); libSyncAll(); };
+function stopPlayback() { try { libAudio.pause(); } catch (e) {} libPlaying = ''; libAudio.removeAttribute('src'); }
+function libMsg(msg, isError) { var n = $('libNote'); n.textContent = msg || ''; n.classList.toggle('err', !!isError); }
+function renderLibrary() {
+  fetchJson('/meeting-files?kind=unprocessed').then(function (r) {
+    var el = $('libList'); el.innerHTML = ''; libSyncs = [];
+    var files = ((r && r.files) || []).filter(function (f) { return /\.wav$/i.test(f.name); });
+    libMsg(files.length ? files.length + ' recording' + (files.length === 1 ? '' : 's') : '');
+    if (!files.length) { el.innerHTML = '<div class="ovEmpty">No unprocessed recordings.</div>'; return; }
+    files.forEach(function (f) { el.appendChild(buildLibRow(f)); });
+  }).catch(function () { libMsg('Could not load recordings', true); });
+}
+function buildLibRow(f) {
+  var row = document.createElement('div'); row.className = 'fileRow';
+  row.appendChild(fileMeta(f));
+  var play = rowBtn('Play');
+  play.onclick = function () {
+    if (libPlaying === f.name) {
+      if (libAudio.paused) libAudio.play().catch(function () { libMsg('Playback failed', true); });
+      else libAudio.pause();
+    } else {
+      libPlaying = f.name;
+      libAudio.src = '/meeting-audio?kind=unprocessed&name=' + encodeURIComponent(f.name);
+      libAudio.play().catch(function () { libPlaying = ''; libMsg('Playback failed', true); libSyncAll(); });
+    }
+    libSyncAll();
+  };
+  var del = rowBtn('Delete', 'danger');
+  var confirmT = null;
+  del.onclick = function () {
+    if (!del.classList.contains('confirm')) {   // two-tap confirm: first tap arms for 3 s
+      del.classList.add('confirm'); del.textContent = 'Confirm?';
+      confirmT = setTimeout(function () { del.classList.remove('confirm'); del.textContent = 'Delete'; }, 3000);
+      return;
+    }
+    clearTimeout(confirmT);
+    if (libPlaying === f.name) stopPlayback();
+    fetchJson('/meeting-file-delete?kind=unprocessed&name=' + encodeURIComponent(f.name))
+      .then(function (r) {
+        if (r && r.ok) { libMsg('Deleted ' + f.name); renderLibrary(); }
+        else libMsg((r && r.error) || 'Delete failed', true);
+      })
+      .catch(function () { libMsg('Delete failed', true); });
+  };
+  libSyncs.push(function () {
+    row.classList.toggle('playing', libPlaying === f.name);
+    play.textContent = (libPlaying === f.name && !libAudio.paused) ? 'Pause' : 'Play';
+  });
+  row.appendChild(play); row.appendChild(del);
+  return row;
+}
+$('btnUnprocessed').onclick = function () { $('libOverlay').classList.add('show'); renderLibrary(); };
+$('libClose').onclick = function () { $('libOverlay').classList.remove('show'); stopPlayback(); };
+
+// ---- Transcription: queue WAVs to the diarizer, watch honest progress (elapsed only) ----
+var txTimer = null, txState = null, txLastFinished = 0;
+var txRows = {};            // name -> { btn, sub }
+function txPoll() {
+  fetchJson('/meeting-transcribe/state').then(function (st) {
+    txState = st;
+    var n = $('txNote');
+    if (st.health === 'ok') { n.textContent = 'Server connected'; n.classList.remove('err'); }
+    else if (st.health === 'down') { n.textContent = 'Transcription server unreachable'; n.classList.add('err'); }
+    else { n.textContent = ''; n.classList.remove('err'); }
+    var s = $('txStatus');
+    var queued = (st.queue || []).length;
+    if (st.current) {
+      s.innerHTML = 'Transcribing ' + escHtml(st.current.name) + ' — <span class="t">' + fmtDur(Date.now() - st.current.startedAt) + '</span>' +
+        '&nbsp;&nbsp;(takes about ⅓ of the recording length)' + (queued ? ' · ' + queued + ' queued' : '');
+    } else {
+      s.textContent = queued ? queued + ' queued' : 'Idle — tap Transcribe on a recording below';
+    }
+    // a finished job moves files — refresh the list once per completion, not every second
+    var fin = (st.recent && st.recent.length) ? st.recent[0].finishedAt : 0;
+    if (fin && fin !== txLastFinished) { txLastFinished = fin; renderTxList(); }
+    else updateTxButtons();
+  }).catch(function () {});
+}
+function renderTxList() {
+  fetchJson('/meeting-files?kind=unprocessed').then(function (r) {
+    var el = $('txList'); el.innerHTML = ''; txRows = {};
+    var files = ((r && r.files) || []).filter(function (f) { return /\.wav$/i.test(f.name); });
+    if (!files.length) { el.innerHTML = '<div class="ovEmpty">Nothing to transcribe — new recordings land here.</div>'; return; }
+    files.forEach(function (f) {
+      var row = document.createElement('div'); row.className = 'fileRow';
+      var meta = fileMeta(f);
+      var btn = rowBtn('Transcribe', 'primary');
+      btn.onclick = function () {
+        btn.disabled = true;
+        fetchJson('/meeting-transcribe/start?name=' + encodeURIComponent(f.name))
+          .then(function (r2) {
+            if (r2 && r2.ok === false) { setSub(r2.error || 'Could not queue', true); btn.disabled = false; }
+            txPoll();
+          })
+          .catch(function () { setSub('Could not queue', true); btn.disabled = false; });
+      };
+      function setSub(msg, isError) { var s2 = meta.querySelector('.fsub'); s2.textContent = msg; s2.classList.toggle('err', !!isError); }
+      row.appendChild(meta); row.appendChild(btn);
+      txRows[f.name] = { btn: btn, sub: meta.querySelector('.fsub') };
+      el.appendChild(row);
+    });
+    updateTxButtons();
+  }).catch(function () {});
+}
+function updateTxButtons() {
+  if (!txState) return;
+  Object.keys(txRows).forEach(function (name) {
+    var r = txRows[name];
+    if (txState.current && txState.current.name === name) {
+      r.btn.textContent = 'Transcribing…'; r.btn.disabled = true; r.btn.classList.remove('primary');
+    } else if ((txState.queue || []).indexOf(name) >= 0) {
+      r.btn.textContent = 'Queued'; r.btn.disabled = true; r.btn.classList.remove('primary');
+    } else {
+      var err = (txState.recent || []).find(function (j) { return j.name === name && j.status === 'error'; });
+      r.btn.textContent = err ? 'Retry' : 'Transcribe'; r.btn.disabled = false; r.btn.classList.add('primary');
+      if (err) { r.sub.textContent = err.error || 'failed'; r.sub.classList.add('err'); }
+    }
+  });
+}
+$('btnTranscribe').onclick = function () {
+  $('txOverlay').classList.add('show');
+  renderTxList(); txPoll();
+  if (!txTimer) txTimer = setInterval(txPoll, 1000);
+};
+$('txClose').onclick = function () {
+  $('txOverlay').classList.remove('show');
+  clearInterval(txTimer); txTimer = null;
+};
+
+// ---- Analysis: run the AI over a transcript, read the result ----
+var anTimer = null, anState = null, anLastFinished = 0;
+var anRows = {};            // json name -> { btnA, btnV, sub, analyzed }
+function anPoll() {
+  fetchJson('/meeting-analyze/state').then(function (st) {
+    anState = st;
+    var n = $('anNote');
+    if (st.running) { n.textContent = 'Analyzing ' + st.name + ' — ' + fmtDur(Date.now() - st.startedAt); n.classList.remove('err'); }
+    else if (st.error) { n.textContent = st.error.name + ': ' + st.error.error; n.classList.add('err'); }
+    else { n.textContent = ''; n.classList.remove('err'); }
+    var fin = (st.lastDone && st.lastDone.finishedAt) || 0;
+    var finErr = (st.error && st.error.finishedAt) || 0;
+    var latest = Math.max(fin, finErr);
+    if (latest && latest !== anLastFinished) { anLastFinished = latest; renderAnList(); }
+    else updateAnButtons();
+  }).catch(function () {});
+}
+function renderAnList() {
+  fetchJson('/meeting-files?kind=processed').then(function (r) {
+    var el = $('anList'); el.innerHTML = ''; anRows = {};
+    var files = (r && r.files) || [];
+    var mdSet = {};
+    files.forEach(function (f) { if (/\.md$/i.test(f.name)) mdSet[f.name.replace(/\.md$/i, '')] = 1; });
+    var jsons = files.filter(function (f) { return /\.json$/i.test(f.name); });
+    if (!jsons.length) { el.innerHTML = '<div class="ovEmpty">No transcripts yet — transcribe a recording first.</div>'; return; }
+    jsons.forEach(function (f) {
+      var base = f.name.replace(/\.json$/i, '');
+      var analyzed = !!mdSet[base];
+      var row = document.createElement('div'); row.className = 'fileRow';
+      var meta = document.createElement('div'); meta.className = 'meta';
+      meta.innerHTML = '<div class="fname">' + escHtml(base) + '</div><div class="fsub">' + (analyzed ? 'Analyzed' : 'Not analyzed') + '</div>';
+      var btnA = rowBtn(analyzed ? 'Re-analyze' : 'Analyze', analyzed ? '' : 'primary');
+      btnA.onclick = function () {
+        btnA.disabled = true;
+        fetchJson('/meeting-analyze/start?name=' + encodeURIComponent(f.name))
+          .then(function (r2) {
+            if (r2 && r2.ok === false) {
+              var s2 = meta.querySelector('.fsub'); s2.textContent = r2.error || 'Could not start'; s2.classList.add('err');
+              btnA.disabled = false;
+            }
+            anPoll();
+          })
+          .catch(function () { btnA.disabled = false; });
+      };
+      var btnV = rowBtn('View');
+      btnV.disabled = !analyzed;
+      btnV.onclick = function () { openAnalysisView(base); };
+      row.appendChild(meta); row.appendChild(btnA); row.appendChild(btnV);
+      anRows[f.name] = { btnA: btnA, btnV: btnV, analyzed: analyzed };
+      el.appendChild(row);
+    });
+    updateAnButtons();
+  }).catch(function () {});
+}
+function updateAnButtons() {
+  if (!anState) return;
+  Object.keys(anRows).forEach(function (name) {
+    var r = anRows[name];
+    if (anState.running && anState.name === name) { r.btnA.textContent = 'Analyzing…'; r.btnA.disabled = true; }
+    else { r.btnA.textContent = r.analyzed ? 'Re-analyze' : 'Analyze'; r.btnA.disabled = !!anState.running; }
+  });
+}
+// Minimal markdown treatment (escape-first, matching the voice panel's renderContent discipline):
+// code fences become <pre>, #-headings and **bold** become <b>. Everything else is plain text.
+function renderMarkdown(src) {
+  var parts = String(src || '').split('```');
+  var out = '';
+  for (var i = 0; i < parts.length; i++) {
+    if (i % 2 === 1) { out += '<pre>' + escHtml(parts[i].replace(/^[a-zA-Z0-9]*\n/, '')) + '</pre>'; continue; }
+    out += escHtml(parts[i]).split('\n').map(function (l) {
+      if (/^#{1,6}\s/.test(l)) return '<b>' + l.replace(/^#{1,6}\s+/, '') + '</b>';
+      return l.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+    }).join('\n');
+  }
+  return out;
+}
+function openAnalysisView(base) {
+  fetchJson('/meeting-analysis?name=' + encodeURIComponent(base + '.json')).then(function (r) {
+    if (!r || !r.ok) { var n = $('anNote'); n.textContent = (r && r.error) || 'Could not load analysis'; n.classList.add('err'); return; }
+    $('anViewTitle').textContent = base;
+    $('anView').innerHTML = renderMarkdown(r.markdown);
+    $('anView').scrollTop = 0;
+    $('anViewOverlay').classList.add('show');
+  }).catch(function () {});
+}
+$('btnAnalysis').onclick = function () {
+  $('anOverlay').classList.add('show');
+  renderAnList(); anPoll();
+  if (!anTimer) anTimer = setInterval(anPoll, 1000);
+};
+$('anClose').onclick = function () {
+  $('anOverlay').classList.remove('show');
+  clearInterval(anTimer); anTimer = null;
+};
+$('anViewBack').onclick = function () { $('anViewOverlay').classList.remove('show'); };
+
+wireScrollButtons('libList', 'libUp', 'libDown');
+wireScrollButtons('txList', 'txUp', 'txDown');
+wireScrollButtons('anList', 'anUp', 'anDown');
+wireScrollButtons('anView', 'anViewUp', 'anViewDown');
 
 renderDeck();
 statusReady();

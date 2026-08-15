@@ -38,8 +38,32 @@ global shortcuts (`Ctrl+Shift+M` mute, `+A` accept with video, `+S` accept audio
 force-focused immediately before each keystroke to respond reliably — open-quake does
 this automatically, so it works even when Teams isn't the visible foreground app.
 
+## Recording & transcription
+
+The panel records meetings (one stereo WAV: your mic = left, everyone else = right) and
+can send them to a diarizing transcription server, then to an AI for meeting notes.
+
+- Recordings land in the **Unprocessed Recordings** folder (Settings → Meeting; default
+  `Documents\OpenQuake Meetings\unprocessed`).
+- **Unprocessed** (top row) — list, play, and delete recordings. Delete is two-tap
+  (`Delete` → `Confirm?`).
+- **Transcription** (top row) — sends a recording to the transcription server
+  (tts-sst or meeting-diarizer, Settings → Meeting → Transcription Server; protocol in
+  [meetings-api.md](meetings-api.md)). Jobs queue and run one at a time; a job takes
+  roughly ⅓ of the recording's length. On success the WAV moves to the **Processed
+  Recordings** folder with its transcript (`<name>.json`) beside it; on failure the WAV
+  stays put and the error shows on the row (tap **Retry**).
+- **Analysis** (top row) — runs the chosen **Analysis AI** (Settings → Meeting: Claude
+  or ChatGPT Codex — the locally installed CLI, using its own login) over a transcript
+  and files the result as `<name>.md` next to it. **View** renders it on the panel.
+- **Settings** (utility rail, replaces the old Full screen row) — picks the recording
+  microphone. It must be the same mic Teams is using; if you switch mics in Teams,
+  switch here too.
+
 ## Honest limits
 
 open-quake has no way to know whether a call is actually active — a tap just sends the
 configured keystroke. If nothing's on the call, nothing visibly happens. There's no
 on-panel call timer or participant list; this is a remote control, not a client.
+Transcription progress is elapsed time only — the diarizer reports no percentage, so
+none is shown.

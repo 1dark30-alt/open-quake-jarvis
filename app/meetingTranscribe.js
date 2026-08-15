@@ -1,0 +1,128 @@
+'use strict';
+
+// Diarized-transcription client (docs/meetings-api.md): uploads unprocessed WAVs to the
+// tts-sst / meeting-diarizer /transcribe endpoint, then files the results. One upload at a time
+// through a FIFO queue — the diarizer runs one job anyway, and a single long-lived socket beats
+// several 3600 s ones. On success the raw response JSON lands in the processed folder as
+// <basename>.json and the WAV moves in next to it; on any failure the WAV stays in unprocessed
+// and the error is kept for the panel to show.
+//
+// Everything external is injected (folders, base URL, fetch, fs, clock) so tests run with a fake
+// diarizer and temp dirs — same DI shape as officeActions/meetingRecorder.
+
+const path = require('path');
+const { safeName } = require('./meetingLibrary');
+
+const TIMEOUT_MS = 3600000;      // the API doc's own guidance: budget a full hour
+const HEALTH_TTL_MS = 10000;     // re-probe /health at most this often
+const HEALTH_TIMEOUT_MS = 3000;
+const RECENT_MAX = 20;
+
+function createMeetingTranscriber(deps) {
+  const fsMod = deps.fs || require('fs');
+  const fsp = fsMod.promises;
+  const fetchImpl = deps.fetchImpl || fetch;
+  const resolveFolders = deps.resolveFolders;   // () => { unprocessed, processed }
+  const resolveBaseUrl = deps.resolveBaseUrl;   // () => 'http://127.0.0.1:10301'
+  const log = deps.log || (() => {});
+  const now = deps.now || Date.now;
+  const timeoutMs = deps.timeoutMs || TIMEOUT_MS;
+  const healthTtlMs = deps.healthTtlMs === undefined ? HEALTH_TTL_MS : deps.healthTtlMs;
+
+  const queue = [];          // names waiting
+  let current = null;        // { name, startedAt } while a job runs
+  const recent = [];         // newest first: { name, status: 'done'|'error', error?, finishedAt }
+  let health = 'unknown';    // 'ok' | 'down' | 'unknown' — never fabricated, stays unknown until a probe answers
+  let healthAt = 0;
+  let healthBusy = false;
+
+  function probeHealth() {
+    if (healthBusy || (now() - healthAt) < healthTtlMs) return;
+    healthBusy = true;
+    fetchImpl(resolveBaseUrl() + '/health', { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) })
+      .then(r => { health = r.ok ? 'ok' : 'down'; })
+      .catch(() => { health = 'down'; })
+      .finally(() => { healthAt = now(); healthBusy = false; });
+  }
+
+  function getState() {
+    probeHealth();   // throttled; updates the cached value in the background
+    return {
+      ok: true,
+      health,
+      current: current ? { name: current.name, status: 'running', startedAt: current.startedAt } : null,
+      queue: queue.slice(),
+      recent: recent.slice(),
+    };
+  }
+
+  function enqueue(name) {
+    const n = safeName(name);
+    if (!n || !/\.wav$/i.test(n)) return { ok: false, error: 'bad name' };
+    if ((current && current.name === n) || queue.includes(n)) return { ok: false, error: 'already queued' };
+    const src = path.join(resolveFolders().unprocessed, n);
+    if (!fsMod.existsSync(src)) return { ok: false, error: 'not found' };
+    queue.push(n);
+    log('transcribe queued: ' + n);
+    pump();
+    return Object.assign({}, getState());
+  }
+
+  function finish(name, status, error) {
+    recent.unshift({ name, status, error: error || null, finishedAt: now() });
+    if (recent.length > RECENT_MAX) recent.length = RECENT_MAX;
+    current = null;
+    pump();
+  }
+
+  function pump() {
+    if (current || !queue.length) return;
+    const name = queue.shift();
+    current = { name, startedAt: now() };
+    runJob(name)
+      .then(() => { log('transcribe done: ' + name); finish(name, 'done'); })
+      .catch(e => {
+        const msg = (e && e.name === 'TimeoutError') ? 'timed out after ' + Math.round(timeoutMs / 60000) + ' min' : (e && e.message) || 'failed';
+        log('transcribe failed: ' + name + ' — ' + msg);
+        finish(name, 'error', msg);
+      });
+  }
+
+  async function runJob(name) {
+    const folders = resolveFolders();
+    const src = path.join(folders.unprocessed, name);
+    const buf = await fsp.readFile(src);
+    const form = new FormData();
+    form.append('audio', new Blob([buf]), name);
+    const res = await fetchImpl(resolveBaseUrl() + '/transcribe', {
+      method: 'POST', body: form, signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) {
+      let detail = '';
+      try { detail = (await res.json()).detail || ''; } catch (e) {}
+      throw new Error(detail || ('diarizer returned HTTP ' + res.status));
+    }
+    const result = await res.json();
+    if (!result || !Array.isArray(result.segments)) throw new Error('diarizer response missing segments');
+
+    // File the results: transcript JSON first (atomic tmp+rename, same discipline as saveConfig),
+    // then move the WAV. If the move fails the transcript still exists and the WAV stays visible
+    // in unprocessed — nothing is lost either way.
+    await fsp.mkdir(folders.processed, { recursive: true });
+    const jsonPath = path.join(folders.processed, name.replace(/\.wav$/i, '') + '.json');
+    const tmp = jsonPath + '.tmp';
+    await fsp.writeFile(tmp, JSON.stringify(result, null, 2));
+    await fsp.rename(tmp, jsonPath);
+    const dest = path.join(folders.processed, name);
+    try {
+      await fsp.rename(src, dest);
+    } catch (e) {   // cross-volume folders — copy+unlink
+      await fsp.copyFile(src, dest);
+      await fsp.unlink(src);
+    }
+  }
+
+  return { enqueue, getState };
+}
+
+module.exports = { createMeetingTranscriber };

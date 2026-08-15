@@ -4,8 +4,9 @@ The editor's **⚙ Settings** page (top-right) holds the app- and device-level o
 split into a **Software** tab (on launch, screen rotation), a **Hardware** tab (knob
 ring, microphone), a **Theme** tab (light/dark + accent color), an **Apps** tab
 (which apps appear in the picker), a **Drop-In Apps** tab (manage installed drop-ins),
-an **Auth** tab (Home Assistant credentials — see below), and a **Monitor** tab
-(Reserved Display protection and what the knob does in monitor mode):
+an **Auth** tab (Home Assistant credentials — see below), a **Meeting** tab (recording
+folders, mic, transcription — see below), and a **Monitor** tab (Reserved Display
+protection and what the knob does in monitor mode):
 
 - **On launch** — open the editor window, start **minimized** to the taskbar, or run
   **tray-only** (panel + system tray, no window). open-quake always sits in the system
@@ -83,6 +84,26 @@ an **Auth** tab (Home Assistant credentials — see below), and a **Monitor** ta
 
 The ring is driven over the device's QMK VIA lighting channel; settings are stored in
 `%APPDATA%\open-quake` and re-applied on connect.
+
+## Meeting
+
+Recording and transcription for the Meeting panel (details in [meeting.md](meeting.md)):
+
+- **Unprocessed Recordings** — where new recordings land. Blank =
+  `Documents\OpenQuake Meetings\unprocessed`. (Recordings from before v0.4.8 that sat in
+  the old default `Documents\OpenQuake Meetings` root are moved into `unprocessed\`
+  automatically at launch, only when this setting is blank.)
+- **Processed Recordings** — where transcribed recordings and their transcripts are
+  moved. Blank = `Documents\OpenQuake Meetings\processed`.
+- **Microphone** — the mic recorded as your channel. This must be the same mic you use
+  with Teams; it can also be changed from the panel's Settings row.
+- **Transcription Server** — the tts-sst / meeting-diarizer URL. Blank =
+  `http://127.0.0.1:10301/transcribe` (either the base URL or the full `/transcribe`
+  URL works). Wire protocol: [meetings-api.md](meetings-api.md).
+- **Analysis AI** — **Claude** or **ChatGPT Codex**: which locally installed CLI turns a
+  transcript into meeting notes. Uses that tool's own login; open-quake stores no API key.
+- **Auto-record / Call apps / Stop after silence / Echo-gate** — unchanged recording
+  behavior options.
 
 ## Auth (Home Assistant)
 

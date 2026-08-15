@@ -74,6 +74,7 @@ for (const appId of ['teams', 'outlook', 'word', 'excel', 'powerpoint', 'onenote
 
 let server = null, onMedia = null, onLaunch = null, getGridTiles = null, getAppConfig = null, getOfficeData = null, connectOffice = null, onOpenExternal = null, onMeetingAction = null, onOfficeAction = null, getShortcuts = null;
 let getMeetingState = null, onMeetingRecord = null;   // meeting recorder: panel poller + start/stop/setMic remote
+let onMeetingLibrary = null, resolveMeetingAudio = null;   // recordings library + transcription/analysis remotes
 let sysHtml = FALLBACK, musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK;
 // Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
 // Voice-panel app registry: appId (also the URL path prefix) -> { handlers, voiceToken, htmlFile,
@@ -433,6 +434,18 @@ function storeTtsText(text) {
   return id;
 }
 
+// Library route path -> op name passed to onMeetingLibrary (main.js). Kept as one table so the
+// handler branch, main.js dispatch, and the tests all agree on the surface.
+const MEETING_LIBRARY_OPS = {
+  '/meeting-files': 'files',
+  '/meeting-file-delete': 'delete',
+  '/meeting-transcribe/start': 'transcribeStart',
+  '/meeting-transcribe/state': 'transcribeState',
+  '/meeting-analyze/start': 'analyzeStart',
+  '/meeting-analyze/state': 'analyzeState',
+  '/meeting-analysis': 'analysisResult',
+};
+
 async function handler(req, res) {
   if (!hostOk(req)) { res.writeHead(403); res.end(); return; }   // foreign / DNS-rebinding Host -> reject (all routes)
   const full = req.url || '/';
@@ -641,6 +654,46 @@ async function handler(req, res) {
     }
     return json(res, result);
   }
+  // Recordings library + transcription/analysis remotes for the panel's Unprocessed / Transcription /
+  // Analysis overlays. All GET (matching /meeting-record above); filename validation happens in
+  // main.js/meetingLibrary — a rejected name comes back as {ok:false} or, for audio, a plain 404.
+  if (MEETING_LIBRARY_OPS[url]) {
+    const q = new URL(full, 'http://local').searchParams;
+    let result = { ok: false, error: 'not wired' };
+    if (typeof onMeetingLibrary === 'function') {
+      try { result = await onMeetingLibrary(MEETING_LIBRARY_OPS[url], { kind: q.get('kind') || '', name: q.get('name') || '' }); }
+      catch (e) { result = { ok: false, error: e.message || 'library request failed' }; }
+    }
+    return json(res, result);
+  }
+  // WAV playback for the panel's <audio>. Chromium seeks with single-range requests, so honor
+  // bytes=a-b with a 206; anything else gets the whole file.
+  if (url === '/meeting-audio') {
+    const q = new URL(full, 'http://local').searchParams;
+    const p = typeof resolveMeetingAudio === 'function' ? resolveMeetingAudio(q.get('kind') || '', q.get('name') || '') : null;
+    let st = null;
+    if (p) { try { st = fs.statSync(p); } catch (e) {} }
+    if (!st || !st.isFile()) { res.writeHead(404); res.end(); return; }
+    const h = headers('audio/wav');
+    h['Accept-Ranges'] = 'bytes';
+    const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+    if (m && (m[1] || m[2])) {
+      let first = m[1] ? parseInt(m[1], 10) : st.size - parseInt(m[2], 10);
+      let last = (m[1] && m[2]) ? parseInt(m[2], 10) : st.size - 1;
+      if (!Number.isFinite(first) || first < 0) first = 0;
+      if (!Number.isFinite(last) || last >= st.size) last = st.size - 1;
+      if (first > last || first >= st.size) { res.writeHead(416, { 'Content-Range': 'bytes */' + st.size }); res.end(); return; }
+      h['Content-Range'] = 'bytes ' + first + '-' + last + '/' + st.size;
+      h['Content-Length'] = last - first + 1;
+      res.writeHead(206, h);
+      fs.createReadStream(p, { start: first, end: last }).pipe(res);
+    } else {
+      h['Content-Length'] = st.size;
+      res.writeHead(200, h);
+      fs.createReadStream(p).pipe(res);
+    }
+    return;
+  }
   if (url.indexOf('/api/office/action/') === 0) {
     const match = /^\/api\/office\/action\/(app)\/([0-3])$/.exec(url)
       || /^\/api\/office\/action\/(shortcut)\/([0-3])\/([0-7])$/.exec(url);
@@ -678,6 +731,8 @@ function start(opts) {
   onMeetingAction = opts.onMeetingAction || null;
   getMeetingState = opts.getMeetingState || null;
   onMeetingRecord = opts.onMeetingRecord || null;
+  onMeetingLibrary = opts.onMeetingLibrary || null;
+  resolveMeetingAudio = opts.resolveMeetingAudio || null;
   onOfficeAction = opts.onOfficeAction || null;
   getShortcuts = opts.getShortcuts || null;
   voiceApps = {};
