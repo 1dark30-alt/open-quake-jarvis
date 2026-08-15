@@ -51,11 +51,21 @@ function setup(behavior, aiSetting, finders) {
   return { processed, spawns, an };
 }
 function settle() { return new Promise(r => setTimeout(r, 50)); }
+// Wait until the analyzer is fully idle (fixed delays are flaky when the suite runs files in parallel).
+async function drained(an, timeoutMs = 3000) {
+  const t0 = Date.now();
+  for (;;) {
+    const st = an.getState();
+    if (!st.running && !(st.queue || []).length) return;
+    if (Date.now() - t0 > timeoutMs) throw new Error('analyzer never drained');
+    await new Promise(r => setTimeout(r, 20));
+  }
+}
 
 test('claude route: -p, transcript on stdin, stdout filed as .md', async () => {
   const s = setup(() => ({ stdout: '# Meeting Analysis\nok', code: 0 }), 'claude');
   assert.equal(s.an.start('m.json').ok, true);
-  await settle();
+  await drained(s.an);
   assert.equal(s.spawns[0].cmd, 'claude.exe');
   assert.deepEqual(s.spawns[0].args, ['-p']);
   assert.match(s.spawns[0].stdin, /Meeting Analysis/);        // prompt text
@@ -70,7 +80,7 @@ test('claude route: -p, transcript on stdin, stdout filed as .md', async () => {
 test('codex route: exec with stdin marker + output-last-message file', async () => {
   const s = setup(() => ({ outFile: 'codex analysis', code: 0 }), 'codex');
   s.an.start('m.json');
-  await settle();
+  await drained(s.an);
   assert.equal(s.spawns[0].cmd, 'codex');
   assert.equal(s.spawns[0].args[0], 'exec');
   assert.equal(s.spawns[0].args[1], '-');
@@ -82,7 +92,7 @@ test('codex route: exec with stdin marker + output-last-message file', async () 
 test('missing CLI is a clear error; nothing spawned', async () => {
   const s = setup(() => ({ code: 0 }), 'claude', { claude: () => null });
   s.an.start('m.json');
-  await settle();
+  await drained(s.an);
   assert.equal(s.spawns.length, 0);
   assert.match(s.an.getState().error.error, /Claude CLI not found/);
   assert.equal(fs.existsSync(path.join(s.processed, 'm.md')), false);
@@ -91,7 +101,7 @@ test('missing CLI is a clear error; nothing spawned', async () => {
 test('nonzero exit surfaces stderr; no .md written', async () => {
   const s = setup(() => ({ stderr: 'boom', code: 2 }), 'claude');
   s.an.start('m.json');
-  await settle();
+  await drained(s.an);
   assert.match(s.an.getState().error.error, /exited 2: boom/);
   assert.equal(fs.existsSync(path.join(s.processed, 'm.md')), false);
 });
@@ -113,8 +123,7 @@ test('queue: second transcript waits its turn; rel-path names work', async () =>
   assert.equal(second.ok, true);                       // queued, not rejected
   assert.deepEqual(second.queue, ['2026/08/b.json']);
   assert.equal(an.start('2026/08/b.json').ok, false);  // dedupe
-  await settle();
-  await settle();
+  await drained(an);
   assert.equal(an.getState().running, false);
   assert.deepEqual(an.getState().queue, []);
   assert.equal(fs.existsSync(path.join(processed, 'a.md')), true);
@@ -146,7 +155,7 @@ test('one at a time; bad names and missing transcripts rejected up front', async
   assert.equal(an.start('m.json').ok, true);
   assert.equal(an.start('m.json').ok, false);       // busy
   release();
-  await settle();
+  await drained(an);
   assert.equal(an.getState().running, false);
 });
 
@@ -154,7 +163,7 @@ test('result() reads the filed markdown or reports not analyzed', async () => {
   const s = setup(() => ({ stdout: 'notes', code: 0 }), 'claude');
   assert.deepEqual(s.an.result('m.json'), { ok: false, error: 'not analyzed' });
   s.an.start('m.json');
-  await settle();
+  await drained(s.an);
   assert.deepEqual(s.an.result('m.json'), { ok: true, markdown: 'notes' });
   assert.equal(s.an.result('..\\m.json').ok, false);
 });
