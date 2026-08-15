@@ -37,8 +37,7 @@ It gives you:
 - **Bundled apps** — a Flip Clock, a **World Clock** (US time zones or a pick of world
   cities, digital or analog), a **[Music controller](docs/music.md)** (now-playing +
   transport + app grid), a **[Meeting](docs/meeting.md)** app (one-tap mute/video/accept
-  /decline/leave for Zoom and Teams, plus **meeting recording → speaker-diarized
-  transcription → AI meeting notes**, right from the panel), a **[System Monitor](docs/system-monitor.md)** (live
+  /decline/leave for Zoom and Teams, plus recording — see below), a **[System Monitor](docs/system-monitor.md)** (live
   CPU/GPU/RAM/disk/network/battery), an **[Open WebUI chat](docs/ai-chat.md)** you can
   **talk to by holding the knob**, a **[Microsoft 365](docs/apps.md)** panel (sign in with
   your Microsoft account for live profile, presence, and upcoming-calendar view, plus up to
@@ -46,6 +45,15 @@ It gives you:
   a real coding session on the panel — **[Claude Code](docs/claude-voice.md)** and
   **[Codex](docs/codex-voice.md)** — tap the knob to start/stop a hands-free conversation,
   with touch approvals and a full text transcript. → [Apps](docs/apps.md)
+- **Meeting recording → transcript → meeting notes** — the Meeting app **records your
+  calls** (your mic on the left channel, everyone else on the right; can auto-start with
+  Zoom/Teams calls and auto-stop on silence), then — right from the panel — sends
+  recordings to a **diarizing transcription server** ([tts-sst](https://github.com/TeeJS/tts-stt-windows)
+  or meeting-diarizer) for a **speaker-labeled transcript**, and turns transcripts into
+  **AI meeting notes** (summary, attendees, decisions, action items, cleaned transcript)
+  with your locally installed **Claude Code or Codex CLI** — no API key. Multi-select
+  queues, per-date or per-meeting folders, and an on-panel notes reader.
+  → [Meeting](docs/meeting.md)
 - **Theming** — a global **light / dark / system** mode and an **accent color** (with savable
   presets) that drives the panel, the bundled apps, and the knob's RGB ring; web dashboards
   follow the light/dark mode, and any page can override the theme in its Advanced settings.
