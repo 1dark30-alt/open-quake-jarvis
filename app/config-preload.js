@@ -40,6 +40,8 @@ contextBridge.exposeInMainWorld('openQuakeConfig', {
   listProjectDirs(root) { return ipcRenderer.invoke('listProjectDirs', root); },
   // Claude Code voice app: open the user-customizable panel prompt file in the default editor.
   editClaudeVoicePrompt() { return ipcRenderer.invoke('editClaudeVoicePrompt'); },
+  // Meeting analysis: open the user-customizable analysis prompt file in the default editor.
+  editMeetingAnalysisPrompt() { return ipcRenderer.invoke('editMeetingAnalysisPrompt'); },
   // Voice apps: resolved CLI path for the app's agent (claude/codex), or null if not installed.
   probeVoiceCli(appId) { return ipcRenderer.invoke('probeVoiceCli', appId); },
   pathToFileURL(filePath) {

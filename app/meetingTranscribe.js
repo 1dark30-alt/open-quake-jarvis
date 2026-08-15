@@ -147,7 +147,7 @@ function createMeetingTranscriber(deps) {
       destDir = path.join(destDir, String(d.getFullYear()), String(d.getMonth() + 1).padStart(2, '0'));
     }
     await fsp.mkdir(destDir, { recursive: true });
-    const jsonPath = path.join(destDir, name.replace(/\.wav$/i, '') + '.json');
+    const jsonPath = path.join(destDir, name.replace(/\.wav$/i, '') + '-diarizer-response.json');
     const tmp = jsonPath + '.tmp';
     await fsp.writeFile(tmp, JSON.stringify(result, null, 2));
     await fsp.rename(tmp, jsonPath);

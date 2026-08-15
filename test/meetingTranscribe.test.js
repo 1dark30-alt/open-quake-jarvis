@@ -59,7 +59,7 @@ test('success: JSON transcript written to processed, WAV moved, FIFO order kept'
   for (const base of ['a', 'b']) {
     assert.equal(fs.existsSync(path.join(s.unprocessed, base + '.wav')), false, base + ' should have moved');
     assert.equal(fs.existsSync(path.join(s.processed, base + '.wav')), true);
-    const j = JSON.parse(fs.readFileSync(path.join(s.processed, base + '.json'), 'utf8'));
+    const j = JSON.parse(fs.readFileSync(path.join(s.processed, base + '-diarizer-response.json'), 'utf8'));
     assert.deepEqual(j.segments, GOOD_RESPONSE.segments);
   }
 });
@@ -138,7 +138,7 @@ test('organizeByDate files results into YYYY/MM under processed', async () => {
   tx.enqueue('m.wav');
   await drained(tx);
   assert.equal(fs.existsSync(path.join(processed, '2026', '08', 'm.wav')), true);
-  assert.equal(fs.existsSync(path.join(processed, '2026', '08', 'm.json')), true);
+  assert.equal(fs.existsSync(path.join(processed, '2026', '08', 'm-diarizer-response.json')), true);
   assert.equal(fs.existsSync(path.join(unprocessed, 'm.wav')), false);
 });
 

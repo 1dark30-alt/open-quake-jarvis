@@ -492,7 +492,9 @@ function renderAnList() {
     selReset(anSel, jsons.map(function (f) { return f.name; }));
     if (!jsons.length) { el.innerHTML = '<div class="ovEmpty">No transcripts yet — transcribe a recording first.</div>'; selSync(anSel); return; }
     jsons.forEach(function (f) {
-      var base = f.name.replace(/\.json$/i, '');
+      // Raw transcripts are <base>-diarizer-response.json (legacy plain .json accepted);
+      // the analysis is <base>.md, so match/display on the stripped base.
+      var base = f.name.replace(/(-diarizer-response)?\.json$/i, '');
       var rel = splitRel(base);
       var analyzed = !!mdSet[base];
       var row = document.createElement('div'); row.className = 'fileRow';
@@ -514,7 +516,7 @@ function renderAnList() {
       };
       var btnV = rowBtn('View');
       btnV.disabled = !analyzed;
-      btnV.onclick = function () { openAnalysisView(base); };
+      btnV.onclick = function () { openAnalysisView(f.name, rel.base); };
       row.appendChild(meta); row.appendChild(btnA); row.appendChild(btnV);
       anRows[f.name] = { btnA: btnA, btnV: btnV, analyzed: analyzed };
       el.appendChild(row);
@@ -555,10 +557,10 @@ function renderMarkdown(src) {
   }
   return out;
 }
-function openAnalysisView(base) {
-  fetchJson('/meeting-analysis?name=' + encodeURIComponent(base + '.json')).then(function (r) {
+function openAnalysisView(jsonName, title) {
+  fetchJson('/meeting-analysis?name=' + encodeURIComponent(jsonName)).then(function (r) {
     if (!r || !r.ok) { var n = $('anNote'); n.textContent = (r && r.error) || 'Could not load analysis'; n.classList.add('err'); return; }
-    $('anViewTitle').textContent = splitRel(base).base;
+    $('anViewTitle').textContent = title;
     $('anView').innerHTML = renderMarkdown(r.markdown);
     $('anView').scrollTop = 0;
     $('anViewOverlay').classList.add('show');

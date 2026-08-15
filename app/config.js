@@ -2022,6 +2022,9 @@
           <option value="codex" ${me.analysisAi === 'codex' ? 'selected' : ''}>ChatGPT Codex</option>
         </select></div>
       <p class="hint">Which locally installed CLI turns a transcript into meeting notes on the Analysis screen. Uses that tool's own login — no API key needed.</p>
+      <div class="row" style="margin-top:12px"><label>Analysis prompt</label>
+        <button id="meEditPrompt" type="button">Edit prompt file</button></div>
+      <p class="hint">The instructions the AI follows when analyzing a transcript (meeting-analysis-prompt.md, opens in your default editor). Changes apply to the next analysis.</p>
 
       <p class="sectitle" style="margin-top:22px">Auto-record</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meAuto" ${me.autoRecord ? 'checked' : ''}> Start recording automatically when a call begins</label></div>
@@ -2431,6 +2434,7 @@
         if (p) { document.getElementById('meProcessed').value = p; saveMe({ processedFolder: p }); }
       };
       document.getElementById('meByDate').onchange = e => saveMe({ processedByDate: e.target.checked });
+      document.getElementById('meEditPrompt').onclick = () => configApi.editMeetingAnalysisPrompt();
       document.getElementById('meTransUrl').oninput = e => saveMe({ transcribeUrl: e.target.value.trim() });
       document.getElementById('meAnalysisAi').onchange = e => saveMe({ analysisAi: e.target.value });
       document.getElementById('meAuto').onchange = e => saveMe({ autoRecord: e.target.checked });

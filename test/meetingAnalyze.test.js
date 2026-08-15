@@ -131,6 +131,21 @@ test('queue: second transcript waits its turn; rel-path names work', async () =>
   assert.deepEqual(an.result('2026/08/b.json'), { ok: true, markdown: 'notes' });
 });
 
+test('suffixed transcript names produce clean .md names', async () => {
+  const processed = fs.mkdtempSync(path.join(os.tmpdir(), 'oqx-ansuf-'));
+  fs.writeFileSync(path.join(processed, 'meeting-diarizer-response.json'), '{}');
+  const an = createMeetingAnalyzer({
+    resolveFolders: () => ({ unprocessed: processed, processed }),
+    resolveAi: () => 'claude',
+    findClaudeExe: () => 'claude.exe', findCodexExe: () => null,
+    spawn: fakeSpawnFactory([], () => ({ stdout: 'notes', code: 0 })),
+  });
+  an.start('meeting-diarizer-response.json');
+  await drained(an);
+  assert.equal(fs.existsSync(path.join(processed, 'meeting.md')), true);   // suffix stripped
+  assert.deepEqual(an.result('meeting-diarizer-response.json'), { ok: true, markdown: 'notes' });
+});
+
 test('one at a time; bad names and missing transcripts rejected up front', async () => {
   let release;
   const gate = new Promise(r => { release = r; });

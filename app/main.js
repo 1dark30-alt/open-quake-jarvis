@@ -1212,6 +1212,14 @@ function resolveMeetingFolders() {
     processed: String(m.processedFolder || '').trim() || defaultProcessedFolder(),
   };
 }
+// Analysis prompt: the user-editable copy lives in userData, seeded from the bundled template on
+// first use. The analyzer prefers it whenever it exists.
+function userMeetingPromptPath() { return path.join(app.getPath('userData'), 'meeting-analysis-prompt.md'); }
+function ensureMeetingPromptFile() {
+  const p = userMeetingPromptPath();
+  if (!fs.existsSync(p)) fs.copyFileSync(path.join(__dirname, 'meeting-analysis-prompt.md'), p);
+  return p;
+}
 // Accept the base URL, the full /transcribe URL, or a bare host:port; always return the base.
 function resolveTranscribeBaseUrl() {
   let u = String(meetingSettings().transcribeUrl || '').trim() || 'http://127.0.0.1:10301';
@@ -1925,6 +1933,7 @@ app.whenReady().then(async () => {
       meetingAnalyzer = require('./meetingAnalyze').createMeetingAnalyzer({
         resolveFolders: resolveMeetingFolders,
         resolveAi: () => meetingSettings().analysisAi,
+        promptPath: () => fs.existsSync(userMeetingPromptPath()) ? userMeetingPromptPath() : path.join(__dirname, 'meeting-analysis-prompt.md'),
         log: msg => console.log('[meeting] ' + msg),
       });
     } catch (e) { console.log('[meeting] transcription services failed to start:', e.message); }
@@ -2062,6 +2071,13 @@ app.whenReady().then(async () => {
     if (!isFrom(e, configWin)) return null;
     try { const p = claudeVoiceHost.adapter.ensureUserPromptFile(); shell.openPath(p); return p; }
     catch (err) { claudeVoiceLog('panel prompt open failed: ' + err.message); return null; }
+  });
+  // Same pattern for the meeting-analysis prompt: the editable copy lives in userData (the bundled
+  // template inside the packaged app can't be edited), seeded on first use.
+  ipcMain.handle('editMeetingAnalysisPrompt', (e) => {
+    if (!isFrom(e, configWin)) return null;
+    try { const p = ensureMeetingPromptFile(); shell.openPath(p); return p; }
+    catch (err) { console.log('[meeting] prompt open failed: ' + err.message); return null; }
   });
   ipcMain.handle('fetchHaEntityState', (e, entityId) => {
     if (!isFrom(e, configWin)) return null;

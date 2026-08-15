@@ -15,6 +15,13 @@ const { safeRelPath } = require('./meetingLibrary');
 
 const ANALYZE_TIMEOUT_MS = 10 * 60 * 1000;   // generous; a transcript is small but CLIs cold-start
 
+// Analysis markdown lives beside the transcript, named after the recording: the raw diarizer
+// response is <base>-diarizer-response.json (legacy plain <base>.json still accepted), the
+// analysis is <base>.md.
+function mdPathFor(jsonPath) {
+  return jsonPath.replace(/-diarizer-response\.json$/i, '.json').replace(/\.json$/i, '.md');
+}
+
 function createMeetingAnalyzer(deps) {
   const fsMod = deps.fs || require('fs');
   const fsp = fsMod.promises;
@@ -23,7 +30,10 @@ function createMeetingAnalyzer(deps) {
   const resolveAi = deps.resolveAi;                  // () => 'claude' | 'codex'
   const findClaudeExe = deps.findClaudeExe || require('./claudevoice-session').findClaudeExe;
   const findCodexExe = deps.findCodexExe || require('./codexvoice-session').findCodexExe;
+  // promptPath may be a function (main.js prefers the user's editable copy in userData over the
+  // bundled template) or a fixed string (tests).
   const promptPath = deps.promptPath || path.join(__dirname, 'meeting-analysis-prompt.md');
+  const resolvePromptPath = () => (typeof promptPath === 'function' ? promptPath() : promptPath);
   const log = deps.log || (() => {});
   const now = deps.now || Date.now;
   const timeoutMs = deps.timeoutMs || ANALYZE_TIMEOUT_MS;
@@ -63,14 +73,14 @@ function createMeetingAnalyzer(deps) {
     const ai = resolveAi() === 'codex' ? 'codex' : 'claude';
     running = { name: n, ai, startedAt: now() };
     log('analysis started (' + ai + '): ' + n);
-    runJob(n, ai, jsonPath, jsonPath.replace(/\.json$/i, '') + '.md')
+    runJob(n, ai, jsonPath, mdPathFor(jsonPath))
       .then(() => { lastDone = { name: n, finishedAt: now() }; lastError = null; log('analysis done: ' + n); })
       .catch(e => { lastError = { name: n, error: (e && e.message) || 'failed', finishedAt: now() }; log('analysis failed: ' + n + ' — ' + lastError.error); })
       .finally(() => { running = null; pump(); });
   }
 
   async function runJob(name, ai, jsonPath, mdPath) {
-    const prompt = await fsp.readFile(promptPath, 'utf8');
+    const prompt = await fsp.readFile(resolvePromptPath(), 'utf8');
     const transcript = await fsp.readFile(jsonPath, 'utf8');
     const input = prompt + '\n\nDiarizer JSON follows:\n\n' + transcript;
     const markdown = ai === 'codex' ? await runCodex(input) : await runClaude(input);
@@ -131,7 +141,7 @@ function createMeetingAnalyzer(deps) {
   function result(name) {
     const n = safeRelPath(name);
     if (!n) return { ok: false, error: 'bad name' };
-    const mdPath = path.join(resolveFolders().processed, n.replace(/\.(json|md)$/i, '') + '.md');
+    const mdPath = mdPathFor(path.join(resolveFolders().processed, n).replace(/\.md$/i, '.json'));
     try { return { ok: true, markdown: fsMod.readFileSync(mdPath, 'utf8') }; }
     catch (e) { return { ok: false, error: 'not analyzed' }; }
   }
