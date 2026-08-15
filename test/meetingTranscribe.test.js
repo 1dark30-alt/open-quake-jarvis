@@ -11,7 +11,7 @@ const { createMeetingTranscriber } = require('../app/meetingTranscribe');
 
 const GOOD_RESPONSE = { speaker_report: { speaker_count: 1 }, segments: [{ speaker: 'T', start: 0, end: 1, text: 'hi' }] };
 
-function setup(fetchImpl) {
+function setup(fetchImpl, httpPost) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oqx-tx-'));
   const unprocessed = path.join(root, 'unprocessed');
   const processed = path.join(root, 'processed');
@@ -19,7 +19,8 @@ function setup(fetchImpl) {
   const tx = createMeetingTranscriber({
     resolveFolders: () => ({ unprocessed, processed }),
     resolveBaseUrl: () => 'http://fake:1',
-    fetchImpl,
+    fetchImpl: fetchImpl || (async () => jsonResponse(true, {})),   // health probe
+    httpPost: httpPost || (async () => ({ status: 200, text: JSON.stringify(GOOD_RESPONSE) })),
     healthTtlMs: 0,
   });
   return { root, unprocessed, processed, tx };
@@ -43,10 +44,9 @@ async function drained(tx, timeoutMs = 3000) {
 
 test('success: JSON transcript written to processed, WAV moved, FIFO order kept', async () => {
   const uploads = [];
-  const s = setup(async (url, opts) => {
-    if (url.endsWith('/health')) return jsonResponse(true, { status: 'ok' });
-    uploads.push(String(url));
-    return jsonResponse(true, GOOD_RESPONSE);
+  const s = setup(null, async (url, filename, buf) => {
+    uploads.push([String(url), filename, buf.length]);
+    return { status: 200, text: JSON.stringify(GOOD_RESPONSE) };
   });
   addWav(s.unprocessed, 'a.wav');
   addWav(s.unprocessed, 'b.wav');
@@ -66,11 +66,10 @@ test('success: JSON transcript written to processed, WAV moved, FIFO order kept'
 
 test('diarizer {detail} error: WAV stays in unprocessed, error recorded, queue continues', async () => {
   let call = 0;
-  const s = setup(async (url) => {
-    if (url.endsWith('/health')) return jsonResponse(true, {});
+  const s = setup(null, async () => {
     call++;
-    if (call === 1) return jsonResponse(false, { detail: 'unsupported audio' }, 400);
-    return jsonResponse(true, GOOD_RESPONSE);
+    if (call === 1) return { status: 400, text: JSON.stringify({ detail: 'unsupported audio' }) };
+    return { status: 200, text: JSON.stringify(GOOD_RESPONSE) };
   });
   addWav(s.unprocessed, 'bad.wav');
   addWav(s.unprocessed, 'good.wav');
@@ -87,10 +86,8 @@ test('diarizer {detail} error: WAV stays in unprocessed, error recorded, queue c
 });
 
 test('network failure surfaces as an error state', async () => {
-  const s = setup(async (url) => {
-    if (url.endsWith('/health')) throw new Error('refused');
-    throw new Error('connect ECONNREFUSED');
-  });
+  const s = setup(async () => { throw new Error('refused'); },
+    async () => { throw new Error('connect ECONNREFUSED'); });
   addWav(s.unprocessed, 'x.wav');
   s.tx.enqueue('x.wav');
   await drained(s.tx);
@@ -101,10 +98,9 @@ test('network failure surfaces as an error state', async () => {
 test('enqueue validates names, requires the file, and dedupes against queue + current', async () => {
   let release;
   const gate = new Promise(r => { release = r; });
-  const s = setup(async (url) => {
-    if (url.endsWith('/health')) return jsonResponse(true, {});
+  const s = setup(null, async () => {
     await gate;                                   // hold the first job "running"
-    return jsonResponse(true, GOOD_RESPONSE);
+    return { status: 200, text: JSON.stringify(GOOD_RESPONSE) };
   });
   addWav(s.unprocessed, 'a.wav');
   addWav(s.unprocessed, 'b.wav');
@@ -134,7 +130,8 @@ test('organizeByDate files results into YYYY/MM under processed', async () => {
     resolveBaseUrl: () => 'http://fake:1',
     organizeByDate: () => true,
     now: () => fixedNow,
-    fetchImpl: async url => url.endsWith('/health') ? jsonResponse(true, {}) : jsonResponse(true, GOOD_RESPONSE),
+    fetchImpl: async () => jsonResponse(true, {}),
+    httpPost: async () => ({ status: 200, text: JSON.stringify(GOOD_RESPONSE) }),
     healthTtlMs: 0,
   });
   addWav(unprocessed, 'm.wav');
@@ -147,9 +144,9 @@ test('organizeByDate files results into YYYY/MM under processed', async () => {
 
 test('health is unknown until a probe answers, then reflects reality', async () => {
   let healthy = false;
-  const s = setup(async (url) => {
-    if (url.endsWith('/health')) { if (!healthy) throw new Error('refused'); return jsonResponse(true, { status: 'ok' }); }
-    return jsonResponse(true, GOOD_RESPONSE);
+  const s = setup(async () => {
+    if (!healthy) throw new Error('refused');
+    return jsonResponse(true, { status: 'ok' });
   });
   assert.equal(s.tx.getState().health, 'unknown');   // triggers the first probe
   await settle();

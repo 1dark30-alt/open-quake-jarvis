@@ -11,6 +11,8 @@
 // diarizer and temp dirs — same DI shape as officeActions/meetingRecorder.
 
 const path = require('path');
+const http = require('http');
+const https = require('https');
 const { safeName } = require('./meetingLibrary');
 
 const TIMEOUT_MS = 3600000;      // the API doc's own guidance: budget a full hour
@@ -18,10 +20,42 @@ const HEALTH_TTL_MS = 10000;     // re-probe /health at most this often
 const HEALTH_TIMEOUT_MS = 3000;
 const RECENT_MAX = 20;
 
+// The upload deliberately does NOT use global fetch: undici enforces a hidden ~300 s
+// headers timeout regardless of the abort signal, which killed any transcription needing
+// more than 5 minutes of processing ("fetch failed" partway through). Raw http.request has
+// no such ceiling — `timeout` below is socket INACTIVITY, so it only fires if the server
+// goes silent for the full hour.
+function httpPostWav(url, filename, buf, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let u;
+    try { u = new URL(url); } catch (e) { return reject(new Error('bad server URL: ' + url)); }
+    const mod = u.protocol === 'https:' ? https : http;
+    const boundary = '----OpenQuakeMeeting' + Math.random().toString(36).slice(2);
+    const head = Buffer.from(
+      '--' + boundary + '\r\nContent-Disposition: form-data; name="audio"; filename="' + filename.replace(/"/g, '') + '"\r\n' +
+      'Content-Type: application/octet-stream\r\n\r\n');
+    const tail = Buffer.from('\r\n--' + boundary + '--\r\n');
+    const body = Buffer.concat([head, buf, tail]);
+    const req = mod.request({
+      hostname: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80), path: u.pathname,
+      method: 'POST', timeout: timeoutMs,
+      headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary, 'Content-Length': body.length },
+    }, res => {
+      let out = '';
+      res.on('data', d => { out += d; });
+      res.on('end', () => resolve({ status: res.statusCode, text: out }));
+    });
+    req.on('timeout', () => req.destroy(new Error('no response after ' + Math.round(timeoutMs / 60000) + ' min')));
+    req.on('error', e => reject(new Error(e.message || 'upload failed')));
+    req.end(body);
+  });
+}
+
 function createMeetingTranscriber(deps) {
   const fsMod = deps.fs || require('fs');
   const fsp = fsMod.promises;
-  const fetchImpl = deps.fetchImpl || fetch;
+  const fetchImpl = deps.fetchImpl || fetch;         // health probe only (short, cheap)
+  const httpPost = deps.httpPost || httpPostWav;     // the long-running upload
   const resolveFolders = deps.resolveFolders;   // () => { unprocessed, processed }
   const resolveBaseUrl = deps.resolveBaseUrl;   // () => 'http://127.0.0.1:10301'
   const organizeByDate = deps.organizeByDate || (() => false);   // () => bool: file results into YYYY/MM subfolders
@@ -93,17 +127,14 @@ function createMeetingTranscriber(deps) {
     const folders = resolveFolders();
     const src = path.join(folders.unprocessed, name);
     const buf = await fsp.readFile(src);
-    const form = new FormData();
-    form.append('audio', new Blob([buf]), name);
-    const res = await fetchImpl(resolveBaseUrl() + '/transcribe', {
-      method: 'POST', body: form, signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!res.ok) {
+    const res = await httpPost(resolveBaseUrl() + '/transcribe', name, buf, timeoutMs);
+    if (res.status !== 200) {
       let detail = '';
-      try { detail = (await res.json()).detail || ''; } catch (e) {}
+      try { detail = JSON.parse(res.text).detail || ''; } catch (e) {}
       throw new Error(detail || ('diarizer returned HTTP ' + res.status));
     }
-    const result = await res.json();
+    let result = null;
+    try { result = JSON.parse(res.text); } catch (e) {}
     if (!result || !Array.isArray(result.segments)) throw new Error('diarizer response missing segments');
 
     // File the results: transcript JSON first (atomic tmp+rename, same discipline as saveConfig),
