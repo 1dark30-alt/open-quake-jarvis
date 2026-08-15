@@ -68,6 +68,7 @@ const APPS_DIR = path.join(__dirname, '..', 'apps').replace('app.asar', 'app.asa
 const SMTC_CTL_EXE = path.join(__dirname, 'native', 'smtc-control.exe').replace('app.asar', 'app.asar.unpacked'); // SMTC transport helper (Windows)
 const MIC_MONITOR_EXE = path.join(__dirname, 'native', 'mic-session-monitor.exe').replace('app.asar', 'app.asar.unpacked'); // app-scoped mic-in-use monitor (Windows)
 const SYSVOL_EXE = path.join(__dirname, 'native', 'sysvolume.exe').replace('app.asar', 'app.asar.unpacked'); // reads the real system volume for the meeting rail
+const OUTLOOK_MEETING_EXE = path.join(__dirname, 'native', 'outlook-meeting.exe').replace('app.asar', 'app.asar.unpacked'); // pulls current-meeting info from classic Outlook over COM
 const LED_DEFAULT = { effect: 1, brightness: 200, speed: 128, hue: 128, sat: 255 }; // ring lighting fallback (effect 1 = Solid Color)
 const THEME_DEFAULT = { appearance: 'system', accent: '#7CFFB2', presets: ['#7CFFB2', '#38B6FF', '#FF4040', '#FFB000'] };
 const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false, reservedDisplay: false, lighting: Object.assign({}, LED_DEFAULT), theme: Object.assign({}, THEME_DEFAULT) };
@@ -1200,7 +1201,7 @@ async function onMeetingActionRequest(platform, action) {
 // Settings live under config.settings.meeting (global, like config.settings.monitor) so auto-record
 // works regardless of which app the panel is showing — the meeting page's per-grid options only
 // exist while it's the active app, which is useless for background recording.
-const MEETING_DEFAULTS = { folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe' };
+const MEETING_DEFAULTS = { folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:' };
 function meetingSettings() { return Object.assign({}, MEETING_DEFAULTS, (config.settings || {}).meeting || {}); }
 function defaultMeetingFolder() { return path.join(app.getPath('documents'), 'OpenQuake Meetings', 'unprocessed'); }
 function defaultProcessedFolder() { return path.join(app.getPath('documents'), 'OpenQuake Meetings', 'processed'); }
@@ -1290,6 +1291,30 @@ function setMeetingMic(label) {
   config.settings.meeting.micDevice = label || '';
   saveConfig();
   if (meetingRecorder) meetingRecorder.setMic(label || '');
+}
+
+// Outlook meeting info: when a recording starts (and the Advanced setting is on), ask the
+// outlook-meeting helper which appointment matches "now" and save its details as
+// <recording>.json beside the WAV. Ad-hoc calls with nothing scheduled write nothing; any
+// failure is logged and never touches the recording itself.
+function writeOutlookMeetingInfo(wavName) {   // wavName = basename (recorder state exposes no path)
+  const m = meetingSettings();
+  if (!m.outlookEnabled || !m.outlookAccount) return;
+  if (!fs.existsSync(OUTLOOK_MEETING_EXE)) { console.log('[meeting] outlook-meeting.exe missing — meeting info skipped'); return; }
+  execFile(OUTLOOK_MEETING_EXE, ['meeting', m.outlookAccount, m.outlookCalendar || 'Calendar', m.outlookSkipPrefixes || ''],
+    { timeout: 30000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+      try {
+        if (err) { console.log('[meeting] outlook lookup failed: ' + err.message); return; }
+        const info = JSON.parse(String(stdout));
+        if (info && info.ok === false) {
+          console.log('[meeting] outlook: ' + (info.none ? 'no meeting scheduled now — no info file' : info.error));
+          return;
+        }
+        const dest = path.join(resolveMeetingFolders().unprocessed, wavName.replace(/\.wav$/i, '') + '.json');
+        fs.writeFileSync(dest, JSON.stringify(info, null, 2));
+        console.log('[meeting] meeting info saved: ' + path.basename(dest) + ' (' + (info.subject || '') + ')');
+      } catch (e) { console.log('[meeting] outlook info write failed: ' + e.message); }
+    });
 }
 
 // Panel remote for the recordings library + transcription + analysis screens (Unprocessed /
@@ -1910,6 +1935,13 @@ app.whenReady().then(async () => {
         return { meetingFolder: m.folder, micDevice: m.micDevice, echoGate: !!m.echoGate, silenceStopMin: m.silenceStopMin, autoRecord: !!m.autoRecord };
       },
       defaultFolder: defaultMeetingFolder,
+      onState: (() => {   // fires on every state change; fetch Outlook info on the idle->recording edge
+        let wasRecording = false;
+        return st => {
+          if (st.recording && !wasRecording && st.file) { try { writeOutlookMeetingInfo(st.file); } catch (e) {} }
+          wasRecording = !!st.recording;
+        };
+      })(),
       log: msg => console.log('[meeting] ' + msg),
     });
     meetingRecorder.ensureWindow();   // arm the hidden window so a call can start recording instantly
@@ -2078,6 +2110,18 @@ app.whenReady().then(async () => {
     if (!isFrom(e, configWin)) return null;
     try { const p = ensureMeetingPromptFile(); shell.openPath(p); return p; }
     catch (err) { console.log('[meeting] prompt open failed: ' + err.message); return null; }
+  });
+  // "Check Connection" on the Meeting tab: enumerate the running classic Outlook's accounts and
+  // their calendar folders via the COM helper, so the account dropdown offers real choices.
+  ipcMain.handle('checkOutlookMeetings', (e) => {
+    if (!isFrom(e, configWin)) return null;
+    return new Promise(resolve => {
+      if (!fs.existsSync(OUTLOOK_MEETING_EXE)) return resolve({ ok: false, error: 'outlook-meeting.exe missing (native helpers not built)' });
+      execFile(OUTLOOK_MEETING_EXE, ['check'], { timeout: 20000, windowsHide: true, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+        if (err) return resolve({ ok: false, error: err.message });
+        try { resolve(JSON.parse(String(stdout))); } catch (e2) { resolve({ ok: false, error: 'helper returned unreadable output' }); }
+      });
+    });
   });
   ipcMain.handle('fetchHaEntityState', (e, entityId) => {
     if (!isFrom(e, configWin)) return null;

@@ -1874,7 +1874,7 @@
     const th = currentTheme();
     // Meeting recording settings (config.settings.meeting) — global so auto-record works regardless of
     // which app the panel is showing. Same shape as MEETING_DEFAULTS in main.js.
-    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe' }, (config.settings || {}).meeting || {});
+    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:' }, (config.settings || {}).meeting || {});
     const me = currentMe();
     // ledState = the device's live lighting (loaded when the page opens); fall back to saved config / defaults.
     const L = Object.assign({}, LED_DEFAULT, (config.settings || {}).lighting || {}, ledState || {});
@@ -2038,7 +2038,21 @@
 
       <p class="sectitle" style="margin-top:22px">Capture</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meEcho" ${me.echoGate ? 'checked' : ''}> Echo-gate your microphone</label></div>
-      <p class="hint">Mutes your mic in the recording while the speakers are loud (and you're not on headphones), to stop the far end bleeding back in. Off = faithful capture of everything you say, even when others are talking.</p>`;
+      <p class="hint">Mutes your mic in the recording while the speakers are loud (and you're not on headphones), to stop the far end bleeding back in. Off = faithful capture of everything you say, even when others are talking.</p>
+
+      <p class="sectitle" style="margin-top:22px">Advanced</p>
+      <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meOutlook" ${me.outlookEnabled ? 'checked' : ''}> Pull meeting information from Classic Outlook</label></div>
+      <p class="hint">When a recording starts, looks up the matching appointment in the running classic Outlook (COM, your signed-in profile — no tokens or app registration) and saves its details (subject, attendees, organizer, body…) as <b>&lt;recording&gt;.json</b> beside the WAV; the file travels with the recording through transcription. Ad-hoc calls with nothing on the calendar save nothing.</p>
+      <div class="row"><label>Account</label>
+        <select id="meOutAcct" style="flex:1">${me.outlookAccount ? `<option value="${esc(me.outlookAccount)}" selected>${esc(me.outlookAccount)}</option>` : '<option value="">— click Check Connection —</option>'}</select>
+        <button id="meOutCheck" type="button">Check Connection</button></div>
+      <p class="hint" id="meOutMsg"></p>
+      <div class="row"><label>Calendar folder</label>
+        <input id="meOutCal" value="${esc(me.outlookCalendar)}" style="flex:1"></div>
+      <p class="hint">The calendar folder inside that account — almost always "Calendar".</p>
+      <div class="row"><label>Skip prefixes</label>
+        <input id="meOutSkip" value="${esc(me.outlookSkipPrefixes)}" style="flex:1"></div>
+      <p class="hint">Comma-separated subject prefixes to ignore (e.g. Canceled:, Focus time, Lunch) — keeps calendar entries that aren't real meetings out of the lookup.</p>`;
 
     // Theme tab — global light/dark + accent color
     const thHtml = `
@@ -2435,6 +2449,37 @@
       };
       document.getElementById('meByDate').onchange = e => saveMe({ processedByDate: e.target.checked });
       document.getElementById('meEditPrompt').onclick = () => configApi.editMeetingAnalysisPrompt();
+      document.getElementById('meOutlook').onchange = e => saveMe({ outlookEnabled: e.target.checked });
+      document.getElementById('meOutAcct').onchange = e => saveMe({ outlookAccount: e.target.value });
+      document.getElementById('meOutCal').oninput = e => saveMe({ outlookCalendar: e.target.value.trim() });
+      document.getElementById('meOutSkip').oninput = e => saveMe({ outlookSkipPrefixes: e.target.value });
+      document.getElementById('meOutCheck').onclick = async () => {
+        const msg = document.getElementById('meOutMsg');
+        msg.textContent = 'Checking — classic Outlook must be running…'; msg.style.color = '';
+        const r = await configApi.checkOutlookMeetings();
+        if (!r || !r.ok) { msg.textContent = (r && r.error) || 'Check failed'; msg.style.color = '#c98'; return; }
+        const sel = document.getElementById('meOutAcct');
+        const saved = currentMe().outlookAccount;
+        sel.innerHTML = '<option value="">— choose an account —</option>';
+        (r.accounts || []).forEach(a => {
+          const o = document.createElement('option');
+          o.value = a.name; o.textContent = a.name + (a.calendars.length ? '' : ' (no calendar folder!)');
+          sel.appendChild(o);
+        });
+        if (saved && !(r.accounts || []).some(a => a.name === saved)) {
+          const o = document.createElement('option'); o.value = saved; o.textContent = saved + ' (not found)'; sel.appendChild(o);
+        }
+        sel.value = saved || '';
+        const acct = (r.accounts || []).find(a => a.name === sel.value);
+        const cal = currentMe().outlookCalendar || 'Calendar';
+        if (acct && !acct.calendars.some(c => c.toLowerCase() === cal.toLowerCase())) {
+          msg.textContent = 'Connected — ' + r.accounts.length + ' account(s). Warning: "' + cal + '" folder not found in ' + acct.name + ' (has: ' + acct.calendars.join(', ') + ')';
+          msg.style.color = '#c98';
+        } else {
+          msg.textContent = 'Connected — ' + r.accounts.length + ' account(s) found. Pick yours, then Save.';
+          msg.style.color = '';
+        }
+      };
       document.getElementById('meTransUrl').oninput = e => saveMe({ transcribeUrl: e.target.value.trim() });
       document.getElementById('meAnalysisAi').onchange = e => saveMe({ analysisAi: e.target.value });
       document.getElementById('meAuto').onchange = e => saveMe({ autoRecord: e.target.checked });

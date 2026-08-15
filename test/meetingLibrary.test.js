@@ -83,6 +83,15 @@ test('deleteFile removes only from unprocessed and only validated names', () => 
   assert.equal(fs.existsSync(path.join(dirs.processed, 'y.wav')), true);
 });
 
+test('deleting a WAV also removes its Outlook meeting-info sidecar', () => {
+  const dirs = tempDirs();
+  const lib = createMeetingLibrary({ resolveFolders: () => ({ unprocessed: dirs.unprocessed, processed: dirs.processed }) });
+  fs.writeFileSync(path.join(dirs.unprocessed, 'm.wav'), makeWav(1));
+  fs.writeFileSync(path.join(dirs.unprocessed, 'm.json'), '{"subject":"weekly"}');
+  assert.equal(lib.deleteFile('unprocessed', 'm.wav').ok, true);
+  assert.equal(fs.existsSync(path.join(dirs.unprocessed, 'm.json')), false);
+});
+
 test('resolvePath stays inside the folder', () => {
   const dirs = tempDirs();
   const lib = createMeetingLibrary({ resolveFolders: () => ({ unprocessed: dirs.unprocessed, processed: dirs.processed }) });

@@ -66,6 +66,10 @@ can send them to a diarizing transcription server, then to an AI for meeting not
 - **Settings** (utility rail, replaces the old Full screen row) — picks the recording
   microphone. It must be the same mic Teams is using; if you switch mics in Teams,
   switch here too.
+- **Outlook meeting info** (optional, Settings → Meeting → Advanced) — when a recording
+  starts, the matching appointment's details are saved from classic Outlook as
+  `<recording>.json` beside the WAV and move with it through transcription. See
+  [settings.md](settings.md).
 
 ## Honest limits
 

@@ -124,12 +124,14 @@ function createMeetingLibrary(deps) {
   }
 
   // Deletion is only offered for unprocessed recordings — processed WAVs and their transcripts are
-  // the archive and stay put.
+  // the archive and stay put. Deleting a WAV also removes its Outlook meeting-info sidecar
+  // (<base>.json) so no orphaned info files pile up.
   function deleteFile(kind, name) {
     if (kind !== 'unprocessed') return { ok: false, error: 'delete only allowed for unprocessed' };
     const p = resolvePath(kind, name);
     if (!p) return { ok: false, error: 'bad name' };
     try { fsMod.unlinkSync(p); } catch (e) { return { ok: false, error: e.code === 'ENOENT' ? 'not found' : e.message }; }
+    if (/\.wav$/i.test(p)) { try { fsMod.unlinkSync(p.replace(/\.wav$/i, '.json')); } catch (e) { /* no sidecar */ } }
     log('deleted ' + name);
     return { ok: true };
   }

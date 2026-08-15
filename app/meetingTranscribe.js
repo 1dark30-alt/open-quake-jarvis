@@ -151,7 +151,11 @@ function createMeetingTranscriber(deps) {
     // transcript already exists at the destination, file this run as <base>_1, <base>_2, …
     const base = name.replace(/\.wav$/i, '');
     let finalBase = base;
-    for (let i = 1; fsMod.existsSync(path.join(destDir, finalBase + '.wav')) || fsMod.existsSync(path.join(destDir, finalBase + '-diarizer-response.json')); i++) {
+    for (let i = 1;
+      fsMod.existsSync(path.join(destDir, finalBase + '.wav'))
+      || fsMod.existsSync(path.join(destDir, finalBase + '-diarizer-response.json'))
+      || fsMod.existsSync(path.join(destDir, finalBase + '.json'));   // Outlook meeting-info sidecar
+      i++) {
       finalBase = base + '_' + i;
     }
     if (finalBase !== base) log('destination exists — filing as ' + finalBase);
@@ -159,6 +163,16 @@ function createMeetingTranscriber(deps) {
     const tmp = jsonPath + '.tmp';
     await fsp.writeFile(tmp, JSON.stringify(result, null, 2));
     await fsp.rename(tmp, jsonPath);
+    // The Outlook meeting-info sidecar (<base>.json, written at record start) travels with the
+    // recording. Best-effort: a failed sidecar move never fails the job.
+    const sidecar = path.join(folders.unprocessed, base + '.json');
+    if (fsMod.existsSync(sidecar)) {
+      const sidecarDest = path.join(destDir, finalBase + '.json');
+      try {
+        try { await fsp.rename(sidecar, sidecarDest); }
+        catch (e) { await fsp.copyFile(sidecar, sidecarDest); await fsp.unlink(sidecar); }
+      } catch (e) { log('meeting-info sidecar move failed: ' + e.message); }
+    }
     const dest = path.join(destDir, finalBase + '.wav');
     try {
       await fsp.rename(src, dest);

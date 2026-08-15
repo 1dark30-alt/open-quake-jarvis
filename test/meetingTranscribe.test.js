@@ -164,6 +164,24 @@ test('re-transcribing the same meeting files as _1, _2 — never overwrites', as
   assert.equal(fs.existsSync(path.join(s.processed, 'm_2-diarizer-response.json')), true);
 });
 
+test('Outlook meeting-info sidecar travels with the WAV (and joins the collision rename)', async () => {
+  const s = setup();
+  addWav(s.unprocessed, 'm.wav');
+  fs.writeFileSync(path.join(s.unprocessed, 'm.json'), '{"subject":"weekly"}');
+  s.tx.enqueue('m.wav');
+  await drained(s.tx);
+  assert.equal(fs.readFileSync(path.join(s.processed, 'm.json'), 'utf8'), '{"subject":"weekly"}');
+  assert.equal(fs.existsSync(path.join(s.unprocessed, 'm.json')), false);
+  // re-run: existing m.json at dest forces the _1 rename, sidecar follows as m_1.json
+  addWav(s.unprocessed, 'm.wav');
+  fs.writeFileSync(path.join(s.unprocessed, 'm.json'), '{"subject":"weekly take 2"}');
+  s.tx.enqueue('m.wav');
+  await drained(s.tx);
+  assert.equal(fs.readFileSync(path.join(s.processed, 'm_1.json'), 'utf8'), '{"subject":"weekly take 2"}');
+  assert.equal(fs.existsSync(path.join(s.processed, 'm_1.wav')), true);
+  assert.equal(fs.readFileSync(path.join(s.processed, 'm.json'), 'utf8'), '{"subject":"weekly"}');   // first set untouched
+});
+
 test('health is unknown until a probe answers, then reflects reality', async () => {
   let healthy = false;
   const s = setup(async () => {

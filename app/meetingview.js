@@ -480,7 +480,9 @@ function renderAnList() {
     var dirs = (r && r.dirs) || [];
     var mdSet = {};   // analyses are <base>-analysis.md (plain <base>.md accepted for early files)
     files.forEach(function (f) { if (/\.md$/i.test(f.name)) mdSet[f.name.replace(/(-analysis)?\.md$/i, '')] = 1; });
-    var jsons = files.filter(function (f) { return /\.json$/i.test(f.name); });
+    // Only diarizer transcripts are analyzable — plain .json files here are Outlook meeting-info
+    // sidecars (or other data), not transcripts.
+    var jsons = files.filter(function (f) { return /-diarizer-response\.json$/i.test(f.name); });
     selReset(anSel, jsons.map(function (f) { return f.name; }));
     dirs.forEach(function (d) {
       var b = document.createElement('button');

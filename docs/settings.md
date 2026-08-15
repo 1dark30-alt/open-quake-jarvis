@@ -107,6 +107,18 @@ Recording and transcription for the Meeting panel (details in [meeting.md](meeti
   transcript into meeting notes. Uses that tool's own login; open-quake stores no API key.
 - **Auto-record / Call apps / Stop after silence / Echo-gate** — unchanged recording
   behavior options.
+- **Advanced → Pull meeting information from Classic Outlook** — off by default. When a
+  recording starts, open-quake asks the **running classic Outlook** (COM, your signed-in
+  MAPI profile — no tokens or app registration) which appointment matches the current
+  time and saves its details (subject, organizer, attendees, body, join link…) as
+  `<recording>.json` beside the WAV; the file travels with the recording through
+  transcription. Meeting choice: if the next :00/:30 boundary is under 5 minutes away,
+  the meeting starting then wins; otherwise the meeting containing the current time. An
+  ad-hoc call with nothing scheduled saves nothing. **Check Connection** verifies
+  Outlook is reachable and fills the **Account** dropdown; set the **Calendar folder**
+  (usually "Calendar") and optional comma-separated **Skip prefixes** (e.g. `Canceled:,
+  Focus time`) to keep non-meetings out of the lookup. Requires classic OUTLOOK.EXE
+  running in your session — the new Outlook (olk.exe) has no COM interface.
 
 ## Auth (Home Assistant)
 
