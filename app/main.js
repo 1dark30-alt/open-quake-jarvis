@@ -1212,9 +1212,10 @@ function resolveMeetingFolders() {
     processed: String(m.processedFolder || '').trim() || defaultProcessedFolder(),
   };
 }
-// Accept either the base URL or the full /transcribe URL in settings; always return the base.
+// Accept the base URL, the full /transcribe URL, or a bare host:port; always return the base.
 function resolveTranscribeBaseUrl() {
   let u = String(meetingSettings().transcribeUrl || '').trim() || 'http://127.0.0.1:10301';
+  if (!/^https?:\/\//i.test(u)) u = 'http://' + u;   // bare "192.168.1.25:10301" entries work too
   u = u.replace(/\/+$/, '');
   if (/\/transcribe$/i.test(u)) u = u.slice(0, -'/transcribe'.length);
   return u;

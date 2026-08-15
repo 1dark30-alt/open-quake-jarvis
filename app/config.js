@@ -733,23 +733,18 @@
 
   // ---- save model (no live edit) ----
   function setState(text, cls) { const el = document.getElementById('state'); el.textContent = text; el.className = 'state' + (cls ? ' ' + cls : ''); }
-  function markDirty() { dirty = true; setState('● unsaved changes', 'dirty'); document.getElementById('saveBtn').disabled = false; syncSaveMirror(); }
-  // The settings page carries its own Save button (re-rendered on tab switches) — keep it in step
-  // with the footer button.
-  function syncSaveMirror() { const s = document.getElementById('settingsSave'); if (s) s.disabled = !dirty; }
+  function markDirty() { dirty = true; setState('● unsaved changes', 'dirty'); document.getElementById('saveBtn').disabled = false; }
   async function doSave() {
     try {
       const result = await configApi.saveConfig(config);
       if (!(result && result.ok)) throw new Error(result && result.error || 'secure persistence failed');
       dirty = false;
       document.getElementById('saveBtn').disabled = true;
-      syncSaveMirror();
       setState('saved ✓', 'saved');
       return true;
     } catch (e) {
       dirty = true;
       document.getElementById('saveBtn').disabled = false;
-      syncSaveMirror();
       setState('save failed: secrets could not be stored securely', 'dirty');
       return false;
     }
@@ -2122,7 +2117,6 @@
         <button id="tabAuth" class="tab${tab === 'auth' ? ' on' : ''}">Auth</button>
         <button id="tabMe" class="tab${tab === 'meeting' ? ' on' : ''}">Meeting</button>
         <button id="tabMon" class="tab${tab === 'monitor' ? ' on' : ''}">Monitor</button>
-        <button id="settingsSave" class="primary" style="margin-left:auto"${dirty ? '' : ' disabled'}>Save</button>
       </div>
       ${tab === 'software' ? swHtml : tab === 'hardware' ? hwHtml : tab === 'theme' ? thHtml : tab === 'apps' ? appsHtml : tab === 'dropin' ? diHtml : tab === 'auth' ? authHtml : tab === 'meeting' ? meHtml : monHtml}
       <div class="row" style="margin-top:22px"><button id="sBack">← Back to pages</button></div>`;
@@ -2136,8 +2130,6 @@
     document.getElementById('tabMe').onclick = () => { settingsTab = 'meeting'; renderSettings(); };
     document.getElementById('tabMon').onclick = () => { settingsTab = 'monitor'; renderSettings(); };
     document.getElementById('sBack').onclick = () => { view = 'pages'; render(); };
-    // In-page Save (mirrors the footer button — same doSave, same dirty state).
-    document.getElementById('settingsSave').onclick = () => doSave();
     const setS = (k, v) => { if (!config.settings) config.settings = {}; config.settings[k] = v; markDirty(); };
 
     if (tab === 'apps') {
