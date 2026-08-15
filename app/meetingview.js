@@ -486,8 +486,8 @@ function renderAnList() {
   fetchJson('/meeting-files?kind=processed').then(function (r) {
     var el = $('anList'); el.innerHTML = ''; anRows = {};
     var files = (r && r.files) || [];
-    var mdSet = {};
-    files.forEach(function (f) { if (/\.md$/i.test(f.name)) mdSet[f.name.replace(/\.md$/i, '')] = 1; });
+    var mdSet = {};   // analyses are <base>-analysis.md (plain <base>.md accepted for early files)
+    files.forEach(function (f) { if (/\.md$/i.test(f.name)) mdSet[f.name.replace(/(-analysis)?\.md$/i, '')] = 1; });
     var jsons = files.filter(function (f) { return /\.json$/i.test(f.name); });
     selReset(anSel, jsons.map(function (f) { return f.name; }));
     if (!jsons.length) { el.innerHTML = '<div class="ovEmpty">No transcripts yet — transcribe a recording first.</div>'; selSync(anSel); return; }

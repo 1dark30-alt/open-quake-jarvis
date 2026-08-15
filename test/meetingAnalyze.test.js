@@ -70,7 +70,7 @@ test('claude route: -p, transcript on stdin, stdout filed as .md', async () => {
   assert.deepEqual(s.spawns[0].args, ['-p']);
   assert.match(s.spawns[0].stdin, /Meeting Analysis/);        // prompt text
   assert.match(s.spawns[0].stdin, /"segments"/);              // transcript JSON
-  assert.equal(fs.readFileSync(path.join(s.processed, 'm.md'), 'utf8'), '# Meeting Analysis\nok');
+  assert.equal(fs.readFileSync(path.join(s.processed, 'm-analysis.md'), 'utf8'), '# Meeting Analysis\nok');
   const st = s.an.getState();
   assert.equal(st.running, false);
   assert.equal(st.error, null);
@@ -86,7 +86,7 @@ test('codex route: exec with stdin marker + output-last-message file', async () 
   assert.equal(s.spawns[0].args[1], '-');
   assert.ok(s.spawns[0].args.includes('--skip-git-repo-check'));
   assert.equal(s.spawns[0].opts.shell, true);
-  assert.equal(fs.readFileSync(path.join(s.processed, 'm.md'), 'utf8'), 'codex analysis');
+  assert.equal(fs.readFileSync(path.join(s.processed, 'm-analysis.md'), 'utf8'), 'codex analysis');
 });
 
 test('missing CLI is a clear error; nothing spawned', async () => {
@@ -95,7 +95,7 @@ test('missing CLI is a clear error; nothing spawned', async () => {
   await drained(s.an);
   assert.equal(s.spawns.length, 0);
   assert.match(s.an.getState().error.error, /Claude CLI not found/);
-  assert.equal(fs.existsSync(path.join(s.processed, 'm.md')), false);
+  assert.equal(fs.existsSync(path.join(s.processed, 'm-analysis.md')), false);
 });
 
 test('nonzero exit surfaces stderr; no .md written', async () => {
@@ -103,7 +103,7 @@ test('nonzero exit surfaces stderr; no .md written', async () => {
   s.an.start('m.json');
   await drained(s.an);
   assert.match(s.an.getState().error.error, /exited 2: boom/);
-  assert.equal(fs.existsSync(path.join(s.processed, 'm.md')), false);
+  assert.equal(fs.existsSync(path.join(s.processed, 'm-analysis.md')), false);
 });
 
 test('queue: second transcript waits its turn; rel-path names work', async () => {
@@ -126,8 +126,8 @@ test('queue: second transcript waits its turn; rel-path names work', async () =>
   await drained(an);
   assert.equal(an.getState().running, false);
   assert.deepEqual(an.getState().queue, []);
-  assert.equal(fs.existsSync(path.join(processed, 'a.md')), true);
-  assert.equal(fs.existsSync(path.join(processed, '2026', '08', 'b.md')), true);
+  assert.equal(fs.existsSync(path.join(processed, 'a-analysis.md')), true);
+  assert.equal(fs.existsSync(path.join(processed, '2026', '08', 'b-analysis.md')), true);
   assert.deepEqual(an.result('2026/08/b.json'), { ok: true, markdown: 'notes' });
 });
 
@@ -142,7 +142,7 @@ test('suffixed transcript names produce clean .md names', async () => {
   });
   an.start('meeting-diarizer-response.json');
   await drained(an);
-  assert.equal(fs.existsSync(path.join(processed, 'meeting.md')), true);   // suffix stripped
+  assert.equal(fs.existsSync(path.join(processed, 'meeting-analysis.md')), true);   // suffix stripped
   assert.deepEqual(an.result('meeting-diarizer-response.json'), { ok: true, markdown: 'notes' });
 });
 

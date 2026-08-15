@@ -17,9 +17,10 @@ const ANALYZE_TIMEOUT_MS = 10 * 60 * 1000;   // generous; a transcript is small 
 
 // Analysis markdown lives beside the transcript, named after the recording: the raw diarizer
 // response is <base>-diarizer-response.json (legacy plain <base>.json still accepted), the
-// analysis is <base>.md.
+// analysis is <base>-analysis.md — matching the naming T.J.'s pre-existing pipeline used, which
+// other services key off.
 function mdPathFor(jsonPath) {
-  return jsonPath.replace(/-diarizer-response\.json$/i, '.json').replace(/\.json$/i, '.md');
+  return jsonPath.replace(/-diarizer-response\.json$/i, '.json').replace(/\.json$/i, '-analysis.md');
 }
 
 function createMeetingAnalyzer(deps) {
@@ -143,7 +144,11 @@ function createMeetingAnalyzer(deps) {
     if (!n) return { ok: false, error: 'bad name' };
     const mdPath = mdPathFor(path.join(resolveFolders().processed, n).replace(/\.md$/i, '.json'));
     try { return { ok: true, markdown: fsMod.readFileSync(mdPath, 'utf8') }; }
-    catch (e) { return { ok: false, error: 'not analyzed' }; }
+    catch (e) {
+      // Legacy: analyses written before the -analysis suffix (plain <base>.md).
+      try { return { ok: true, markdown: fsMod.readFileSync(mdPath.replace(/-analysis\.md$/i, '.md'), 'utf8') }; }
+      catch (e2) { return { ok: false, error: 'not analyzed' }; }
+    }
   }
 
   return { start, getState, result };
