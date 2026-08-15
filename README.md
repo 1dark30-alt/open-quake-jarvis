@@ -37,7 +37,8 @@ It gives you:
 - **Bundled apps** — a Flip Clock, a **World Clock** (US time zones or a pick of world
   cities, digital or analog), a **[Music controller](docs/music.md)** (now-playing +
   transport + app grid), a **[Meeting](docs/meeting.md)** app (one-tap mute/video/accept
-  /decline/leave for Zoom and Teams), a **[System Monitor](docs/system-monitor.md)** (live
+  /decline/leave for Zoom and Teams, plus **meeting recording → speaker-diarized
+  transcription → AI meeting notes**, right from the panel), a **[System Monitor](docs/system-monitor.md)** (live
   CPU/GPU/RAM/disk/network/battery), an **[Open WebUI chat](docs/ai-chat.md)** you can
   **talk to by holding the knob**, a **[Microsoft 365](docs/apps.md)** panel (sign in with
   your Microsoft account for live profile, presence, and upcoming-calendar view, plus up to
