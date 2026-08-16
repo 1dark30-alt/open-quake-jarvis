@@ -174,6 +174,88 @@ test('one at a time; bad names and missing transcripts rejected up front', async
   assert.equal(an.getState().running, false);
 });
 
+const COMBINED_MD = '# Meeting Analysis\n\n## Summary\nStuff happened.\n\n## Transcript\n**T.J.:** hello\n\n**A:** hi\n';
+
+function filingSetup(opts, meta, baseName) {
+  const processed = fs.mkdtempSync(path.join(os.tmpdir(), 'oqx-anfile-'));
+  const dir = path.join(processed, '2026', '08');
+  fs.mkdirSync(dir, { recursive: true });
+  const base = baseName || '2026-08-15_10-00-00-Weekly Sync';
+  fs.writeFileSync(path.join(dir, base + '-diarizer-response.json'), '{"segments":[]}');
+  fs.writeFileSync(path.join(dir, base + '.wav'), 'WAV');
+  if (meta) fs.writeFileSync(path.join(dir, base + '.json'), JSON.stringify(meta));
+  const an = createMeetingAnalyzer({
+    resolveFolders: () => ({ unprocessed: processed, processed }),
+    resolveAi: () => 'claude',
+    findClaudeExe: () => 'claude.exe', findCodexExe: () => null,
+    filingOptions: () => opts,
+    spawn: fakeSpawnFactory([], () => ({ stdout: COMBINED_MD, code: 0 })),
+  });
+  return { processed, dir, base, an, rel: '2026/08/' + base + '-diarizer-response.json' };
+}
+
+test('Separate Clean Transcript splits the output at ## Transcript', async () => {
+  const s = filingSetup({ separateTranscript: true }, null);
+  s.an.start(s.rel);
+  await drained(s.an);
+  const md = fs.readFileSync(path.join(s.dir, s.base + '-analysis.md'), 'utf8');
+  assert.ok(!/## Transcript/.test(md), 'md keeps the notes only');
+  assert.match(md, /## Summary/);
+  const txt = fs.readFileSync(path.join(s.dir, s.base + '-clean_transcript.txt'), 'utf8');
+  assert.match(txt, /\*\*T\.J\.\*\*: hello|\*\*T\.J\.:\*\* hello/);
+});
+
+test('recurring meetings move to YYYY/<Meeting-Name>/ after analysis', async () => {
+  const s = filingSetup({ separateRecurring: true }, { subject: 'Weekly Sync / Team', is_recurring: true });
+  s.an.start(s.rel);
+  await drained(s.an);
+  const home = path.join(s.processed, '2026', 'Weekly-Sync-Team');   // OpenHiNotes sanitization
+  assert.equal(fs.existsSync(path.join(home, s.base + '-analysis.md')), true);
+  assert.equal(fs.existsSync(path.join(home, s.base + '.wav')), true);
+  assert.equal(fs.existsSync(path.join(home, s.base + '-diarizer-response.json')), true);
+  assert.equal(fs.existsSync(path.join(home, s.base + '.json')), true);
+  assert.equal(fs.existsSync(path.join(s.dir, s.base + '.wav')), false);   // left the date folder
+});
+
+test('non-recurring (or no sidecar) stays in the date folder even with the option on', async () => {
+  const s = filingSetup({ separateRecurring: true }, { subject: 'One-off', is_recurring: false });
+  s.an.start(s.rel);
+  await drained(s.an);
+  assert.equal(fs.existsSync(path.join(s.dir, s.base + '-analysis.md')), true);
+  assert.equal(fs.existsSync(path.join(s.dir, s.base + '.wav')), true);
+});
+
+test('Use Details Folder tucks everything but the .md into details/', async () => {
+  const s = filingSetup({ useDetailsFolder: true, separateTranscript: true }, { subject: 'X', is_recurring: false });
+  s.an.start(s.rel);
+  await drained(s.an);
+  assert.equal(fs.existsSync(path.join(s.dir, s.base + '-analysis.md')), true);                       // md at folder level
+  const det = path.join(s.dir, 'details');
+  assert.equal(fs.existsSync(path.join(det, s.base + '.wav')), true);
+  assert.equal(fs.existsSync(path.join(det, s.base + '-diarizer-response.json')), true);
+  assert.equal(fs.existsSync(path.join(det, s.base + '.json')), true);
+  assert.equal(fs.existsSync(path.join(det, s.base + '-clean_transcript.txt')), true);
+  // re-analysis from the details location writes the .md back at the folder level and stays put
+  const an2rel = '2026/08/details/' + s.base + '-diarizer-response.json';
+  const r = s.an.start(an2rel);
+  assert.equal(r.ok, true);
+  await drained(s.an);
+  assert.equal(fs.existsSync(path.join(s.dir, s.base + '-analysis.md')), true);
+  assert.equal(fs.existsSync(path.join(det, s.base + '-diarizer-response.json')), true);
+  // and View resolves the parent-level md from the details-relative name
+  assert.equal(s.an.result(an2rel).ok, true);
+});
+
+test('recurring + details compose: YYYY/<Name>/details with md at the folder level', async () => {
+  const s = filingSetup({ separateRecurring: true, useDetailsFolder: true }, { subject: 'Weekly Sync', is_recurring: true });
+  s.an.start(s.rel);
+  await drained(s.an);
+  const home = path.join(s.processed, '2026', 'Weekly-Sync');
+  assert.equal(fs.existsSync(path.join(home, s.base + '-analysis.md')), true);
+  assert.equal(fs.existsSync(path.join(home, 'details', s.base + '.wav')), true);
+  assert.equal(fs.existsSync(path.join(home, 'details', s.base + '-diarizer-response.json')), true);
+});
+
 test('result() reads the filed markdown or reports not analyzed', async () => {
   const s = setup(() => ({ stdout: 'notes', code: 0 }), 'claude');
   assert.deepEqual(s.an.result('m.json'), { ok: false, error: 'not analyzed' });

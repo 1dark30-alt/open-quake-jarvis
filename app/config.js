@@ -1874,7 +1874,7 @@
     const th = currentTheme();
     // Meeting recording settings (config.settings.meeting) — global so auto-record works regardless of
     // which app the panel is showing. Same shape as MEETING_DEFAULTS in main.js.
-    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '' }, (config.settings || {}).meeting || {});
+    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false }, (config.settings || {}).meeting || {});
     const me = currentMe();
     // ledState = the device's live lighting (loaded when the page opens); fall back to saved config / defaults.
     const L = Object.assign({}, LED_DEFAULT, (config.settings || {}).lighting || {}, ledState || {});
@@ -2040,7 +2040,7 @@
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meEcho" ${me.echoGate ? 'checked' : ''}> Echo-gate your microphone</label></div>
       <p class="hint">Mutes your mic in the recording while the speakers are loud (and you're not on headphones), to stop the far end bleeding back in. Off = faithful capture of everything you say, even when others are talking.</p>
 
-      <details class="advsec" style="margin-top:22px"${me.outlookEnabled ? ' open' : ''}>
+      <details class="advsec" style="margin-top:22px"${(me.outlookEnabled || me.separateRecurring || me.separateTranscript || me.useDetailsFolder || me.transcribeThreshold) ? ' open' : ''}>
       <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Advanced Settings</summary>
       <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meOutlook" ${me.outlookEnabled ? 'checked' : ''}> Pull meeting information from Classic Outlook</label></div>
       <p class="hint">When a recording starts, looks up the matching appointment in the running classic Outlook (COM, your signed-in profile — no tokens or app registration) and saves its details (subject, attendees, organizer, body…) as <b>&lt;recording&gt;.json</b> beside the WAV; the file travels with the recording through transcription. Ad-hoc calls with nothing on the calendar save nothing.</p>
@@ -2054,6 +2054,14 @@
       <div class="row"><label>Skip prefixes</label>
         <input id="meOutSkip" value="${esc(me.outlookSkipPrefixes)}" style="flex:1"></div>
       <p class="hint">Comma-separated subject prefixes to ignore (e.g. Canceled:, Focus time, Lunch) — keeps calendar entries that aren't real meetings out of the lookup.</p>
+      <div class="row" style="margin-top:12px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSepRec" ${me.separateRecurring ? 'checked' : ''}> Separate recurring meetings</label></div>
+      <p class="hint">When a recurring meeting (per its Outlook info) is analyzed, its files move from the date folder to <b>YYYY\\&lt;Meeting-Name&gt;\\</b>. Un-analyzed meetings stay in the date folders, so they're easy to find.</p>
+      <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meAppendName" ${me.appendMeetingName ? 'checked' : ''} ${me.outlookEnabled ? '' : 'disabled'}> Append meeting name to filename</label></div>
+      <p class="hint">Renames a finished recording from &lt;timestamp&gt;.wav to <b>&lt;timestamp&gt;-&lt;Meeting Name&gt;.wav</b> when Outlook matched a meeting; every later file (transcript, analysis…) inherits the name. Requires the Outlook option above.</p>
+      <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSepTx" ${me.separateTranscript ? 'checked' : ''}> Separate Clean Transcript</label></div>
+      <p class="hint">Leaves the full transcript out of the analysis .md and saves it as <b>&lt;name&gt;-clean_transcript.txt</b> instead.</p>
+      <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meDetails" ${me.useDetailsFolder ? 'checked' : ''}> Use Details Folder</label></div>
+      <p class="hint">At analysis, everything except the notes .md (WAV, transcript, meeting info, clean transcript) moves into a <b>details\\</b> subfolder of the meeting's folder.</p>
       <div class="row" style="margin-top:12px"><label>Speaker threshold</label>
         <input type="number" id="meThreshold" min="0" max="1" step="0.05" value="${esc(me.transcribeThreshold)}" style="width:120px">
         <span class="hint" style="margin:0 0 0 8px">blank = server default</span></div>
@@ -2455,7 +2463,14 @@
       };
       document.getElementById('meByDate').onchange = e => saveMe({ processedByDate: e.target.checked });
       document.getElementById('meEditPrompt').onclick = () => configApi.editMeetingAnalysisPrompt();
-      document.getElementById('meOutlook').onchange = e => saveMe({ outlookEnabled: e.target.checked });
+      document.getElementById('meOutlook').onchange = e => {
+        saveMe({ outlookEnabled: e.target.checked });
+        document.getElementById('meAppendName').disabled = !e.target.checked;   // name-append needs Outlook info
+      };
+      document.getElementById('meSepRec').onchange = e => saveMe({ separateRecurring: e.target.checked });
+      document.getElementById('meAppendName').onchange = e => saveMe({ appendMeetingName: e.target.checked });
+      document.getElementById('meSepTx').onchange = e => saveMe({ separateTranscript: e.target.checked });
+      document.getElementById('meDetails').onchange = e => saveMe({ useDetailsFolder: e.target.checked });
       document.getElementById('meOutAcct').onchange = e => saveMe({ outlookAccount: e.target.value });
       document.getElementById('meOutCal').oninput = e => saveMe({ outlookCalendar: e.target.value.trim() });
       document.getElementById('meOutSkip').oninput = e => saveMe({ outlookSkipPrefixes: e.target.value });

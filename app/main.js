@@ -1201,7 +1201,7 @@ async function onMeetingActionRequest(platform, action) {
 // Settings live under config.settings.meeting (global, like config.settings.monitor) so auto-record
 // works regardless of which app the panel is showing — the meeting page's per-grid options only
 // exist while it's the active app, which is useless for background recording.
-const MEETING_DEFAULTS = { folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '' };
+const MEETING_DEFAULTS = { folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false };
 function meetingSettings() { return Object.assign({}, MEETING_DEFAULTS, (config.settings || {}).meeting || {}); }
 function defaultMeetingFolder() { return path.join(app.getPath('documents'), 'OpenQuake Meetings', 'unprocessed'); }
 function defaultProcessedFolder() { return path.join(app.getPath('documents'), 'OpenQuake Meetings', 'processed'); }
@@ -1315,6 +1315,29 @@ function writeOutlookMeetingInfo(wavName) {   // wavName = basename (recorder st
         console.log('[meeting] meeting info saved: ' + path.basename(dest) + ' (' + (info.subject || '') + ')');
       } catch (e) { console.log('[meeting] outlook info write failed: ' + e.message); }
     });
+}
+
+// "Append meeting name": once a recording is closed and header-patched, rename the WAV (and its
+// Outlook sidecar) from <timestamp>.wav to <timestamp>-<Meeting Name>.wav using the sidecar's
+// subject. Illegal filename characters are stripped (spaces kept). No sidecar / no subject /
+// feature off -> the timestamp name stays.
+function appendMeetingNameToRecording(wavName) {
+  const m = meetingSettings();
+  if (!m.outlookEnabled || !m.appendMeetingName) return;
+  try {
+    const dir = resolveMeetingFolders().unprocessed;
+    const base = wavName.replace(/\.wav$/i, '');
+    const sidecar = path.join(dir, base + '.json');
+    if (!fs.existsSync(sidecar)) return;   // ad-hoc call, or the Outlook lookup found nothing
+    const subject = String((JSON.parse(fs.readFileSync(sidecar, 'utf8')) || {}).subject || '')
+      .replace(/[\/\\:*?"<>|]/g, '').trim();
+    if (!subject) return;
+    let newBase = base + '-' + subject;
+    for (let i = 1; fs.existsSync(path.join(dir, newBase + '.wav')); i++) newBase = base + '-' + subject + '_' + i;
+    fs.renameSync(path.join(dir, wavName), path.join(dir, newBase + '.wav'));
+    fs.renameSync(sidecar, path.join(dir, newBase + '.json'));
+    console.log('[meeting] recording renamed -> ' + newBase + '.wav');
+  } catch (e) { console.log('[meeting] meeting-name rename failed: ' + e.message); }
 }
 
 // Panel remote for the recordings library + transcription + analysis screens (Unprocessed /
@@ -1942,6 +1965,7 @@ app.whenReady().then(async () => {
           wasRecording = !!st.recording;
         };
       })(),
+      onRecordingComplete: name => { try { appendMeetingNameToRecording(name); } catch (e) {} },
       log: msg => console.log('[meeting] ' + msg),
     });
     meetingRecorder.ensureWindow();   // arm the hidden window so a call can start recording instantly
@@ -1967,6 +1991,10 @@ app.whenReady().then(async () => {
         resolveFolders: resolveMeetingFolders,
         resolveAi: () => meetingSettings().analysisAi,
         promptPath: () => fs.existsSync(userMeetingPromptPath()) ? userMeetingPromptPath() : path.join(__dirname, 'meeting-analysis-prompt.md'),
+        filingOptions: () => {
+          const m = meetingSettings();
+          return { separateRecurring: !!m.separateRecurring, separateTranscript: !!m.separateTranscript, useDetailsFolder: !!m.useDetailsFolder };
+        },
         log: msg => console.log('[meeting] ' + msg),
       });
     } catch (e) { console.log('[meeting] transcription services failed to start:', e.message); }

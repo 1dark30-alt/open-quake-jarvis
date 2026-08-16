@@ -119,6 +119,21 @@ Recording and transcription for the Meeting panel (details in [meeting.md](meeti
   (usually "Calendar") and optional comma-separated **Skip prefixes** (e.g. `Canceled:,
   Focus time`) to keep non-meetings out of the lookup. Requires classic OUTLOOK.EXE
   running in your session — the new Outlook (olk.exe) has no COM interface.
+- **Advanced → Separate recurring meetings** — when a recurring meeting (per its
+  Outlook info) is analyzed, its file set moves from the date folder to
+  `YYYY\<Meeting-Name>\` (name sanitized like the OpenHiNotes pipeline). Un-analyzed
+  meetings stay in the date folders so they're easy to find.
+- **Advanced → Append meeting name to filename** — renames a finished recording to
+  `<timestamp>-<Meeting Name>.wav` (sidecar too) when Outlook matched a meeting; all
+  later files inherit the name. Requires the Outlook option; the rename happens when
+  the recording stops (an open file can't be renamed).
+- **Advanced → Separate Clean Transcript** — the analysis `.md` keeps the notes only;
+  the cleaned transcript saves as `<name>-clean_transcript.txt`. (The split keys off
+  the prompt's `## Transcript` heading — a custom prompt without it falls back to the
+  combined file.)
+- **Advanced → Use Details Folder** — at analysis, everything except the notes `.md`
+  (WAV, transcript JSON, meeting info, clean transcript) moves into a `details\`
+  subfolder of the meeting's folder — date folders and recurring-meeting folders alike.
 - **Advanced → Speaker threshold** — optional speaker-identification cosine cutoff
   (e.g. `0.70`) sent with each transcription; blank = the server's default. When a
   recording has Outlook meeting info, its attendee list (organizer + required +

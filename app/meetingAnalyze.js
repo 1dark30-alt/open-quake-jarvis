@@ -22,6 +22,22 @@ const ANALYZE_TIMEOUT_MS = 10 * 60 * 1000;   // generous; a transcript is small 
 function mdPathFor(jsonPath) {
   return jsonPath.replace(/-diarizer-response\.json$/i, '.json').replace(/\.json$/i, '-analysis.md');
 }
+// With "Use Details Folder" on, the transcript lives in <home>/details/ while the analysis .md
+// belongs at <home>/ — write (and read) the .md one level up when the transcript sits in details.
+function mdTargetFor(jsonPath) {
+  const p = mdPathFor(jsonPath);
+  const dir = path.dirname(p);
+  return path.basename(dir).toLowerCase() === 'details' ? path.join(path.dirname(dir), path.basename(p)) : p;
+}
+// Recurring-meeting folder names, sanitized exactly like the OpenHiNotes pipeline: illegal chars
+// and whitespace become hyphens, runs collapse, edges trimmed.
+function sanitizeSubjectFolder(subject) {
+  let s = String(subject || '');
+  for (const c of '/\\:*?"<>|') s = s.split(c).join('-');
+  s = s.split(/\s+/).filter(Boolean).join('-');
+  while (s.includes('--')) s = s.split('--').join('-');
+  return s.replace(/^-+|-+$/g, '');
+}
 
 function createMeetingAnalyzer(deps) {
   const fsMod = deps.fs || require('fs');
@@ -38,6 +54,8 @@ function createMeetingAnalyzer(deps) {
   const log = deps.log || (() => {});
   const now = deps.now || Date.now;
   const timeoutMs = deps.timeoutMs || ANALYZE_TIMEOUT_MS;
+  // () => { separateRecurring, separateTranscript, useDetailsFolder } — the Advanced filing options.
+  const filingOptions = deps.filingOptions || (() => ({}));
 
   const queue = [];      // names waiting (supports the panel's Analyze Selected)
   let running = null;    // { name, ai, startedAt } while a job runs
@@ -74,21 +92,84 @@ function createMeetingAnalyzer(deps) {
     const ai = resolveAi() === 'codex' ? 'codex' : 'claude';
     running = { name: n, ai, startedAt: now() };
     log('analysis started (' + ai + '): ' + n);
-    runJob(n, ai, jsonPath, mdPathFor(jsonPath))
+    runJob(n, ai, jsonPath)
       .then(() => { lastDone = { name: n, finishedAt: now() }; lastError = null; log('analysis done: ' + n); })
       .catch(e => { lastError = { name: n, error: (e && e.message) || 'failed', finishedAt: now() }; log('analysis failed: ' + n + ' — ' + lastError.error); })
       .finally(() => { running = null; pump(); });
   }
 
-  async function runJob(name, ai, jsonPath, mdPath) {
+  async function runJob(name, ai, jsonPath) {
+    const opts = filingOptions() || {};
+    const mdPath = mdTargetFor(jsonPath);
     const prompt = await fsp.readFile(resolvePromptPath(), 'utf8');
     const transcript = await fsp.readFile(jsonPath, 'utf8');
     const input = prompt + '\n\nDiarizer JSON follows:\n\n' + transcript;
     const markdown = ai === 'codex' ? await runCodex(input) : await runClaude(input);
     if (!markdown.trim()) throw new Error('AI returned no output');
+
+    // "Separate Clean Transcript": split the AI's output at the ## Transcript heading — notes
+    // stay in the .md, the cleaned transcript goes to <base>-clean_transcript.txt. A custom
+    // prompt without that heading keeps the combined output (logged, never lost).
+    const dir = path.dirname(jsonPath);
+    const base = path.basename(jsonPath).replace(/-diarizer-response\.json$/i, '').replace(/\.json$/i, '');
+    let mdOut = markdown;
+    let txtPath = null;
+    if (opts.separateTranscript) {
+      const m = /^##\s*Transcript\s*$/im.exec(markdown);
+      if (m) {
+        mdOut = markdown.slice(0, m.index).trimEnd() + '\n';
+        const txt = markdown.slice(m.index + m[0].length).trim() + '\n';
+        txtPath = path.join(dir, base + '-clean_transcript.txt');
+        await fsp.writeFile(txtPath, txt);
+      } else {
+        log('no "## Transcript" heading in the AI output — keeping the combined .md');
+      }
+    }
     const tmp = mdPath + '.tmp';
-    await fsp.writeFile(tmp, markdown);
+    await fsp.writeFile(tmp, mdOut);
     await fsp.rename(tmp, mdPath);
+
+    await fileSet(jsonPath, mdPath, txtPath, base, opts);
+  }
+
+  // Post-analysis filing: recurring meetings move to <processed>/YYYY/<Meeting-Name>/, and with
+  // "Use Details Folder" everything except the .md tucks into a details/ subfolder. Runs after
+  // the .md exists so unanalyzed meetings always stay in the easy-to-find date folders.
+  async function fileSet(jsonPath, mdPath, txtPath, base, opts) {
+    const dir = path.dirname(jsonPath);
+    const inDetails = path.basename(dir).toLowerCase() === 'details';
+    let home = inDetails ? path.dirname(dir) : dir;
+
+    if (opts.separateRecurring) {
+      try {
+        const sidecar = path.join(dir, base + '.json');
+        if (fsMod.existsSync(sidecar)) {
+          const meta = JSON.parse(await fsp.readFile(sidecar, 'utf8')) || {};
+          const folderName = sanitizeSubjectFolder(meta.subject);
+          if (meta.is_recurring && folderName) {
+            const ym = /^(\d{4})/.exec(base);
+            const year = ym ? ym[1] : String(new Date(now()).getFullYear());
+            home = path.join(resolveFolders().processed, year, folderName);
+          }
+        }
+      } catch (e) { log('recurring check failed — staying in place: ' + e.message); }
+    }
+    const fileDir = opts.useDetailsFolder ? path.join(home, 'details') : home;
+
+    const mv = async (src, dest) => {
+      if (!src || src === dest || !fsMod.existsSync(src)) return;
+      if (fsMod.existsSync(dest)) { log('filing skipped (exists): ' + path.basename(dest)); return; }
+      try { await fsp.rename(src, dest); }
+      catch (e) { await fsp.copyFile(src, dest); await fsp.unlink(src); }
+    };
+    try {
+      await fsp.mkdir(fileDir, { recursive: true });
+      await mv(mdPath, path.join(home, path.basename(mdPath)));
+      await mv(jsonPath, path.join(fileDir, path.basename(jsonPath)));
+      await mv(path.join(dir, base + '.wav'), path.join(fileDir, base + '.wav'));
+      await mv(path.join(dir, base + '.json'), path.join(fileDir, base + '.json'));
+      await mv(txtPath, txtPath ? path.join(fileDir, path.basename(txtPath)) : null);
+    } catch (e) { log('filing failed (analysis itself is saved): ' + e.message); }
   }
 
   function runClaude(input) {
@@ -138,17 +219,16 @@ function createMeetingAnalyzer(deps) {
     });
   }
 
-  // Read a finished analysis for the panel's View action.
+  // Read a finished analysis for the panel's View action. The .md may live beside the transcript
+  // or (details layout) one folder up; legacy plain <base>.md still accepted.
   function result(name) {
     const n = safeRelPath(name);
     if (!n) return { ok: false, error: 'bad name' };
-    const mdPath = mdPathFor(path.join(resolveFolders().processed, n).replace(/\.md$/i, '.json'));
-    try { return { ok: true, markdown: fsMod.readFileSync(mdPath, 'utf8') }; }
-    catch (e) {
-      // Legacy: analyses written before the -analysis suffix (plain <base>.md).
-      try { return { ok: true, markdown: fsMod.readFileSync(mdPath.replace(/-analysis\.md$/i, '.md'), 'utf8') }; }
-      catch (e2) { return { ok: false, error: 'not analyzed' }; }
+    const jsonAbs = path.join(resolveFolders().processed, n).replace(/\.md$/i, '.json');
+    for (const p of [mdTargetFor(jsonAbs), mdPathFor(jsonAbs), mdPathFor(jsonAbs).replace(/-analysis\.md$/i, '.md')]) {
+      try { return { ok: true, markdown: fsMod.readFileSync(p, 'utf8') }; } catch (e) { /* next */ }
     }
+    return { ok: false, error: 'not analyzed' };
   }
 
   return { start, getState, result };

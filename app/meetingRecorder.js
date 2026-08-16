@@ -203,6 +203,8 @@ function createMeetingRecorder(deps) {
           fs.closeSync(fd);
         } catch (e) { log('wav header patch error: ' + e.message); }
         log('recording stopped (' + (reason || 'manual') + '), ' + bytes + ' data bytes -> ' + done);
+        // File is closed and header-patched — safe for callers to rename/move it now.
+        try { if (deps.onRecordingComplete) deps.onRecordingComplete(path.basename(done)); } catch (e) {}
       });
     }
     startedAt = null;

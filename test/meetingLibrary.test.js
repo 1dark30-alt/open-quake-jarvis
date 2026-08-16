@@ -104,12 +104,28 @@ test('resolvePath stays inside the folder', () => {
   assert.equal(lib.resolvePath('processed', '../08/m.json'), null);
 });
 
-test('safeRelPath allows YYYY/MM subpaths but nothing sneaky', () => {
+test('safeRelPath allows up to 3 folder levels (details layout) but nothing sneaky', () => {
   assert.equal(safeRelPath('2026/08/m.json'), '2026/08/m.json');
+  assert.equal(safeRelPath('2026/Weekly-Sync/details/m.json'), '2026/Weekly-Sync/details/m.json');
   assert.equal(safeRelPath('m.json'), 'm.json');
-  for (const bad of ['../m.json', '2026/../m.json', 'a/b/c/d.json', '2026\\08\\m.json', '2026/08/m.exe', '2026//m.json']) {
+  for (const bad of ['../m.json', '2026/../m.json', 'a/b/c/d/e.json', '2026\\08\\m.json', '2026/08/m.exe', '2026//m.json']) {
     assert.equal(safeRelPath(bad), null, 'should reject: ' + bad);
   }
+});
+
+test('listFiles flags transcripts analyzed, including the details layout (md one level up)', () => {
+  const dirs = tempDirs();
+  const lib = createMeetingLibrary({ resolveFolders: () => ({ unprocessed: dirs.unprocessed, processed: dirs.processed }) });
+  const home = path.join(dirs.processed, '2026', 'Weekly');
+  fs.mkdirSync(path.join(home, 'details'), { recursive: true });
+  fs.writeFileSync(path.join(home, 'details', 'a-diarizer-response.json'), '{}');
+  fs.writeFileSync(path.join(home, 'a-analysis.md'), '# notes');                  // md at folder level
+  fs.writeFileSync(path.join(home, 'details', 'b-diarizer-response.json'), '{}'); // no md anywhere
+  const r = lib.listFiles('processed', '2026/Weekly/details');
+  const byName = {};
+  r.files.forEach(f => { byName[f.name.split('/').pop()] = f; });
+  assert.equal(byName['a-diarizer-response.json'].analyzed, true);
+  assert.equal(byName['b-diarizer-response.json'].analyzed, false);
 });
 
 test('listFiles(processed) shows one folder at a time with navigable subdirs', () => {
@@ -132,7 +148,7 @@ test('listFiles(processed) shows one folder at a time with navigable subdirs', (
   assert.deepEqual(m.files.map(f => f.name).sort(), ['2026/08/m-analysis.md', '2026/08/m.json']);
 
   assert.equal(lib.listFiles('processed', '../x').ok, false);                  // traversal rejected
-  assert.equal(lib.listFiles('processed', 'a/b/c').ok, false);                 // too deep
+  assert.equal(lib.listFiles('processed', 'a/b/c/d').ok, false);               // too deep (3 dirs max)
   // unprocessed stays flat: dir param ignored, subfolders invisible
   fs.mkdirSync(path.join(dirs.unprocessed, 'sub'));
   fs.writeFileSync(path.join(dirs.unprocessed, 'sub', 'x.wav'), makeWav(1));

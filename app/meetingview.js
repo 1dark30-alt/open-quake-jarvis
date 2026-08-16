@@ -478,10 +478,9 @@ function renderAnList() {
     $('anUp').disabled = !anDir;
     var files = (r && r.files) || [];
     var dirs = (r && r.dirs) || [];
-    var mdSet = {};   // analyses are <base>-analysis.md (plain <base>.md accepted for early files)
-    files.forEach(function (f) { if (/\.md$/i.test(f.name)) mdSet[f.name.replace(/(-analysis)?\.md$/i, '')] = 1; });
     // Only diarizer transcripts are analyzable — plain .json files here are Outlook meeting-info
-    // sidecars (or other data), not transcripts.
+    // sidecars (or other data), not transcripts. The server computes `analyzed` (it knows the
+    // details-folder layout where the .md sits one level up).
     var jsons = files.filter(function (f) { return /-diarizer-response\.json$/i.test(f.name); });
     selReset(anSel, jsons.map(function (f) { return f.name; }));
     dirs.forEach(function (d) {
@@ -500,7 +499,7 @@ function renderAnList() {
       // the analysis is <base>-analysis.md, so match/display on the stripped base.
       var base = f.name.replace(/(-diarizer-response)?\.json$/i, '');
       var rel = splitRel(base);
-      var analyzed = !!mdSet[base];
+      var analyzed = !!f.analyzed;
       var row = document.createElement('div'); row.className = 'fileRow';
       row.appendChild(selBox(anSel, f.name));
       var meta = document.createElement('div'); meta.className = 'meta';

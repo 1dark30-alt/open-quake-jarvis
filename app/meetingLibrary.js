@@ -21,13 +21,14 @@ function safeName(name) {
   return n;
 }
 
-// Like safeName but allows forward-slash subfolders (the processed folder's optional YYYY/MM
-// layout): every segment validated, last segment must be a safeName. Max 3 levels deep.
+// Like safeName but allows forward-slash subfolders (the processed folder's YYYY/MM or
+// YYYY/Meeting-Name layout, optionally with a details/ level): every segment validated, last
+// segment must be a safeName. Max 3 folder levels deep.
 function safeRelPath(name) {
   const n = String(name || '');
   if (n.includes('\\') || n.includes('..')) return null;
   const parts = n.split('/');
-  if (parts.length > 3) return null;
+  if (parts.length > 4) return null;
   const file = parts[parts.length - 1];
   if (!safeName(file)) return null;
   for (let i = 0; i < parts.length - 1; i++) {
@@ -86,7 +87,7 @@ function createMeetingLibrary(deps) {
     let rel = '';
     if (kind === 'processed' && subDir) {
       const parts = String(subDir).split('/').filter(Boolean);
-      if (parts.length > 2 || parts.some(s => s === '..' || !SAFE_SEGMENT.test(s))) return { ok: false, error: 'bad dir' };
+      if (parts.length > 3 || parts.some(s => s === '..' || !SAFE_SEGMENT.test(s))) return { ok: false, error: 'bad dir' };
       rel = parts.join('/');
     }
     const depth = rel ? rel.split('/').length : 0;
@@ -97,13 +98,14 @@ function createMeetingLibrary(deps) {
     const files = [];
     for (const ent of entries) {
       if (ent.isDirectory()) {
-        // navigable while files inside remain valid rel paths (≤2 dirs); dot-folders stay hidden
-        if (kind === 'processed' && depth < 2 && SAFE_SEGMENT.test(ent.name) && ent.name[0] !== '.') dirs.push(ent.name);
+        // navigable while files inside remain valid rel paths (≤3 dirs); dot-folders stay hidden
+        if (kind === 'processed' && depth < 3 && SAFE_SEGMENT.test(ent.name) && ent.name[0] !== '.') dirs.push(ent.name);
         continue;
       }
       if (!/\.(wav|json|md)$/i.test(ent.name) || !safeName(ent.name)) continue;
       try {
-        const abs = path.join(base, rel, ent.name);
+        const dirAbs = rel ? path.join(base, rel) : base;
+        const abs = path.join(dirAbs, ent.name);
         const st = fsMod.statSync(abs);
         if (!st.isFile()) continue;
         let durationMs = null;
@@ -115,7 +117,17 @@ function createMeetingLibrary(deps) {
             durationMs = wavDurationMs(head.slice(0, read));
           } finally { fsMod.closeSync(fd); }
         }
-        files.push({ name: rel ? rel + '/' + ent.name : ent.name, size: st.size, mtimeMs: st.mtimeMs, durationMs });
+        const entry = { name: rel ? rel + '/' + ent.name : ent.name, size: st.size, mtimeMs: st.mtimeMs, durationMs };
+        // Transcripts get an `analyzed` flag so the panel needn't guess: the -analysis.md sits
+        // beside the transcript, or one level up when the transcript lives in a details/ folder.
+        if (/-diarizer-response\.json$/i.test(ent.name)) {
+          const b = ent.name.replace(/-diarizer-response\.json$/i, '');
+          entry.analyzed = fsMod.existsSync(path.join(dirAbs, b + '-analysis.md'))
+            || fsMod.existsSync(path.join(dirAbs, b + '.md'))
+            || (path.basename(dirAbs).toLowerCase() === 'details'
+                && fsMod.existsSync(path.join(path.dirname(dirAbs), b + '-analysis.md')));
+        }
+        files.push(entry);
       } catch (e) { /* raced deletion — skip */ }
     }
     dirs.sort();
