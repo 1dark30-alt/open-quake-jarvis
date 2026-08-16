@@ -10,14 +10,22 @@
 
 const path = require('path');
 
-const SAFE_NAME = /^[A-Za-z0-9 ._()-]+\.(wav|json|md)$/i;
-const SAFE_SEGMENT = /^[A-Za-z0-9 ._()-]+$/;
+// Deny-list validation, not allow-list: real meeting subjects carry #, &, [ ], ', commas, etc.
+// (an allow-list silently hid renamed recordings from every panel screen). Rejected outright:
+// path separators, Windows-illegal filename chars, control chars, and anything containing "..".
+const ILLEGAL_CHARS = /[\\/<>:"|?*]/;   // path separators + Windows-illegal (control chars checked below)
+const SAFE_EXT = /\.(wav|json|md)$/i;
 const KINDS = ['unprocessed', 'processed'];
+
+function validSegment(s) {
+  if (!s.length || s.includes('..') || s.trim() !== s || ILLEGAL_CHARS.test(s)) return false;
+  for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) < 32) return false;   // control chars
+  return true;
+}
 
 function safeName(name) {
   const n = String(name || '');
-  if (!SAFE_NAME.test(n)) return null;
-  if (n.includes('..') || n.includes('/') || n.includes('\\')) return null;
+  if (!SAFE_EXT.test(n) || !validSegment(n)) return null;
   return n;
 }
 
@@ -32,7 +40,7 @@ function safeRelPath(name) {
   const file = parts[parts.length - 1];
   if (!safeName(file)) return null;
   for (let i = 0; i < parts.length - 1; i++) {
-    if (!SAFE_SEGMENT.test(parts[i])) return null;
+    if (!validSegment(parts[i])) return null;
   }
   return parts.join('/');
 }
@@ -87,7 +95,7 @@ function createMeetingLibrary(deps) {
     let rel = '';
     if (kind === 'processed' && subDir) {
       const parts = String(subDir).split('/').filter(Boolean);
-      if (parts.length > 3 || parts.some(s => s === '..' || !SAFE_SEGMENT.test(s))) return { ok: false, error: 'bad dir' };
+      if (parts.length > 3 || parts.some(s => !validSegment(s))) return { ok: false, error: 'bad dir' };
       rel = parts.join('/');
     }
     const depth = rel ? rel.split('/').length : 0;
@@ -99,7 +107,7 @@ function createMeetingLibrary(deps) {
     for (const ent of entries) {
       if (ent.isDirectory()) {
         // navigable while files inside remain valid rel paths (≤3 dirs); dot-folders stay hidden
-        if (kind === 'processed' && depth < 3 && SAFE_SEGMENT.test(ent.name) && ent.name[0] !== '.') dirs.push(ent.name);
+        if (kind === 'processed' && depth < 3 && validSegment(ent.name) && ent.name[0] !== '.') dirs.push(ent.name);
         continue;
       }
       if (!/\.(wav|json|md)$/i.test(ent.name) || !safeName(ent.name)) continue;

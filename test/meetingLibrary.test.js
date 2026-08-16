@@ -29,13 +29,17 @@ function makeWav(seconds) {
   return Buffer.concat([h, data]);
 }
 
-test('safeName accepts recorder-style names and rejects traversal/junk', () => {
+test('safeName accepts real meeting-subject names and rejects traversal/junk', () => {
   assert.equal(safeName('2026-08-14-09-30-00.wav'), '2026-08-14-09-30-00.wav');
   assert.equal(safeName('My Meeting (2).json'), 'My Meeting (2).json');
   assert.equal(safeName('notes.md'), 'notes.md');
-  for (const bad of ['../x.wav', '..\\x.wav', 'a/b.wav', 'a\\b.wav', 'x.exe', 'x', '', null, 'x.wav.exe', 'con|.wav']) {
-    assert.equal(safeName(bad), null, 'should reject: ' + bad);
+  // deny-list, not allow-list: subjects carry #, &, [ ], ', commas… (a # once hid a recording)
+  assert.equal(safeName('2026-08-15-21-47-10-Recording Test #1.wav'), '2026-08-15-21-47-10-Recording Test #1.wav');
+  assert.equal(safeName("[EXTERNAL]SAP & Friends, Dave's Q4.wav"), "[EXTERNAL]SAP & Friends, Dave's Q4.wav");
+  for (const bad of ['../x.wav', '..\\x.wav', 'a/b.wav', 'a\\b.wav', 'x.exe', 'x', '', null, 'x.wav.exe', 'con|.wav', ' padded.wav']) {
+    assert.equal(safeName(bad), null, 'should reject: ' + JSON.stringify(bad));
   }
+  assert.equal(safeName('bell' + String.fromCharCode(7) + '.wav'), null);   // control chars
 });
 
 test('wavDurationMs parses a real header and rejects non-RIFF data', () => {
