@@ -1329,8 +1329,10 @@ function appendMeetingNameToRecording(wavName) {
     const base = wavName.replace(/\.wav$/i, '');
     const sidecar = path.join(dir, base + '.json');
     if (!fs.existsSync(sidecar)) return;   // ad-hoc call, or the Outlook lookup found nothing
-    const subject = String((JSON.parse(fs.readFileSync(sidecar, 'utf8')) || {}).subject || '')
-      .replace(/[\/\\:*?"<>|]/g, '').trim();
+    const rawSubject = (JSON.parse(fs.readFileSync(sidecar, 'utf8')) || {}).subject || '';
+    // Same character rules as the library's filename validation — a name the rename produces
+    // must be one every panel screen can list.
+    const subject = require('./meetingLibrary').sanitizeSubjectForFilename(rawSubject);
     if (!subject) return;
     let newBase = base + '-' + subject;
     for (let i = 1; fs.existsSync(path.join(dir, newBase + '.wav')); i++) newBase = base + '-' + subject + '_' + i;

@@ -29,6 +29,20 @@ function safeName(name) {
   return n;
 }
 
+// Make an Outlook subject safe to embed in a filename — the mirror of validSegment: path
+// separators and Windows-illegal chars are dropped (spaces kept, matching the pre-existing
+// pipeline's "Basis/Titan" -> "BasisTitan" convention), control chars dropped, ".." runs
+// collapsed, and edge whitespace/dots trimmed so "<ts>-<subject>.wav" always passes safeName.
+function sanitizeSubjectForFilename(subject) {
+  let s = '';
+  for (const c of String(subject || '')) {
+    if (c.charCodeAt(0) < 32 || ILLEGAL_CHARS.test(c)) continue;
+    s += c;
+  }
+  s = s.replace(/\.{2,}/g, '.');
+  return s.replace(/^[\s.]+|[\s.]+$/g, '');
+}
+
 // Like safeName but allows forward-slash subfolders (the processed folder's YYYY/MM or
 // YYYY/Meeting-Name layout, optionally with a details/ level): every segment validated, last
 // segment must be a safeName. Max 3 folder levels deep.
@@ -159,4 +173,4 @@ function createMeetingLibrary(deps) {
   return { listFiles, deleteFile, resolvePath, safeName };
 }
 
-module.exports = { createMeetingLibrary, safeName, safeRelPath, wavDurationMs };
+module.exports = { createMeetingLibrary, safeName, safeRelPath, sanitizeSubjectForFilename, wavDurationMs };

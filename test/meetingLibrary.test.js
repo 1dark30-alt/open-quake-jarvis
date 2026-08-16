@@ -42,6 +42,22 @@ test('safeName accepts real meeting-subject names and rejects traversal/junk', (
   assert.equal(safeName('bell' + String.fromCharCode(7) + '.wav'), null);   // control chars
 });
 
+test('sanitizeSubjectForFilename mirrors the validation rules', () => {
+  const { sanitizeSubjectForFilename: san } = require('../app/meetingLibrary');
+  assert.equal(san('Basis/Titan Admins Thurs Check-in'), 'BasisTitan Admins Thurs Check-in');   // the pipeline convention
+  assert.equal(san('Q&A #4: review?'), 'Q&A #4 review');
+  assert.equal(san('  spaced  '), 'spaced');
+  assert.equal(san('Follow up...'), 'Follow up');
+  assert.equal(san('a<b>c:"d"|e*f\\g'), 'abcdef g'.replace(' ', ''));   // all illegal chars dropped
+  assert.equal(san('bell' + String.fromCharCode(7) + 'x'), 'bellx');
+  assert.equal(san(''), '');
+  // whatever comes out must survive safeName once embedded in a recording name
+  for (const subj of ['Basis/Titan #1', 'Trailing dot.', 'Q&A: huh?', '[EXT] & more']) {
+    const out = san(subj);
+    assert.ok(safeName('2026-08-15-21-00-00-' + out + '.wav'), 'safeName must accept: ' + out);
+  }
+});
+
 test('wavDurationMs parses a real header and rejects non-RIFF data', () => {
   assert.equal(wavDurationMs(makeWav(3)), 3000);
   assert.equal(wavDurationMs(Buffer.from('ID3not a wav at all, definitely mp3 data')), null);
