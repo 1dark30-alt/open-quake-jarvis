@@ -25,17 +25,22 @@ const RECENT_MAX = 20;
 // more than 5 minutes of processing ("fetch failed" partway through). Raw http.request has
 // no such ceiling — `timeout` below is socket INACTIVITY, so it only fires if the server
 // goes silent for the full hour.
-function httpPostWav(url, filename, buf, timeoutMs) {
+function httpPostWav(url, filename, buf, timeoutMs, fields) {
   return new Promise((resolve, reject) => {
     let u;
     try { u = new URL(url); } catch (e) { return reject(new Error('bad server URL: ' + url)); }
     const mod = u.protocol === 'https:' ? https : http;
     const boundary = '----OpenQuakeMeeting' + Math.random().toString(36).slice(2);
-    const head = Buffer.from(
+    const parts = [];
+    for (const k of Object.keys(fields || {})) {   // text fields (threshold, attendees) before the file
+      parts.push(Buffer.from('--' + boundary + '\r\nContent-Disposition: form-data; name="' + k + '"\r\n\r\n' + fields[k] + '\r\n'));
+    }
+    parts.push(Buffer.from(
       '--' + boundary + '\r\nContent-Disposition: form-data; name="audio"; filename="' + filename.replace(/"/g, '') + '"\r\n' +
-      'Content-Type: application/octet-stream\r\n\r\n');
-    const tail = Buffer.from('\r\n--' + boundary + '--\r\n');
-    const body = Buffer.concat([head, buf, tail]);
+      'Content-Type: application/octet-stream\r\n\r\n'));
+    parts.push(buf);
+    parts.push(Buffer.from('\r\n--' + boundary + '--\r\n'));
+    const body = Buffer.concat(parts);
     const req = mod.request({
       hostname: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80), path: u.pathname,
       method: 'POST', timeout: timeoutMs,
@@ -59,6 +64,7 @@ function createMeetingTranscriber(deps) {
   const resolveFolders = deps.resolveFolders;   // () => { unprocessed, processed }
   const resolveBaseUrl = deps.resolveBaseUrl;   // () => 'http://127.0.0.1:10301'
   const organizeByDate = deps.organizeByDate || (() => false);   // () => bool: file results into YYYY/MM subfolders
+  const resolveThreshold = deps.resolveThreshold || (() => '');  // () => speaker cutoff ('' = server default)
   const log = deps.log || (() => {});
   const now = deps.now || Date.now;
   const timeoutMs = deps.timeoutMs || TIMEOUT_MS;
@@ -127,7 +133,29 @@ function createMeetingTranscriber(deps) {
     const folders = resolveFolders();
     const src = path.join(folders.unprocessed, name);
     const buf = await fsp.readFile(src);
-    const res = await httpPost(resolveBaseUrl() + '/transcribe', name, buf, timeoutMs);
+    const fields = {};
+    const th = String(resolveThreshold() || '').trim();
+    if (th) fields.threshold = th;
+    // Attendees from the Outlook meeting-info sidecar, OpenHiNotes-style: organizer first, then
+    // required, then optional — ordered, de-duplicated, names passed as-is (the diarizer matches
+    // them against enrolled speakers exactly and penalizes enrolled speakers not on the list).
+    try {
+      const sidecarPath = path.join(folders.unprocessed, name.replace(/\.wav$/i, '') + '.json');
+      if (fsMod.existsSync(sidecarPath)) {
+        const meta = JSON.parse(await fsp.readFile(sidecarPath, 'utf8'));
+        const seen = {};
+        const ordered = [];
+        const add = n => { const t = String(n || '').trim(); if (t && !seen[t]) { seen[t] = true; ordered.push(t); } };
+        add(meta.organizer);
+        (meta.required_attendees || []).forEach(add);
+        (meta.optional_attendees || []).forEach(add);
+        if (ordered.length) {
+          fields.attendees = ordered.join(',');
+          log('attendees passed (' + ordered.length + '): ' + fields.attendees);
+        }
+      }
+    } catch (e) { log('meeting-info sidecar unreadable — no attendees passed: ' + e.message); }
+    const res = await httpPost(resolveBaseUrl() + '/transcribe', name, buf, timeoutMs, fields);
     if (res.status !== 200) {
       let detail = '';
       try { detail = JSON.parse(res.text).detail || ''; } catch (e) {}

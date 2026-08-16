@@ -164,6 +164,42 @@ test('re-transcribing the same meeting files as _1, _2 — never overwrites', as
   assert.equal(fs.existsSync(path.join(s.processed, 'm_2-diarizer-response.json')), true);
 });
 
+test('attendees from the sidecar and the threshold setting ride the upload', async () => {
+  const captured = [];
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oqx-tx-att-'));
+  const unprocessed = path.join(root, 'unprocessed');
+  fs.mkdirSync(unprocessed);
+  const tx = createMeetingTranscriber({
+    resolveFolders: () => ({ unprocessed, processed: path.join(root, 'processed') }),
+    resolveBaseUrl: () => 'http://fake:1',
+    resolveThreshold: () => '0.7',
+    fetchImpl: async () => jsonResponse(true, {}),
+    httpPost: async (url, filename, buf, timeoutMs, fields) => {
+      captured.push({ filename, fields });
+      return { status: 200, text: JSON.stringify(GOOD_RESPONSE) };
+    },
+    healthTtlMs: 0,
+  });
+  addWav(unprocessed, 'with-info.wav');
+  fs.writeFileSync(path.join(unprocessed, 'with-info.json'), JSON.stringify({
+    organizer: 'T.J. Schmitz',
+    required_attendees: ['David Mastalski', 'T.J. Schmitz', 'Carl Tanner'],   // organizer repeated -> deduped
+    optional_attendees: ['Monica Paras'],
+  }));
+  addWav(unprocessed, 'ad-hoc.wav');
+  tx.enqueue('with-info.wav');
+  tx.enqueue('ad-hoc.wav');
+  await drained(tx);
+  assert.equal(captured.length, 2);
+  const withInfo = captured.find(c => c.filename === 'with-info.wav');
+  assert.deepEqual(withInfo.fields, {
+    threshold: '0.7',
+    attendees: 'T.J. Schmitz,David Mastalski,Carl Tanner,Monica Paras',   // organizer -> required -> optional
+  });
+  const adHoc = captured.find(c => c.filename === 'ad-hoc.wav');
+  assert.deepEqual(adHoc.fields, { threshold: '0.7' });                    // no sidecar -> no attendees field
+});
+
 test('Outlook meeting-info sidecar travels with the WAV (and joins the collision rename)', async () => {
   const s = setup();
   addWav(s.unprocessed, 'm.wav');

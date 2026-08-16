@@ -119,6 +119,11 @@ Recording and transcription for the Meeting panel (details in [meeting.md](meeti
   (usually "Calendar") and optional comma-separated **Skip prefixes** (e.g. `Canceled:,
   Focus time`) to keep non-meetings out of the lookup. Requires classic OUTLOOK.EXE
   running in your session — the new Outlook (olk.exe) has no COM interface.
+- **Advanced → Speaker threshold** — optional speaker-identification cosine cutoff
+  (e.g. `0.70`) sent with each transcription; blank = the server's default. When a
+  recording has Outlook meeting info, its attendee list (organizer + required +
+  optional) is sent along automatically — the diarizer penalizes enrolled speakers not
+  on the list, reducing false speaker matches.
 
 ## Auth (Home Assistant)
 
