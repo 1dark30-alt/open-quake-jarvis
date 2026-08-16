@@ -65,6 +65,7 @@ function createMeetingTranscriber(deps) {
   const resolveBaseUrl = deps.resolveBaseUrl;   // () => 'http://127.0.0.1:10301'
   const organizeByDate = deps.organizeByDate || (() => false);   // () => bool: file results into YYYY/MM subfolders
   const resolveThreshold = deps.resolveThreshold || (() => '');  // () => speaker cutoff ('' = server default)
+  const resolveMyName = deps.resolveMyName || (() => '');        // () => operator's enrolled name ('' = off)
   const log = deps.log || (() => {});
   const now = deps.now || Date.now;
   const timeoutMs = deps.timeoutMs || TIMEOUT_MS;
@@ -136,6 +137,11 @@ function createMeetingTranscriber(deps) {
     const fields = {};
     const th = String(resolveThreshold() || '').trim();
     if (th) fields.threshold = th;
+    // Channel-guided identification: our stereo layout is fixed (left = the operator's mic), so
+    // sending me_name lets the service label the mic channel's cluster with certainty — no cosine
+    // wobble. me_channel is omitted: the service default (left) matches our layout.
+    const myName = String(resolveMyName() || '').trim();
+    if (myName) fields.me_name = myName;
     // Attendees from the Outlook meeting-info sidecar, OpenHiNotes-style: organizer first, then
     // required, then optional — ordered, de-duplicated, names passed as-is (the diarizer matches
     // them against enrolled speakers exactly and penalizes enrolled speakers not on the list).

@@ -1874,7 +1874,7 @@
     const th = currentTheme();
     // Meeting recording settings (config.settings.meeting) — global so auto-record works regardless of
     // which app the panel is showing. Same shape as MEETING_DEFAULTS in main.js.
-    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false }, (config.settings || {}).meeting || {});
+    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false }, (config.settings || {}).meeting || {});
     const me = currentMe();
     // ledState = the device's live lighting (loaded when the page opens); fall back to saved config / defaults.
     const L = Object.assign({}, LED_DEFAULT, (config.settings || {}).lighting || {}, ledState || {});
@@ -2066,6 +2066,9 @@
         <input type="number" id="meThreshold" min="0" max="1" step="0.05" value="${esc(me.transcribeThreshold)}" style="width:120px">
         <span class="hint" style="margin:0 0 0 8px">blank = server default</span></div>
       <p class="hint">Speaker-identification cosine cutoff (e.g. 0.70) sent with each transcription. Attendees from the Outlook meeting info are sent automatically — the diarizer penalizes enrolled speakers who aren't on the list, cutting false matches.</p>
+      <div class="row" style="margin-top:12px"><label>My name</label>
+        <input id="meMyName" value="${esc(me.myName)}" placeholder="e.g. T.J. Schmitz" style="flex:1"></div>
+      <p class="hint">Your enrolled speaker name. When set, it's sent as <b>me_name</b> and the transcription server labels your isolated-mic channel's voice with certainty (channel-guided ID) — no threshold wobble for you. Blank = off. Note: in hybrid meetings, people in the room with you also land on your mic channel and still go through normal identification.</p>
       </details>`;
 
     // Theme tab — global light/dark + accent color
@@ -2475,6 +2478,7 @@
       document.getElementById('meOutCal').oninput = e => saveMe({ outlookCalendar: e.target.value.trim() });
       document.getElementById('meOutSkip').oninput = e => saveMe({ outlookSkipPrefixes: e.target.value });
       document.getElementById('meThreshold').onchange = e => saveMe({ transcribeThreshold: e.target.value.trim() });
+      document.getElementById('meMyName').oninput = e => saveMe({ myName: e.target.value.trim() });
       document.getElementById('meOutCheck').onclick = async () => {
         const msg = document.getElementById('meOutMsg');
         msg.textContent = 'Checking — classic Outlook must be running…'; msg.style.color = '';

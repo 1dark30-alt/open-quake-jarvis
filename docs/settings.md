@@ -139,6 +139,11 @@ Recording and transcription for the Meeting panel (details in [meeting.md](meeti
   recording has Outlook meeting info, its attendee list (organizer + required +
   optional) is sent along automatically — the diarizer penalizes enrolled speakers not
   on the list, reducing false speaker matches.
+- **Advanced → My name** — your enrolled speaker name. When set, it's sent as
+  `me_name` with each transcription: since your mic is the isolated left channel, the
+  server labels your voice with certainty (channel-guided ID) instead of relying on the
+  cosine threshold. Blank = off. In hybrid meetings, in-room voices share your mic
+  channel and still go through normal identification.
 
 ## Auth (Home Assistant)
 

@@ -173,6 +173,7 @@ test('attendees from the sidecar and the threshold setting ride the upload', asy
     resolveFolders: () => ({ unprocessed, processed: path.join(root, 'processed') }),
     resolveBaseUrl: () => 'http://fake:1',
     resolveThreshold: () => '0.7',
+    resolveMyName: () => 'T.J. Schmitz',
     fetchImpl: async () => jsonResponse(true, {}),
     httpPost: async (url, filename, buf, timeoutMs, fields) => {
       captured.push({ filename, fields });
@@ -194,10 +195,11 @@ test('attendees from the sidecar and the threshold setting ride the upload', asy
   const withInfo = captured.find(c => c.filename === 'with-info.wav');
   assert.deepEqual(withInfo.fields, {
     threshold: '0.7',
+    me_name: 'T.J. Schmitz',                                              // channel-guided ID (left = mic)
     attendees: 'T.J. Schmitz,David Mastalski,Carl Tanner,Monica Paras',   // organizer -> required -> optional
   });
   const adHoc = captured.find(c => c.filename === 'ad-hoc.wav');
-  assert.deepEqual(adHoc.fields, { threshold: '0.7' });                    // no sidecar -> no attendees field
+  assert.deepEqual(adHoc.fields, { threshold: '0.7', me_name: 'T.J. Schmitz' });   // no sidecar -> no attendees field
 });
 
 test('Outlook meeting-info sidecar travels with the WAV (and joins the collision rename)', async () => {
