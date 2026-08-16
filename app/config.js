@@ -2040,7 +2040,7 @@
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meEcho" ${me.echoGate ? 'checked' : ''}> Echo-gate your microphone</label></div>
       <p class="hint">Mutes your mic in the recording while the speakers are loud (and you're not on headphones), to stop the far end bleeding back in. Off = faithful capture of everything you say, even when others are talking.</p>
 
-      <details class="advsec" style="margin-top:22px"${(me.outlookEnabled || me.separateRecurring || me.separateTranscript || me.useDetailsFolder || me.transcribeThreshold) ? ' open' : ''}>
+      <details class="advsec" style="margin-top:22px">
       <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Advanced Settings</summary>
       <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meOutlook" ${me.outlookEnabled ? 'checked' : ''}> Pull meeting information from Classic Outlook</label></div>
       <p class="hint">When a recording starts, looks up the matching appointment in the running classic Outlook (COM, your signed-in profile — no tokens or app registration) and saves its details (subject, attendees, organizer, body…) as <b>&lt;recording&gt;.json</b> beside the WAV; the file travels with the recording through transcription. Ad-hoc calls with nothing on the calendar save nothing.</p>
