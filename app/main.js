@@ -1224,6 +1224,7 @@ function ensureMeetingPromptFile() {
 // Accept the base URL, the full /transcribe URL, or a bare host:port; always return the base.
 function resolveTranscribeBaseUrl() {
   let u = String(meetingSettings().transcribeUrl || '').trim() || 'http://127.0.0.1:10301';
+  u = u.replace(/^(https?):\/*/i, '$1://');          // heal "http:/host" and "http:host" typos
   if (!/^https?:\/\//i.test(u)) u = 'http://' + u;   // bare "192.168.1.25:10301" entries work too
   u = u.replace(/\/+$/, '');
   if (/\/transcribe$/i.test(u)) u = u.slice(0, -'/transcribe'.length);
