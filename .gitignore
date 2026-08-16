@@ -35,3 +35,6 @@ app/native/*.exe
 .env
 .ua/
 app/native/open_quake_dpapi.node
+
+# personal analysis prompt (bundled meeting-analysis-prompt.md stays stock)
+/my-meeting-analysis-prompt.md
