@@ -51,9 +51,14 @@ It gives you:
   recordings to a **diarizing transcription server** ([tts-sst](https://github.com/TeeJS/tts-stt-windows)
   or meeting-diarizer) for a **speaker-labeled transcript**, and turns transcripts into
   **AI meeting notes** (summary, attendees, decisions, action items, cleaned transcript)
-  with your locally installed **Claude Code or Codex CLI** — no API key. Multi-select
-  queues, per-date or per-meeting folders, and an on-panel notes reader.
-  → [Meeting](docs/meeting.md)
+  with your locally installed **Claude Code or Codex CLI** — no API key. With the
+  optional **Outlook calendar integration** (classic Outlook, COM — no tokens), each
+  recording also captures its meeting's details (subject, organizer, attendees, join
+  link), which sharpens speaker identification (attendee-guided matching, plus your own
+  mic channel labeled with certainty) and can **name recordings after the meeting**.
+  Filing options: per-date or **per-recurring-meeting folders**, a separate clean
+  transcript, and a tidy `details\` layout. Multi-select queues and an on-panel notes
+  reader included. → [Meeting](docs/meeting.md)
 - **Theming** — a global **light / dark / system** mode and an **accent color** (with savable
   presets) that drives the panel, the bundled apps, and the knob's RGB ring; web dashboards
   follow the light/dark mode, and any page can override the theme in its Advanced settings.
