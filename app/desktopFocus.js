@@ -3,129 +3,115 @@
  * desktopFocus.js — track the PC's foreground (focused) application and let the panel
  * auto-switch to a page mapped to it. [MIT]
  *
- * Windows-only. Two operations:
- *   - getForegroundProcessName() — P/Invoke GetForegroundWindow + GetWindowThreadProcessId,
- *     same technique already proven in meetingControl.js's Teams-focus script, but reading
- *     instead of setting. Returns a bare process name (no ".exe"), matching Get-Process's own
- *     .ProcessName convention (and meetingControl.js's Get-Process -Name usage).
- *   - listRunningApps() — Get-Process | Where-Object MainWindowTitle, for the editor's
- *     "browse running apps" picker. Same "does this process own a real window" signal
- *     meetingControl.js already uses to find Teams' window, generalized to all processes.
+ * Windows-only, via the bundled foreground-watch.exe helper (native/foreground-watch.cs):
+ *   - watch mode: ONE persistent helper process holding a SetWinEventHook, streaming the
+ *     foreground process name (bare, no ".exe") over stdout on every change — event-driven,
+ *     zero polling. This replaced a powershell.exe spawn every 1.5s (~40 processes/min),
+ *     which endpoint-security tools flag as malware-like process churn.
+ *   - list mode (one-shot): every process owning a real window, for the editor's
+ *     "browse running apps" picker.
  *
- * Polling, not an event hook (SetWinEventHook) — simplest option, consistent with this
- * codebase's other pollers (nowplaying.js's SMTC read), "good enough" latency at ~1.5s.
- * Only fires onChange on a COMMITTED transition: the new process must be stable across two
- * consecutive polls (~3s) before it's reported. This is what keeps rapid alt-tabbing from
- * causing page-switch flicker, and (since committed state only updates on genuine change)
- * is also what keeps the poller from ever fighting a manual page navigation on its own —
- * it has nothing to re-assert while the same app stays focused.
+ * Debounce is unchanged in spirit: a new foreground app is only committed (reported via
+ * onChange) once it has HELD focus for COMMIT_MS, so rapid alt-tabbing can't flick pages,
+ * and the tracker never fights a manual page navigation while the same app stays focused.
  */
-const { execFile } = require('child_process');
+const { spawn, execFile } = require('child_process');
+const path = require('path');
+const fs = require('fs');
 
-const FOREGROUND_PS = `
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class OqFg {
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+const WATCH_EXE = path.join(__dirname, 'native', 'foreground-watch.exe').replace('app.asar', 'app.asar.unpacked');
+
+const COMMIT_MS = 3000;     // a new app must hold focus this long before it's reported (matches the old 2×1.5s polls)
+const RESPAWN_MS = 5000;    // helper crash -> retry delay (only while running)
+
+let running = false, proc = null, respawnTimer = null, commitTimer = null;
+let committed = null;             // the last process name actually reported to onChange
+let onChange = null;
+let warned = false;
+
+function clearTimers() {
+  if (commitTimer) { clearTimeout(commitTimer); commitTimer = null; }
+  if (respawnTimer) { clearTimeout(respawnTimer); respawnTimer = null; }
 }
-"@
-$hWnd = [OqFg]::GetForegroundWindow()
-$procId = 0
-[OqFg]::GetWindowThreadProcessId($hWnd, [ref]$procId) | Out-Null
-try { (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch { '' }
-`.trim();
 
-const LIST_APPS_PS = `
-Get-Process | Where-Object { $_.MainWindowTitle } |
-  Select-Object -Property ProcessName, MainWindowTitle -Unique |
-  ConvertTo-Json -Compress
-`.trim();
+function onLine(name) {
+  if (!running || !name) return;
+  if (commitTimer) { clearTimeout(commitTimer); commitTimer = null; }
+  if (name === committed) return;                     // back to the committed app -> nothing pending
+  commitTimer = setTimeout(() => {
+    commitTimer = null;
+    if (!running) return;
+    committed = name;
+    if (onChange) onChange(name);
+  }, COMMIT_MS);
+}
 
-function runPs(script, timeoutMs) {
-  return new Promise(resolve => {
-    if (process.platform !== 'win32') return resolve(null);
-    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
-      { windowsHide: true, timeout: timeoutMs || 4000 }, (err, stdout) => {
-        if (err) return resolve(null);
-        resolve(String(stdout || '').trim());
-      });
+function spawnWatcher() {
+  if (!running || proc) return;
+  if (!fs.existsSync(WATCH_EXE)) {
+    if (!warned) { warned = true; console.log('[desktopFocus] foreground-watch.exe missing (native helpers not built) — auto-follow inactive'); }
+    return;
+  }
+  // stdin stays open (piped): the helper exits on stdin EOF, so it can never outlive us.
+  try { proc = spawn(WATCH_EXE, ['watch'], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] }); }
+  catch (e) { proc = null; return; }
+  let buf = '';
+  proc.stdout.on('data', d => {
+    buf += d.toString('utf8');
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (line) onLine(line);
+    }
   });
-}
-
-async function getForegroundProcessName() {
-  const out = await runPs(FOREGROUND_PS, 3000);
-  return out || null;
+  proc.on('error', () => {});
+  proc.on('close', () => {
+    proc = null;
+    if (running && !respawnTimer) respawnTimer = setTimeout(() => { respawnTimer = null; spawnWatcher(); }, RESPAWN_MS);
+  });
 }
 
 // [{ processName, title }], deduped by processName (a process can own several windows —
 // e.g. multiple Chrome windows — each with a different title; keep one representative title).
-async function listRunningApps() {
-  const out = await runPs(LIST_APPS_PS, 5000);
-  if (!out) return [];
-  let rows;
-  try { rows = JSON.parse(out); } catch (e) { return []; }
-  if (!Array.isArray(rows)) rows = [rows];   // ConvertTo-Json emits a bare object, not a 1-item array, for a single result
-  const seen = new Set();
-  const out2 = [];
-  for (const r of rows) {
-    const name = r && r.ProcessName;
-    if (!name || seen.has(name)) continue;
-    seen.add(name);
-    out2.push({ processName: name, title: r.MainWindowTitle || '' });
-  }
-  out2.sort((a, b) => a.processName.localeCompare(b.processName));
-  return out2;
-}
-
-const DEBOUNCE_POLLS = 2;   // consecutive polls the new process must hold before it's reported
-const POLL_MS = 1500;
-
-let running = false, timer = null, busy = false;
-let committed = null;             // the last process name actually reported to onChange
-let pendingName = null, pendingCount = 0;
-let onChange = null;
-
-async function tick() {
-  if (busy || !running) return;
-  busy = true;
-  try {
-    const name = await getForegroundProcessName();
-    if (!name || name === committed) {
-      pendingName = null; pendingCount = 0;   // back to the committed app (or unreadable) -> cancel any pending change
-      return;
-    }
-    if (name === pendingName) {
-      pendingCount++;
-      if (pendingCount >= DEBOUNCE_POLLS) {
-        committed = name;
-        pendingName = null; pendingCount = 0;
-        if (onChange) onChange(name);
+function listRunningApps() {
+  return new Promise(resolve => {
+    if (process.platform !== 'win32' || !fs.existsSync(WATCH_EXE)) return resolve([]);
+    execFile(WATCH_EXE, ['list'], { windowsHide: true, timeout: 5000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+      if (err || !stdout) return resolve([]);
+      let rows;
+      try { rows = JSON.parse(String(stdout).trim()); } catch (e) { return resolve([]); }
+      if (!Array.isArray(rows)) rows = [rows];
+      const seen = new Set();
+      const out = [];
+      for (const r of rows) {
+        const name = r && r.ProcessName;
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        out.push({ processName: name, title: r.MainWindowTitle || '' });
       }
-    } else {
-      pendingName = name; pendingCount = 1;
-    }
-  } catch (e) {}
-  finally { busy = false; }
+      out.sort((a, b) => a.processName.localeCompare(b.processName));
+      resolve(out);
+    });
+  });
 }
 
 /** cb(processName) fires on each committed (debounced) foreground-process change. */
 function start(cb) {
   onChange = cb;
   if (running) return;
+  if (process.platform !== 'win32') return;
   running = true;
-  tick();
-  timer = setInterval(tick, POLL_MS);
+  spawnWatcher();
 }
 function stop() {
   running = false;
-  if (timer) clearInterval(timer);
-  timer = null;
-  committed = null; pendingName = null; pendingCount = 0;
+  clearTimers();
+  if (proc) { try { proc.kill(); } catch (e) {} proc = null; }
+  committed = null;
 }
 
 /** The last debounced/committed foreground process name (what onChange most recently fired with), or null. */
 function getCommittedProcess() { return committed; }
 
-module.exports = { start, stop, getForegroundProcessName, listRunningApps, getCommittedProcess };
+module.exports = { start, stop, listRunningApps, getCommittedProcess };

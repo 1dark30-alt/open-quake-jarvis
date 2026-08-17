@@ -13,7 +13,14 @@
  * routinely blocked by Windows' foreground-lock protection when called from a background
  * process; AttachThreadInput to the current foreground thread first is the standard workaround.
  */
-const { spawn } = require('child_process');
+const { execFile } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+
+// Window find/focus via the bundled foreground-watch.exe helper (native/foreground-watch.cs) —
+// one signed exe instead of a powershell.exe spawn per panel tap, which endpoint-security tools
+// flag as malware-like churn. Same AttachThreadInput focus technique, now compiled.
+const FGWATCH_EXE = path.join(__dirname, 'native', 'foreground-watch.exe').replace('app.asar', 'app.asar.unpacked');
 
 // Fixed Teams shortcuts (Ctrl+Shift+...), confirmed against Microsoft's own support docs.
 // Unlike Zoom these aren't user-configurable, so there's nothing to expose in the editor.
@@ -39,97 +46,31 @@ const ZOOM_DEFAULT_COMBO = {
   leave: 'alt+q',
 };
 
-// Non-elevated -- focusing a window the signed-in user already owns needs no UAC prompt (unlike
-// touchSetup.js's multidigimon/tabcal, which write to HKLM and require admin). Tries new Teams'
-// process name first, falls back to classic Teams for any remaining holdouts.
-const FOCUS_WINDOW_PS = names => `
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class OqFocus {
-  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
-  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
-  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
-}
-"@
-$names = @(${names.map(name => "'" + name + "'").join(',')})
-$target = $null
-foreach ($n in $names) {
-  $p = Get-Process -Name $n -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-  if ($p) { $target = $p; break }
-}
-if (-not $target) { Write-Output 'NOTFOUND'; exit 1 }
-$hWnd = $target.MainWindowHandle
-$fgWnd = [OqFocus]::GetForegroundWindow()
-$fgThread = 0
-[OqFocus]::GetWindowThreadProcessId($fgWnd, [ref]$fgThread) | Out-Null
-$curThread = [OqFocus]::GetCurrentThreadId()
-if ([OqFocus]::IsIconic($hWnd)) { [OqFocus]::ShowWindowAsync($hWnd, 9) | Out-Null }
-[OqFocus]::AttachThreadInput($curThread, $fgThread, $true) | Out-Null
-[OqFocus]::SetForegroundWindow($hWnd) | Out-Null
-[OqFocus]::AttachThreadInput($curThread, $fgThread, $false) | Out-Null
-Write-Output 'OK'
-`.trim();
-
-const FIND_WINDOW_PS = names => `
-$names = @(${names.map(name => "'" + name + "'").join(',')})
-foreach ($n in $names) {
-  $p = Get-Process -Name $n -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-  if ($p) { Write-Output 'OK'; exit 0 }
-}
-Write-Output 'NOTFOUND'
-exit 1
-`.trim();
-
 function normalizeProcessNames(processNames) {
   return (Array.isArray(processNames) ? processNames : [])
     .map(name => String(name || '').replace(/\.exe$/i, ''))
     .filter(name => /^[A-Za-z0-9._-]+$/.test(name));
 }
 
-function focusProcessWindow(processNames) {
+// mode 'focus' | 'find'; both print OK / NOTFOUND, mirroring the retired PowerShell scripts.
+function runWindowHelper(mode, processNames, missingWord) {
   if (process.platform !== 'win32') return Promise.resolve({ ok: false, error: 'Windows only' });
   const names = normalizeProcessNames(processNames);
   if (!names.length) return Promise.resolve({ ok: false, error: 'No process names supplied' });
+  if (!fs.existsSync(FGWATCH_EXE)) return Promise.resolve({ ok: false, error: 'foreground-watch.exe missing (native helpers not built)' });
   return new Promise(resolve => {
-    let child;
-    try { child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', FOCUS_WINDOW_PS(names)], { windowsHide: true }); }
-    catch (e) { return resolve({ ok: false, error: 'spawn: ' + e.message }); }
-    let out = '', err = '';
-    child.stdout.on('data', d => { out += d.toString(); });
-    child.stderr.on('data', d => { err += d.toString(); });
-    child.on('error', e => resolve({ ok: false, error: 'spawn: ' + e.message }));
-    child.on('close', () => {
-      const trimmed = out.trim();
+    execFile(FGWATCH_EXE, [mode, ...names], { windowsHide: true, timeout: 5000 }, (err, stdout, stderr) => {
+      const trimmed = String(stdout || '').trim();
       if (trimmed === 'OK') return resolve({ ok: true });
-      resolve({ ok: false, error: trimmed === 'NOTFOUND' ? 'Application window not found.' : (err.trim() || 'unknown focus failure') });
+      if (trimmed === 'NOTFOUND') return resolve({ ok: false, error: 'Application window not found.' });
+      resolve({ ok: false, error: String(stderr || '').trim() || (err && err.message) || ('unknown ' + missingWord + ' failure') });
     });
   });
 }
 
-function hasProcessWindow(processNames) {
-  if (process.platform !== 'win32') return Promise.resolve({ ok: false, error: 'Windows only' });
-  const names = normalizeProcessNames(processNames);
-  if (!names.length) return Promise.resolve({ ok: false, error: 'No process names supplied' });
-  return new Promise(resolve => {
-    let child;
-    try { child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', FIND_WINDOW_PS(names)], { windowsHide: true }); }
-    catch (e) { return resolve({ ok: false, error: 'spawn: ' + e.message }); }
-    let out = '', err = '';
-    child.stdout.on('data', d => { out += d.toString(); });
-    child.stderr.on('data', d => { err += d.toString(); });
-    child.on('error', e => resolve({ ok: false, error: 'spawn: ' + e.message }));
-    child.on('close', () => {
-      const trimmed = out.trim();
-      if (trimmed === 'OK') return resolve({ ok: true });
-      resolve({ ok: false, error: trimmed === 'NOTFOUND' ? 'Application window not found.' : (err.trim() || 'unknown process check failure') });
-    });
-  });
-}
+function focusProcessWindow(processNames) { return runWindowHelper('focus', processNames, 'focus'); }
+
+function hasProcessWindow(processNames) { return runWindowHelper('find', processNames, 'process check'); }
 
 function focusTeamsWindow() {
   return focusProcessWindow(['ms-teams', 'Teams']);
