@@ -85,6 +85,29 @@
     color:var(--fg); font-size:18px; font-weight:600; }
   .rrow .ic { width:26px; height:26px; color:var(--muted); flex:0 0 auto; }
 
+  /* ---- slide-capture column (hidden unless body.slides) ---- */
+  #slide { display:none; flex:0 0 330px; background:var(--surf2); border-radius:18px; padding:18px; flex-direction:column; gap:14px; }
+  body.slides #slide { display:flex; }
+  body.slides #rail { flex:0 0 300px; }                    /* give the deck a touch back when a 3rd column joins */
+  .srow { height:64px; display:flex; align-items:center; gap:12px; padding:0 16px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:18px; font-weight:600; text-align:left; }
+  .srow .ic { width:24px; height:24px; color:var(--muted); flex:0 0 auto; }
+  .srow .val { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .srow .val.none { color:var(--dim); font-weight:600; }
+  .srow .chev { color:var(--dim); font-size:22px; flex:0 0 auto; }
+  .sbig { height:96px; border-radius:14px; display:flex; align-items:center; justify-content:center; gap:12px;
+    font-size:22px; font-weight:800; background:var(--accent); color:var(--accent-fg,#04121f); }
+  .sbig .sglyph { width:0; height:0; border-left:20px solid currentColor; border-top:12px solid transparent; border-bottom:12px solid transparent; }
+  body.slides.capturing .sbig { background:var(--danger); color:#1a0505; }        /* Start -> Stop, same box */
+  body.slides.capturing .sbig .sglyph { width:18px; height:18px; border:0; border-radius:4px; background:currentColor; }
+  .smanual { height:64px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:18px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; gap:12px; }
+  .smanual .ic { width:24px; height:24px; flex:0 0 auto; }
+  .sstat { font-size:15px; color:var(--dim); font-weight:600; text-align:center; min-height:20px; line-height:1.3; }
+  .sstat b { color:var(--accent); font-variant-numeric:tabular-nums; }
+  .sstat.warn { color:var(--danger); }
+  /* capture controls are inert until a recording is live (slides need a home folder); Select stays usable */
+  .sdis { opacity:.4; pointer-events:none; }
+
   /* ---- recording popover (anchored under Record, over the rail) ---- */
   #scrim { position:absolute; inset:0; background:rgba(3,6,10,.28); border-radius:18px; display:none; }
   body.light #scrim { background:rgba(210,220,230,.34); }
@@ -215,6 +238,16 @@
         <div class="rsep"></div>
         <button class="rrow press foc" id="settingsRow" type="button"><span class="ic" id="ic-settings"></span>Settings</button>
         <button class="rrow press foc" id="shareScreen" type="button"><span class="ic" id="ic-share"></span>Share screen</button>
+      </div>
+
+      <!-- Slide-capture column: present only when the feature is enabled (main.js sets body.slides).
+           Select is always usable; Start/Manual are disabled until a recording is live. -->
+      <div id="slide">
+        <div class="rlabel">SLIDE CAPTURE</div>
+        <button class="srow press foc" id="slideSelect" type="button"><span class="ic" id="ic-slide-target"></span><span class="val" id="slideTargetVal">No window selected</span><span class="chev">&rsaquo;</span></button>
+        <button class="sbig press foc" id="slideToggle" type="button"><span class="sglyph"></span><span class="slbl">Start capture</span></button>
+        <button class="smanual press foc" id="slideManual" type="button"><span class="ic" id="ic-slide-cam"></span>Manual capture</button>
+        <div class="sstat" id="slideStat"></div>
       </div>
 
       <div id="scrim"></div>

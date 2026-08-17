@@ -1,0 +1,209 @@
+'use strict';
+/*
+ * slideCapture.js — main-process controller for Meeting Slide Capture. [MIT]
+ *
+ * Owns a hidden, main-owned BrowserWindow (the "capture window", show:false) that runs
+ * getDisplayMedia on a window the user picked and ships downsampled thumbnails back. THIS module
+ * runs the settle-detection engine (app/slideCaptureEngine.js) on those thumbnails — so all the
+ * diff/settle logic stays in the unit-tested engine — and, when a new slide settles, asks the page
+ * for one full-resolution PNG and writes it beside the active recording.
+ *
+ * Slides file into "<wav-basename>-screenshots\" next to the recording, so the folder travels and
+ * renames exactly like the .json sidecar (see meetingTranscribe/meetingAnalyze filing). Capture is
+ * only allowed while a recording is live, so every slide has a home folder — a hotkey pressed with
+ * no recording is refused, not silently dropped somewhere.
+ *
+ * DI (deps): resolveSettings() -> slide settings block; resolveActiveRecording() -> { folder, base }
+ * of the live recording or null; getSources() -> desktopCapturer window list; notify(title, body);
+ * onState(state) fired on any change so the panel poller reflects it; log(msg).
+ */
+const path = require('path');
+const fs = require('fs');
+const engine = require('./slideCaptureEngine');
+
+function createSlideCapture(deps) {
+  const log = deps.log || (() => {});
+  let win = null, ready = false, pendingStart = null;
+
+  let targetId = null, targetName = '';         // the picked window
+  let capturing = false;
+  let slideCount = 0;
+  let saveFolder = null, saveBase = null;        // resolved once per capture start; where slides land
+  let prevThumb = null, lastSavedThumb = null;   // Uint8ClampedArray thumbnails
+  let detector = null;
+  let awaitingFrame = false, frameIsManual = false, pendingThumb = null;
+  let idleTimer = null, warnedBlank = false;
+
+  function settings() { try { return deps.resolveSettings() || {}; } catch (e) { return {}; } }
+  function enabled() { return !!settings().slideCaptureEnabled; }
+  function fireState() { try { if (deps.onState) deps.onState(getState()); } catch (e) {} }
+
+  function getState() {
+    return {
+      enabled: enabled(),
+      target: targetName || '',
+      capturing: capturing,
+      slides: slideCount,
+      // the panel greys Start/Manual unless a recording is live
+      canCapture: !!activeRecording(),
+    };
+  }
+
+  function activeRecording() {
+    try { const r = deps.resolveActiveRecording(); return (r && r.folder && r.base) ? r : null; }
+    catch (e) { return null; }
+  }
+
+  // ---- hidden capture window ----
+  function ensureWindow() {
+    if (win && !win.isDestroyed()) return win;
+    win = deps.createWindow();      // main wires the session + display-media handler; see main.js
+    ready = false;
+    win.on('closed', () => { win = null; ready = false; capturing = false; });
+    return win;
+  }
+  function sendCmd(msg) {
+    if (win && !win.isDestroyed() && ready) { try { win.webContents.send('slide-cmd', msg); return true; } catch (e) {} }
+    return false;
+  }
+  function isSender(wc) { return win && !win.isDestroyed() && wc === win.webContents; }
+  function onReady() { ready = true; if (pendingStart) { const s = pendingStart; pendingStart = null; beginCapture(s); } }
+
+  // main hands the capture window the source id it should capture (set right before 'start')
+  function currentSourceId() { return targetId; }
+
+  // ---- window picker ----
+  async function listWindows() {
+    if (!enabled()) return [];
+    let sources = [];
+    try { sources = await deps.getSources(); } catch (e) { log('getSources failed: ' + e.message); return []; }
+    const filter = String(settings().slideAppFilter || '').trim().toLowerCase();
+    // desktopCapturer names are window titles; there's no process name, so the filter matches the
+    // title substring (e.g. "teams" catches "… | Microsoft Teams"). Blank filter shows everything.
+    return sources
+      .filter(s => s && s.id && s.name)
+      .filter(s => !filter || s.name.toLowerCase().includes(filter))
+      .map(s => ({ id: s.id, name: s.name }));
+  }
+
+  function selectWindow(id, name) {
+    targetId = id || null;
+    targetName = name || '';
+    warnedBlank = false;
+    fireState();
+    if (targetId && settings().slideAutoStartOnSelect && activeRecording()) start();
+    return getState();
+  }
+
+  // ---- capture lifecycle ----
+  function start() {
+    if (!enabled()) return { ok: false, error: 'Slide capture is disabled' };
+    if (!targetId) return { ok: false, error: 'No window selected' };
+    const rec = activeRecording();
+    if (!rec) return { ok: false, error: 'Start a recording first — slides file into it' };
+    if (capturing) return { ok: true, state: getState() };
+    saveFolder = path.join(rec.folder, engine.screenshotsFolderName(rec.base));
+    saveBase = rec.base;
+    detector = new engine.SettleDetector();
+    prevThumb = null; lastSavedThumb = null; awaitingFrame = false; warnedBlank = false;
+    ensureWindow();
+    const cmd = { type: 'start', sourceId: targetId };
+    if (!sendCmd(cmd)) { pendingStart = cmd; }   // window still loading; beginCapture on ready
+    else beginCapture(cmd);
+    return { ok: true, state: getState() };
+  }
+  function beginCapture(cmd) { sendCmd(cmd); capturing = true; resetIdle(); fireState(); log('slide capture started -> ' + targetName); }
+
+  function stop(reason) {
+    if (!capturing) { sendCmd({ type: 'stop' }); return { ok: true, state: getState() }; }
+    capturing = false;
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+    sendCmd({ type: 'stop' });
+    fireState();
+    log('slide capture stopped' + (reason ? ' (' + reason + ')' : ''));
+    return { ok: true, state: getState() };
+  }
+
+  function manual() {
+    if (!enabled()) return { ok: false, error: 'Slide capture is disabled' };
+    if (!targetId) return { ok: false, error: 'No window selected' };
+    if (!activeRecording()) return { ok: false, error: 'Start a recording first — slides file into it' };
+    if (!capturing) {   // manual works standalone: spin capture up so the page has a live stream
+      const r = start();
+      if (!r.ok) return r;
+    }
+    frameIsManual = true; awaitingFrame = true;
+    if (!sendCmd({ type: 'grab' })) return { ok: false, error: 'Capture window not ready' };
+    return { ok: true, state: getState() };
+  }
+
+  function resetIdle() {
+    if (idleTimer) clearTimeout(idleTimer);
+    const mins = Math.max(0, parseInt(settings().slideIdleStopMin, 10) || 0);
+    if (!mins) { idleTimer = null; return; }
+    idleTimer = setTimeout(() => { if (capturing) { stop('idle'); notify('Slide capture stopped', 'No new slides for ' + mins + ' min.'); } }, mins * 60000);
+  }
+
+  function notify(title, body) { try { if (deps.notify && settings().slideNotifications) deps.notify(title, body); } catch (e) {} }
+
+  // ---- IPC from the capture page ----
+  function onThumb(buf, meta) {
+    if (!capturing || awaitingFrame) return;   // ignore polls while we're waiting on a full-res PNG
+    const thumb = new Uint8ClampedArray(buf);
+    // Minimized/blank target: getDisplayMedia hands back an all-black surface for iconic windows.
+    if (engine.looksBlank(meta && meta.meanLuma, meta && meta.nonBlack)) {
+      if (!warnedBlank) { warnedBlank = true; notify('Slide capture', 'The window looks minimized — restore it to capture slides.'); if (deps.onBlank) try { deps.onBlank(); } catch (e) {} }
+      prevThumb = thumb; return;
+    }
+    warnedBlank = false;
+    const f2f = prevThumb ? engine.frameDiff(thumb, prevThumb) : 1;
+    const vsSaved = lastSavedThumb ? engine.frameDiff(thumb, lastSavedThumb) : 1;
+    prevThumb = thumb;
+    if (detector.evaluate(f2f, vsSaved)) {   // settled on a new slide -> pull a full-res frame
+      pendingThumb = thumb; awaitingFrame = true; frameIsManual = false;
+      sendCmd({ type: 'grab' });
+    }
+  }
+
+  function onFrame(buf) {
+    const manualSave = frameIsManual;
+    awaitingFrame = false; frameIsManual = false;
+    if (!buf) { pendingThumb = null; return; }
+    const rec = activeRecording();
+    if (!rec) { pendingThumb = null; return; }   // recording ended mid-grab — drop it, nowhere to file
+    try {
+      fs.mkdirSync(saveFolder, { recursive: true });
+      slideCount++;
+      const file = path.join(saveFolder, engine.slideFileName(new Date(), slideCount));
+      fs.writeFileSync(file, Buffer.from(buf));
+      if (manualSave) { detector.noteManualSave(); } else if (pendingThumb) { lastSavedThumb = pendingThumb; }
+      if (manualSave && prevThumb) lastSavedThumb = prevThumb;
+      pendingThumb = null;
+      resetIdle();
+      notify('Slide captured', 'Slide ' + slideCount + (targetName ? ' — ' + targetName : ''));
+      fireState();
+    } catch (e) { log('slide save failed: ' + e.message); if (deps.onError) try { deps.onError(e.message); } catch (e2) {} }
+  }
+
+  function onStatus(state, detail) {
+    if (state === 'error') { log('slide capture error: ' + detail); notify('Slide capture failed', detail || 'Capture error'); stop('error'); }
+    else if (state === 'source-ended') { log('slide capture: shared window closed'); stop('window closed'); notify('Slide capture stopped', 'The captured window was closed.'); }
+  }
+
+  // Recording stopped: end capture too (its home folder is finalized by the recorder).
+  function onRecordingStopped() { if (capturing) stop('recording ended'); slideCount = 0; fireState(); }
+
+  function dispose() {
+    if (idleTimer) clearTimeout(idleTimer);
+    if (win && !win.isDestroyed()) { try { win.destroy(); } catch (e) {} }
+    win = null;
+  }
+
+  return {
+    getState, listWindows, selectWindow, start, stop, manual,
+    onReady, isSender, onThumb, onFrame, onStatus, onRecordingStopped, currentSourceId,
+    ensureWindow, dispose,
+  };
+}
+
+module.exports = { createSlideCapture };
