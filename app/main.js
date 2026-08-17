@@ -1344,9 +1344,13 @@ function writeOutlookMeetingInfo(wavName) {   // wavName = basename (recorder st
   // so the diarizer's attendee matching sees the exact enrolled form. No hardcoded tables.
   const canon = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const fixNames = info => {
+    if (!info) return info;
     const mine = String(m.myName || '').trim();
-    if (!mine || !info) return info;
-    const fix = n => (canon(n) === canon(mine) ? mine : n);
+    const fix = n => {
+      let t = require('./officeGraph').normalizeName(n);   // belt-and-braces "Last, First" flip (idempotent)
+      if (mine && canon(t) === canon(mine)) t = mine;
+      return t;
+    };
     info.organizer = fix(info.organizer);
     if (Array.isArray(info.required_attendees)) info.required_attendees = info.required_attendees.map(fix);
     if (Array.isArray(info.optional_attendees)) info.optional_attendees = info.optional_attendees.map(fix);

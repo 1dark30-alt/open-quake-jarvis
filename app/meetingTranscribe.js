@@ -14,6 +14,7 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 const { safeName } = require('./meetingLibrary');
+const { normalizeName } = require('./officeGraph');   // "Last, First" -> "First Last" (idempotent on clean names)
 
 const TIMEOUT_MS = 3600000;      // the API doc's own guidance: budget a full hour
 const HEALTH_TTL_MS = 10000;     // re-probe /health at most this often
@@ -233,15 +234,25 @@ function createMeetingTranscriber(deps) {
     const myName = String(resolveMyName() || '').trim();
     if (myName) fields.me_name = myName;
     // Attendees from the Outlook meeting-info sidecar, OpenHiNotes-style: organizer first, then
-    // required, then optional — ordered, de-duplicated, names passed as-is (the diarizer matches
-    // them against enrolled speakers exactly and penalizes enrolled speakers not on the list).
+    // required, then optional — ordered, de-duplicated. Names are normalized HERE, not trusted
+    // from the sidecar: a "Last, First" name comma-joined into the attendees field corrupts the
+    // whole list (the server then matches zero attendees and penalizes every enrolled speaker
+    // 0.15 — seen live 2026-08-17: raw 0.74/0.80 scores dropped below the 0.7 threshold). Flip is
+    // idempotent, so sidecars from current builds pass through unchanged; names canonically
+    // matching the My-name setting are sent with the exact enrolled spelling.
     try {
       const sidecarPath = path.join(folders.unprocessed, name.replace(/\.wav$/i, '') + '.json');
       if (fsMod.existsSync(sidecarPath)) {
         const meta = JSON.parse(await fsp.readFile(sidecarPath, 'utf8'));
+        const canon = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
         const seen = {};
         const ordered = [];
-        const add = n => { const t = String(n || '').trim(); if (t && !seen[t]) { seen[t] = true; ordered.push(t); } };
+        const add = n => {
+          let t = normalizeName(n);
+          if (!t) return;
+          if (myName && canon(t) === canon(myName)) t = myName;
+          if (!seen[t]) { seen[t] = true; ordered.push(t); }
+        };
         add(meta.organizer);
         (meta.required_attendees || []).forEach(add);
         (meta.optional_attendees || []).forEach(add);
