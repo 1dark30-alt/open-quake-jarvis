@@ -1889,7 +1889,7 @@
     const th = currentTheme();
     // Meeting recording settings (config.settings.meeting) — global so auto-record works regardless of
     // which app the panel is showing. Same shape as MEETING_DEFAULTS in main.js.
-    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '' }, (config.settings || {}).meeting || {});
+    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '', slideCaptureEnabled: false, slideAutoStartOnSelect: false, slideNotifications: true, slideHotkeyToggle: 'Ctrl+Alt+S', slideHotkeySelect: 'Ctrl+Alt+W', slideHotkeyManual: 'Ctrl+Alt+C', slideAppFilter: 'ms-teams', slideIdleStopMin: 30 }, (config.settings || {}).meeting || {});
     const me = currentMe();
     // ledState = the device's live lighting (loaded when the page opens); fall back to saved config / defaults.
     const L = Object.assign({}, LED_DEFAULT, (config.settings || {}).lighting || {}, ledState || {});
@@ -2102,6 +2102,30 @@
         <textarea id="meHookPre" rows="2" style="flex:1; font-family:inherit" placeholder='e.g. ssh root@192.168.1.25 "docker start meeting-diarizer"'>${esc(me.preTranscribeCmd)}</textarea></div>
       <div class="row" style="margin-top:8px"><label>After</label>
         <textarea id="meHookPost" rows="2" style="flex:1; font-family:inherit" placeholder='e.g. ssh root@192.168.1.25 "docker stop meeting-diarizer"'>${esc(me.postTranscribeCmd)}</textarea></div>
+      </details>
+
+      <details class="advsec" style="margin-top:16px">
+      <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Meeting Slide Capture</summary>
+      <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSlide" ${me.slideCaptureEnabled ? 'checked' : ''}> Enable Meeting Slide Capture</label></div>
+      <p class="hint">Watches a window you pick (e.g. the Teams meeting) and saves a screenshot each time its content settles on a new slide — skipping live video, which never settles. Adds a slide-capture column to the meeting panel. Slides are saved beside the recording in a <b>&lt;recording&gt;-screenshots\\</b> folder that travels and renames with it.</p>
+      <div class="slidecfg">
+        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSlideAuto" ${me.slideAutoStartOnSelect ? 'checked' : ''}> Automatically start capture when a window is selected</label></div>
+        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSlideNotify" ${me.slideNotifications ? 'checked' : ''}> Show a notification when a slide is captured</label></div>
+        <div class="row" style="margin-top:10px"><label>Toggle capture hotkey</label>
+          <input id="meSlideHkToggle" value="${esc(me.slideHotkeyToggle)}" placeholder="Ctrl+Alt+S" style="width:180px"></div>
+        <div class="row"><label>Select window hotkey</label>
+          <input id="meSlideHkSelect" value="${esc(me.slideHotkeySelect)}" placeholder="Ctrl+Alt+W" style="width:180px"></div>
+        <div class="row"><label>Manual capture hotkey</label>
+          <input id="meSlideHkManual" value="${esc(me.slideHotkeyManual)}" placeholder="Ctrl+Alt+C" style="width:180px"></div>
+        <p class="hint">Global hotkeys (each needs Ctrl and/or Alt, and all three must differ). Leave one blank to disable it. <span id="meSlideHkWarn" style="color:#FF6B6B"></span></p>
+        <div class="row" style="margin-top:10px"><label>Limit window picker to app</label>
+          <input id="meSlideFilter" value="${esc(me.slideAppFilter)}" placeholder="blank = all apps" style="width:230px"></div>
+        <p class="hint">Restricts the window picker to one process name (e.g. <b>ms-teams</b>). Blank shows every window.</p>
+        <div class="row" style="margin-top:10px"><label>Auto-stop after inactive</label>
+          <input type="number" id="meSlideIdle" min="0" max="600" step="1" value="${esc(me.slideIdleStopMin)}" style="width:120px">
+          <span class="hint" style="margin:0 0 0 8px">minutes (0 = never)</span></div>
+        <p class="hint">Stops capture after this long with no new slide, so a forgotten session doesn't run all day. The clock resets on every capture.</p>
+      </div>
       </details>`;
 
     // Theme tab — global light/dark + accent color
@@ -2565,6 +2589,31 @@
       document.getElementById('meHooks').onchange = e => saveMe({ transcribeHooksEnabled: e.target.checked });
       document.getElementById('meHookPre').oninput = e => saveMe({ preTranscribeCmd: e.target.value });
       document.getElementById('meHookPost').oninput = e => saveMe({ postTranscribeCmd: e.target.value });
+      // ---- Meeting Slide Capture ----
+      const slideCfgBox = document.querySelector('.slidecfg');
+      const syncSlideEnabled = on => { if (slideCfgBox) { slideCfgBox.style.opacity = on ? '' : '0.45'; slideCfgBox.style.pointerEvents = on ? '' : 'none'; } };
+      syncSlideEnabled(document.getElementById('meSlide').checked);
+      document.getElementById('meSlide').onchange = e => { saveMe({ slideCaptureEnabled: e.target.checked }); syncSlideEnabled(e.target.checked); };
+      document.getElementById('meSlideAuto').onchange = e => saveMe({ slideAutoStartOnSelect: e.target.checked });
+      document.getElementById('meSlideNotify').onchange = e => saveMe({ slideNotifications: e.target.checked });
+      document.getElementById('meSlideFilter').oninput = e => saveMe({ slideAppFilter: e.target.value.trim() });
+      document.getElementById('meSlideIdle').onchange = e => saveMe({ slideIdleStopMin: Math.max(0, Math.min(600, parseInt(e.target.value, 10) || 0)) });
+      // Hotkeys: each (if set) must include Ctrl and/or Alt, and the three must be distinct. A bad
+      // combo isn't saved — the field reverts and the reason shows — so we never register junk.
+      const slideHk = { toggle: 'meSlideHkToggle', select: 'meSlideHkSelect', manual: 'meSlideHkManual' };
+      const slideHkKey = { toggle: 'slideHotkeyToggle', select: 'slideHotkeySelect', manual: 'slideHotkeyManual' };
+      const normHk = s => String(s || '').trim().split('+').map(p => p.trim()).filter(Boolean).map(p => p.toLowerCase()).sort().join('+');
+      function validateSlideHotkey(which) {
+        const warn = document.getElementById('meSlideHkWarn');
+        const el = document.getElementById(slideHk[which]);
+        const val = el.value.trim();
+        if (val && !/(ctrl|alt)/i.test(val)) { warn.textContent = 'Hotkeys must include Ctrl and/or Alt.'; el.value = currentMe()[slideHkKey[which]]; return; }
+        const others = Object.keys(slideHk).filter(k => k !== which).map(k => normHk(document.getElementById(slideHk[k]).value));
+        if (val && others.includes(normHk(val))) { warn.textContent = 'Each hotkey must be different.'; el.value = currentMe()[slideHkKey[which]]; return; }
+        warn.textContent = '';
+        saveMe({ [slideHkKey[which]]: val });
+      }
+      Object.keys(slideHk).forEach(which => { document.getElementById(slideHk[which]).onchange = () => validateSlideHotkey(which); });
       document.getElementById('meOutCheck').onclick = async () => {
         const msg = document.getElementById('meOutMsg');
         const source = document.getElementById('meInfoSource').value;

@@ -85,8 +85,8 @@ test('folder name is a wav sidecar; file name is capture-moment YYMMDD-HHMMSS-sl
   assert.equal(screenshotsFolderName('2026-08-17-08-56-09'), '2026-08-17-08-56-09-screenshots');
   assert.equal(screenshotsFolderName('2026-08-17-08-56-09-Tech-Support-Weekly'),
     '2026-08-17-08-56-09-Tech-Support-Weekly-screenshots');
-  // 2026-08-17 09:05:03 -> 260817-090503-slide001.png
+  // 2026-08-17 09:05:03 -> 20260817-090503-slide001.png
   const d = new Date(2026, 7, 17, 9, 5, 3);
-  assert.equal(slideFileName(d, 1), '260817-090503-slide001.png');
-  assert.equal(slideFileName(d, 42), '260817-090503-slide042.png');
+  assert.equal(slideFileName(d, 1), '20260817-090503-slide001.png');
+  assert.equal(slideFileName(d, 42), '20260817-090503-slide042.png');
 });

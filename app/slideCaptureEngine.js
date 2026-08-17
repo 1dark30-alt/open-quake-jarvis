@@ -87,19 +87,18 @@ function screenshotsFolderName(wavBaseName) {
   return String(wavBaseName || '') + '-screenshots';
 }
 
-// Slide file name at the moment of capture: "YYMMDD-HHMMSS-slideNNN.png" (2-digit year,
-// per the feature spec; the enclosing folder carries the full wav-scoped timestamp). `date`
-// is a Date; `index` is 1-based within the recording. Zero cross-file collision by design —
-// the slide index is monotonic per session.
+// Slide file name at the moment of capture: "YYYYMMDD-HHMMSS-slideNNN.png" (4-digit year, to
+// match the wav-scoped enclosing folder). `date` is a Date; `index` is 1-based within the
+// recording. Zero cross-file collision by design — the slide index is monotonic per session.
 function slideFileName(date, index) {
   const d = date || new Date();
-  const yy = pad(d.getFullYear() % 100, 2);
+  const yyyy = pad(d.getFullYear(), 4);
   const mm = pad(d.getMonth() + 1, 2);
   const dd = pad(d.getDate(), 2);
   const hh = pad(d.getHours(), 2);
   const mi = pad(d.getMinutes(), 2);
   const ss = pad(d.getSeconds(), 2);
-  return `${yy}${mm}${dd}-${hh}${mi}${ss}-slide${pad(index, 3)}.png`;
+  return `${yyyy}${mm}${dd}-${hh}${mi}${ss}-slide${pad(index, 3)}.png`;
 }
 
 module.exports = {
