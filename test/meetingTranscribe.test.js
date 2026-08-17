@@ -182,9 +182,11 @@ test('attendees from the sidecar and the threshold setting ride the upload', asy
     healthTtlMs: 0,
   });
   addWav(unprocessed, 'with-info.wav');
+  // Old-format sidecar (pre-flip build): "Last, First" names + a My-name variant — the transcriber
+  // must normalize, not trust it (comma-format names comma-joined corrupt the whole field).
   fs.writeFileSync(path.join(unprocessed, 'with-info.json'), JSON.stringify({
-    organizer: 'T.J. Schmitz',
-    required_attendees: ['David Mastalski', 'T.J. Schmitz', 'Carl Tanner'],   // organizer repeated -> deduped
+    organizer: 'Schmitz, TJ',
+    required_attendees: ['Mastalski, David', 'T.J. Schmitz', 'Carl Tanner'],   // organizer variant -> deduped to enrolled spelling
     optional_attendees: ['Monica Paras'],
   }));
   addWav(unprocessed, 'ad-hoc.wav');
@@ -196,7 +198,7 @@ test('attendees from the sidecar and the threshold setting ride the upload', asy
   assert.deepEqual(withInfo.fields, {
     threshold: '0.7',
     me_name: 'T.J. Schmitz',                                              // channel-guided ID (left = mic)
-    attendees: 'T.J. Schmitz,David Mastalski,Carl Tanner,Monica Paras',   // organizer -> required -> optional
+    attendees: 'T.J. Schmitz,David Mastalski,Carl Tanner,Monica Paras',   // flipped, My-name-corrected, deduped, comma-safe
   });
   const adHoc = captured.find(c => c.filename === 'ad-hoc.wav');
   assert.deepEqual(adHoc.fields, { threshold: '0.7', me_name: 'T.J. Schmitz' });   // no sidecar -> no attendees field
