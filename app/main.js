@@ -2148,6 +2148,8 @@ app.whenReady().then(async () => {
         return { folder, base: st.file.replace(/\.wav$/i, '') };
       },
       getSources: () => desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } }),
+      listApps: () => desktopFocus.listRunningApps(),   // {processName, title} — correlates the picker filter to a real app
+
       createWindow: () => {
         const sess = session.fromPartition('persist:slidecapture');
         // getDisplayMedia in the hidden page routes here; hand it the window the user picked.

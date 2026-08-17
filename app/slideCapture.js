@@ -82,13 +82,24 @@ function createSlideCapture(deps) {
     if (!enabled()) return [];
     let sources = [];
     try { sources = await deps.getSources(); } catch (e) { log('getSources failed: ' + e.message); return []; }
+    // desktopCapturer only exposes window TITLES, not process names — but the "Limit picker to" setting
+    // stores a process name (picked from the running-apps browser, like focus-follow). Correlate the two
+    // by title (both read the same Win32 window title) so a filter like "ms-teams" matches Teams windows.
+    let apps = [];
+    try { apps = (deps.listApps ? await deps.listApps() : []) || []; } catch (e) {}
+    const procByTitle = {};
+    for (const a of apps) if (a && a.title) procByTitle[a.title] = a.processName || '';
     const filter = String(settings().slideAppFilter || '').trim().toLowerCase();
-    // desktopCapturer names are window titles; there's no process name, so the filter matches the
-    // title substring (e.g. "teams" catches "… | Microsoft Teams"). Blank filter shows everything.
-    return sources
-      .filter(s => s && s.id && s.name)
-      .filter(s => !filter || s.name.toLowerCase().includes(filter))
-      .map(s => ({ id: s.id, name: s.name }));
+    const out = [];
+    for (const s of sources) {
+      if (!s || !s.id || !s.name) continue;
+      const proc = procByTitle[s.name] || '';
+      // A filter matches on the correlated process name OR the window title, so both a picked app
+      // ("ms-teams") and a typed title fragment ("Teams") work. Blank filter shows every window.
+      if (filter && !((proc && proc.toLowerCase().includes(filter)) || s.name.toLowerCase().includes(filter))) continue;
+      out.push({ id: s.id, name: s.name, proc });
+    }
+    return out;
   }
 
   function selectWindow(id, name) {
