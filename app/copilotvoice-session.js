@@ -380,11 +380,17 @@ function createCopilotVoiceAdapter({ log }) {
       const req = pendingApprovals.get(String(requestId));
       if (!req) return false;
       pendingApprovals.delete(String(requestId));
-      const wantKind = decision === 'always' ? 'allow_always' : decision === 'allow' ? 'allow_once' : 'reject_once';
-      const fallbackKind = decision === 'always' ? 'allow_once' : decision === 'allow' ? 'allow_always' : 'reject_always';
-      const opt = req.options.find(o => o.kind === wantKind) || req.options.find(o => o.kind === fallbackKind) || req.options[0];
-      if (!opt) return false;
-      respond(req.id, { outcome: { outcome: 'selected', optionId: opt.optionId } });
+      // Fallbacks never widen the grant beyond what was tapped: a Deny only ever picks a reject
+      // option, an Allow only ever grants once ('always' may downgrade to once, never the reverse),
+      // and anything unmatchable fails closed with a cancelled outcome — options are server-chosen,
+      // so a request offering only allow kinds must not turn a Deny into an approval.
+      const prefs = decision === 'always' ? ['allow_always', 'allow_once']
+        : decision === 'allow' ? ['allow_once']
+        : ['reject_once', 'reject_always'];
+      let opt = null;
+      for (const kind of prefs) { opt = req.options.find(o => o.kind === kind); if (opt) break; }
+      if (opt) respond(req.id, { outcome: { outcome: 'selected', optionId: opt.optionId } });
+      else respond(req.id, { outcome: { outcome: 'cancelled' } });
       emitter.emit('approval', { type: 'approval-decision', requestId: String(requestId), decision });
       return true;
     },
@@ -403,15 +409,18 @@ function createCopilotVoiceAdapter({ log }) {
 }
 
 // One-shot ACP prompt for callers that just want text back (meetingAnalyze.js's Copilot analysis
-// backend) -- no panel state, no interactive approvals. allow_all is set BEFORE the turn starts and
-// AWAITED (not fire-and-forget like the interactive adapter) so a batch job can never wedge waiting
-// on an approval overlay that doesn't exist here; any request that arrives anyway is still
-// auto-approved as a fallback. Caller does its own findCopilotExe() presence check first (same
-// division of labor as meetingAnalyze.js's runClaude/runCodex).
+// backend) -- no panel state, no interactive approvals. The input is UNTRUSTED (a diarized meeting
+// transcript is third-party speech), so unlike the interactive adapter this path runs with tools
+// DENIED, matching the claude (-p, answer-only) and codex (default sandbox) analysis backends:
+// any session/request_permission is rejected (reject kind, else cancelled) -- analysis needs text
+// generation only, and a transcript must never be able to run commands. Runs in the OS temp dir,
+// never the app's cwd, so a planted copilot.cmd in a working folder can't hijack the shell spawn.
+// Caller does its own findCopilotExe() presence check first (same division of labor as
+// meetingAnalyze.js's runClaude/runCodex).
 function runCopilotBatchPrompt({ cwd, text, model, timeoutMs, log, spawn }) {
   const say = log || (() => {});
   const spawnImpl = spawn || childProcess.spawn;
-  const resolvedCwd = cwd || process.cwd();
+  const resolvedCwd = cwd || require('os').tmpdir();
   return new Promise((resolve, reject) => {
     let settled = false;
     let proc;
@@ -453,11 +462,12 @@ function runCopilotBatchPrompt({ cwd, text, model, timeoutMs, log, spawn }) {
         return;
       }
       if (m.id != null && m.method) {
-        // Fallback only -- the awaited allow_all set below should suppress these in practice.
+        // Fail closed: batch analysis never grants tool use -- reject (or cancel) every request.
         if (m.method === 'session/request_permission') {
           const opts = (m.params && m.params.options) || [];
-          const opt = opts.find(o => o.kind === 'allow_always') || opts.find(o => o.kind === 'allow_once');
+          const opt = opts.find(o => o.kind === 'reject_once') || opts.find(o => o.kind === 'reject_always');
           respond(m.id, { outcome: opt ? { outcome: 'selected', optionId: opt.optionId } : { outcome: 'cancelled' } });
+          say('permission request rejected (batch analysis is text-only)');
           return;
         }
         respond(m.id, {});
@@ -480,9 +490,7 @@ function runCopilotBatchPrompt({ cwd, text, model, timeoutMs, log, spawn }) {
       .then(result => {
         const sessionId = result && result.sessionId;
         if (!sessionId) throw new Error('no session id in session/new response');
-        return send('session/set_config_option', { sessionId, configId: 'allow_all', type: 'value_id', value: 'on' })
-          .catch(e => say('allow_all set failed (falling back to per-request auto-approve): ' + e.message))
-          .then(() => (model ? send('session/set_config_option', { sessionId, configId: 'model', type: 'value_id', value: model }).catch(e => say('model set failed: ' + e.message)) : null))
+        return (model ? send('session/set_config_option', { sessionId, configId: 'model', type: 'value_id', value: model }).catch(e => say('model set failed: ' + e.message)) : Promise.resolve())
           .then(() => sessionId);
       })
       .then(sessionId => send('session/prompt', { sessionId, prompt: [{ type: 'text', text }] }))

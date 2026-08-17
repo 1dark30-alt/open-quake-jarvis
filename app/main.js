@@ -78,6 +78,7 @@ const mediaKeys = createMediaKeys({ log: message => console.log(message) });
 let firstRun = false;     // set by loadConfig when there was no prior config (fresh install)
 let micState = false;     // current device mic state (LED follows it)
 let meetingRecorder = null;   // hidden-window meeting recorder (created once the panel server is up)
+const completedRecordings = new Set();   // basenames whose finalize (header patch) has finished — the only safe time to rename
 let meetingLibrary = null;    // recordings list/delete/resolve for the panel's library screens
 let meetingTranscriber = null; // FIFO diarizer-upload queue (meetingTranscribe.js)
 let meetingAnalyzer = null;   // transcript → markdown analysis via claude/codex CLI (meetingAnalyze.js)
@@ -1321,9 +1322,11 @@ function writeOutlookMeetingInfo(wavName) {   // wavName = basename (recorder st
       const dest = path.join(resolveMeetingFolders().unprocessed, wavName.replace(/\.wav$/i, '') + '.json');
       fs.writeFileSync(dest, JSON.stringify(info, null, 2));
       console.log('[meeting] meeting info saved: ' + path.basename(dest) + ' (' + (info.subject || '') + ')');
-      // If the lookup completed after a short recording stopped, the normal completion callback
-      // already ran before the sidecar existed. Complete the optional rename now in that case.
-      if (fs.existsSync(path.join(resolveMeetingFolders().unprocessed, wavName))) appendMeetingNameToRecording(wavName);
+      // If the lookup completed after a short recording already FINISHED (onRecordingComplete ran
+      // before the sidecar existed), complete the optional rename now. Only then: the WAV merely
+      // existing is no signal — it exists, open, for the entire recording, and renaming it before
+      // finalize's header patch corrupts it (PR #9 review finding).
+      if (completedRecordings.has(wavName)) appendMeetingNameToRecording(wavName);
     } catch (e) { console.log('[meeting] calendar info write failed: ' + e.message); }
   };
   if (m.meetingInfoSource === 'microsoft365') {
@@ -1355,6 +1358,8 @@ function writeOutlookMeetingInfo(wavName) {   // wavName = basename (recorder st
 function appendMeetingNameToRecording(wavName) {
   const m = meetingSettings();
   if (!m.outlookEnabled || !m.appendMeetingName) return;
+  // Belt and braces: never rename a file the recorder is still writing (or finalizing).
+  if (!completedRecordings.has(wavName)) return;
   try {
     const dir = resolveMeetingFolders().unprocessed;
     const base = wavName.replace(/\.wav$/i, '');
@@ -2003,7 +2008,13 @@ app.whenReady().then(async () => {
           wasRecording = !!st.recording;
         };
       })(),
-      onRecordingComplete: name => { try { appendMeetingNameToRecording(name); } catch (e) {} },
+      onRecordingComplete: name => {
+        try {
+          completedRecordings.add(name);   // header is patched — renames are safe from here on
+          if (completedRecordings.size > 50) completedRecordings.delete(completedRecordings.values().next().value);
+          appendMeetingNameToRecording(name);
+        } catch (e) {}
+      },
       log: msg => console.log('[meeting] ' + msg),
     });
     meetingRecorder.ensureWindow();   // arm the hidden window so a call can start recording instantly

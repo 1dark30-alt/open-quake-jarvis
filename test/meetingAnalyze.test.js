@@ -65,7 +65,7 @@ function fakeCopilotAcpSpawnFactory(spawns, opts) {
     proc.stderr = new PassThrough();
     proc.stdin = new PassThrough();
     proc.kill = () => {};
-    const rec = { cmd, args, opts: spawnOpts, calls: [] };
+    const rec = { cmd, args, opts: spawnOpts, calls: [], responses: [] };
     spawns.push(rec);
     let buf = '';
     const write = obj => proc.stdout.write(JSON.stringify(obj) + '\n');
@@ -76,11 +76,17 @@ function fakeCopilotAcpSpawnFactory(spawns, opts) {
         const line = buf.slice(0, idx); buf = buf.slice(idx + 1);
         if (!line.trim()) continue;
         let m; try { m = JSON.parse(line); } catch (e) { continue; }
+        if (m.method == null && m.id != null) { rec.responses.push(m); continue; }   // client's reply to a server request
         rec.calls.push(m.method);
         if (m.method === 'initialize') { write({ jsonrpc: '2.0', id: m.id, result: {} }); continue; }
         if (m.method === 'session/new') { write({ jsonrpc: '2.0', id: m.id, result: { sessionId: 'test-session' } }); continue; }
         if (m.method === 'session/set_config_option') { write({ jsonrpc: '2.0', id: m.id, result: {} }); continue; }
         if (m.method === 'session/prompt') {
+          if (opts.requestPermission) {
+            // Server-initiated permission request offering ONLY allow options — the batch client
+            // must still fail closed (cancelled), never select an allow option.
+            write({ jsonrpc: '2.0', id: 99, method: 'session/request_permission', params: { options: [{ kind: 'allow_once', optionId: 'a1' }, { kind: 'allow_always', optionId: 'a2' }] } });
+          }
           write({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'test-session', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: opts.text || '' } } } });
           write({ jsonrpc: '2.0', id: m.id, result: { stopReason: opts.stopReason || 'end_turn' } });
         }
@@ -142,12 +148,31 @@ test('copilot route: one-shot ACP session, agent_message_chunk filed as .md', as
   assert.equal(spawns[0].cmd, 'copilot');
   assert.deepEqual(spawns[0].args, ['--acp']);
   assert.equal(spawns[0].opts.shell, true);
-  // allow_all is set (awaited) before the prompt turn, so a batch job never waits on an approval overlay
-  assert.deepEqual(spawns[0].calls, ['initialize', 'session/new', 'session/set_config_option', 'session/prompt']);
+  // NO allow_all: batch analysis runs with tools denied (untrusted transcript input)
+  assert.deepEqual(spawns[0].calls, ['initialize', 'session/new', 'session/prompt']);
+  assert.equal(spawns[0].opts.cwd, os.tmpdir());   // neutral cwd, never the app's
   assert.equal(fs.readFileSync(path.join(processed, 'm-analysis.md'), 'utf8'), '# Meeting Analysis\ncopilot notes');
   const st = an.getState();
   assert.equal(st.running, false);
   assert.equal(st.error, null);
+});
+
+test('copilot batch rejects permission requests — even when only allow options are offered', async () => {
+  const processed = fs.mkdtempSync(path.join(os.tmpdir(), 'oqx-an-cop3-'));
+  fs.writeFileSync(path.join(processed, 'm.json'), JSON.stringify({ segments: [] }));
+  const spawns = [];
+  const an = createMeetingAnalyzer({
+    resolveFolders: () => ({ unprocessed: processed, processed }),
+    resolveAi: () => 'copilot',
+    spawn: fakeCopilotAcpSpawnFactory(spawns, { text: 'notes', requestPermission: true }),
+    findClaudeExe: () => null, findCodexExe: () => null, findCopilotExe: () => 'copilot.cmd',
+  });
+  an.start('m.json');
+  await drained(an);
+  const permReply = spawns[0].responses.find(r => r.id === 99);
+  assert.ok(permReply, 'client must answer the permission request');
+  assert.equal(permReply.result.outcome.outcome, 'cancelled');   // fail closed, never an allow option
+  assert.equal(fs.readFileSync(path.join(processed, 'm-analysis.md'), 'utf8'), 'notes');   // turn still completes
 });
 
 test('missing copilot CLI is a clear error; nothing spawned', async () => {
