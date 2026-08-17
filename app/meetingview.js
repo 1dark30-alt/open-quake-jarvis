@@ -279,7 +279,7 @@ function wireScrollButtons(listId, upId, downId) {
     var btn = $(pair[0]);
     var repeat = null;
     btn.addEventListener('pointerdown', function (e) {
-      btn.setPointerCapture(e.pointerId);
+      try { btn.setPointerCapture(e.pointerId); } catch (err) {}   // capture is best-effort — never block the scroll
       step(pair[1]);
       repeat = setInterval(function () { step(pair[1]); }, 400);
     });
@@ -332,6 +332,7 @@ function libPoll() {
   }).catch(function () {});
 }
 function renderLibrary() {
+  var keepScroll = $('libList').scrollTop;   // completions re-render the list — keep the view put
   fetchJson('/meeting-files?kind=unprocessed').then(function (r) {
     var el = $('libList'); el.innerHTML = ''; libSyncs = []; libTxRows = {};
     var files = ((r && r.files) || []).filter(function (f) { return /\.wav$/i.test(f.name); });
@@ -341,6 +342,7 @@ function renderLibrary() {
     files.forEach(function (f) { el.appendChild(buildLibRow(f)); });
     updateLibTxButtons();
     selSync(libSel);
+    el.scrollTop = keepScroll;
   }).catch(function () { libMsg('Could not load recordings', true); });
 }
 function buildLibRow(f) {
@@ -479,6 +481,7 @@ var anSel = selMake('anSelAll', 'anGoSel');
 var anDir = '';   // current subfolder inside processed ('' = root); one folder shown at a time
 function renderAnList() {
   var url = '/meeting-files?kind=processed' + (anDir ? '&dir=' + encodeURIComponent(anDir) : '');
+  var keepScroll = $('anList').scrollTop;   // batch completions re-render every so often — don't yank the view
   fetchJson(url).then(function (r) {
     var el = $('anList'); el.innerHTML = ''; anRows = {};
     $('anPath').textContent = 'Processed' + (anDir ? ' › ' + anDir.split('/').join(' › ') : '');
@@ -494,7 +497,7 @@ function renderAnList() {
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'fileRow folder press foc';
       b.innerHTML = '<div class="meta"><div class="fname">&#128193; ' + escHtml(d) + '</div></div><span class="chev">&rsaquo;</span>';
-      b.onclick = function () { anDir = anDir ? anDir + '/' + d : d; renderAnList(); };
+      b.onclick = function () { anDir = anDir ? anDir + '/' + d : d; $('anList').scrollTop = 0; renderAnList(); };
       el.appendChild(b);
     });
     if (!jsons.length) {
@@ -533,6 +536,7 @@ function renderAnList() {
     });
     updateAnButtons();
     selSync(anSel);
+    el.scrollTop = keepScroll;
   }).catch(function () {});
 }
 $('anGoSel').onclick = function () {
@@ -580,6 +584,7 @@ $('anUp').onclick = function () {
   if (!anDir) return;
   var parts = anDir.split('/'); parts.pop();
   anDir = parts.join('/');
+  $('anList').scrollTop = 0;
   renderAnList();
 };
 $('btnAnalysis').onclick = function () {
@@ -594,7 +599,7 @@ $('anClose').onclick = function () {
 $('anViewBack').onclick = function () { $('anViewOverlay').classList.remove('show'); };
 
 wireScrollButtons('libList', 'libUp', 'libDown');
-wireScrollButtons('anList', 'anUp', 'anDown');
+wireScrollButtons('anList', 'anScrollUp', 'anScrollDown');
 wireScrollButtons('anView', 'anViewUp', 'anViewDown');
 
 renderDeck();
