@@ -6318,5 +6318,21 @@
       { "key": "spkDevice", "label": "Speaker (set from the panel Settings)", "type": "text", "default": "" },
       { "key": "modelPick", "label": "Model (blank = account default)", "type": "text", "default": "" }
     ]
+  },
+  {
+    "id": "owui-voice",
+    "name": "Open WebUI Voice",
+    "file": "claudevoiceview.html",
+    "served": true,
+    "options": [
+      { "key": "wyomingHost", "label": "Wyoming host (STT/TTS)", "type": "text", "default": "127.0.0.1" },
+      { "key": "wyomingSttPort", "label": "Wyoming STT port", "type": "text", "default": "10300" },
+      { "key": "wyomingTtsPort", "label": "Wyoming TTS port", "type": "text", "default": "10200" },
+      { "key": "chatFontSize", "label": "Chat text size (px)", "type": "text", "default": "16" },
+      { "key": "vadHangoverMs", "label": "Voice pause tolerance (ms)", "type": "text", "default": "800" },
+      { "key": "micDevice", "label": "Microphone (set from the panel Settings)", "type": "text", "default": "" },
+      { "key": "spkDevice", "label": "Speaker (set from the panel Settings)", "type": "text", "default": "" },
+      { "key": "modelPick", "label": "Model (set from the panel Settings; blank = the Auth tab's default model)", "type": "text", "default": "" }
+    ]
   }
 ]

@@ -1,19 +1,24 @@
 'use strict';
 
 // Transcript analysis: feeds a processed transcript JSON plus the shared prompt
-// (meeting-analysis-prompt.md) to a locally installed AI CLI — Claude (`claude -p`), ChatGPT
-// Codex (`codex exec`), or GitHub Copilot (`copilot --acp`, one-shot ACP session — see
-// copilotvoice-session.js's runCopilotBatchPrompt) — per the Analysis AI setting — and writes the
-// returned markdown next to the transcript as <basename>.md. One job at a time, no queue: analysis
-// takes seconds-to-minutes and the panel disables the button while running.
+// (meeting-analysis-prompt.md) to the configured Analysis AI — Claude (`claude -p`), ChatGPT
+// Codex (`codex exec`), GitHub Copilot (`copilot --acp`, one-shot ACP session — see
+// copilotvoice-session.js's runCopilotBatchPrompt), or Open WebUI (HTTP chat completion against
+// the Auth-tab connection, see runOwui) — and writes the returned markdown next to the transcript
+// as <basename>.md. One job at a time, no queue: analysis takes seconds-to-minutes and the panel
+// disables the button while running.
 //
-// All three CLIs authenticate themselves (the app holds no API keys, same story as the voice
-// panels). Deps are injected for tests: resolveFolders, resolveAi, spawn, fs, prompt path, clock.
+// The three CLIs authenticate themselves; the OWUI backend uses the shared settings.owui
+// credentials (apiKey encrypted at rest by secretStore). Every backend is tool-free for analysis
+// — transcripts are untrusted third-party speech, so nothing they say may reach a shell: the CLIs
+// run with tools denied/absent and OWUI is a plain completion API with no tools at all.
+// Deps are injected for tests: resolveFolders, resolveAi, resolveOwui, spawn, fs, prompt path, clock.
 
 const path = require('path');
 const os = require('os');
 const { safeRelPath } = require('./meetingLibrary');
 const { runCopilotBatchPrompt } = require('./copilotvoice-session');
+const owuiClientMod = require('./owuiClient');
 
 const ANALYZE_TIMEOUT_MS = 10 * 60 * 1000;   // generous; a transcript is small but CLIs cold-start
 
@@ -41,12 +46,37 @@ function sanitizeSubjectFolder(subject) {
   return s.replace(/^-+|-+$/g, '');
 }
 
+// Slim a diarizer response down to `Speaker: text` lines for the OWUI backend — local models
+// can't afford the raw JSON's timestamps, speaker_report, and cluster scores (~3-4x the tokens).
+// Consecutive segments from the same speaker merge into one line. Unparseable or segment-less
+// JSON THROWS: silently analyzing a raw blob the model can't fit would produce a confidently
+// wrong summary, and that must never look like success.
+function slimTranscript(transcriptJson) {
+  let obj;
+  try { obj = JSON.parse(transcriptJson); } catch (e) { throw new Error('transcript is not valid JSON: ' + e.message); }
+  const segs = obj && Array.isArray(obj.segments) ? obj.segments : null;
+  if (!segs) throw new Error('transcript has no segments array');
+  const merged = [];
+  for (const s of segs) {
+    if (!s || typeof s !== 'object') continue;
+    const text = String(s.text || '').trim();
+    if (!text) continue;
+    const speaker = String(s.speaker || '').trim() || 'UNKNOWN';
+    if (merged.length && merged[merged.length - 1].speaker === speaker) merged[merged.length - 1].text += ' ' + text;
+    else merged.push({ speaker, text });
+  }
+  if (!merged.length) throw new Error('transcript has no spoken segments');
+  return merged.map(l => l.speaker + ': ' + l.text).join('\n');
+}
+
 function createMeetingAnalyzer(deps) {
   const fsMod = deps.fs || require('fs');
   const fsp = fsMod.promises;
   const spawnImpl = deps.spawn || require('child_process').spawn;
   const resolveFolders = deps.resolveFolders;        // () => { unprocessed, processed }
-  const resolveAi = deps.resolveAi;                  // () => 'claude' | 'codex' | 'copilot'
+  const resolveAi = deps.resolveAi;                  // () => 'claude' | 'codex' | 'copilot' | 'owui'
+  const resolveOwui = deps.resolveOwui || (() => ({}));   // () => { url, apiKey, model } (settings.owui)
+  const owuiClient = deps.owuiClient || owuiClientMod;
   const findClaudeExe = deps.findClaudeExe || require('./claudevoice-session').findClaudeExe;
   const findCodexExe = deps.findCodexExe || require('./codexvoice-session').findCodexExe;
   const findCopilotExe = deps.findCopilotExe || require('./copilotvoice-session').findCopilotExe;
@@ -96,7 +126,7 @@ function createMeetingAnalyzer(deps) {
     const processed = resolveFolders().processed;
     const jsonPath = path.join(processed, n);
     const aiSetting = resolveAi();
-    const ai = aiSetting === 'codex' ? 'codex' : aiSetting === 'copilot' ? 'copilot' : 'claude';
+    const ai = aiSetting === 'codex' ? 'codex' : aiSetting === 'copilot' ? 'copilot' : aiSetting === 'owui' ? 'owui' : 'claude';
     running = { name: n, ai, startedAt: now() };
     log('analysis started (' + ai + '): ' + n);
     runJob(n, ai, jsonPath)
@@ -114,8 +144,16 @@ function createMeetingAnalyzer(deps) {
     const mdPath = mdTargetFor(jsonPath);
     const prompt = await fsp.readFile(resolvePromptPath(), 'utf8');
     const transcript = await fsp.readFile(jsonPath, 'utf8');
-    const input = prompt + '\n\nDiarizer JSON follows:\n\n' + transcript;
-    const markdown = ai === 'codex' ? await runCodex(input) : ai === 'copilot' ? await runCopilot(input) : await runClaude(input);
+    // The CLI trio gets the raw diarizer JSON in one combined prompt (big context windows);
+    // OWUI gets the prompt as the system message and a slimmed Speaker: text transcript as the
+    // user message — local models can't afford the raw JSON's 3-4x token overhead.
+    let markdown;
+    if (ai === 'owui') {
+      markdown = await runOwui({ prompt, transcriptJson: transcript });
+    } else {
+      const input = prompt + '\n\nDiarizer JSON follows:\n\n' + transcript;
+      markdown = ai === 'codex' ? await runCodex(input) : ai === 'copilot' ? await runCopilot(input) : await runClaude(input);
+    }
     if (!markdown.trim()) throw new Error('AI returned no output');
 
     // "Separate Clean Transcript": split the AI's output at the ## Transcript heading — notes
@@ -262,6 +300,46 @@ function createMeetingAnalyzer(deps) {
     return runCopilotBatchPrompt({ text: input, timeoutMs, log, spawn: spawnImpl, exe });
   }
 
+  // Open WebUI analysis: one non-streaming chat completion against the shared Auth-tab
+  // connection (settings.owui). The analysis prompt rides as the system message, the slimmed
+  // transcript as the user message. Every failure maps to a wording that names the fix.
+  async function runOwui({ prompt, transcriptJson }) {
+    const cfg = resolveOwui() || {};
+    const ep = owuiClient.normalizeOwuiUrl(cfg.url);
+    if (!ep) throw new Error("Open WebUI is not configured — set the URL on the editor's Auth tab");
+    const model = String(cfg.model || '').trim();
+    if (!model) throw new Error("no Open WebUI model set — pick a default model on the editor's Auth tab");
+    const slim = slimTranscript(transcriptJson);
+    const body = {
+      model,
+      stream: false,
+      messages: [
+        { role: 'system', content: prompt },
+        { role: 'user', content: 'Transcript follows:\n\n' + slim },
+      ],
+    };
+    let res;
+    try { res = await owuiClient.postJson(ep.chatUrl, body, String(cfg.apiKey || ''), timeoutMs); }
+    catch (e) {
+      const msg = String((e && e.message) || 'request failed');
+      if (/no response after/.test(msg)) throw new Error('Open WebUI timed out after ' + Math.round(timeoutMs / 60000) + ' min');
+      throw new Error('could not reach Open WebUI (' + msg + ') — is Open WebUI running?');
+    }
+    if (res.status === 401 || res.status === 403) throw new Error('Open WebUI rejected the API key (HTTP ' + res.status + ') — check the key on the Auth tab');
+    if (res.status !== 200) throw new Error('Open WebUI error (HTTP ' + res.status + ')' + (res.text ? ': ' + String(res.text).slice(0, 300) : ''));
+    let obj;
+    try { obj = JSON.parse(res.text); } catch (e) { throw new Error('Open WebUI returned an unparseable response'); }
+    // Some OWUI failures come back as 200 with an { error } body — treat those as errors too.
+    if (obj && obj.error) throw new Error('Open WebUI error: ' + String((obj.error && obj.error.message) || obj.error).slice(0, 300));
+    const choice = obj && Array.isArray(obj.choices) ? obj.choices[0] : null;
+    if (choice && choice.finish_reason === 'length') {
+      throw new Error("the model's context window is too small for this meeting — pick a larger-context model on the Auth tab");
+    }
+    const content = choice && choice.message && typeof choice.message.content === 'string' ? choice.message.content : '';
+    if (!content.trim()) throw new Error('Open WebUI returned no output');
+    return content;
+  }
+
   function runProc(cmd, args, stdinText, shell) {
     return new Promise((resolve, reject) => {
       let proc;
@@ -303,4 +381,4 @@ function createMeetingAnalyzer(deps) {
   return { start, getState, result };
 }
 
-module.exports = { createMeetingAnalyzer };
+module.exports = { createMeetingAnalyzer, slimTranscript };

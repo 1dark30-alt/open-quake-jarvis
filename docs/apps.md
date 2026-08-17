@@ -37,6 +37,10 @@ Included apps:
 - **[Copilot](copilot-voice.md)** — the same panel experience again, driving the **GitHub
   Copilot CLI** (GitHub sign-in, no API key) over the open Agent Client Protocol. Shares the same
   page, voice pipeline, and design as the Claude Code and Codex apps.
+- **[Open WebUI Voice](owui-voice.md)** — the same panel experience chatting with your own
+  **Open WebUI** server over its HTTP API (no CLI): local models, streaming replies, multi-turn
+  memory, and a live model picker. Configured once on **Settings → Auth** and shared with the
+  meeting Analysis AI.
 - **[Meeting](meeting.md)** — one-tap mute/video/accept/decline/leave for Zoom and Teams,
   no keyboard or mouse.
 - **Microsoft 365** — a read-only Microsoft 365 dashboard: your profile, live presence, and

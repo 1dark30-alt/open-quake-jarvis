@@ -9,7 +9,8 @@ const { PassThrough } = require('node:stream');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createMeetingAnalyzer } = require('../app/meetingAnalyze');
+const { createMeetingAnalyzer, slimTranscript } = require('../app/meetingAnalyze');
+const { normalizeOwuiUrl } = require('../app/owuiClient');
 
 // Fake child process: capture stdin, emit stdout, exit with a code on the next tick.
 function fakeSpawnFactory(spawns, behavior) {
@@ -403,6 +404,113 @@ test('recurring + details compose: YYYY/<Name>/details with md at the folder lev
   assert.equal(fs.existsSync(path.join(home, s.base + '-analysis.md')), true);
   assert.equal(fs.existsSync(path.join(home, 'details', s.base + '.wav')), true);
   assert.equal(fs.existsSync(path.join(home, 'details', s.base + '-diarizer-response.json')), true);
+});
+
+// ---- Open WebUI backend: HTTP chat completion against the Auth-tab connection, slimmed input ----
+
+const OWUI_SEGMENTS = { speaker_report: { speaker_count: 2 }, segments: [
+  { speaker: 'T.J. Schmitz', start: 1, end: 2, text: 'hello there' },
+  { speaker: 'T.J. Schmitz', start: 2, end: 3, text: 'still me' },      // consecutive — merges
+  { speaker: 'Speaker A', start: 3, end: 4, text: 'hi back' },
+  { speaker: '', start: 4, end: 5, text: 'who said this' },             // blank speaker -> UNKNOWN
+] };
+
+function owuiSetup(owuiCfg, postJsonImpl) {
+  const processed = fs.mkdtempSync(path.join(os.tmpdir(), 'oqx-anow-'));
+  fs.writeFileSync(path.join(processed, 'm-diarizer-response.json'), JSON.stringify(OWUI_SEGMENTS));
+  const calls = [];
+  const spawns = [];
+  const an = createMeetingAnalyzer({
+    resolveFolders: () => ({ unprocessed: processed, processed }),
+    resolveAi: () => 'owui',
+    resolveOwui: () => owuiCfg,
+    owuiClient: {
+      normalizeOwuiUrl,
+      postJson: (url, body, apiKey, timeoutMs) => { calls.push({ url, body, apiKey, timeoutMs }); return postJsonImpl(); },
+    },
+    findClaudeExe: () => 'claude.exe', findCodexExe: () => null, findCopilotExe: () => null,
+    spawn: fakeSpawnFactory(spawns, () => ({ stdout: 'claude notes', code: 0 })),
+  });
+  return { processed, an, calls, spawns };
+}
+const owuiOk = content => () => Promise.resolve({ status: 200, text: JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] }) });
+
+test('owui route: one POST to /api/chat/completions with the slimmed transcript, filed as .md', async () => {
+  const s = owuiSetup({ url: 'http://box:3000/', apiKey: 'sk-test', model: 'llama3.2' }, owuiOk('# OWUI notes'));
+  assert.equal(s.an.start('m-diarizer-response.json').ok, true);
+  await drained(s.an);
+  assert.equal(s.spawns.length, 0);                          // no CLI fallthrough on the owui path
+  assert.equal(s.calls.length, 1);
+  const c = s.calls[0];
+  assert.equal(c.url, 'http://box:3000/api/chat/completions');
+  assert.equal(c.apiKey, 'sk-test');
+  assert.equal(c.body.model, 'llama3.2');
+  assert.equal(c.body.stream, false);
+  assert.equal(c.body.messages[0].role, 'system');
+  assert.match(c.body.messages[0].content, /Meeting Analysis/);          // the shared prompt file
+  const user = c.body.messages[1];
+  assert.equal(user.role, 'user');
+  assert.match(user.content, /^Transcript follows:\n\n/);
+  assert.match(user.content, /T\.J\. Schmitz: hello there still me/);    // consecutive merged
+  assert.match(user.content, /Speaker A: hi back/);
+  assert.match(user.content, /UNKNOWN: who said this/);
+  assert.ok(!user.content.includes('"segments"'), 'raw JSON keys must not reach the model');
+  assert.ok(!user.content.includes('{'), 'no JSON braces in the slimmed transcript');
+  assert.equal(fs.readFileSync(path.join(s.processed, 'm-analysis.md'), 'utf8'), '# OWUI notes');
+  assert.equal(s.an.getState().error, null);
+});
+
+test('owui not configured: clear error, no request, no claude fallthrough', async () => {
+  const s = owuiSetup({ url: '', apiKey: '', model: 'llama3' }, owuiOk('x'));
+  s.an.start('m-diarizer-response.json');
+  await drained(s.an);
+  assert.equal(s.calls.length, 0);
+  assert.equal(s.spawns.length, 0);
+  assert.match(s.an.getState().error.error, /not configured.*Auth tab/);
+  assert.equal(fs.existsSync(path.join(s.processed, 'm-analysis.md')), false);
+});
+
+test('owui 401 names the API key and the Auth tab', async () => {
+  const s = owuiSetup({ url: 'http://box:3000', apiKey: 'bad', model: 'llama3' },
+    () => Promise.resolve({ status: 401, text: '{"detail":"unauthorized"}' }));
+  s.an.start('m-diarizer-response.json');
+  await drained(s.an);
+  assert.match(s.an.getState().error.error, /rejected the API key.*check the key on the Auth tab/);
+  assert.equal(fs.existsSync(path.join(s.processed, 'm-analysis.md')), false);
+});
+
+test('owui finish_reason length fails loudly — never a silently truncated analysis', async () => {
+  const s = owuiSetup({ url: 'http://box:3000', apiKey: 'k', model: 'small' },
+    () => Promise.resolve({ status: 200, text: JSON.stringify({ choices: [{ message: { content: 'half an analy' }, finish_reason: 'length' }] }) }));
+  s.an.start('m-diarizer-response.json');
+  await drained(s.an);
+  assert.match(s.an.getState().error.error, /context window is too small/);
+  assert.equal(fs.existsSync(path.join(s.processed, 'm-analysis.md')), false);
+});
+
+test('owui connection failure asks whether the server is running', async () => {
+  const s = owuiSetup({ url: 'http://box:3000', apiKey: 'k', model: 'llama3' },
+    () => Promise.reject(new Error('connect ECONNREFUSED 1.2.3.4:3000')));
+  s.an.start('m-diarizer-response.json');
+  await drained(s.an);
+  assert.match(s.an.getState().error.error, /is Open WebUI running\?/);
+});
+
+test('owui 200-with-error body and empty output are both errors', async () => {
+  const s = owuiSetup({ url: 'http://box:3000', apiKey: 'k', model: 'llama3' },
+    () => Promise.resolve({ status: 200, text: JSON.stringify({ error: { message: 'model not found' } }) }));
+  s.an.start('m-diarizer-response.json');
+  await drained(s.an);
+  assert.match(s.an.getState().error.error, /model not found/);
+});
+
+test('slimTranscript: merges, defaults, and loud failures', () => {
+  assert.equal(slimTranscript(JSON.stringify(OWUI_SEGMENTS)),
+    'T.J. Schmitz: hello there still me\nSpeaker A: hi back\nUNKNOWN: who said this');
+  assert.throws(() => slimTranscript('not json'), /not valid JSON/);
+  assert.throws(() => slimTranscript('{"no":"segments"}'), /no segments array/);
+  assert.throws(() => slimTranscript('{"segments":[]}'), /no spoken segments/);
+  assert.throws(() => slimTranscript(JSON.stringify({ segments: [{ speaker: 'A', text: '   ' }] })), /no spoken segments/);
 });
 
 test('result() reads the filed markdown or reports not analyzed', async () => {

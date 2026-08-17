@@ -58,6 +58,8 @@ const { createClaudeVoiceAdapter } = require('./claudevoice-adapter'); // Claude
 const { createCodexVoiceAdapter, findCodexExe } = require('./codexvoice-session'); // OpenAI Codex session adapter (app-server JSON-RPC over stdio)
 const { createCopilotVoiceAdapter, findCopilotExe } = require('./copilotvoice-session'); // GitHub Copilot CLI session adapter (ACP JSON-RPC over stdio)
 const { findClaudeExe } = require('./claudevoice-session'); // CLI presence probe for the editor's voice-app warning
+const { createOwuiVoiceAdapter } = require('./owuivoice-session'); // Open WebUI chat adapter (HTTP/SSE, no CLI)
+const owuiClient = require('./owuiClient'); // shared OWUI URL normalization + model-list probe
 const claudeVoiceApprovals = require('./claudevoice-approvals'); // required directly ONLY for the boot-time leftover-hook sweep below
 const HA_SCHEDULE_APPS = ['haschedule', 'agenda', 'events'];   // dev apps backed by the shared HA /haschedule-data snapshot
 
@@ -152,6 +154,21 @@ const copilotVoiceHost = createVoicePanelHost({
   },
   adapter: createCopilotVoiceAdapter({ log: copilotVoiceLog }),
   deps: voicePanelDeps('copilot-voice'),
+});
+// Fourth agent app: Open WebUI over its OpenAI-compatible HTTP API — no CLI child, the adapter
+// streams chat completions against the shared Auth-tab connection (settings.owui).
+const owuiVoiceLog = message => console.log('[owui-voice] ' + message);
+const owuiVoiceHost = createVoicePanelHost({
+  appId: 'owui-voice',
+  storageKey: 'owuiVoice',
+  log: owuiVoiceLog,
+  branding: {
+    title: 'Open WebUI',
+    approvalTitle: '⚠ Open WebUI wants to do something',   // never shown — the adapter emits no approvals
+    turnFailedText: "Turn failed to send — Open WebUI connection not configured (editor's Auth tab).",
+  },
+  adapter: createOwuiVoiceAdapter({ resolveOwui: () => owuiSettings(), log: owuiVoiceLog }),
+  deps: voicePanelDeps('owui-voice'),
 });
 // Shared main.js plumbing for a voice-panel host. The ring guards are the two-app arbitration:
 // only the ON-SCREEN voice app may drive (or clear) the ring override -- a background app's
@@ -1218,6 +1235,11 @@ async function onMeetingActionRequest(platform, action) {
 // exist while it's the active app, which is useless for background recording.
 const MEETING_DEFAULTS = { folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '' };
 function meetingSettings() { return Object.assign({}, MEETING_DEFAULTS, (config.settings || {}).meeting || {}); }
+// Open WebUI connection (config.settings.owui, edited on the Auth tab): shared by the meeting
+// Analysis-AI backend and the owui-voice panel app. apiKey is a secret — encrypted at rest by
+// secretStore, plaintext in memory like haAuth.token.
+const OWUI_DEFAULTS = { url: '', apiKey: '', model: '' };
+function owuiSettings() { return Object.assign({}, OWUI_DEFAULTS, (config.settings || {}).owui || {}); }
 function defaultMeetingFolder() { return path.join(app.getPath('documents'), 'OpenQuake Meetings', 'unprocessed'); }
 function defaultProcessedFolder() { return path.join(app.getPath('documents'), 'OpenQuake Meetings', 'processed'); }
 // Blank folder settings mean "use the default", same convention as the recorder.
@@ -1995,6 +2017,12 @@ app.whenReady().then(async () => {
           htmlFile: 'claudevoiceview.html',
           handlers: copilotVoiceHost.handlers,
         },
+        // Same page a fourth time, the Open WebUI HTTP adapter behind it. No voiceToken: it
+        // never emits approvals at all.
+        'owui-voice': {
+          htmlFile: 'claudevoiceview.html',
+          handlers: owuiVoiceHost.handlers,
+        },
       },
     });
     ensureSystemViewPage(serverPort); ensureMusicPage(); ensureDropInDir();
@@ -2059,6 +2087,7 @@ app.whenReady().then(async () => {
       meetingAnalyzer = require('./meetingAnalyze').createMeetingAnalyzer({
         resolveFolders: resolveMeetingFolders,
         resolveAi: () => meetingSettings().analysisAi,
+        resolveOwui: owuiSettings,
         promptPath: () => fs.existsSync(userMeetingPromptPath()) ? userMeetingPromptPath() : path.join(__dirname, 'meeting-analysis-prompt.md'),
         filingOptions: () => {
           const m = meetingSettings();
@@ -2197,8 +2226,28 @@ app.whenReady().then(async () => {
       if (appId === 'claude-voice') return findClaudeExe() || null;
       if (appId === 'codex-voice') return findCodexExe() || null;
       if (appId === 'copilot-voice') return findCopilotExe() || null;
+      // owui-voice has no CLI — "found" means a usable URL is configured on the Auth tab.
+      if (appId === 'owui-voice') {
+        const ep = owuiClient.normalizeOwuiUrl(owuiSettings().url);
+        return ep ? ep.origin : null;
+      }
     } catch (err) {}
     return null;
+  });
+  // "Test connection" for the Auth tab's Open WebUI section: normalize the URL and hit
+  // /api/models with the key. Returns the model list so the editor can report a live count.
+  ipcMain.handle('probeOwui', async (e, url, apiKey) => {
+    if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
+    const cfg = owuiSettings();
+    const ep = owuiClient.normalizeOwuiUrl(url !== undefined && url !== null && String(url).trim() !== '' ? url : cfg.url);
+    if (!ep) return { ok: false, error: 'no usable URL — enter the Open WebUI address first' };
+    try {
+      const models = await owuiClient.listModels(ep.modelsUrl, String((apiKey !== undefined && apiKey !== null && apiKey !== '' ? apiKey : cfg.apiKey) || ''));
+      return { ok: true, origin: ep.origin, models };
+    } catch (err) {
+      if (err && (err.statusCode === 401 || err.statusCode === 403)) return { ok: false, error: 'Open WebUI rejected the API key (HTTP ' + err.statusCode + ')' };
+      return { ok: false, error: (err && err.message) || 'connection failed' };
+    }
   });
   // "Edit prompt file" in the Claude Code page options: seed the template if needed, then open the
   // file in whatever the user's default .md editor is.
@@ -2415,6 +2464,7 @@ app.on('before-quit', () => {
   try { claudeVoiceHost.shutdown(); } catch (e) {}       // terminate the claude CLI child, release held approvals, remove the global hook
   try { codexVoiceHost.shutdown(); } catch (e) {}        // terminate the codex app-server child
   try { copilotVoiceHost.shutdown(); } catch (e) {}      // terminate the copilot app-server child
+  try { owuiVoiceHost.shutdown(); } catch (e) {}         // abort any in-flight OWUI stream
   try { claudeVoiceApprovals.ensureHookRemoved(claudeVoiceLog); } catch (e) {}    // belt-and-braces: never leave our entry behind in the user's global Claude settings
   try { dev.stop(); } catch (e) {}                       // close HID devices + clear keep-alive/rescan timers — an open node-hid handle blocks process exit (Cmd+Q would hang -> force-quit)
   try { oauthHandler.stop(); } catch (e) {}              // stop OAuth callback server + background refresh timers

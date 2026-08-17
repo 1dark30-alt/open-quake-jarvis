@@ -41,17 +41,19 @@ It gives you:
   CPU/GPU/RAM/disk/network/battery), an **[Open WebUI chat](docs/ai-chat.md)** you can
   **talk to by holding the knob**, a **[Microsoft 365](docs/apps.md)** panel (sign in with
   your Microsoft account for live profile, presence, and upcoming-calendar view, plus up to
-  eight configurable app shortcuts and one-tap **Join meeting**), and three agent apps that put
-  a real coding session on the panel — **[Claude Code](docs/claude-voice.md)**,
-  **[Codex](docs/codex-voice.md)**, and **[Copilot](docs/copilot-voice.md)** — tap the knob to
-  start/stop a hands-free conversation, with touch approvals and a full text transcript. → [Apps](docs/apps.md)
+  eight configurable app shortcuts and one-tap **Join meeting**), and four agent apps that put
+  a real session on the panel — **[Claude Code](docs/claude-voice.md)**,
+  **[Codex](docs/codex-voice.md)**, **[Copilot](docs/copilot-voice.md)**, and
+  **[Open WebUI Voice](docs/owui-voice.md)** (your own local models over HTTP, no CLI) — tap the
+  knob to start/stop a hands-free conversation, with touch approvals and a full text transcript. → [Apps](docs/apps.md)
 - **Meeting recording → transcript → meeting notes** — the Meeting app **records your
   calls** (your mic on the left channel, everyone else on the right; can auto-start with
   Zoom/Teams calls and auto-stop on silence), then — right from the panel — sends
   recordings to a **diarizing transcription server** ([tts-sst](https://github.com/TeeJS/tts-stt-windows)
   or meeting-diarizer) for a **speaker-labeled transcript**, and turns transcripts into
   **AI meeting notes** (summary, attendees, decisions, action items, cleaned transcript)
-  with your locally installed **Claude Code or Codex CLI** — no API key. With the
+  with your locally installed **Claude Code, Codex, or Copilot CLI** — no API key — or your
+  own **Open WebUI** server (local models). With the
   optional **Outlook calendar integration** (classic Outlook, COM — no tokens), each
   recording also captures its meeting's details (subject, organizer, attendees, join
   link), which sharpens speaker identification (attendee-guided matching, plus your own
@@ -73,7 +75,7 @@ It gives you:
 
 > **Status:** early but capable. Touch, knob (incl. RGB ring + hold-to-talk), grids, merged
 > buttons, web dashboards, the bundled apps (clock / world clock / music / meeting / system
-> monitor / AI chat / Microsoft 365 / Claude Code / Codex / Copilot), light/dark + accent theming, the
+> monitor / AI chat / Microsoft 365 / Claude Code / Codex / Copilot / Open WebUI Voice), light/dark + accent theming, the
 > on-board mic, and the editor are working and validated against real hardware. The panel is
 > driven as a normal external monitor (Windows sees a 480×1920 / 1920×480 display); pushing
 > frames over the HID resource channel is not implemented.
@@ -83,7 +85,7 @@ It gives you:
 Detailed guides live in **[docs/](docs/README.md)**:
 
 - [The editor](docs/editor.md) · [Web dashboards](docs/dashboards.md) · [Bundled apps](docs/apps.md)
-- [Music controller](docs/music.md) · [System monitor](docs/system-monitor.md) · [Open WebUI chat + voice](docs/ai-chat.md) · [Claude Code voice + text](docs/claude-voice.md) · [Codex voice + text](docs/codex-voice.md) · [Copilot voice + text](docs/copilot-voice.md)
+- [Music controller](docs/music.md) · [System monitor](docs/system-monitor.md) · [Open WebUI chat + voice](docs/ai-chat.md) · [Claude Code voice + text](docs/claude-voice.md) · [Codex voice + text](docs/codex-voice.md) · [Copilot voice + text](docs/copilot-voice.md) · [Open WebUI Voice](docs/owui-voice.md)
 - [Home Assistant integration](docs/home-assistant.md) · [Settings & knob lighting](docs/settings.md) · [Reserved Display](docs/reserved-display.md) · [Building & how it works](docs/building.md) · [Device protocol](docs/DEVICE_PROTOCOL.md)
 
 ## Companion project

@@ -18,6 +18,7 @@
 //   settings:
 //     settings.spotify.refreshToken                   (NOT settings.spotify.clientId — clientId is public)
 //     settings.haAuth.token                           (NOT settings.haAuth.url — the URL is not sensitive)
+//     settings.owui.apiKey                            (NOT settings.owui.url/model — those are not secrets)
 //     settings.oauth.providers[*].clientSecret        (optional confidential OAuth clients)
 //     settings.oauth.tokens[*].accessToken / refreshToken
 const MARKER = 'oqenc:v1:';    // legacy: Electron safeStorage — still decrypted, never written on Windows
@@ -92,7 +93,7 @@ function createSecretStore({ safeStorage, dpapi, loadApps, log = () => {} }) {
   }
 
   // Apply `fn` to exactly the secret fields under config.settings, in place (config is a clone supplied
-  // by the callers). Currently: settings.spotify.refreshToken and settings.haAuth.token (URL/clientId
+  // by the callers). See the header comment for the full field list (URL/clientId/model fields
   // stay plaintext — they aren't secrets).
   function transformSettingsSecrets(config, fn) {
     const sp = config && config.settings && config.settings.spotify;
@@ -102,6 +103,10 @@ function createSecretStore({ safeStorage, dpapi, loadApps, log = () => {} }) {
     const ha = config && config.settings && config.settings.haAuth;
     if (ha && typeof ha === 'object' && typeof ha.token === 'string' && ha.token !== '') {
       ha.token = fn(ha.token);
+    }
+    const ow = config && config.settings && config.settings.owui;
+    if (ow && typeof ow === 'object' && typeof ow.apiKey === 'string' && ow.apiKey !== '') {
+      ow.apiKey = fn(ow.apiKey);
     }
     const oauth = config && config.settings && config.settings.oauth;
     if (oauth && typeof oauth === 'object') {

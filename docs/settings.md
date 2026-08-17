@@ -103,8 +103,12 @@ Recording and transcription for the Meeting panel (details in [meeting.md](meeti
   the full `/transcribe` URL works; default `http://127.0.0.1:10301/transcribe`). Wire
   protocol: [meetings-api.md](meetings-api.md). Changes apply when you **Save** (button
   at the top of the settings page and in the footer).
-- **Analysis AI** — **Claude**, **ChatGPT Codex**, or **GitHub Copilot**: which locally installed CLI turns a
-  transcript into meeting notes. Uses that tool's own login; open-quake stores no API key.
+- **Analysis AI** — **Claude**, **ChatGPT Codex**, **GitHub Copilot**, or **Open WebUI**: what
+  turns a transcript into meeting notes. The three CLIs use their own login (no API key stored);
+  **Open WebUI** posts to your own server using the connection on the **Auth** tab (URL, API key,
+  and default model set there) — the transcript is slimmed to `Speaker: text` lines so local
+  models fit it, and an analysis that would be truncated fails loudly instead of writing half
+  notes.
 - **Auto-record / Call apps / Stop after silence / Echo-gate** — unchanged recording
   behavior options.
 - **Advanced → Pull meeting information from my calendar** — off by default. Choose a
@@ -167,10 +171,10 @@ Recording and transcription for the Meeting panel (details in [meeting.md](meeti
   cosine threshold. Blank = off. In hybrid meetings, in-room voices share your mic
   channel and still go through normal identification.
 
-## Auth (Home Assistant)
+## Auth (Home Assistant, Open WebUI)
 
 The **Auth** tab holds credentials shared across open-quake features that talk to a
-single server. Today that's just Home Assistant.
+single server — today Home Assistant and Open WebUI.
 
 - **Use Home Assistant** — off by default. When on, open-quake caches your HA
   configuration (dashboards, areas, devices, entities, floors, labels) at launch and
@@ -190,3 +194,20 @@ single server. Today that's just Home Assistant.
 The full HA integration guide — what gets cached, the Dashboard app, entity tiles, the
 service catalog, icon resolution, memory footprint — lives in
 [Home Assistant integration](home-assistant.md).
+
+### Open WebUI
+
+One connection shared by the meeting **Analysis AI** (Meeting tab) and the
+**[Open WebUI Voice](owui-voice.md)** panel app:
+
+- **URL** — the server's address (e.g. `http://192.168.1.25:3000`). Any pasted form works —
+  bare host:port, trailing slash, or a full path; the app derives `/api/chat/completions` and
+  `/api/models` from the origin itself.
+- **API key** — created in Open WebUI under avatar → Settings → Account → API Keys (an admin may
+  need to enable API keys first). Stored **encrypted at rest**, same secret store as the HA token.
+- **Default model** — used wherever no per-page model is picked.
+- **Test connection** — saves any pending edits, then hits `/api/models` and reports the live
+  model count or a clear error (server down vs. bad key).
+
+The existing per-page [Open WebUI chat widget](ai-chat.md) keeps its own endpoint options and is
+unaffected.

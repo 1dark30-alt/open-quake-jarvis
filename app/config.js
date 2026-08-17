@@ -1514,7 +1514,8 @@
     const isClaudeVoice = g.app === 'claude-voice';
     const isCodexVoice = g.app === 'codex-voice';
     const isCopilotVoice = g.app === 'copilot-voice';
-    const isVoiceApp = isClaudeVoice || isCodexVoice || isCopilotVoice;   // all three share the hand-rendered options box below
+    const isOwuiVoice = g.app === 'owui-voice';
+    const isVoiceApp = isClaudeVoice || isCodexVoice || isCopilotVoice || isOwuiVoice;   // all four share the hand-rendered options box below (owui omits the folder/mode rows)
     const isOffice = g.app === 'office';
     const musicBox = `<fieldset style="border:1px solid #2a3a4e; border-radius:8px; padding:6px 14px 10px; margin:10px 0">
         <legend style="padding:0 6px; color:#9fb3c8; font-size:13px">Panels</legend>
@@ -1558,7 +1559,8 @@
     const cvVal = (key, dflt) => optVal(g, key, dflt);
     const cvPermChoices = (cvOptDef('permissionMode').choices || []);
     const claudeVoiceBox = `<div id="cvBox" style="margin-top:10px">
-        <p id="cvCliWarn" class="hint" style="display:none;color:#ff8a8a;font-weight:600"></p>
+        <p id="cvCliWarn" class="hint" style="display:none;color:#ff8a8a;font-weight:600"></p>` + (isOwuiVoice ? `
+        <p class="hint">Chats against the Open WebUI connection configured on <b>Settings → Auth</b> (URL, API key, default model). No working folder and no permission modes — the chat API can't touch files or run commands.</p>` : `
         <div class="row"><label>Default folder</label>
           <input id="cvProjectPath" value="${esc(cvVal('projectDir', ''))}" style="flex:1">
           <button id="cvProjectPathBrowse" type="button">Browse…</button></div>
@@ -1566,14 +1568,14 @@
         <div class="row" style="margin-top:10px"><label style="width:auto">Folders root</label>
           <input id="cvProjectsRoot" value="${esc(cvVal('projectsRoot', ''))}" style="flex:1">
           <button id="cvProjectsRootBrowse" type="button">Browse…</button></div>
-        <p class="hint">The folder the panel's Change folder list scans.</p>
+        <p class="hint">The folder the panel's Change folder list scans.</p>`) + `
         <div class="row"><label>Wyoming host</label><input id="cvWyomingHost" value="${esc(cvVal('wyomingHost', ''))}" style="flex:1"></div>
         <div class="row"><label>STT / TTS ports</label>
           <input id="cvSttPort" value="${esc(cvVal('wyomingSttPort', ''))}" style="width:90px">
           <input id="cvTtsPort" value="${esc(cvVal('wyomingTtsPort', ''))}" style="width:90px;margin-left:8px"></div>
-        <p class="hint">Voice needs Piper (TTS) and Whisper (STT) hosts. Please enter the IP of your server or use <a href="#" id="cvTtsLink">tts-stt-windows</a> to provide both on any Windows machine — install it and set the host to <code>127.0.0.1</code>.</p>
+        <p class="hint">Voice needs Piper (TTS) and Whisper (STT) hosts. Please enter the IP of your server or use <a href="#" id="cvTtsLink">tts-stt-windows</a> to provide both on any Windows machine — install it and set the host to <code>127.0.0.1</code>.</p>` + (isOwuiVoice ? '' : `
         <div class="row" style="margin-top:10px"><label>Permission mode</label>
-          <select id="cvPermMode" style="flex:1">${cvPermChoices.map(c => `<option value="${esc(c[0])}" ${cvVal('permissionMode', cvOptDef('permissionMode').default || '') === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>` + (isClaudeVoice ? `
+          <select id="cvPermMode" style="flex:1">${cvPermChoices.map(c => `<option value="${esc(c[0])}" ${cvVal('permissionMode', cvOptDef('permissionMode').default || '') === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>`) + (isClaudeVoice ? `
         <div class="row"><label>Touch approval</label>
           <label class="iconopt" style="width:auto"><input type="checkbox" id="cvApprovals" ${cvVal('approvalsEnabled', false) ? 'checked' : ''}> when in Manual mode</label></div>
         <div class="row" style="margin-top:10px"><label>Panel prompt</label>
@@ -1645,28 +1647,39 @@
     } else if (isVoiceApp) {
       const setOpt = (key, val) => { if (!g.options) g.options = {}; g.options[key] = val; markDirty(); };
       // Default folder is a plain text box -- actual folder switching happens on the panel
-      // (Change folder), which writes its pick back into this same option.
-      document.getElementById('cvProjectPath').oninput = e => setOpt('projectDir', e.target.value.trim());
-      document.getElementById('cvProjectsRoot').oninput = e => setOpt('projectsRoot', e.target.value.trim());
-      document.getElementById('cvProjectPathBrowse').onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('cvProjectPath').value = p; setOpt('projectDir', p); } };
-      document.getElementById('cvProjectsRootBrowse').onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('cvProjectsRoot').value = p; setOpt('projectsRoot', p); } };
+      // (Change folder), which writes its pick back into this same option. The folder and
+      // permission-mode rows don't exist for owui-voice, hence the existence guards.
+      const cvProjectPath = document.getElementById('cvProjectPath');
+      if (cvProjectPath) cvProjectPath.oninput = e => setOpt('projectDir', e.target.value.trim());
+      const cvProjectsRoot = document.getElementById('cvProjectsRoot');
+      if (cvProjectsRoot) cvProjectsRoot.oninput = e => setOpt('projectsRoot', e.target.value.trim());
+      const cvProjectPathBrowse = document.getElementById('cvProjectPathBrowse');
+      if (cvProjectPathBrowse) cvProjectPathBrowse.onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('cvProjectPath').value = p; setOpt('projectDir', p); } };
+      const cvProjectsRootBrowse = document.getElementById('cvProjectsRootBrowse');
+      if (cvProjectsRootBrowse) cvProjectsRootBrowse.onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('cvProjectsRoot').value = p; setOpt('projectsRoot', p); } };
       document.getElementById('cvWyomingHost').oninput = e => setOpt('wyomingHost', e.target.value.trim());
       document.getElementById('cvSttPort').oninput = e => setOpt('wyomingSttPort', e.target.value.trim());
       document.getElementById('cvTtsPort').oninput = e => setOpt('wyomingTtsPort', e.target.value.trim());
-      document.getElementById('cvPermMode').onchange = e => setOpt('permissionMode', e.target.value);
+      const cvPermMode = document.getElementById('cvPermMode');
+      if (cvPermMode) cvPermMode.onchange = e => setOpt('permissionMode', e.target.value);
       const cvApprovals = document.getElementById('cvApprovals');   // claude-only rows
       if (cvApprovals) cvApprovals.onchange = e => setOpt('approvalsEnabled', e.target.checked);
       const cvEditPrompt = document.getElementById('cvEditPrompt');
       if (cvEditPrompt) cvEditPrompt.onclick = () => configApi.editClaudeVoicePrompt();
       const cvTtsLink = document.getElementById('cvTtsLink');
       if (cvTtsLink) cvTtsLink.onclick = e => { e.preventDefault(); configApi.openExternal('https://github.com/TeeJS/tts-stt-windows/releases'); };
-      // Warn at add-time if the agent CLI this page drives isn't installed -- otherwise the user
-      // only finds out when the panel page errors on first use.
+      // Warn at add-time if the agent CLI this page drives isn't installed (or, for owui-voice,
+      // if no connection is configured) -- otherwise the user only finds out when the panel page
+      // errors on first use.
       configApi.probeVoiceCli(g.app).then(p => {
         const warn = document.getElementById('cvCliWarn');
         if (warn && !p) {
-          const cliName = isCodexVoice ? 'codex' : isCopilotVoice ? 'copilot' : 'claude';
-          warn.textContent = '⚠ The ' + cliName + ' CLI was not found on PATH — this page won\'t work until it is installed.';
+          if (isOwuiVoice) {
+            warn.textContent = '⚠ Open WebUI connection not configured — set the URL on Settings → Auth or this page won\'t work.';
+          } else {
+            const cliName = isCodexVoice ? 'codex' : isCopilotVoice ? 'copilot' : 'claude';
+            warn.textContent = '⚠ The ' + cliName + ' CLI was not found on PATH — this page won\'t work until it is installed.';
+          }
           warn.style.display = '';
         }
       }).catch(() => {});
@@ -2020,11 +2033,12 @@
       <p class="hint">The tts-sst or meeting-diarizer endpoint that turns recordings into speaker-labeled transcripts. Edit the host/port to match your server; the panel checks its /health before sending. Remember to Save.</p>
       <div class="row" style="margin-top:12px"><label>Analysis AI</label>
         <select id="meAnalysisAi" style="flex:1">
-          <option value="claude" ${(me.analysisAi === 'codex' || me.analysisAi === 'copilot') ? '' : 'selected'}>Claude</option>
+          <option value="claude" ${['codex', 'copilot', 'owui'].includes(me.analysisAi) ? '' : 'selected'}>Claude</option>
           <option value="codex" ${me.analysisAi === 'codex' ? 'selected' : ''}>ChatGPT Codex</option>
           <option value="copilot" ${me.analysisAi === 'copilot' ? 'selected' : ''}>GitHub Copilot</option>
+          <option value="owui" ${me.analysisAi === 'owui' ? 'selected' : ''}>Open WebUI</option>
         </select></div>
-      <p class="hint">Which locally installed CLI turns a transcript into meeting notes on the Analysis screen. Uses that tool's own login — no API key needed.</p>
+      <p class="hint">What turns a transcript into meeting notes on the Analysis screen. The CLIs use their own login — no API key needed. Open WebUI runs against the connection on the Auth tab (URL, API key, and default model set there).</p>
       <div class="row" style="margin-top:12px"><label>Analysis prompt</label>
         <button id="meEditPrompt" type="button">Edit prompt file</button></div>
       <p class="hint">The instructions the AI follows when analyzing a transcript (meeting-analysis-prompt.md, opens in your default editor). Changes apply to the next analysis.</p>
@@ -2123,9 +2137,10 @@
         <p class="hint">Specified in apps.json.</p>
         ${devEnabled() ? devApps.map(a => appRow(a, devShown(a.id))).join('') : ''}` : ''}`;
 
-    // Auth tab — credentials shared across the app (currently just Home Assistant). Token is stored
-    // encrypted at rest via secretStore (same path as settings.spotify.refreshToken).
+    // Auth tab — credentials shared across the app (Home Assistant, Open WebUI). Token and API key
+    // are stored encrypted at rest via secretStore (same path as settings.spotify.refreshToken).
     const ha = (s.haAuth && typeof s.haAuth === 'object') ? s.haAuth : { url: '', token: '', useHa: false };
+    const ow = (s.owui && typeof s.owui === 'object') ? s.owui : { url: '', apiKey: '', model: '' };
     const authHtml = `
       <p class="sectitle">Home Assistant</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="sHaUse" ${ha.useHa ? 'checked' : ''}> Use Home Assistant</label>
@@ -2137,6 +2152,16 @@
       <div class="row"><label>Long-Lived Access Token</label>
         <input type="password" id="sHaToken" value="${esc(ha.token || '')}" placeholder="paste your long-lived access token" style="flex:1"></div>
       <p class="hint">The token is stored encrypted at rest (same secret store as your dashboard tokens). It only leaves the main process for features that need it.</p>
+
+      <p class="sectitle" style="margin-top:22px">Open WebUI</p>
+      <div class="row"><label>URL</label>
+        <input type="text" id="sOwUrl" value="${esc(ow.url || '')}" placeholder="http://192.168.1.25:3000" style="flex:1"></div>
+      <div class="row"><label>API key</label>${secretInput(ow.apiKey || '', 'id="sOwKey" placeholder="paste an Open WebUI API key"', 'flex:1')}</div>
+      <div class="row"><label>Default model</label>
+        <input type="text" id="sOwModel" value="${esc(ow.model || '')}" placeholder="e.g. llama3.2" style="flex:1">
+        <button id="sOwTest" type="button" style="margin-left:8px">Test connection</button></div>
+      <p class="hint" id="sOwStatus" style="min-height:16px;margin:2px 0 0"></p>
+      <p class="hint">One connection shared by the meeting <b>Analysis AI</b> (Open WebUI option on the Meeting tab) and the <b>Open WebUI Voice</b> panel app. The key is stored encrypted at rest. In Open WebUI: avatar (bottom-left) → Settings → Account → API Keys — an admin may need to enable API keys first.</p>
 
       <p class="sectitle" style="margin-top:22px">OAuth 2.0</p>
       <p class="hint">Connect services once for built-in integrations. OAuth tokens stay in the main process, are encrypted at rest, and are refreshed before expiry; drop-in apps cannot request them.</p>
@@ -2313,6 +2338,33 @@
       document.getElementById('sHaUrl').oninput = e => saveHa({ url: e.target.value.trim() });
       document.getElementById('sHaToken').oninput = e => saveHa({ token: e.target.value.trim() });
       configApi.getHaCache().then(showStatus);   // initial status from whatever main has cached
+
+      // Open WebUI connection (shared: meeting Analysis AI + owui-voice panel app)
+      const saveOwui = patch => {
+        if (!config.settings) config.settings = {};
+        const cur = (config.settings.owui && typeof config.settings.owui === 'object') ? config.settings.owui : { url: '', apiKey: '', model: '' };
+        config.settings.owui = Object.assign({ url: '', apiKey: '', model: '' }, cur, patch);
+        markDirty();
+      };
+      document.getElementById('sOwUrl').oninput = e => saveOwui({ url: e.target.value.trim() });
+      document.getElementById('sOwKey').oninput = e => saveOwui({ apiKey: e.target.value.trim() });
+      document.getElementById('sOwModel').oninput = e => saveOwui({ model: e.target.value.trim() });
+      const owTest = document.getElementById('sOwTest');
+      const owStatus = document.getElementById('sOwStatus');
+      owTest.onclick = async () => {
+        owTest.disabled = true;
+        owStatus.textContent = dirty ? 'Saving, then testing…' : 'Testing…'; owStatus.style.color = '#7e93ab';
+        try {
+          // Same auto-save-first pattern as HA Refresh: main probes with its SAVED config.
+          if (dirty && !await doSave()) throw new Error('settings were not saved securely');
+          const r = await configApi.probeOwui();
+          if (!(r && r.ok)) throw new Error((r && r.error) || 'connection failed');
+          const list = r.models || [];
+          owStatus.textContent = 'OK — ' + list.length + ' model(s)' + (list.length ? ': ' + list.slice(0, 6).join(', ') + (list.length > 6 ? ', …' : '') : '');
+          owStatus.style.color = '#7e93ab';
+        } catch (e2) { owStatus.textContent = 'Test failed: ' + (e2.message || e2); owStatus.style.color = '#c98'; }
+        finally { owTest.disabled = false; }
+      };
 
       let oauthPoll = null;
       const oauthMsg = (id, text, bad) => {

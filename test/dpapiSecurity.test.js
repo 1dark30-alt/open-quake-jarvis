@@ -59,6 +59,18 @@ windowsTest('existing oqenc:v2 raw DPAPI blobs decrypt without migration', () =>
   assert.equal(store.needsRewrite({ grids: [], settings: { haAuth: { token: existing } } }), false);
 });
 
+windowsTest('settings.owui.apiKey round-trips through the settings walker (url/model stay plaintext)', () => {
+  const store = storeFor(dpapi);
+  const cfg = { grids: [], settings: { owui: { url: 'http://h:3000', apiKey: canary, model: 'llama3' } } };
+  assert.equal(store.hasPlaintextSecret(cfg), true);
+  const enc = store.encryptConfig(cfg);
+  assert.ok(enc.settings.owui.apiKey.startsWith(MARKER2));
+  assert.equal(enc.settings.owui.url, 'http://h:3000');     // not a secret — stays readable
+  assert.equal(enc.settings.owui.model, 'llama3');          // not a secret — stays readable
+  assert.equal(store.hasPlaintextSecret(enc), false);
+  assert.equal(store.decryptConfig(enc).settings.owui.apiKey, canary);
+});
+
 windowsTest('malformed and corrupted ciphertext fail generically without logging secrets', () => {
   const logs = [];
   const store = storeFor(dpapi, logs);

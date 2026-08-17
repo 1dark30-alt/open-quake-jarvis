@@ -46,6 +46,8 @@ contextBridge.exposeInMainWorld('openQuakeConfig', {
   checkOutlookMeetings(source) { return ipcRenderer.invoke('checkOutlookMeetings', source); },
   // Voice apps: resolved CLI path for the app's agent (claude/codex), or null if not installed.
   probeVoiceCli(appId) { return ipcRenderer.invoke('probeVoiceCli', appId); },
+  // Auth tab: test the saved Open WebUI connection (normalize URL + list models with the key).
+  probeOwui(url, apiKey) { return ipcRenderer.invoke('probeOwui', url, apiKey); },
   pathToFileURL(filePath) {
     try { return pathToFileURL(filePath).href; }
     catch (e) { return ''; }
