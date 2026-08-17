@@ -248,32 +248,52 @@ function slideCmd(path) {
 $('slideToggle').onclick = function () { if ($('slideToggle').classList.contains('sdis')) return; slideCmd(slideState.capturing ? '/slide/stop' : '/slide/start').then(pollState); };
 $('slideManual').onclick = function () { if ($('slideManual').classList.contains('sdis')) return; slideCmd('/slide/manual'); };
 $('slideSelect').onclick = function () { openWinPicker(); };
-$('winCancel').onclick = function () { $('winOverlay').classList.remove('show'); };
+function closeWinPicker() { $('winOverlay').classList.remove('show'); }   // Cancel/Escape leave the current selection untouched
+$('winCancel').onclick = closeWinPicker;
+$('winClear').onclick = function () { pickWindow('', ''); };              // "Clear selection" — a header action, not a list row
+$('winRetry').onclick = function () { openWinPicker(); };
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && $('winOverlay').classList.contains('show')) closeWinPicker(); });
 
+function winMessage(html) {   // single centered message tile spanning the grid (loading / empty / error)
+  $('winList').innerHTML = '<div class="winMsg">' + html + '</div>';
+  $('winScrollRail').style.display = 'none';
+}
 function openWinPicker() {
-  var el = $('winList');
-  el.innerHTML = '<div class="devRow" style="opacity:.6">Finding windows…</div>';
   $('winOverlay').classList.add('show');
+  $('winRetry').style.display = 'none';
+  $('winSub').textContent = 'Choose the window being presented';
+  winMessage('Finding windows…');
   fetch('/slide/windows', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (r) {
-    el.innerHTML = '';
-    var wins = (r && r.windows) || [];
-    if (!wins.length) { el.innerHTML = '<div class="devRow" style="opacity:.6">No matching windows. Check the app filter in Settings, or open the window you want.</div>'; }
-    wins.forEach(function (w) {
-      var b = document.createElement('button');
-      b.type = 'button'; b.className = 'devRow foc' + (w.name === slideState.target ? ' current' : '');
-      b.textContent = w.name; b.title = w.name;
-      b.onclick = function () { pickWindow(w.id, w.name); };
-      el.appendChild(b);
-    });
-    // a way to clear the current target
-    var none = document.createElement('button');
-    none.type = 'button'; none.className = 'devRow foc'; none.textContent = '— no window —';
-    none.onclick = function () { pickWindow('', ''); };
-    el.appendChild(none);
-  }).catch(function () { el.innerHTML = '<div class="devRow" style="opacity:.6">Could not list windows.</div>'; });
+    if (!r || r.ok === false) return winError();
+    renderWins((r && r.windows) || []);
+  }).catch(winError);
+}
+function winError() {
+  $('winSub').textContent = '';
+  winMessage('Could not list windows.');
+  $('winRetry').style.display = '';
+}
+function renderWins(wins) {
+  var el = $('winList'); el.innerHTML = '';
+  $('winRetry').style.display = 'none';
+  if (!wins.length) {
+    $('winSub').textContent = '0 found';
+    winMessage('<b>No matching windows</b>Open the window, or change the Slide Capture filter in Settings.');
+    return;
+  }
+  $('winSub').textContent = wins.length + (wins.length === 1 ? ' window found' : ' windows found');
+  wins.forEach(function (w) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'winTile foc' + (w.name === slideState.target ? ' current' : '');
+    var s = document.createElement('span'); s.textContent = w.name; b.appendChild(s);   // two-line clamp; no title= tooltip on a touchscreen
+    b.onclick = function () { pickWindow(w.id, w.name); };
+    b.addEventListener('focus', function () { try { b.scrollIntoView({ block: 'nearest' }); } catch (e) {} });   // keep knob/keyboard focus on-screen
+    el.appendChild(b);
+  });
+  $('winScrollRail').style.display = wins.length > 12 ? 'flex' : 'none';   // paging rail only when the grid overflows (4 rows × 3 cols)
 }
 function pickWindow(id, name) {
-  $('winOverlay').classList.remove('show');
+  closeWinPicker();   // tap selects and closes immediately
   slideCmd('/slide/select?id=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name)).then(pollState);
 }
 
@@ -670,6 +690,7 @@ $('anViewBack').onclick = function () { $('anViewOverlay').classList.remove('sho
 wireScrollButtons('libList', 'libUp', 'libDown');
 wireScrollButtons('anList', 'anScrollUp', 'anScrollDown');
 wireScrollButtons('anView', 'anViewUp', 'anViewDown');
+wireScrollButtons('winList', 'winUp', 'winDown');
 
 renderDeck();
 statusReady();

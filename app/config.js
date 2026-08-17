@@ -1889,7 +1889,7 @@
     const th = currentTheme();
     // Meeting recording settings (config.settings.meeting) — global so auto-record works regardless of
     // which app the panel is showing. Same shape as MEETING_DEFAULTS in main.js.
-    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '', slideCaptureEnabled: false, slideAutoStartOnSelect: false, slideNotifications: true, slideHotkeyToggle: 'Ctrl+Alt+S', slideHotkeySelect: 'Ctrl+Alt+W', slideHotkeyManual: 'Ctrl+Alt+C', slideAppFilter: 'ms-teams', slideIdleStopMin: 30 }, (config.settings || {}).meeting || {});
+    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '', slideCaptureEnabled: false, slideAutoStartOnSelect: false, slideNotifications: true, slideHotkeyToggle: 'Ctrl+Alt+S', slideHotkeySelect: 'Ctrl+Alt+W', slideHotkeyManual: 'Ctrl+Alt+C', slideAppFilter: 'Teams', slideIdleStopMin: 30 }, (config.settings || {}).meeting || {});
     const me = currentMe();
     // ledState = the device's live lighting (loaded when the page opens); fall back to saved config / defaults.
     const L = Object.assign({}, LED_DEFAULT, (config.settings || {}).lighting || {}, ledState || {});
@@ -2058,6 +2058,30 @@
       <p class="hint">Mutes your mic in the recording while the speakers are loud (and you're not on headphones), to stop the far end bleeding back in. Off = faithful capture of everything you say, even when others are talking.</p>
 
       <details class="advsec" style="margin-top:22px">
+      <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Meeting Slide Capture</summary>
+      <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSlide" ${me.slideCaptureEnabled ? 'checked' : ''}> Enable Meeting Slide Capture</label></div>
+      <p class="hint">Watches a window you pick (e.g. the Teams meeting) and saves a screenshot each time its content settles on a new slide — skipping live video, which never settles. Adds a slide-capture column to the meeting panel. Slides are saved beside the recording in a <b>&lt;recording&gt;-screenshots\\</b> folder that travels and renames with it.</p>
+      <div class="slidecfg">
+        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSlideAuto" ${me.slideAutoStartOnSelect ? 'checked' : ''}> Automatically start capture when a window is selected</label></div>
+        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSlideNotify" ${me.slideNotifications ? 'checked' : ''}> Show a notification when a slide is captured</label></div>
+        <div class="row" style="margin-top:10px"><label>Toggle capture hotkey</label>
+          <input id="meSlideHkToggle" value="${esc(me.slideHotkeyToggle)}" placeholder="Ctrl+Alt+S" style="width:180px"></div>
+        <div class="row"><label>Select window hotkey</label>
+          <input id="meSlideHkSelect" value="${esc(me.slideHotkeySelect)}" placeholder="Ctrl+Alt+W" style="width:180px"></div>
+        <div class="row"><label>Manual capture hotkey</label>
+          <input id="meSlideHkManual" value="${esc(me.slideHotkeyManual)}" placeholder="Ctrl+Alt+C" style="width:180px"></div>
+        <p class="hint">Global hotkeys (each needs Ctrl and/or Alt, and all three must differ). Leave one blank to disable it. <span id="meSlideHkWarn" style="color:#FF6B6B"></span></p>
+        <div class="row" style="margin-top:10px"><label>Limit window picker to</label>
+          <input id="meSlideFilter" value="${esc(me.slideAppFilter)}" placeholder="blank = all windows" style="width:230px"></div>
+        <p class="hint">Shows only windows whose <b>title</b> contains this text (e.g. <b>Teams</b> matches "Calendar | Microsoft Teams"). Blank shows every open window.</p>
+        <div class="row" style="margin-top:10px"><label>Auto-stop after inactive</label>
+          <input type="number" id="meSlideIdle" min="0" max="600" step="1" value="${me.slideIdleStopMin}" style="width:120px">
+          <span class="hint" style="margin:0 0 0 8px">minutes (0 = never)</span></div>
+        <p class="hint">Stops capture after this long with no new slide, so a forgotten session doesn't run all day. The clock resets on every capture.</p>
+      </div>
+      </details>
+
+      <details class="advsec" style="margin-top:22px">
       <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Advanced Settings</summary>
       <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meOutlook" ${me.outlookEnabled ? 'checked' : ''}> Pull meeting information from my calendar</label></div>
       <p class="hint">When a recording starts, saves the matching appointment (subject, attendees, organizer, body…) as <b>&lt;recording&gt;.json</b> beside the WAV. The file travels through transcription, where its attendee list improves speaker identification. Ad-hoc calls with nothing scheduled save nothing.</p>
@@ -2102,30 +2126,6 @@
         <textarea id="meHookPre" rows="2" style="flex:1; font-family:inherit" placeholder='e.g. ssh root@192.168.1.25 "docker start meeting-diarizer"'>${esc(me.preTranscribeCmd)}</textarea></div>
       <div class="row" style="margin-top:8px"><label>After</label>
         <textarea id="meHookPost" rows="2" style="flex:1; font-family:inherit" placeholder='e.g. ssh root@192.168.1.25 "docker stop meeting-diarizer"'>${esc(me.postTranscribeCmd)}</textarea></div>
-      </details>
-
-      <details class="advsec" style="margin-top:16px">
-      <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Meeting Slide Capture</summary>
-      <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSlide" ${me.slideCaptureEnabled ? 'checked' : ''}> Enable Meeting Slide Capture</label></div>
-      <p class="hint">Watches a window you pick (e.g. the Teams meeting) and saves a screenshot each time its content settles on a new slide — skipping live video, which never settles. Adds a slide-capture column to the meeting panel. Slides are saved beside the recording in a <b>&lt;recording&gt;-screenshots\\</b> folder that travels and renames with it.</p>
-      <div class="slidecfg">
-        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSlideAuto" ${me.slideAutoStartOnSelect ? 'checked' : ''}> Automatically start capture when a window is selected</label></div>
-        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSlideNotify" ${me.slideNotifications ? 'checked' : ''}> Show a notification when a slide is captured</label></div>
-        <div class="row" style="margin-top:10px"><label>Toggle capture hotkey</label>
-          <input id="meSlideHkToggle" value="${esc(me.slideHotkeyToggle)}" placeholder="Ctrl+Alt+S" style="width:180px"></div>
-        <div class="row"><label>Select window hotkey</label>
-          <input id="meSlideHkSelect" value="${esc(me.slideHotkeySelect)}" placeholder="Ctrl+Alt+W" style="width:180px"></div>
-        <div class="row"><label>Manual capture hotkey</label>
-          <input id="meSlideHkManual" value="${esc(me.slideHotkeyManual)}" placeholder="Ctrl+Alt+C" style="width:180px"></div>
-        <p class="hint">Global hotkeys (each needs Ctrl and/or Alt, and all three must differ). Leave one blank to disable it. <span id="meSlideHkWarn" style="color:#FF6B6B"></span></p>
-        <div class="row" style="margin-top:10px"><label>Limit window picker to app</label>
-          <input id="meSlideFilter" value="${esc(me.slideAppFilter)}" placeholder="blank = all apps" style="width:230px"></div>
-        <p class="hint">Restricts the window picker to one process name (e.g. <b>ms-teams</b>). Blank shows every window.</p>
-        <div class="row" style="margin-top:10px"><label>Auto-stop after inactive</label>
-          <input type="number" id="meSlideIdle" min="0" max="600" step="1" value="${me.slideIdleStopMin}" style="width:120px">
-          <span class="hint" style="margin:0 0 0 8px">minutes (0 = never)</span></div>
-        <p class="hint">Stops capture after this long with no new slide, so a forgotten session doesn't run all day. The clock resets on every capture.</p>
-      </div>
       </details>`;
 
     // Theme tab — global light/dark + accent color
