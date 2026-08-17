@@ -249,6 +249,52 @@ test('suffixed transcript names produce clean .md names', async () => {
   assert.deepEqual(an.result('meeting-diarizer-response.json'), { ok: true, markdown: 'notes' });
 });
 
+test('post-analysis task list: one dated checklist per batch, pointing at -analysis.md files', async () => {
+  const processed = fs.mkdtempSync(path.join(os.tmpdir(), 'oqx-antl-'));
+  const dir = path.join(processed, '2026', '08');
+  fs.mkdirSync(dir, { recursive: true });
+  // one meeting with calendar metadata (recurring), one without
+  fs.writeFileSync(path.join(dir, 'a-diarizer-response.json'), '{"segments":[]}');
+  fs.writeFileSync(path.join(dir, 'a.json'), JSON.stringify({ subject: 'Weekly Sync', is_recurring: true, organizer: 'David Mastalski' }));
+  fs.writeFileSync(path.join(dir, 'b-diarizer-response.json'), '{"segments":[]}');
+  const taskDir = path.join(processed, 'lists');
+  const an = createMeetingAnalyzer({
+    resolveFolders: () => ({ unprocessed: processed, processed }),
+    resolveAi: () => 'claude',
+    findClaudeExe: () => 'claude.exe', findCodexExe: () => null,
+    resolveTaskList: () => ({ enabled: true, folder: taskDir }),
+    now: () => new Date(2026, 7, 17, 10, 42, 13).getTime(),
+    spawn: fakeSpawnFactory([], () => ({ stdout: 'notes', code: 0 })),
+  });
+  an.start('2026/08/a-diarizer-response.json');
+  an.start('2026/08/b-diarizer-response.json');
+  await drained(an);
+  await settle();
+  const listPath = path.join(taskDir, '2026-08-17_10-42-13.md');
+  const body = fs.readFileSync(listPath, 'utf8');
+  assert.match(body, /^# Analysis batch — 2026-08-17 10:42:13/);
+  assert.match(body, /2 meeting\(s\) analyzed\./);
+  assert.match(body, /- \[ \] \*\*Weekly Sync\*\* \(recurring\) — David Mastalski/);
+  assert.match(body, /    - Analysis: `2026\/08\/a-analysis\.md`/);
+  assert.match(body, /    - Meeting metadata: `2026\/08\/a\.json`/);
+  assert.match(body, /- \[ \] \*\*b\*\*\n    - Analysis: `2026\/08\/b-analysis\.md`/);   // no metadata line without a sidecar
+  // a second batch writes a SECOND list (collision-suffixed under the frozen clock), not an overwrite
+  fs.writeFileSync(path.join(dir, 'c-diarizer-response.json'), '{"segments":[]}');
+  an.start('2026/08/c-diarizer-response.json');
+  await drained(an);
+  await settle();
+  assert.equal(fs.existsSync(path.join(taskDir, '2026-08-17_10-42-13_1.md')), true);
+});
+
+test('task list disabled: nothing written', async () => {
+  const s = setup(() => ({ stdout: 'notes', code: 0 }), 'claude');
+  s.an.start('m.json');
+  await drained(s.an);
+  await settle();
+  const files = fs.readdirSync(s.processed).filter(n => /^\d{4}-\d{2}-\d{2}_/.test(n));
+  assert.deepEqual(files, []);
+});
+
 test('one at a time; bad names and missing transcripts rejected up front', async () => {
   let release;
   const gate = new Promise(r => { release = r; });

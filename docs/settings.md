@@ -146,6 +146,12 @@ Recording and transcription for the Meeting panel (details in [meeting.md](meeti
   recording has calendar meeting info, its attendee list (organizer + required +
   optional) is sent along automatically — the diarizer penalizes enrolled speakers not
   on the list, reducing false speaker matches.
+- **Advanced → Create task-lists for post-analysis processing** — after each analysis
+  batch finishes, writes a dated checklist (`2026-08-17_10-42-13.md`) to the
+  **Task-list folder** (blank = `task-list` under Processed Recordings): one checkbox
+  per analyzed meeting, pointing at its `-analysis.md` (and meeting metadata when the
+  calendar integration provided it) — the hand-off for pulling action items onto a
+  kanban board. Only successful analyses are listed.
 - **Advanced → Run commands before/after transcription** — start and stop the
   transcription server around each batch (e.g. `ssh root@host "docker start
   meeting-diarizer"` — a loaded diarizer holds ~3.4 GB of GPU memory). **Before** runs

@@ -59,6 +59,9 @@ function createMeetingAnalyzer(deps) {
   const timeoutMs = deps.timeoutMs || ANALYZE_TIMEOUT_MS;
   // () => { separateRecurring, separateTranscript, useDetailsFolder } — the Advanced filing options.
   const filingOptions = deps.filingOptions || (() => ({}));
+  // () => { enabled, folder } — post-analysis batch task lists ('' folder = <processed>/task-list).
+  const resolveTaskList = deps.resolveTaskList || (() => ({}));
+  const batchDone = [];   // successful analyses in the current batch, flushed to a task list on drain
 
   const queue = [];      // names waiting (supports the panel's Analyze Selected)
   let running = null;    // { name, ai, startedAt } while a job runs
@@ -99,7 +102,11 @@ function createMeetingAnalyzer(deps) {
     runJob(n, ai, jsonPath)
       .then(() => { lastDone = { name: n, finishedAt: now() }; lastError = null; log('analysis done: ' + n); })
       .catch(e => { lastError = { name: n, error: (e && e.message) || 'failed', finishedAt: now() }; log('analysis failed: ' + n + ' — ' + lastError.error); })
-      .finally(() => { running = null; pump(); });
+      .finally(() => {
+        running = null;
+        if (!queue.length) flushTaskList();   // batch drained — write the post-analysis task list
+        pump();
+      });
   }
 
   async function runJob(name, ai, jsonPath) {
@@ -133,7 +140,8 @@ function createMeetingAnalyzer(deps) {
     await fsp.writeFile(tmp, mdOut);
     await fsp.rename(tmp, mdPath);
 
-    await fileSet(jsonPath, mdPath, txtPath, base, opts);
+    const filed = await fileSet(jsonPath, mdPath, txtPath, base, opts);
+    if (filed) batchDone.push({ base, md: filed.md, sidecar: filed.sidecar, meta: filed.meta });
   }
 
   // Post-analysis filing: recurring meetings move to <processed>/YYYY/<Meeting-Name>/, and with
@@ -144,19 +152,21 @@ function createMeetingAnalyzer(deps) {
     const inDetails = path.basename(dir).toLowerCase() === 'details';
     let home = inDetails ? path.dirname(dir) : dir;
 
-    if (opts.separateRecurring) {
-      try {
-        const sidecar = path.join(dir, base + '.json');
-        if (fsMod.existsSync(sidecar)) {
-          const meta = JSON.parse(await fsp.readFile(sidecar, 'utf8')) || {};
-          const folderName = sanitizeSubjectFolder(meta.subject);
-          if (meta.is_recurring && folderName) {
-            const ym = /^(\d{4})/.exec(base);
-            const year = ym ? ym[1] : String(new Date(now()).getFullYear());
-            home = path.join(resolveFolders().processed, year, folderName);
-          }
-        }
-      } catch (e) { log('recurring check failed — staying in place: ' + e.message); }
+    // Meeting-info sidecar (when the calendar integration wrote one): drives the recurring-folder
+    // decision and feeds the batch task list's title/organizer.
+    let meta = null;
+    try {
+      const sidecar = path.join(dir, base + '.json');
+      if (fsMod.existsSync(sidecar)) meta = JSON.parse(await fsp.readFile(sidecar, 'utf8')) || null;
+    } catch (e) { log('meeting-info sidecar unreadable: ' + e.message); }
+
+    if (opts.separateRecurring && meta) {
+      const folderName = sanitizeSubjectFolder(meta.subject);
+      if (meta.is_recurring && folderName) {
+        const ym = /^(\d{4})/.exec(base);
+        const year = ym ? ym[1] : String(new Date(now()).getFullYear());
+        home = path.join(resolveFolders().processed, year, folderName);
+      }
     }
     const fileDir = opts.useDetailsFolder ? path.join(home, 'details') : home;
 
@@ -174,6 +184,53 @@ function createMeetingAnalyzer(deps) {
       await mv(path.join(dir, base + '.json'), path.join(fileDir, base + '.json'));
       await mv(txtPath, txtPath ? path.join(fileDir, path.basename(txtPath)) : null);
     } catch (e) { log('filing failed (analysis itself is saved): ' + e.message); }
+    return {
+      md: path.join(home, path.basename(mdPath)),
+      sidecar: meta ? path.join(fileDir, base + '.json') : null,
+      meta,
+    };
+  }
+
+  // "Create task-lists for post-analysis processing": one checklist per analysis batch, written
+  // when the queue drains — the hand-off T.J.'s kanban ingestion picks up. Mirrors the old
+  // diarizer-batch format but points at the finished -analysis.md files. Only successful analyses
+  // are listed; failures stay visible on the panel instead.
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  async function flushTaskList() {
+    const items = batchDone.splice(0);
+    const cfg = resolveTaskList() || {};
+    if (!cfg.enabled || !items.length) return;
+    try {
+      const processed = resolveFolders().processed;
+      const folder = String(cfg.folder || '').trim() || path.join(processed, 'task-list');
+      await fsp.mkdir(folder, { recursive: true });
+      const d = new Date(now());
+      const stamp = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate())
+        + '_' + pad2(d.getHours()) + '-' + pad2(d.getMinutes()) + '-' + pad2(d.getSeconds());
+      const rel = p => path.relative(processed, p).split(path.sep).join('/');
+      const lines = [
+        '# Analysis batch — ' + stamp.replace('_', ' ').replace(/-(\d\d)-(\d\d)$/, ':$1:$2'),
+        '',
+        items.length + ' meeting(s) analyzed. Paths below are relative to the meetings root. For each item, review the Action Items in the analysis and pick up the ones assigned to you.',
+        '',
+        '## Meetings',
+        '',
+      ];
+      for (const it of items) {
+        const title = (it.meta && String(it.meta.subject || '').trim()) || it.base;
+        const tags = it.meta
+          ? (it.meta.is_recurring ? ' (recurring)' : '') + (it.meta.organizer ? ' — ' + it.meta.organizer : '')
+          : '';
+        lines.push('- [ ] **' + title + '**' + tags);
+        lines.push('    - Analysis: `' + rel(it.md) + '`');
+        if (it.sidecar && fsMod.existsSync(it.sidecar)) lines.push('    - Meeting metadata: `' + rel(it.sidecar) + '`');
+      }
+      lines.push('');
+      let dest = path.join(folder, stamp + '.md');
+      for (let i = 1; fsMod.existsSync(dest); i++) dest = path.join(folder, stamp + '_' + i + '.md');
+      await fsp.writeFile(dest, lines.join('\n'));
+      log('task list written: ' + dest + ' (' + items.length + ' meeting(s))');
+    } catch (e) { log('task-list write failed: ' + e.message); }
   }
 
   function runClaude(input) {

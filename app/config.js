@@ -1876,7 +1876,7 @@
     const th = currentTheme();
     // Meeting recording settings (config.settings.meeting) — global so auto-record works regardless of
     // which app the panel is showing. Same shape as MEETING_DEFAULTS in main.js.
-    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '' }, (config.settings || {}).meeting || {});
+    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '' }, (config.settings || {}).meeting || {});
     const me = currentMe();
     // ledState = the device's live lighting (loaded when the page opens); fall back to saved config / defaults.
     const L = Object.assign({}, LED_DEFAULT, (config.settings || {}).lighting || {}, ledState || {});
@@ -2068,7 +2068,12 @@
       <p class="hint">Renames a finished recording from &lt;timestamp&gt;.wav to <b>&lt;timestamp&gt;-&lt;Meeting Name&gt;.wav</b> when the calendar matched a meeting; every later file (transcript, analysis…) inherits the name. Requires meeting information above.</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSepTx" ${me.separateTranscript ? 'checked' : ''}> Separate Clean Transcript</label></div>
       <p class="hint">Leaves the full transcript out of the analysis .md and saves it as <b>&lt;name&gt;-clean_transcript.txt</b> instead.</p>
-      <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meDetails" ${me.useDetailsFolder ? 'checked' : ''}> Use Details Folder</label></div>
+      <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meTaskList" ${me.taskListEnabled ? 'checked' : ''}> Create task-lists for post-analysis processing</label></div>
+      <p class="hint">After each analysis batch finishes, writes a dated checklist pointing at the new <b>-analysis.md</b> files (plus meeting metadata when available) — the hand-off for pulling your action items onto a board. One file per batch, named like <b>2026-08-17_10-42-13.md</b>.</p>
+      <div class="row"><label>Task-list folder</label>
+        <input id="meTaskFolder" value="${esc(me.taskListFolder)}" placeholder="blank = task-list under Processed Recordings" style="flex:1">
+        <button id="meTaskFolderBrowse" type="button">Browse…</button></div>
+      <div class="row" style="margin-top:12px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meDetails" ${me.useDetailsFolder ? 'checked' : ''}> Use Details Folder</label></div>
       <p class="hint">At analysis, everything except the notes .md (WAV, transcript, meeting info, clean transcript) moves into a <b>details\\</b> subfolder of the meeting's folder.</p>
       <div class="row" style="margin-top:12px"><label>Speaker threshold</label>
         <input type="number" id="meThreshold" min="0" max="1" step="0.05" value="${esc(me.transcribeThreshold)}" style="width:120px">
@@ -2499,6 +2504,12 @@
       document.getElementById('meOutSkip').oninput = e => saveMe({ outlookSkipPrefixes: e.target.value });
       document.getElementById('meThreshold').onchange = e => saveMe({ transcribeThreshold: e.target.value.trim() });
       document.getElementById('meMyName').oninput = e => saveMe({ myName: e.target.value.trim() });
+      document.getElementById('meTaskList').onchange = e => saveMe({ taskListEnabled: e.target.checked });
+      document.getElementById('meTaskFolder').oninput = e => saveMe({ taskListFolder: e.target.value.trim() });
+      document.getElementById('meTaskFolderBrowse').onclick = async () => {
+        const p = await configApi.pickFolder();
+        if (p) { document.getElementById('meTaskFolder').value = p; saveMe({ taskListFolder: p }); }
+      };
       document.getElementById('meHooks').onchange = e => saveMe({ transcribeHooksEnabled: e.target.checked });
       document.getElementById('meHookPre').oninput = e => saveMe({ preTranscribeCmd: e.target.value });
       document.getElementById('meHookPost').oninput = e => saveMe({ postTranscribeCmd: e.target.value });
