@@ -125,7 +125,7 @@ test('codex route: exec with stdin marker + output-last-message file', async () 
   const s = setup(() => ({ outFile: 'codex analysis', code: 0 }), 'codex');
   s.an.start('m.json');
   await drained(s.an);
-  assert.equal(s.spawns[0].cmd, 'codex');
+  assert.equal(s.spawns[0].cmd, '"codex.cmd"');   // resolved path, quoted for the shell
   assert.equal(s.spawns[0].args[0], 'exec');
   assert.equal(s.spawns[0].args[1], '-');
   assert.ok(s.spawns[0].args.includes('--skip-git-repo-check'));
@@ -145,7 +145,7 @@ test('copilot route: one-shot ACP session, agent_message_chunk filed as .md', as
   });
   assert.equal(an.start('m.json').ok, true);
   await drained(an);
-  assert.equal(spawns[0].cmd, 'copilot');
+  assert.equal(spawns[0].cmd, '"copilot.cmd"');   // resolved path, quoted for the shell
   assert.deepEqual(spawns[0].args, ['--acp']);
   assert.equal(spawns[0].opts.shell, true);
   // NO allow_all: batch analysis runs with tools denied (untrusted transcript input)

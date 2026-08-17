@@ -246,7 +246,9 @@ function createCodexVoiceAdapter({ log }) {
   function launch({ cwd, model }) {
     ready = false;
     // npm's codex shim is a .cmd on Windows -- shell:true is what makes this spawn portable.
-    proc = childProcess.spawn('codex', ['app-server'], { cwd, stdio: ['pipe', 'pipe', 'pipe'], shell: true, windowsHide: true });
+    // Resolved path (quoted for the shell), never the bare name: with shell:true and an untrusted
+    // project folder as cwd, cmd.exe would run a codex.cmd planted in that folder ahead of PATH.
+    proc = childProcess.spawn('"' + (findCodexExe() || 'codex') + '"', ['app-server'], { cwd, stdio: ['pipe', 'pipe', 'pipe'], shell: true, windowsHide: true });
     const thisProc = proc;
     const lines = readline.createInterface({ input: proc.stdout });
     lines.on('line', line => {

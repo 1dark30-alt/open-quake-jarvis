@@ -67,11 +67,13 @@ static class OutlookMeeting {
         catch { Fail("Classic Outlook is not running (or not in this Windows session). Start OUTLOOK.EXE and try again."); return null; }
     }
 
+    // "Last, First" -> "First Last", matching the Graph source. No per-user correction tables in
+    // shipped source — user-specific naming is config, applied once JS-side in main.js's saveInfo.
     static string NormalizeName(string value) {
         string name = (value ?? "").Trim();
         int comma = name.IndexOf(',');
         if (comma >= 0) name = (name.Substring(comma + 1).Trim() + " " + name.Substring(0, comma).Trim()).Trim();
-        return name == "TJ Schmitz" ? "T.J. Schmitz" : name;
+        return name;
     }
 
     // Split "a; b; c" attendee/category strings into trimmed values. Attendee names use the same
@@ -209,7 +211,7 @@ static class OutlookMeeting {
         sb.Append(",\"importance\":").Append(J(MapEnum(IMPORTANCE, Get(a, "Importance"), "Normal")));
         object rec = Get(a, "IsRecurring");
         sb.Append(",\"is_recurring\":").Append(rec != null && Convert.ToBoolean(rec) ? "true" : "false");
-        sb.Append(",\"meeting_status\":").Append(J(MapEnum(MEETING_STATUS, Get(a, "MeetingStatus"), "Appointment")));
+        sb.Append(",\"meeting_status\":").Append(J(MapEnum(MEETING_STATUS, Get(a, "MeetingStatus"), "NonMeeting")));
         sb.Append(",\"online_meeting_url\":").Append(J(S(Get(a, "OnlineMeetingURL"))));   // null-safe: not on all Outlook builds
         sb.Append("}");
         Console.WriteLine(sb.ToString());

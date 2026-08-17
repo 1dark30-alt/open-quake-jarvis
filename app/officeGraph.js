@@ -3,7 +3,6 @@
 const OFFICE_SCOPES = Object.freeze(['User.Read', 'Presence.Read', 'Calendars.Read', 'offline_access']);
 const GRAPH_ORIGIN = 'https://graph.microsoft.com';
 const MEETING_SELECT = 'subject,start,end,organizer,attendees,responseStatus,location,body,categories,importance,type,isCancelled,isOrganizer,isAllDay,onlineMeeting';
-const NAME_CORRECTIONS = Object.freeze({ 'TJ Schmitz': 'T.J. Schmitz' });
 const GRAPH_TIMEOUT_MS = 15000;
 const MAX_GRAPH_PAGES = 20;
 
@@ -48,11 +47,13 @@ function normalizeEvent(item) {
   };
 }
 
+// "Last, First" -> "First Last". No per-user correction tables here — user-specific naming is
+// config, applied once at main.js's saveInfo choke point for BOTH calendar sources.
 function normalizeName(value) {
   let name = String(value || '').trim();
   const comma = name.indexOf(',');
   if (comma >= 0) name = (name.slice(comma + 1).trim() + ' ' + name.slice(0, comma).trim()).trim();
-  return NAME_CORRECTIONS[name] || name;
+  return name;
 }
 
 function graphDate(value) {
@@ -148,7 +149,11 @@ function createOfficeGraph({ getAccessToken, connectOAuth, fetchImpl = global.fe
     });
     if (!response.ok) {
       const err = new Error('Microsoft Graph request failed (HTTP ' + response.status + ')');
-      err.code = 'graph_request_failed';
+      // 401/403 on a delegated call means the stored token lacks the scopes (or consent was
+      // revoked) — surface it as consent_required so the Meeting tab's re-consent flow can fire
+      // (that branch existed but no code path ever produced the code; PR #9 review finding).
+      err.code = (response.status === 401 || response.status === 403) ? 'consent_required' : 'graph_request_failed';
+      err.status = response.status;
       throw err;
     }
     return response.json();

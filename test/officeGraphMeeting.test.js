@@ -35,8 +35,8 @@ test('Graph meeting metadata matches the Outlook sidecar contract', () => {
     subject: 'Vasion Print Meeting',
     start: '2026-03-26T15:00:00+00:00',
     end: '2026-03-26T15:30:00+00:00',
-    organizer: 'T.J. Schmitz',
-    required_attendees: ['T.J. Schmitz', 'Jane Doe'],
+    organizer: 'TJ Schmitz',
+    required_attendees: ['TJ Schmitz', 'Jane Doe'],
     optional_attendees: ['Robert Smith'],
     response_status: 'Accepted',
     location: 'Microsoft Teams Meeting',
@@ -84,6 +84,20 @@ test('meeting lookup uses delegated Graph auth, required Prefer headers, and all
   assert.equal(calls[0].options.headers.Authorization, 'Bearer synthetic-access');
   assert.match(calls[0].options.headers.Prefer, /outlook\.timezone="UTC"/);
   assert.match(calls[0].options.headers.Prefer, /outlook\.body-content-type="text"/);
+});
+
+test('Graph 401/403 surfaces as consent_required so the Meeting tab can re-consent', async () => {
+  const service = createOfficeGraph({
+    getAccessToken: async () => ({ accessToken: 'stale-token' }),
+    connectOAuth: async () => undefined,
+    now: () => new Date('2026-08-16T12:10:00Z'),
+    fetchImpl: async () => ({ ok: false, status: 403, json: async () => ({}) }),
+  });
+  await assert.rejects(() => service.checkConnection(), err => {
+    assert.equal(err.code, 'consent_required');
+    assert.equal(err.status, 403);
+    return true;
+  });
 });
 
 test('meeting lookup does not send a token to a foreign paging URL', async () => {

@@ -1316,9 +1316,24 @@ function setMeetingMic(label) {
 function writeOutlookMeetingInfo(wavName) {   // wavName = basename (recorder state exposes no path)
   const m = meetingSettings();
   if (!m.outlookEnabled) return;
+  // Config-driven name normalization at the one choke point BOTH calendar sources pass through:
+  // any organizer/attendee whose name canonically matches the "My name" setting (case and
+  // punctuation ignored — "TJ Schmitz" ≈ "T.J. Schmitz") is replaced with the enrolled spelling,
+  // so the diarizer's attendee matching sees the exact enrolled form. No hardcoded tables.
+  const canon = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const fixNames = info => {
+    const mine = String(m.myName || '').trim();
+    if (!mine || !info) return info;
+    const fix = n => (canon(n) === canon(mine) ? mine : n);
+    info.organizer = fix(info.organizer);
+    if (Array.isArray(info.required_attendees)) info.required_attendees = info.required_attendees.map(fix);
+    if (Array.isArray(info.optional_attendees)) info.optional_attendees = info.optional_attendees.map(fix);
+    return info;
+  };
   const saveInfo = info => {
     try {
       if (!info) { console.log('[meeting] calendar: no meeting scheduled now — no info file'); return; }
+      info = fixNames(info);
       const dest = path.join(resolveMeetingFolders().unprocessed, wavName.replace(/\.wav$/i, '') + '.json');
       fs.writeFileSync(dest, JSON.stringify(info, null, 2));
       console.log('[meeting] meeting info saved: ' + path.basename(dest) + ' (' + (info.subject || '') + ')');

@@ -190,7 +190,7 @@ function createMeetingAnalyzer(deps) {
     // not a repo. shell:true because npm's codex shim is a .cmd on Windows (codexvoice-session:249).
     const outFile = path.join(os.tmpdir(), 'oqx-analysis-' + now() + '.md');
     try {
-      await runProc('codex', ['exec', '-', '--skip-git-repo-check', '--output-last-message', outFile], input, true);
+      await runProc('"' + findCodexExe() + '"', ['exec', '-', '--skip-git-repo-check', '--output-last-message', outFile], input, true);
       return await fsp.readFile(outFile, 'utf8');
     } finally {
       try { await fsp.unlink(outFile); } catch (e) {}
@@ -198,10 +198,11 @@ function createMeetingAnalyzer(deps) {
   }
 
   function runCopilot(input) {
-    if (!findCopilotExe()) return Promise.reject(new Error('Copilot CLI not found on PATH'));
+    const exe = findCopilotExe();
+    if (!exe) return Promise.reject(new Error('Copilot CLI not found on PATH'));
     // Copilot has no plain -p-to-stdout mode -- it's an ACP JSON-RPC session (see
     // copilotvoice-session.js's runCopilotBatchPrompt), not a runProc-shaped stdin/stdout CLI.
-    return runCopilotBatchPrompt({ text: input, timeoutMs, log, spawn: spawnImpl });
+    return runCopilotBatchPrompt({ text: input, timeoutMs, log, spawn: spawnImpl, exe });
   }
 
   function runProc(cmd, args, stdinText, shell) {

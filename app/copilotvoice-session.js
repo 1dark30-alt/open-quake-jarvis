@@ -218,7 +218,11 @@ function createCopilotVoiceAdapter({ log }) {
   function launch({ cwd, model }) {
     ready = false;
     // npm's copilot shim is a .cmd on Windows -- shell:true is what makes this spawn portable.
-    proc = childProcess.spawn('copilot', ['--acp'], { cwd, stdio: ['pipe', 'pipe', 'pipe'], shell: true, windowsHide: true });
+    // Spawn the RESOLVED path (quoted for the shell), never the bare name: with shell:true and an
+    // untrusted project folder as cwd, cmd.exe would otherwise run a copilot.cmd planted in that
+    // folder ahead of PATH (PR #9 review finding).
+    const exe = findCopilotExe() || 'copilot';
+    proc = childProcess.spawn('"' + exe + '"', ['--acp'], { cwd, stdio: ['pipe', 'pipe', 'pipe'], shell: true, windowsHide: true });
     const thisProc = proc;
     const lines = readline.createInterface({ input: proc.stdout });
     lines.on('line', line => {
@@ -268,8 +272,13 @@ function createCopilotVoiceAdapter({ log }) {
         q.forEach(text => startTurn(text));
       })
       .catch(e => {
+        // A failed handshake must fully retire the process: without stopProc, the CLI lingered
+        // with ready=false, silently queueing turns until the 30s deadline fired a SECOND,
+        // misleading timeout error (PR #9 review finding).
+        clearTimeout(handshakeDeadline);
         const authy = /auth/i.test(e.message || '');
         say('copilot handshake failed: ' + e.message + (lastStderr ? ' | stderr: ' + lastStderr : ''));
+        if (proc === thisProc) stopProc('handshake failed');
         emitter.emit('error', { message: authy ? 'Copilot session failed to start: not signed in — run `copilot login` in a terminal first.' : 'Copilot session failed to start: ' + e.message });
       });
   }
@@ -417,10 +426,11 @@ function createCopilotVoiceAdapter({ log }) {
 // never the app's cwd, so a planted copilot.cmd in a working folder can't hijack the shell spawn.
 // Caller does its own findCopilotExe() presence check first (same division of labor as
 // meetingAnalyze.js's runClaude/runCodex).
-function runCopilotBatchPrompt({ cwd, text, model, timeoutMs, log, spawn }) {
+function runCopilotBatchPrompt({ cwd, text, model, timeoutMs, log, spawn, exe }) {
   const say = log || (() => {});
   const spawnImpl = spawn || childProcess.spawn;
   const resolvedCwd = cwd || require('os').tmpdir();
+  const exeCmd = '"' + (exe || findCopilotExe() || 'copilot') + '"';   // resolved path, quoted for the shell
   return new Promise((resolve, reject) => {
     let settled = false;
     let proc;
@@ -435,7 +445,7 @@ function runCopilotBatchPrompt({ cwd, text, model, timeoutMs, log, spawn }) {
       if (killTimer.unref) killTimer.unref();
       fn(v);
     }
-    proc = spawnImpl('copilot', ['--acp'], { cwd: resolvedCwd, stdio: ['pipe', 'pipe', 'pipe'], shell: true, windowsHide: true });
+    proc = spawnImpl(exeCmd, ['--acp'], { cwd: resolvedCwd, stdio: ['pipe', 'pipe', 'pipe'], shell: true, windowsHide: true });
     let nextId = 0;
     const pending = new Map();
     function send(method, params) {
