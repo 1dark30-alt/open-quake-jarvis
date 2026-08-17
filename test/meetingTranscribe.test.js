@@ -64,6 +64,19 @@ test('success: JSON transcript written to processed, WAV moved, FIFO order kept'
   }
 });
 
+test('slide-capture folder travels with the WAV into processed', async () => {
+  const s = setup(null, async () => ({ status: 200, text: JSON.stringify(GOOD_RESPONSE) }));
+  addWav(s.unprocessed, 'm.wav');
+  const shots = path.join(s.unprocessed, 'm-screenshots');
+  fs.mkdirSync(shots);
+  fs.writeFileSync(path.join(shots, '20260817-090001-slide001.png'), Buffer.from('PNG'));
+  s.tx.enqueue('m.wav');
+  await drained(s.tx);
+  assert.equal(fs.existsSync(shots), false, 'screenshots folder should have left unprocessed');
+  const moved = path.join(s.processed, 'm-screenshots', '20260817-090001-slide001.png');
+  assert.equal(fs.existsSync(moved), true, 'slide should now sit beside the transcript');
+});
+
 test('diarizer {detail} error: WAV stays in unprocessed, error recorded, queue continues', async () => {
   let call = 0;
   const s = setup(null, async () => {

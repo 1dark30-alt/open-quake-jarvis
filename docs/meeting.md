@@ -73,6 +73,39 @@ can send them to a diarizing transcription server, then to an AI for meeting not
   move with it through transcription. The attendee names are sent to the diarizer to
   improve speaker identification. See [settings.md](settings.md).
 
+## Slide capture
+
+Enable **Meeting Slide Capture** (Settings → Meeting → Meeting Slide Capture) to grab a
+screenshot of a presentation window each time the slide changes — automatically, while you
+record. It watches for the picture to *settle*: a static slide is saved once, and live video
+(which never settles) is never captured, so you get the slides without the motion.
+
+When enabled, a **Slide Capture** column appears on the meeting panel, right of the utility
+rail:
+
+- **Select window** — opens a picker of open windows (filtered to the app set in Settings,
+  e.g. `ms-teams`). Pick the one showing the presentation. You can select ahead of the call.
+- **Start / Stop capture** — begins or ends automatic slide capture. Enabled only while a
+  recording is running, so every slide has a home. Turns red while capturing, with a live
+  slide count.
+- **Manual capture** — saves the current frame immediately, regardless of the automatic
+  detection (also recording-only).
+
+Capture uses the same screen-capture API the OS uses, so it reads Teams/Electron windows
+correctly — but a **minimized** window can't be captured (the OS hands back a black frame);
+you'll get a "restore the window" notice instead of black slides.
+
+Slides file into a **`<recording>-screenshots\`** folder right next to the WAV, named
+`YYYYMMDD-HHMMSS-slideNNN.png` at the moment each is captured. That folder is a sidecar of the
+recording: it renames when the meeting name is appended and travels with the WAV all the way
+through transcription and analysis (into the meeting's folder, or its `details\` subfolder,
+wherever the recording lands).
+
+Optional **global hotkeys** (Settings) drive the same three actions without touching the
+panel — defaults `Ctrl+Alt+S` (start/stop), `Ctrl+Alt+W` (select window), `Ctrl+Alt+C`
+(manual). Each needs Ctrl and/or Alt and they must differ. An **auto-stop** setting ends a
+forgotten capture after N idle minutes.
+
 ## Honest limits
 
 open-quake has no way to know whether a call is actually active — a tap just sends the

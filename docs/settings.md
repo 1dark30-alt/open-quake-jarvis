@@ -170,6 +170,16 @@ Recording and transcription for the Meeting panel (details in [meeting.md](meeti
   server labels your voice with certainty (channel-guided ID) instead of relying on the
   cosine threshold. Blank = off. In hybrid meetings, in-room voices share your mic
   channel and still go through normal identification.
+- **Meeting Slide Capture** (its own collapsible section) — **Enable Meeting Slide
+  Capture** turns on automatic slide screenshots during a recording and adds the Slide
+  Capture column to the meeting panel (see [meeting.md](meeting.md)). Options:
+  **Automatically start capture when a window is selected**; **Show a notification when a
+  slide is captured**; three **global hotkeys** (toggle capture / select window / manual
+  capture — each needs Ctrl and/or Alt, all three distinct, blank disables one); **Limit
+  window picker to app** (a process-name substring, e.g. `ms-teams`; blank shows every
+  window); and **Auto-stop after inactive** minutes (0 = never; the clock resets on each
+  capture). Slides save into a `<recording>-screenshots\` sidecar folder that travels and
+  renames with the WAV.
 
 ## Auth (Home Assistant, Open WebUI)
 

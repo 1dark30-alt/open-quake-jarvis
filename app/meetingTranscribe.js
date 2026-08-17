@@ -308,6 +308,16 @@ function createMeetingTranscriber(deps) {
         catch (e) { await fsp.copyFile(sidecar, sidecarDest); await fsp.unlink(sidecar); }
       } catch (e) { log('meeting-info sidecar move failed: ' + e.message); }
     }
+    // The slide-capture folder (<base>-screenshots\) travels with the recording too. Best-effort;
+    // a failed move never fails the transcription job. Cross-volume falls back to recursive copy.
+    const shots = path.join(folders.unprocessed, base + '-screenshots');
+    if (fsMod.existsSync(shots)) {
+      const shotsDest = path.join(destDir, finalBase + '-screenshots');
+      try {
+        try { await fsp.rename(shots, shotsDest); }
+        catch (e) { await fsp.cp(shots, shotsDest, { recursive: true }); await fsp.rm(shots, { recursive: true, force: true }); }
+      } catch (e) { log('screenshots folder move failed: ' + e.message); }
+    }
     const dest = path.join(destDir, finalBase + '.wav');
     try {
       await fsp.rename(src, dest);

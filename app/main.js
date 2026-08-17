@@ -1452,6 +1452,11 @@ function appendMeetingNameToRecording(wavName) {
     for (let i = 1; fs.existsSync(path.join(dir, newBase + '.wav')); i++) newBase = base + '-' + subject + '_' + i;
     fs.renameSync(path.join(dir, wavName), path.join(dir, newBase + '.wav'));
     fs.renameSync(sidecar, path.join(dir, newBase + '.json'));
+    // The slide-capture folder is a sidecar too: rename it in lockstep so it stays matched to the WAV.
+    try {
+      const oldShots = path.join(dir, base + '-screenshots');
+      if (fs.existsSync(oldShots)) fs.renameSync(oldShots, path.join(dir, newBase + '-screenshots'));
+    } catch (e2) { console.log('[meeting] screenshots-folder rename failed: ' + e2.message); }
     console.log('[meeting] recording renamed -> ' + newBase + '.wav');
   } catch (e) { console.log('[meeting] meeting-name rename failed: ' + e.message); }
 }

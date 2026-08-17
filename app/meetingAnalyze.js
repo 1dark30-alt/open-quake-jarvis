@@ -214,6 +214,13 @@ function createMeetingAnalyzer(deps) {
       try { await fsp.rename(src, dest); }
       catch (e) { await fsp.copyFile(src, dest); await fsp.unlink(src); }
     };
+    // The slide-capture folder (<base>-screenshots\) travels with the WAV — same target dir, recursive.
+    const mvDir = async (src, dest) => {
+      if (!src || src === dest || !fsMod.existsSync(src)) return;
+      if (fsMod.existsSync(dest)) { log('filing skipped (exists): ' + path.basename(dest)); return; }
+      try { await fsp.rename(src, dest); }
+      catch (e) { await fsp.cp(src, dest, { recursive: true }); await fsp.rm(src, { recursive: true, force: true }); }
+    };
     try {
       await fsp.mkdir(fileDir, { recursive: true });
       await mv(mdPath, path.join(home, path.basename(mdPath)));
@@ -221,6 +228,7 @@ function createMeetingAnalyzer(deps) {
       await mv(path.join(dir, base + '.wav'), path.join(fileDir, base + '.wav'));
       await mv(path.join(dir, base + '.json'), path.join(fileDir, base + '.json'));
       await mv(txtPath, txtPath ? path.join(fileDir, path.basename(txtPath)) : null);
+      await mvDir(path.join(dir, base + '-screenshots'), path.join(fileDir, base + '-screenshots'));
     } catch (e) { log('filing failed (analysis itself is saved): ' + e.message); }
     return {
       md: path.join(home, path.basename(mdPath)),
