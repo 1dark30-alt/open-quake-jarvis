@@ -19,6 +19,30 @@ const TIMEOUT_MS = 3600000;      // the API doc's own guidance: budget a full ho
 const HEALTH_TTL_MS = 10000;     // re-probe /health at most this often
 const HEALTH_TIMEOUT_MS = 3000;
 const RECENT_MAX = 20;
+const HOOK_TIMEOUT_MS = 120000;      // pre/post shell command budget
+const SERVER_WAIT_MS = 300000;       // after the pre hook: how long the server gets to become healthy
+const SERVER_POLL_MS = 5000;
+
+// Run a user-authored pre/post shell command. Written to a temp .cmd and executed through
+// cmd.exe so multi-line commands and full shell syntax work; output is logged, non-zero exit
+// rejects with stderr.
+function runShellHook(cmd, log, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const os = require('os');
+    const fs = require('fs');
+    const { execFile } = require('child_process');
+    const file = path.join(os.tmpdir(), 'oqx-meeting-hook-' + Date.now() + '.cmd');
+    try { fs.writeFileSync(file, '@echo off\r\n' + String(cmd).replace(/\r?\n/g, '\r\n') + '\r\n'); }
+    catch (e) { return reject(new Error('could not write hook script: ' + e.message)); }
+    execFile('cmd.exe', ['/d', '/s', '/c', file], { timeout: timeoutMs || HOOK_TIMEOUT_MS, windowsHide: true, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+      try { fs.unlinkSync(file); } catch (e) {}
+      const out = String(stdout || '').trim();
+      if (out) log('hook output: ' + out.slice(0, 400));
+      if (err) reject(new Error((String(stderr || '').trim() || err.message).slice(0, 300)));
+      else resolve();
+    });
+  });
+}
 
 // The upload deliberately does NOT use global fetch: undici enforces a hidden ~300 s
 // headers timeout regardless of the abort signal, which killed any transcription needing
@@ -70,6 +94,12 @@ function createMeetingTranscriber(deps) {
   const now = deps.now || Date.now;
   const timeoutMs = deps.timeoutMs || TIMEOUT_MS;
   const healthTtlMs = deps.healthTtlMs === undefined ? HEALTH_TTL_MS : deps.healthTtlMs;
+  // Pre/post hooks: user shell commands that start/stop the transcription server around a batch
+  // (e.g. docker start/stop over ssh — the diarizer holds ~3.4 GB of GPU memory while loaded).
+  const resolveHooks = deps.resolveHooks || (() => ({}));   // () => { enabled, pre, post }
+  const execHook = deps.execHook || ((cmd, label) => runShellHook(cmd, m => log('[' + label + '] ' + m), deps.hookTimeoutMs || HOOK_TIMEOUT_MS));
+  const serverWaitMs = deps.serverWaitMs || SERVER_WAIT_MS;
+  const serverPollMs = deps.serverPollMs || SERVER_POLL_MS;
 
   const queue = [];          // names waiting
   let current = null;        // { name, startedAt } while a job runs
@@ -77,6 +107,9 @@ function createMeetingTranscriber(deps) {
   let health = 'unknown';    // 'ok' | 'down' | 'unknown' — never fabricated, stays unknown until a probe answers
   let healthAt = 0;
   let healthBusy = false;
+  let batchActive = false;   // the pre hook has run for the jobs currently flowing; post runs when drained
+  let hookRunning = false;   // a pre (incl. health wait) or post hook is in flight — pump waits
+  let hookPhase = null;      // 'pre' | 'waiting' | 'post' | null — surfaced to the panel, never fabricated
 
   function probeHealth() {
     if (healthBusy || (now() - healthAt) < healthTtlMs) return;
@@ -92,10 +125,27 @@ function createMeetingTranscriber(deps) {
     return {
       ok: true,
       health,
+      hooksEnabled: !!(resolveHooks() || {}).enabled,
+      phase: hookPhase,
       current: current ? { name: current.name, status: 'running', startedAt: current.startedAt } : null,
       queue: queue.slice(),
       recent: recent.slice(),
     };
+  }
+
+  // After the pre hook: give the server time to come up (container start + model load) before the
+  // first upload. Resolves as soon as /health answers ok; throws past the deadline.
+  async function waitForServer() {
+    const deadline = now() + serverWaitMs;
+    for (;;) {
+      try {
+        const r = await fetchImpl(resolveBaseUrl() + '/health', { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) });
+        if (r.ok) { health = 'ok'; healthAt = now(); return; }
+      } catch (e) { /* not up yet */ }
+      health = 'down'; healthAt = now();
+      if (now() >= deadline) throw new Error('server did not become healthy within ' + Math.round(serverWaitMs / 60000) + ' min of the start command');
+      await new Promise(r => setTimeout(r, serverPollMs));
+    }
   }
 
   function enqueue(name) {
@@ -114,11 +164,51 @@ function createMeetingTranscriber(deps) {
     recent.unshift({ name, status, error: error || null, finishedAt: now() });
     if (recent.length > RECENT_MAX) recent.length = RECENT_MAX;
     current = null;
+    maybeRunPostHook();
     pump();
   }
 
+  // Queue fully drained with a batch active -> run the post hook once (e.g. stop the container).
+  // Jobs arriving while it runs wait (hookRunning) and trigger a fresh pre hook afterwards —
+  // start/stop commands never overlap.
+  function maybeRunPostHook() {
+    if (!batchActive || queue.length || current) return;
+    batchActive = false;
+    const hooks = resolveHooks() || {};
+    if (!hooks.enabled || !String(hooks.post || '').trim()) return;
+    hookRunning = true;
+    hookPhase = 'post';
+    log('running post-transcription command');
+    execHook(hooks.post, 'post-hook')
+      .catch(e => log('post-transcription command failed: ' + e.message))
+      .finally(() => { hookRunning = false; hookPhase = null; pump(); });
+  }
+
   function pump() {
-    if (current || !queue.length) return;
+    if (current || hookRunning || !queue.length) return;
+    const hooks = resolveHooks() || {};
+    // Idle -> active with a pre hook configured: start the server, wait for it to answer, then
+    // flow the queue. Failure fails every queued job (they'd all hit the same dead server) and
+    // leaves the WAVs in place for retry.
+    if (hooks.enabled && !batchActive && String(hooks.pre || '').trim()) {
+      hookRunning = true;
+      hookPhase = 'pre';
+      log('running pre-transcription command');
+      execHook(hooks.pre, 'pre-hook')
+        .then(() => { hookPhase = 'waiting'; return waitForServer(); })
+        .then(() => { batchActive = true; })
+        .catch(e => {
+          const msg = 'transcription-server start failed: ' + e.message;
+          log(msg);
+          while (queue.length) {
+            recent.unshift({ name: queue.shift(), status: 'error', error: msg, finishedAt: now() });
+          }
+          if (recent.length > RECENT_MAX) recent.length = RECENT_MAX;
+        })
+        .finally(() => { hookRunning = false; hookPhase = null; pump(); });
+      return;
+    }
+    if (hooks.enabled && !batchActive) batchActive = true;   // post-only config still batches
     const name = queue.shift();
     current = { name, startedAt: now() };
     runJob(name)

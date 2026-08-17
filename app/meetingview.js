@@ -306,14 +306,21 @@ function libPoll() {
     txState = st;
     var s = $('txStatus');
     var queued = (st.queue || []).length;
-    if (st.current) {
+    if (st.phase === 'pre' || st.phase === 'waiting') {
+      s.classList.remove('err');
+      s.textContent = (st.phase === 'pre' ? 'Starting transcription server…' : 'Waiting for transcription server…') + (queued ? ' · ' + queued + ' queued' : '');
+    } else if (st.phase === 'post') {
+      s.classList.remove('err'); s.textContent = 'Stopping transcription server…';
+    } else if (st.current) {
       s.classList.remove('err');
       s.innerHTML = 'Transcribing ' + escHtml(st.current.name) + ' — <span class="t">' + fmtDur(Date.now() - st.current.startedAt) + '</span>' +
         '&nbsp;&nbsp;(takes about ⅓ of the recording length)' + (queued ? ' · ' + queued + ' queued' : '');
     } else if (queued) {
       s.classList.remove('err'); s.textContent = queued + ' queued';
     } else if (st.health === 'down') {
-      s.classList.add('err'); s.textContent = 'Transcription server unreachable';
+      // With hooks on, a stopped server at idle is the NORMAL state, not an error.
+      s.classList.toggle('err', !st.hooksEnabled);
+      s.textContent = st.hooksEnabled ? 'Transcription server starts on demand' : 'Transcription server unreachable';
     } else {
       s.classList.remove('err');
       s.textContent = st.health === 'ok' ? 'Transcription server connected' : '';

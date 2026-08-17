@@ -146,6 +146,15 @@ Recording and transcription for the Meeting panel (details in [meeting.md](meeti
   recording has calendar meeting info, its attendee list (organizer + required +
   optional) is sent along automatically — the diarizer penalizes enrolled speakers not
   on the list, reducing false speaker matches.
+- **Advanced → Run commands before/after transcription** — start and stop the
+  transcription server around each batch (e.g. `ssh root@host "docker start
+  meeting-diarizer"` — a loaded diarizer holds ~3.4 GB of GPU memory). **Before** runs
+  once when the queue goes active; open-quake then waits up to 5 minutes for the
+  server's `/health` before uploading. **After** runs once when the queue drains; jobs
+  arriving mid-shutdown wait, then trigger a fresh start — the commands never overlap.
+  If the start command or health wait fails, every queued file gets a clear error and
+  stays put. Full cmd.exe syntax, multi-line allowed, or call a `.bat`. While idle with
+  this on, the panel shows "starts on demand" instead of a server-unreachable error.
 - **Advanced → My name** — your enrolled speaker name. When set, it's sent as
   `me_name` with each transcription: since your mic is the isolated left channel, the
   server labels your voice with certainty (channel-guided ID) instead of relying on the

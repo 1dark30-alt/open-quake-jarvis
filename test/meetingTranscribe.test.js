@@ -220,6 +220,77 @@ test('Outlook meeting-info sidecar travels with the WAV (and joins the collision
   assert.equal(fs.readFileSync(path.join(s.processed, 'm.json'), 'utf8'), '{"subject":"weekly"}');   // first set untouched
 });
 
+test('hooks: pre runs once before a batch (after health), post once after the drain', async () => {
+  const events = [];
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oqx-tx-hook-'));
+  const unprocessed = path.join(root, 'unprocessed');
+  fs.mkdirSync(unprocessed);
+  let serverUp = false;
+  const tx = createMeetingTranscriber({
+    resolveFolders: () => ({ unprocessed, processed: path.join(root, 'processed') }),
+    resolveBaseUrl: () => 'http://fake:1',
+    resolveHooks: () => ({ enabled: true, pre: 'START', post: 'STOP' }),
+    execHook: async (cmd) => { events.push('hook:' + cmd); if (cmd === 'START') serverUp = true; if (cmd === 'STOP') serverUp = false; },
+    fetchImpl: async url => {
+      if (url.endsWith('/health')) { if (!serverUp) throw new Error('refused'); return jsonResponse(true, {}); }
+      throw new Error('unexpected fetch');
+    },
+    httpPost: async (url, filename) => { events.push('upload:' + filename); return { status: 200, text: JSON.stringify(GOOD_RESPONSE) }; },
+    serverPollMs: 10, serverWaitMs: 2000, healthTtlMs: 999999,
+  });
+  addWav(unprocessed, 'a.wav');
+  addWav(unprocessed, 'b.wav');
+  tx.enqueue('a.wav');
+  tx.enqueue('b.wav');
+  await drained(tx);
+  await settle();   // let the post hook fire after the drain
+  assert.deepEqual(events, ['hook:START', 'upload:a.wav', 'upload:b.wav', 'hook:STOP']);   // one start, one stop per batch
+  // a second batch starts the server again
+  addWav(unprocessed, 'c.wav');
+  tx.enqueue('c.wav');
+  await drained(tx);
+  await settle();
+  assert.deepEqual(events.slice(4), ['hook:START', 'upload:c.wav', 'hook:STOP']);
+});
+
+test('hooks: pre-command failure errors every queued job; WAVs stay for retry', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oqx-tx-hookfail-'));
+  const unprocessed = path.join(root, 'unprocessed');
+  fs.mkdirSync(unprocessed);
+  const tx = createMeetingTranscriber({
+    resolveFolders: () => ({ unprocessed, processed: path.join(root, 'processed') }),
+    resolveBaseUrl: () => 'http://fake:1',
+    resolveHooks: () => ({ enabled: true, pre: 'START', post: '' }),
+    execHook: async () => { throw new Error('ssh: connect refused'); },
+    fetchImpl: async () => { throw new Error('down'); },
+    httpPost: async () => { throw new Error('must not upload'); },
+    serverPollMs: 10, serverWaitMs: 200, healthTtlMs: 999999,
+  });
+  addWav(unprocessed, 'a.wav');
+  addWav(unprocessed, 'b.wav');
+  tx.enqueue('a.wav');
+  tx.enqueue('b.wav');
+  await drained(tx);
+  const st = tx.getState();
+  assert.equal(st.recent.length, 2);
+  st.recent.forEach(j => {
+    assert.equal(j.status, 'error');
+    assert.match(j.error, /transcription-server start failed: ssh: connect refused/);
+  });
+  assert.equal(fs.existsSync(path.join(unprocessed, 'a.wav')), true);
+  assert.equal(fs.existsSync(path.join(unprocessed, 'b.wav')), true);
+});
+
+test('hooks disabled: no hook calls, behavior unchanged', async () => {
+  const events = [];
+  const s = setup(null, async (url, filename) => { events.push('upload:' + filename); return { status: 200, text: JSON.stringify(GOOD_RESPONSE) }; });
+  addWav(s.unprocessed, 'a.wav');
+  s.tx.enqueue('a.wav');
+  await drained(s.tx);
+  await settle();
+  assert.deepEqual(events, ['upload:a.wav']);
+});
+
 test('health is unknown until a probe answers, then reflects reality', async () => {
   let healthy = false;
   const s = setup(async () => {

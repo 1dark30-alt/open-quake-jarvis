@@ -1876,7 +1876,7 @@
     const th = currentTheme();
     // Meeting recording settings (config.settings.meeting) — global so auto-record works regardless of
     // which app the panel is showing. Same shape as MEETING_DEFAULTS in main.js.
-    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false }, (config.settings || {}).meeting || {});
+    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '' }, (config.settings || {}).meeting || {});
     const me = currentMe();
     // ledState = the device's live lighting (loaded when the page opens); fall back to saved config / defaults.
     const L = Object.assign({}, LED_DEFAULT, (config.settings || {}).lighting || {}, ledState || {});
@@ -2077,6 +2077,12 @@
       <div class="row" style="margin-top:12px"><label>My name</label>
         <input id="meMyName" value="${esc(me.myName)}" placeholder="e.g. T.J. Schmitz" style="flex:1"></div>
       <p class="hint">Your enrolled speaker name. When set, it's sent as <b>me_name</b> and the transcription server labels your isolated-mic channel's voice with certainty (channel-guided ID) — no threshold wobble for you. Blank = off. Note: in hybrid meetings, people in the room with you also land on your mic channel and still go through normal identification.</p>
+      <div class="row" style="margin-top:12px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meHooks" ${me.transcribeHooksEnabled ? 'checked' : ''}> Run commands before/after transcription</label></div>
+      <p class="hint">Start and stop the transcription server around each batch — e.g. a diarizer container that holds GPU memory while loaded. <b>Before</b> runs once when the queue starts; open-quake then waits (up to 5 min) for the server's /health before uploading. <b>After</b> runs once when the queue finishes. Full cmd.exe syntax, multi-line OK — or just call a .bat.</p>
+      <div class="row"><label>Before</label>
+        <textarea id="meHookPre" rows="2" style="flex:1; font-family:inherit" placeholder='e.g. ssh root@192.168.1.25 "docker start meeting-diarizer"'>${esc(me.preTranscribeCmd)}</textarea></div>
+      <div class="row" style="margin-top:8px"><label>After</label>
+        <textarea id="meHookPost" rows="2" style="flex:1; font-family:inherit" placeholder='e.g. ssh root@192.168.1.25 "docker stop meeting-diarizer"'>${esc(me.postTranscribeCmd)}</textarea></div>
       </details>`;
 
     // Theme tab — global light/dark + accent color
@@ -2493,6 +2499,9 @@
       document.getElementById('meOutSkip').oninput = e => saveMe({ outlookSkipPrefixes: e.target.value });
       document.getElementById('meThreshold').onchange = e => saveMe({ transcribeThreshold: e.target.value.trim() });
       document.getElementById('meMyName').oninput = e => saveMe({ myName: e.target.value.trim() });
+      document.getElementById('meHooks').onchange = e => saveMe({ transcribeHooksEnabled: e.target.checked });
+      document.getElementById('meHookPre').oninput = e => saveMe({ preTranscribeCmd: e.target.value });
+      document.getElementById('meHookPost').oninput = e => saveMe({ postTranscribeCmd: e.target.value });
       document.getElementById('meOutCheck').onclick = async () => {
         const msg = document.getElementById('meOutMsg');
         const source = document.getElementById('meInfoSource').value;
