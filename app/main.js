@@ -24,7 +24,7 @@ if (process.platform === 'win32') {
   catch (e) { console.log('win-ca load failed:', e.message); }
 }
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, powerSaveBlocker, ipcMain, shell, dialog, session, net, safeStorage, clipboard, globalShortcut, nativeTheme } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, powerSaveBlocker, ipcMain, shell, dialog, session, net, safeStorage, clipboard, globalShortcut, nativeTheme, desktopCapturer, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -49,6 +49,7 @@ const haClient = require('./haClient');       // Global HA cache (registries + d
 const touchSetup = require('./touchSetup');   // Bind a touchscreen to its physical display via tabcal.exe (Windows)
 const meetingControl = require('./meetingControl');   // Zoom/Teams call-control keystrokes (Meeting app page)
 const { createMeetingRecorder } = require('./meetingRecorder'); // hidden-window meeting recorder (mic + system loopback -> WAV)
+const { createSlideCapture } = require('./slideCapture');       // hidden-window slide capture (getDisplayMedia -> screenshots)
 const { enableLoopbackAudioCapture } = require('./loopback-audio'); // system-audio loopback display-media handler (recorder session only)
 const desktopFocus = require('./desktopFocus');   // tracks the PC's OS-level foreground app; auto-switches the panel to a mapped page
 const ahk = require('./ahk');                  // macro "ahk" step backend (shells out to an installed AutoHotkey.exe)
@@ -80,6 +81,7 @@ const mediaKeys = createMediaKeys({ log: message => console.log(message) });
 let firstRun = false;     // set by loadConfig when there was no prior config (fresh install)
 let micState = false;     // current device mic state (LED follows it)
 let meetingRecorder = null;   // hidden-window meeting recorder (created once the panel server is up)
+let slideCapture = null;      // hidden-window slide capture controller (created alongside the recorder)
 const completedRecordings = new Set();   // basenames whose finalize (header patch) has finished — the only safe time to rename
 let meetingLibrary = null;    // recordings list/delete/resolve for the panel's library screens
 let meetingTranscriber = null; // FIFO diarizer-upload queue (meetingTranscribe.js)
@@ -1336,7 +1338,18 @@ function meetingStateForPanel() {
   st.autoRecord = !!m.autoRecord;
   ensureVolumeWatcher();       // keeps the persistent volume watcher alive while the panel polls
   st.volume = sysVolCache;     // 0-100, or null when unavailable (panel shows "—")
+  st.slide = slideCapture ? slideCapture.getState() : { enabled: false };   // drives the slide-capture column
   return st;
+}
+// Panel remote for slide capture (windows/select/start/stop/manual), reached over HTTP via sysserver.
+async function onSlideRequest(cmd, arg) {
+  if (!slideCapture) return { ok: false, error: 'slide capture unavailable' };
+  if (cmd === 'windows') return { ok: true, windows: await slideCapture.listWindows() };
+  if (cmd === 'select') return slideCapture.selectWindow(arg && arg.id, arg && arg.name), { ok: true, state: slideCapture.getState() };
+  if (cmd === 'start') return slideCapture.start();
+  if (cmd === 'stop') return slideCapture.stop('panel');
+  if (cmd === 'manual') return slideCapture.manual();
+  return { ok: false, error: 'unknown slide command: ' + cmd };
 }
 // Panel remote for the recorder (start/stop/state/setMic), reached over HTTP via sysserver.
 function onMeetingRecordRequest(cmd, arg) {
@@ -1825,7 +1838,32 @@ function applyShortcuts() {
       if (!ok) console.log('shortcut already in use, not registered:', dashReload.hotkey, '-> dashboard reload');
     } catch (e) { console.log('shortcut register error:', dashReload.hotkey, '-', e.message); }
   }
+  registerSlideHotkeys();   // last, after the unregisterAll above, so a settings change re-arms them
 }
+// Slide-capture global hotkeys (toggle capture / select window / manual capture). Registered as part
+// of applyShortcuts() so an editor save re-applies them; only while the feature is enabled and a combo
+// is set. A combo another app owns just fails to register (logged), same as the page hotkeys.
+function registerSlideHotkeys() {
+  if (!slideCapture) return;
+  const m = meetingSettings();
+  if (!m.slideCaptureEnabled) return;
+  const binds = [
+    [m.slideHotkeyToggle, () => { const s = slideCapture.getState(); if (s.capturing) slideCapture.stop('hotkey'); else slideCapture.start(); }],
+    [m.slideHotkeySelect, () => slideCapture.requestPicker()],
+    [m.slideHotkeyManual, () => slideCapture.manual()],
+  ];
+  for (const [combo, fn] of binds) {
+    if (!combo) continue;
+    try {
+      const ok = globalShortcut.register(combo, () => {
+        if (process.platform === 'win32') modifiersInAccelerator(combo).forEach(k => mediaKeys.keyUp(k));
+        fn();
+      });
+      if (!ok) console.log('shortcut already in use, not registered:', combo, '-> slide capture');
+    } catch (e) { console.log('shortcut register error:', combo, '-', e.message); }
+  }
+}
+function applySlideHotkeys() { try { applyShortcuts(); } catch (e) {} }   // re-arm everything (incl. slide combos)
 function rotateTick() {
   const ids = rotationList().map(g => g.id);
   if (ids.length < 2) return;                                  // nothing to cycle through
@@ -2025,6 +2063,7 @@ app.whenReady().then(async () => {
       onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(),
       getMeetingState: meetingStateForPanel, onMeetingRecord: onMeetingRecordRequest,
       onMeetingLibrary: onMeetingLibraryRequest, resolveMeetingAudio: resolveMeetingAudioPath,
+      onSlide: onSlideRequest,
       getShortcuts: keyboardShortcutsSnapshot,
       // Voice-panel app registry: each entry gets the full /<appId>/* route surface (see
       // sysserver.js). voiceToken gates the claude approval hook's /approval-request long-poll.
@@ -2076,6 +2115,7 @@ app.whenReady().then(async () => {
         let wasRecording = false;
         return st => {
           if (st.recording && !wasRecording && st.file) { try { writeOutlookMeetingInfo(st.file); } catch (e) {} }
+          if (!st.recording && wasRecording && slideCapture) { try { slideCapture.onRecordingStopped(); } catch (e) {} }
           wasRecording = !!st.recording;
         };
       })(),
@@ -2090,6 +2130,45 @@ app.whenReady().then(async () => {
     });
     meetingRecorder.ensureWindow();   // arm the hidden window so a call can start recording instantly
     startMicMonitor();
+
+    // Slide capture: a second hidden window that screen-captures a user-picked window and files
+    // settled slides beside the active recording. All optional — guarded like the recorder so a
+    // failure can never affect call control or recording.
+    slideCapture = createSlideCapture({
+      resolveSettings: () => meetingSettings(),
+      resolveActiveRecording: () => {   // where slides file: the live recording's folder + basename
+        const st = meetingRecorder && meetingRecorder.getState();
+        if (!st || !st.recording || !st.file) return null;
+        const folder = (meetingSettings().folder && String(meetingSettings().folder).trim()) || defaultMeetingFolder();
+        return { folder, base: st.file.replace(/\.wav$/i, '') };
+      },
+      getSources: () => desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } }),
+      createWindow: () => {
+        const sess = session.fromPartition('persist:slidecapture');
+        // getDisplayMedia in the hidden page routes here; hand it the window the user picked.
+        sess.setDisplayMediaRequestHandler((request, callback) => {
+          const id = slideCapture && slideCapture.currentSourceId();
+          if (!id) { callback({}); return; }
+          desktopCapturer.getSources({ types: ['window'] }).then(sources => {
+            const src = sources.find(s => s.id === id);
+            callback(src ? { video: src, audio: false } : {});
+          }).catch(() => callback({}));
+        }, { useSystemPicker: false });
+        const w = new BrowserWindow({
+          show: false, width: 320, height: 200, skipTaskbar: true,
+          webPreferences: {
+            nodeIntegration: false, contextIsolation: true, backgroundThrottling: false,
+            preload: path.join(__dirname, 'slidecapture-preload.js'), session: sess,
+          },
+        });
+        try { w.loadURL('http://127.0.0.1:' + serverPort + '/slidecapture'); } catch (e) { console.log('[slide] loadURL error: ' + e.message); }
+        return w;
+      },
+      notify: (title, body) => { try { if (Notification.isSupported()) new Notification({ title, body, silent: true }).show(); } catch (e) {} },
+      onState: () => {},   // the meeting panel polls /meeting-state (~1s), so no push is needed
+      log: msg => console.log('[slide] ' + msg),
+    });
+    applySlideHotkeys();
 
     // Transcription pipeline: library (list/delete), diarizer upload queue, and CLI analysis.
     // Lazy-required + individually try/caught like the recorder so a failure here can never take
@@ -2393,6 +2472,12 @@ app.whenReady().then(async () => {
   ipcMain.on('recorder-state', (e, state, detail) => { if (fromRecorder(e)) meetingRecorder.onRecorderState(state, detail); });
   ipcMain.on('recorder-ended', e => { if (fromRecorder(e)) meetingRecorder.onEnded(); });
   ipcMain.on('recorder-error', (e, m) => { if (fromRecorder(e)) meetingRecorder.onError(m); });
+  // Slide-capture window -> main, guarded to that window's own webContents.
+  const fromSlide = e => slideCapture && slideCapture.isSender(e.sender);
+  ipcMain.on('slide-ready', e => { if (fromSlide(e)) slideCapture.onReady(); });
+  ipcMain.on('slide-thumb', (e, buf, meta) => { if (fromSlide(e)) slideCapture.onThumb(buf, meta); });
+  ipcMain.on('slide-frame', (e, buf) => { if (fromSlide(e)) slideCapture.onFrame(buf); });
+  ipcMain.on('slide-status', (e, state, detail) => { if (fromSlide(e)) slideCapture.onStatus(state, detail); });
   ipcMain.handle('fetchIconUrl', (e, url) => isFrom(e, configWin) ? fetchIconToCache(url) : { ok: false, error: 'unauthorized' });
   ipcMain.handle('fetchMdiIcon', (e, name) => isFrom(e, configWin) ? fetchMdiToCache(name) : { ok: false, error: 'unauthorized' });
   // Bind the touchscreen to its physical display via multidigimon -touch (Windows). This launches
@@ -2498,6 +2583,7 @@ app.on('before-quit', () => {
   try { oauthHandler.stop(); } catch (e) {}              // stop OAuth callback server + background refresh timers
   try { stopMicMonitor(); } catch (e) {}                 // terminate the native mic-in-use monitor child
   try { if (meetingRecorder) meetingRecorder.dispose(); } catch (e) {}   // stop any recording + destroy the hidden capture window
+  try { if (slideCapture) slideCapture.dispose(); } catch (e) {}         // destroy the hidden slide-capture window
   try { if (sysserver) sysserver.stop(); } catch (e) {}  // stop metrics timers + close the local server
   try { if (dashSession) dashSession.cookies.flushStore(); } catch (e) {}   // commit a fresh webview login to disk before exit
   try { globalShortcut.unregisterAll(); } catch (e) {}   // drop per-page hotkeys

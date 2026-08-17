@@ -76,6 +76,7 @@ const STATIC_FILES = {
   '/claudevoice-vad.js': 'application/javascript; charset=utf-8',
   '/recorderview.js': 'application/javascript; charset=utf-8',
   '/system-audio-capture.js': 'application/javascript; charset=utf-8',
+  '/slidecapture-view.js': 'application/javascript; charset=utf-8',
 };
 for (const appId of ['teams', 'outlook', 'word', 'excel', 'powerpoint', 'onenote', 'onedrive', 'office']) {
   STATIC_FILES['/office-icons/' + appId + '.svg'] = 'image/svg+xml; charset=utf-8';
@@ -84,7 +85,8 @@ for (const appId of ['teams', 'outlook', 'word', 'excel', 'powerpoint', 'onenote
 let server = null, onMedia = null, onLaunch = null, getGridTiles = null, getAppConfig = null, getOfficeData = null, connectOffice = null, onOpenExternal = null, onMeetingAction = null, onOfficeAction = null, getShortcuts = null;
 let getMeetingState = null, onMeetingRecord = null;   // meeting recorder: panel poller + start/stop/setMic remote
 let onMeetingLibrary = null, resolveMeetingAudio = null;   // recordings library + transcription/analysis remotes
-let musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK;
+let onSlide = null;   // slide capture: window list / select / start / stop / manual remote
+let musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK, slideHtml = FALLBACK;
 // Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
 // Voice-panel app registry: appId (also the URL path prefix) -> { handlers, voiceToken, htmlFile,
 // htmlContent }. `handlers` is a voicepanel-host.js handlers object; every voice app shares the
@@ -469,6 +471,7 @@ async function handler(req, res) {
   if (url === '/music') return html(res, musicHtml);
   if (url === '/meeting') return html(res, meetingHtml);
   if (url === '/recorder') return html(res, recorderHtml);   // hidden meeting-recorder capture page
+  if (url === '/slidecapture') return html(res, slideHtml);  // hidden slide-capture window
   if (url === '/chat') return html(res, chatHtml);
   if (url === '/office') return html(res, officeHtml);
   if (url === '/haschedule') return html(res, hascheduleHtml);
@@ -647,6 +650,18 @@ async function handler(req, res) {
   if (url === '/meeting-state') {
     return json(res, typeof getMeetingState === 'function' ? getMeetingState() : { recording: false });
   }
+  // Slide capture: window list + select/start/stop/manual. GET (matching the recorder remotes),
+  // same-origin-gated above. Slide state itself rides in /meeting-state so the column polls with it.
+  if (url === '/slide/windows' || url === '/slide/select' || url === '/slide/start' || url === '/slide/stop' || url === '/slide/manual') {
+    const cmd = url.slice('/slide/'.length);
+    const q = new URL(full, 'http://local').searchParams;
+    let result = { ok: false, error: 'not wired' };
+    if (typeof onSlide === 'function') {
+      try { result = await onSlide(cmd, { id: q.get('id') || '', name: q.get('name') || '' }); }
+      catch (e) { result = { ok: false, error: e.message || 'slide command failed' }; }
+    }
+    return json(res, result);
+  }
   if (url === '/meeting-record/start' || url === '/meeting-record/stop') {
     const cmd = url.endsWith('/start') ? 'start' : 'stop';
     let result = { ok: false, error: 'not wired' };
@@ -740,6 +755,7 @@ function start(opts) {
   onMeetingAction = opts.onMeetingAction || null;
   getMeetingState = opts.getMeetingState || null;
   onMeetingRecord = opts.onMeetingRecord || null;
+  onSlide = opts.onSlide || null;
   onMeetingLibrary = opts.onMeetingLibrary || null;
   resolveMeetingAudio = opts.resolveMeetingAudio || null;
   onOfficeAction = opts.onOfficeAction || null;
@@ -760,6 +776,7 @@ function start(opts) {
     try { musicHtml = fs.readFileSync(path.join(__dirname, 'musicview.html'), 'utf8'); } catch (e) {}
     try { meetingHtml = fs.readFileSync(path.join(__dirname, 'meetingview.html'), 'utf8'); } catch (e) {}
     try { recorderHtml = fs.readFileSync(path.join(__dirname, 'recorderview.html'), 'utf8'); } catch (e) {}
+    try { slideHtml = fs.readFileSync(path.join(__dirname, 'slidecapture.html'), 'utf8'); } catch (e) {}
     try { chatHtml = fs.readFileSync(path.join(__dirname, 'chatview.html'), 'utf8'); } catch (e) {}
     try { officeHtml = fs.readFileSync(path.join(__dirname, 'office.html'), 'utf8'); } catch (e) {}
     try { hascheduleHtml = fs.readFileSync(path.join(__dirname, 'haschedule.html'), 'utf8'); } catch (e) {}

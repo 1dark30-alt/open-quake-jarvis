@@ -132,14 +132,14 @@
 
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-  /* ---- device (microphone) picker overlay ---- */
-  #devOverlay { position:fixed; inset:0; background:rgba(3,6,10,.86); display:none; flex-direction:column; padding:24px 40px; z-index:20; }
-  body.light #devOverlay { background:rgba(210,220,230,.9); }
-  #devOverlay.show { display:flex; }
+  /* ---- device (microphone) + capture-window picker overlays ---- */
+  #devOverlay, #winOverlay { position:fixed; inset:0; background:rgba(3,6,10,.86); display:none; flex-direction:column; padding:24px 40px; z-index:20; }
+  body.light #devOverlay, body.light #winOverlay { background:rgba(210,220,230,.9); }
+  #devOverlay.show, #winOverlay.show { display:flex; }
   #devHead { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
   #devTitle { font-size:26px; font-weight:800; }
-  #devCancel { height:56px; padding:0 26px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:18px; font-weight:700; }
-  #devList { flex:1; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:12px; }
+  #devCancel, #winCancel { height:56px; padding:0 26px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:18px; font-weight:700; }
+  #devList, #winList { flex:1; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:12px; }
   .devRow { display:flex; align-items:center; height:68px; padding:0 22px; border-radius:12px; background:var(--surf); color:var(--fg);
     font-size:22px; font-weight:600; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .devRow.current { background:var(--accent); color:var(--accent-fg,#04121f); }
@@ -265,6 +265,12 @@
   <div id="devOverlay">
     <div id="devHead"><div id="devTitle">Microphone</div><button id="devCancel" class="foc" type="button">Cancel</button></div>
     <div id="devList"></div>
+  </div>
+
+  <!-- Slide-capture window picker: same full-screen row pattern as the mic picker -->
+  <div id="winOverlay">
+    <div id="devHead"><div id="devTitle">Capture window</div><button id="winCancel" class="foc" type="button">Cancel</button></div>
+    <div id="winList"></div>
   </div>
 
   <!-- Unprocessed recordings: list / play / transcribe / delete (transcription queue lives here) -->

@@ -32,13 +32,14 @@ function createSlideCapture(deps) {
   let prevThumb = null, lastSavedThumb = null;   // Uint8ClampedArray thumbnails
   let detector = null;
   let awaitingFrame = false, frameIsManual = false, pendingThumb = null;
-  let idleTimer = null, warnedBlank = false;
+  let idleTimer = null, warnedBlank = false, pickerRequested = false;
 
   function settings() { try { return deps.resolveSettings() || {}; } catch (e) { return {}; } }
   function enabled() { return !!settings().slideCaptureEnabled; }
   function fireState() { try { if (deps.onState) deps.onState(getState()); } catch (e) {} }
 
   function getState() {
+    const openPicker = pickerRequested; pickerRequested = false;   // one-shot: the select hotkey asks the panel to open its picker
     return {
       enabled: enabled(),
       target: targetName || '',
@@ -46,8 +47,12 @@ function createSlideCapture(deps) {
       slides: slideCount,
       // the panel greys Start/Manual unless a recording is live
       canCapture: !!activeRecording(),
+      openPicker: openPicker,
     };
   }
+  // The "select window" hotkey can't draw the touch picker itself; it flags the panel (which polls
+  // getState) to open it. Only meaningful while the meeting page is on screen — a harmless no-op otherwise.
+  function requestPicker() { pickerRequested = true; }
 
   function activeRecording() {
     try { const r = deps.resolveActiveRecording(); return (r && r.folder && r.base) ? r : null; }
@@ -200,7 +205,7 @@ function createSlideCapture(deps) {
   }
 
   return {
-    getState, listWindows, selectWindow, start, stop, manual,
+    getState, listWindows, selectWindow, start, stop, manual, requestPicker,
     onReady, isSender, onThumb, onFrame, onStatus, onRecordingStopped, currentSourceId,
     ensureWindow, dispose,
   };

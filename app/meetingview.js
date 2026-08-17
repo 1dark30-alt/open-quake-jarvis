@@ -146,6 +146,7 @@ function applyState(st) {
   // popover open + mode
   wrap.classList.toggle('drawer-open', drawerManual);
   $('recPanel').classList.toggle('details', live);
+  if (curState.slide) applySlide(curState.slide);
   $('recFile').textContent = curState.file ? ('Saving ' + curState.file) : ' ';
   tick();
 }
@@ -206,6 +207,74 @@ function pickMic(label) {
   fetch('/meeting-set-mic/' + encodeURIComponent(savedMicLabel), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (r) { if (r && r.state) applyState(r.state); })
     .catch(function () { statusShow('Could not set microphone', true); });
+}
+
+// =====================================================================================
+// Slide capture — column shown only when enabled (body.slides). Select is always usable;
+// Start/Manual are greyed unless a recording is live. State rides in /meeting-state.slide.
+// =====================================================================================
+ICON.target = '<svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16z"/></svg>';
+$('ic-slide-target').innerHTML = ICON.target;
+$('ic-slide-cam').innerHTML = ICON.camera;
+
+var slideState = { enabled: false, target: '', capturing: false, slides: 0, canCapture: false };
+function applySlide(s) {
+  slideState = s || slideState;
+  document.body.classList.toggle('slides', !!slideState.enabled);
+  if (!slideState.enabled) return;
+  if (slideState.openPicker && $('winOverlay') && !$('winOverlay').classList.contains('show')) openWinPicker();   // select-window hotkey
+  document.body.classList.toggle('capturing', !!slideState.capturing);
+  // target row
+  var tv = $('slideTargetVal');
+  tv.textContent = slideState.target || 'No window selected';
+  tv.classList.toggle('none', !slideState.target);
+  // Start/Stop label + Manual enablement (capture needs a live recording)
+  $('slideToggle').querySelector('.slbl').textContent = slideState.capturing ? 'Stop capture' : 'Start capture';
+  var lockable = !slideState.canCapture && !slideState.capturing;   // no recording -> capture controls inert
+  $('slideToggle').classList.toggle('sdis', lockable);
+  $('slideManual').classList.toggle('sdis', lockable);
+  // status line
+  var st = $('slideStat');
+  if (slideState.capturing) { st.className = 'sstat'; st.innerHTML = '<b>' + slideState.slides + '</b> slide' + (slideState.slides === 1 ? '' : 's') + ' captured'; }
+  else if (!slideState.canCapture) { st.className = 'sstat'; st.textContent = 'Start a recording to capture slides'; }
+  else if (slideState.slides) { st.className = 'sstat'; st.innerHTML = '<b>' + slideState.slides + '</b> captured'; }
+  else { st.className = 'sstat'; st.textContent = 'Ready · captures into this meeting'; }
+}
+function slideCmd(path) {
+  return fetch(path, { cache: 'no-store' }).then(function (r) { return r.json(); })
+    .then(function (r) { if (r && r.error) statusShow(r.error, true); if (r && r.state) applySlide(r.state); return r; })
+    .catch(function () { statusShow('Slide command failed', true); });
+}
+$('slideToggle').onclick = function () { if ($('slideToggle').classList.contains('sdis')) return; slideCmd(slideState.capturing ? '/slide/stop' : '/slide/start').then(pollState); };
+$('slideManual').onclick = function () { if ($('slideManual').classList.contains('sdis')) return; slideCmd('/slide/manual'); };
+$('slideSelect').onclick = function () { openWinPicker(); };
+$('winCancel').onclick = function () { $('winOverlay').classList.remove('show'); };
+
+function openWinPicker() {
+  var el = $('winList');
+  el.innerHTML = '<div class="devRow" style="opacity:.6">Finding windows…</div>';
+  $('winOverlay').classList.add('show');
+  fetch('/slide/windows', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (r) {
+    el.innerHTML = '';
+    var wins = (r && r.windows) || [];
+    if (!wins.length) { el.innerHTML = '<div class="devRow" style="opacity:.6">No matching windows. Check the app filter in Settings, or open the window you want.</div>'; }
+    wins.forEach(function (w) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'devRow foc' + (w.name === slideState.target ? ' current' : '');
+      b.textContent = w.name; b.title = w.name;
+      b.onclick = function () { pickWindow(w.id, w.name); };
+      el.appendChild(b);
+    });
+    // a way to clear the current target
+    var none = document.createElement('button');
+    none.type = 'button'; none.className = 'devRow foc'; none.textContent = '— no window —';
+    none.onclick = function () { pickWindow('', ''); };
+    el.appendChild(none);
+  }).catch(function () { el.innerHTML = '<div class="devRow" style="opacity:.6">Could not list windows.</div>'; });
+}
+function pickWindow(id, name) {
+  $('winOverlay').classList.remove('show');
+  slideCmd('/slide/select?id=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name)).then(pollState);
 }
 
 // =====================================================================================
