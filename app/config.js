@@ -2122,7 +2122,7 @@
           <input id="meSlideFilter" value="${esc(me.slideAppFilter)}" placeholder="blank = all apps" style="width:230px"></div>
         <p class="hint">Restricts the window picker to one process name (e.g. <b>ms-teams</b>). Blank shows every window.</p>
         <div class="row" style="margin-top:10px"><label>Auto-stop after inactive</label>
-          <input type="number" id="meSlideIdle" min="0" max="600" step="1" value="${esc(me.slideIdleStopMin)}" style="width:120px">
+          <input type="number" id="meSlideIdle" min="0" max="600" step="1" value="${me.slideIdleStopMin}" style="width:120px">
           <span class="hint" style="margin:0 0 0 8px">minutes (0 = never)</span></div>
         <p class="hint">Stops capture after this long with no new slide, so a forgotten session doesn't run all day. The clock resets on every capture.</p>
       </div>
