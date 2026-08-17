@@ -436,9 +436,21 @@ function discoveredServedApps() { return appCatalog().servedApps; }
 
 // ---- drop-in app manager (Settings → Drop-In Apps): list / import (zip) / export (zip) / delete ----
 // Zip via Windows' built-in Expand-Archive / Compress-Archive (no extra dependency). Windows-only.
-function psQuote(s) { return "'" + String(s).replace(/'/g, "''") + "'"; }
-function runPwsh(cmd) {
-  return new Promise(resolve => execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', cmd], { windowsHide: true, timeout: 60000 }, err => resolve(!err)));
+// Zip/unzip for app import/export is pure JS (adm-zip) — the old Expand-Archive/Compress-Archive
+// path spawned powershell.exe, which is both slower and one more PS event for endpoint security
+// to squint at. adm-zip 0.5+ rejects path-traversal ("zip-slip") entry names on extract.
+const AdmZip = require('adm-zip');
+function unzipTo(zipPath, destDir) {
+  try { new AdmZip(zipPath).extractAllTo(destDir, true); return true; }
+  catch (e) { console.log('unzip failed: ' + (e && e.message)); return false; }
+}
+function zipDirTo(dir, zipPath, rootName) {
+  try {
+    const zip = new AdmZip();
+    zip.addLocalFolder(dir, rootName);   // rootName folder at the zip root, matching Compress-Archive -Path <dir>
+    zip.writeZip(zipPath);
+    return true;
+  } catch (e) { console.log('zip failed: ' + (e && e.message)); return false; }
 }
 function manifestPath(dir) { for (const n of ['app.json', 'manifest.json']) { const p = path.join(dir, n); try { if (fs.existsSync(p)) return p; } catch (e) {} } return null; }
 // Find the app root in an extracted zip: the dir itself, or a single subdir, that holds a manifest.
@@ -485,7 +497,7 @@ async function importDropInApp(zipPath, forceId, confirmExec) {
   const tmp = path.join(USER_DIR, 'import-tmp-' + Date.now());
   try {
     fs.mkdirSync(tmp, { recursive: true });
-    if (!await runPwsh(`Expand-Archive -LiteralPath ${psQuote(zipPath)} -DestinationPath ${psQuote(tmp)} -Force`)) return { ok: false, error: 'could not unzip' };
+    if (!unzipTo(zipPath, tmp)) return { ok: false, error: 'could not unzip' };
     const appRoot = findAppRoot(tmp);
     if (!appRoot) return { ok: false, error: 'no app.json / manifest.json found in the zip' };
     const mp = manifestPath(appRoot);
@@ -514,7 +526,7 @@ async function exportDropInApp(id) {
   if (!dir || !fs.existsSync(dir)) return { ok: false, error: 'app not found' };
   const r = await dialog.showSaveDialog(configWin, { defaultPath: id + '.zip', filters: [{ name: 'Zip', extensions: ['zip'] }] });
   if (r.canceled || !r.filePath) return { ok: false, canceled: true };
-  const ok = await runPwsh(`Compress-Archive -Path ${psQuote(dir)} -DestinationPath ${psQuote(r.filePath)} -Force`);
+  const ok = zipDirTo(dir, r.filePath, path.basename(dir));
   return ok ? { ok: true, path: r.filePath } : { ok: false, error: 'could not create the zip' };
 }
 function deleteDropInApp(id) {
