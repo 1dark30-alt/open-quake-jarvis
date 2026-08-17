@@ -1889,7 +1889,7 @@
     const th = currentTheme();
     // Meeting recording settings (config.settings.meeting) — global so auto-record works regardless of
     // which app the panel is showing. Same shape as MEETING_DEFAULTS in main.js.
-    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '', slideCaptureEnabled: false, slideAutoStartOnSelect: false, slideNotifications: true, slideHotkeyToggle: 'Ctrl+Alt+S', slideHotkeySelect: 'Ctrl+Alt+W', slideHotkeyManual: 'Ctrl+Alt+C', slideAppFilter: 'Teams', slideIdleStopMin: 30 }, (config.settings || {}).meeting || {});
+    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '', slideCaptureEnabled: false, slideAutoStartOnSelect: false, slideNotifications: true, slideHotkeyToggle: 'Ctrl+Alt+S', slideHotkeySelect: 'Ctrl+Alt+W', slideHotkeyManual: 'Ctrl+Alt+C', slideAppFilter: '', slideIdleStopMin: 30 }, (config.settings || {}).meeting || {});
     const me = currentMe();
     // ledState = the device's live lighting (loaded when the page opens); fall back to saved config / defaults.
     const L = Object.assign({}, LED_DEFAULT, (config.settings || {}).lighting || {}, ledState || {});
@@ -2071,11 +2071,9 @@
         <div class="row"><label>Manual capture hotkey</label>
           <input id="meSlideHkManual" value="${esc(me.slideHotkeyManual)}" placeholder="Ctrl+Alt+C" style="width:180px"></div>
         <p class="hint">Global hotkeys (each needs Ctrl and/or Alt, and all three must differ). Leave one blank to disable it. <span id="meSlideHkWarn" style="color:#FF6B6B"></span></p>
-        <div class="row" style="margin-top:10px"><label>Limit picker to app</label>
-          <select id="meSlideFilterPick" style="width:280px"><option value="">Browse running apps…</option></select>
-          <span id="meSlideFilterVal" class="hint" style="margin:0 0 0 10px"></span>
-          <button id="meSlideFilterClear" type="button" style="margin-left:10px">Clear</button></div>
-        <p class="hint">Restricts the panel's window picker to one app (e.g. Teams), so you're not scrolling every open window. Pick from your running apps — no typing. Blank = show every window.</p>
+        <div class="row" style="margin-top:10px"><label>Limit window picker to app</label>
+          <select id="meSlideFilterPick" style="width:280px"><option value="">(All apps)</option></select></div>
+        <p class="hint">Pick the APP here (e.g. ms-teams); the panel's Select-window picker then lists only that app's windows.</p>
         <div class="row" style="margin-top:10px"><label>Auto-stop after inactive</label>
           <input type="number" id="meSlideIdle" min="0" max="600" step="1" value="${me.slideIdleStopMin}" style="width:120px">
           <span class="hint" style="margin:0 0 0 8px">minutes (0 = never)</span></div>
@@ -2598,26 +2596,23 @@
       document.getElementById('meSlide').onchange = e => { saveMe({ slideCaptureEnabled: e.target.checked }); syncSlideEnabled(e.target.checked); };
       document.getElementById('meSlideAuto').onchange = e => saveMe({ slideAutoStartOnSelect: e.target.checked });
       document.getElementById('meSlideNotify').onchange = e => saveMe({ slideNotifications: e.target.checked });
-      // "Limit picker to app": browse the running apps (same source as focus-follow) and pick one —
-      // no typing / no memorized ids. Stores the process name; the slide picker correlates it to windows.
-      const slideFilterVal = document.getElementById('meSlideFilterVal');
-      const showSlideFilter = () => { const v = currentMe().slideAppFilter; slideFilterVal.textContent = v ? ('Limited to: ' + v) : 'All windows'; };
-      showSlideFilter();
+      // "Limit window picker to app": mirrors the original Slide Capture app's combo exactly —
+      // "(All apps)" + distinct process NAMES (never window titles; you pick the APP here, the
+      // panel picker is where you pick the window). Selection persists visibly in the dropdown.
       const slideFilterPick = document.getElementById('meSlideFilterPick');
-      slideFilterPick.onmousedown = () => {
-        if (slideFilterPick.dataset.loaded) return;
-        slideFilterPick.dataset.loaded = '1';
-        window.openQuakeConfig.listRunningApps().then(apps => {
-          for (const a of (apps || [])) {
-            const opt = document.createElement('option');
-            opt.value = a.processName;
-            opt.textContent = a.title ? `${a.processName} — ${a.title}` : a.processName;
-            slideFilterPick.appendChild(opt);
-          }
-        });
-      };
-      slideFilterPick.onchange = () => { if (slideFilterPick.value) { saveMe({ slideAppFilter: slideFilterPick.value }); showSlideFilter(); } slideFilterPick.value = ''; };
-      document.getElementById('meSlideFilterClear').onclick = () => { saveMe({ slideAppFilter: '' }); showSlideFilter(); };
+      window.openQuakeConfig.listRunningApps().then(apps => {
+        const cur = currentMe().slideAppFilter || '';
+        const names = (apps || []).map(a => a.processName).filter(Boolean);
+        if (cur && !names.some(n => n.toLowerCase() === cur.toLowerCase())) names.push(cur);   // saved app not running — keep it selectable
+        names.sort((a, b) => a.localeCompare(b));
+        for (const n of names) {
+          const opt = document.createElement('option');
+          opt.value = n; opt.textContent = n;
+          slideFilterPick.appendChild(opt);
+        }
+        slideFilterPick.value = names.includes(cur) ? cur : '';
+      });
+      slideFilterPick.onchange = () => saveMe({ slideAppFilter: slideFilterPick.value });
       document.getElementById('meSlideIdle').onchange = e => saveMe({ slideIdleStopMin: Math.max(0, Math.min(600, parseInt(e.target.value, 10) || 0)) });
       // Hotkeys: each (if set) must include Ctrl and/or Alt, and the three must be distinct. A bad
       // combo isn't saved — the field reverts and the reason shows — so we never register junk.

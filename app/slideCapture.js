@@ -94,9 +94,13 @@ function createSlideCapture(deps) {
     for (const s of sources) {
       if (!s || !s.id || !s.name) continue;
       const proc = procByTitle[s.name] || '';
-      // A filter matches on the correlated process name OR the window title, so both a picked app
-      // ("ms-teams") and a typed title fragment ("Teams") work. Blank filter shows every window.
-      if (filter && !((proc && proc.toLowerCase().includes(filter)) || s.name.toLowerCase().includes(filter))) continue;
+      // The filter is an exact APP (process name) picked in Settings — match the window's owning
+      // process, so "chrome" lists every Chrome window and nothing else. Title-substring is only
+      // the fallback for windows the helper couldn't correlate. Blank filter = every window.
+      if (filter) {
+        const match = proc ? proc.toLowerCase() === filter : s.name.toLowerCase().includes(filter);
+        if (!match) continue;
+      }
       out.push({ id: s.id, name: s.name, proc });
     }
     return out;
