@@ -72,9 +72,10 @@ function spawnWatcher() {
   });
 }
 
-// [{ processName, title }], deduped by processName (a process can own several windows —
-// e.g. multiple Chrome windows — each with a different title; keep one representative title).
-function listRunningApps() {
+// Every window owning a real title: [{ processName, title }], one entry PER WINDOW (not deduped).
+// A process can own several windows — e.g. four Chrome windows — and each appears here, so callers
+// that need to map a specific window to its process (slide capture's picker filter) see them all.
+function listAllWindows() {
   return new Promise(resolve => {
     if (process.platform !== 'win32' || !fs.existsSync(WATCH_EXE)) return resolve([]);
     execFile(WATCH_EXE, ['list'], { windowsHide: true, timeout: 5000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
@@ -82,17 +83,26 @@ function listRunningApps() {
       let rows;
       try { rows = JSON.parse(String(stdout).trim()); } catch (e) { return resolve([]); }
       if (!Array.isArray(rows)) rows = [rows];
-      const seen = new Set();
       const out = [];
-      for (const r of rows) {
-        const name = r && r.ProcessName;
-        if (!name || seen.has(name)) continue;
-        seen.add(name);
-        out.push({ processName: name, title: r.MainWindowTitle || '' });
-      }
-      out.sort((a, b) => a.processName.localeCompare(b.processName));
+      for (const r of rows) { if (r && r.ProcessName) out.push({ processName: r.ProcessName, title: r.MainWindowTitle || '' }); }
       resolve(out);
     });
+  });
+}
+
+// [{ processName, title }], DEDUPED by processName for the editor's "browse running apps" picker
+// (you pick an app, not a window; keep one representative title per process).
+function listRunningApps() {
+  return listAllWindows().then(rows => {
+    const seen = new Set();
+    const out = [];
+    for (const r of rows) {
+      if (!r.processName || seen.has(r.processName)) continue;
+      seen.add(r.processName);
+      out.push({ processName: r.processName, title: r.title || '' });
+    }
+    out.sort((a, b) => a.processName.localeCompare(b.processName));
+    return out;
   });
 }
 
@@ -114,4 +124,4 @@ function stop() {
 /** The last debounced/committed foreground process name (what onChange most recently fired with), or null. */
 function getCommittedProcess() { return committed; }
 
-module.exports = { start, stop, listRunningApps, getCommittedProcess };
+module.exports = { start, stop, listRunningApps, listAllWindows, getCommittedProcess };

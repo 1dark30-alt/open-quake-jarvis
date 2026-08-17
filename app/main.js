@@ -2148,7 +2148,7 @@ app.whenReady().then(async () => {
         return { folder, base: st.file.replace(/\.wav$/i, '') };
       },
       getSources: () => desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } }),
-      listApps: () => desktopFocus.listRunningApps(),   // {processName, title} — correlates the picker filter to a real app
+      listApps: () => desktopFocus.listAllWindows(),   // EVERY window {processName, title} (not deduped) so all of an app's windows correlate
 
       createWindow: () => {
         const sess = session.fromPartition('persist:slidecapture');
