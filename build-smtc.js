@@ -23,6 +23,7 @@ const TARGETS = [
   { src: path.join(NATIVE, 'sysvolume.cs'), out: path.join(OUT_DIR, 'sysvolume.exe') },
   { src: path.join(NATIVE, 'outlook-meeting.cs'), out: path.join(OUT_DIR, 'outlook-meeting.exe') },
   { src: path.join(NATIVE, 'foreground-watch.cs'), out: path.join(OUT_DIR, 'foreground-watch.exe') },
+  { src: path.join(NATIVE, 'smtc-monitor.cs'), out: path.join(OUT_DIR, 'smtc-monitor.exe') },
 ];
 const log = m => console.log('[build:smtc] ' + m);
 // Non-fatal for development: if the native toolchain is absent, JS/Electron still starts and each

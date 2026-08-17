@@ -1,38 +1,31 @@
 'use strict';
 /*
  * nowplaying.js — current "now playing" track from the Windows System Media Transport Controls
- * (SMTC / Windows.Media.Control WinRT), read via PowerShell. [MIT]
+ * (SMTC / Windows.Media.Control WinRT), read via the bundled smtc-monitor.exe helper. [MIT]
  *
  * App-agnostic: whatever app feeds the OS media flyout (Spotify, browser media, Groove, …) shows up
- * here — title / artist / album / playback status. No admin, no native dependency.
+ * here — title / artist / album / playback status. No admin required.
  *
- * Album art: the SMTC thumbnail is a WinRT stream Windows PowerShell 5.1 can't read (it returns an
- * unprojected COM object), so a tiny bundled .NET helper (native/smtc-art.cs -> app/native/smtc-art.exe)
- * reads it natively; we run it once per track and cache the result. Transport control is in main.js.
+ * ONE persistent helper (native/smtc-monitor.cs) streams a JSON line on every change — this
+ * replaced a powershell.exe spawn every 2.5s (~24 processes/min with the Music page open), which
+ * endpoint-security tools flag as malware-like process churn. "{}" means no media session. The
+ * stream replaces polling, so there's no staleness window on Windows: the last line holds until
+ * the helper says otherwise or dies (death clears the snapshot and schedules a respawn).
  *
- * The PowerShell is passed as -EncodedCommand (base64 UTF-16LE) so its quotes/backticks can't be
- * mangled by Windows arg-splitting, with -InputFormat None so it never blocks on the piped stdin.
+ * Album art: the SMTC thumbnail is read by a second one-shot helper (native/smtc-art.cs ->
+ * app/native/smtc-art.exe), run once per track and cached. Transport control is in main.js.
  */
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const { net } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
-const SMTC_PS = [
-  "Add-Type -AssemblyName System.Runtime.WindowsRuntime;",
-  "$a=([System.WindowsRuntimeSystemExtensions].GetMethods()|?{$_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'})[0];",
-  "function Await($t,$r){$m=$a.MakeGenericMethod($r);$n=$m.Invoke($null,@($t));$n.Wait(-1)|Out-Null;$n.Result}",
-  "[Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,Windows.Media.Control,ContentType=WindowsRuntime]|Out-Null;",
-  "$mgr=Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]);",
-  // Prefer the session that's actually PLAYING — Windows' GetCurrentSession() can point at a paused app
-  // (e.g. Music Assistant) while another (Audiobookshelf) is the one playing. Fall back to current.
-  "$c=$null;foreach($s in $mgr.GetSessions()){try{if($s.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Playing'){$c=$s;break}}catch{}}",
-  "if(-not $c){$c=$mgr.GetCurrentSession()}",
-  "if($c){$p=Await ($c.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties]);$i=$c.GetPlaybackInfo();$pos=0.0;$dur=0.0;try{$tl=$c.GetTimelineProperties();$pos=$tl.Position.TotalSeconds;$dur=$tl.EndTime.TotalSeconds}catch{};[pscustomobject]@{title=$p.Title;artist=$p.Artist;album=$p.AlbumTitle;status=$i.PlaybackStatus.ToString();app=$c.SourceAppUserModelId;position=$pos;duration=$dur}|ConvertTo-Json -Compress}"
-].join('');
-const SMTC_B64 = Buffer.from(SMTC_PS, 'utf16le').toString('base64');
+const MONITOR_EXE = path.join(__dirname, 'native', 'smtc-monitor.exe').replace('app.asar', 'app.asar.unpacked');
 
-const STALE_MS = 12000;   // if no session refresh for this long, report null
+const STALE_MS = 12000;   // provider path only: if no provider refresh for this long, report null
+const RESPAWN_MS = 5000;  // helper crash -> retry delay (only while running)
 let snapshot = null, snapTs = 0, timer = null, running = false, busy = false;
+let proc = null, respawnTimer = null, warned = false;
 
 // Optional async now-playing provider (e.g. the Spotify Web API client on macOS). When set, it REPLACES
 // the win32 SMTC poll: macOS-with-Spotify -> provider; win32 -> SMTC; otherwise null. A provider result
@@ -97,30 +90,15 @@ function lookupArtOnline(track, cb) {
   req.end();
 }
 
-function poll() {
-  if (provider) return Promise.resolve().then(provider).catch(() => null);   // injected source (Spotify) replaces SMTC
-  if (process.platform !== 'win32') return Promise.resolve(null);   // SMTC is Windows-only; never spawn powershell elsewhere
-  return new Promise(resolve => {
-    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-InputFormat', 'None', '-EncodedCommand', SMTC_B64],
-      { windowsHide: true, timeout: 6000 }, (err, stdout) => {
-        if (err || !stdout || !stdout.trim()) return resolve(null);   // no session / error
-        try {
-          const o = JSON.parse(stdout.trim());
-          resolve({ title: o.title || null, artist: o.artist || null, album: o.album || null, status: o.status || null, app: o.app || null, position: +o.position || 0, duration: +o.duration || 0 });
-        } catch (e) { resolve(null); }
-      });
-  });
-}
-
+// ---- provider path (e.g. Spotify Web API on macOS): still a timer poll of an async function ----
 async function tick() {
-  if (busy || !running) return;     // busy guard: don't stack PowerShell spawns / overlap provider calls
+  if (busy || !running || !provider) return;     // busy guard: don't overlap provider calls
   busy = true;
   try {
-    const r = await poll();
+    const r = await Promise.resolve().then(provider).catch(() => null);
     if (r) {
       snapshot = r; snapTs = Date.now();
-      // A provider (Spotify) supplies its own art URL — cache it directly and skip the SMTC art helper
-      // (smtc-art.exe / iTunes lookup). The SMTC path still resolves art asynchronously via fetchArt.
+      // A provider (Spotify) supplies its own art URL — cache it directly and skip the SMTC art helper.
       if ('art' in r) artCache[trackKey(r)] = r.art || null;
       else if (running) fetchArt(trackKey(r), r);
     }
@@ -128,10 +106,63 @@ async function tick() {
   finally { busy = false; }
 }
 
-function start() { if (running) return; running = true; tick(); timer = setInterval(tick, 2500); }
-function stop() { running = false; if (timer) clearInterval(timer); timer = null; artBusy = false; for (const k in artCache) delete artCache[k]; }
+// ---- Windows path: consume the persistent smtc-monitor.exe stream ----
+function onMonitorLine(line) {
+  if (!running) return;
+  let o;
+  try { o = JSON.parse(line); } catch (e) { return; }
+  if (!o || !o.title) { snapshot = null; snapTs = 0; return; }        // "{}" -> no media session
+  snapshot = { title: o.title || null, artist: o.artist || null, album: o.album || null, status: o.status || null, app: o.app || null, position: +o.position || 0, duration: +o.duration || 0 };
+  snapTs = Date.now();
+  fetchArt(trackKey(snapshot), snapshot);
+}
+
+function spawnMonitor() {
+  if (!running || proc) return;
+  if (!fs.existsSync(MONITOR_EXE)) {
+    if (!warned) { warned = true; console.log('[nowplaying] smtc-monitor.exe missing (native helpers not built) — now-playing inactive'); }
+    return;
+  }
+  // stdin stays open (piped): the helper exits on stdin EOF, so it can never outlive us.
+  try { proc = spawn(MONITOR_EXE, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] }); }
+  catch (e) { proc = null; return; }
+  let buf = '';
+  proc.stdout.on('data', d => {
+    buf += d.toString('utf8');
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (line) onMonitorLine(line);
+    }
+  });
+  proc.on('error', () => {});
+  proc.on('close', () => {
+    proc = null;
+    snapshot = null; snapTs = 0;                                       // dead helper -> honest "nothing playing"
+    if (running && !respawnTimer) respawnTimer = setTimeout(() => { respawnTimer = null; spawnMonitor(); }, RESPAWN_MS);
+  });
+}
+
+function start() {
+  if (running) return;
+  running = true;
+  if (provider) { tick(); timer = setInterval(tick, 2500); }
+  else if (process.platform === 'win32') spawnMonitor();
+}
+function stop() {
+  running = false;
+  if (timer) clearInterval(timer);
+  timer = null;
+  if (respawnTimer) { clearTimeout(respawnTimer); respawnTimer = null; }
+  if (proc) { try { proc.kill(); } catch (e) {} proc = null; }
+  snapshot = null; snapTs = 0;
+  artBusy = false;
+  for (const k in artCache) delete artCache[k];
+}
 function getSnapshot() {                                                    // null => "nothing playing"
-  if (!(snapTs && Date.now() - snapTs < STALE_MS)) return null;
+  if (!snapshot) return null;
+  if (provider && !(snapTs && Date.now() - snapTs < STALE_MS)) return null; // staleness only guards the polled provider path
   const k = trackKey(snapshot);
   // ts = when this position was captured (same machine clock as the page) so the page can interpolate scroll.
   return Object.assign({}, snapshot, { art: (k in artCache) ? artCache[k] : null, ts: snapTs });
