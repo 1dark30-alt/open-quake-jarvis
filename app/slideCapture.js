@@ -80,28 +80,21 @@ function createSlideCapture(deps) {
   // ---- window picker ----
   async function listWindows() {
     if (!enabled()) return [];
-    let sources = [];
-    try { sources = await deps.getSources(); } catch (e) { log('getSources failed: ' + e.message); return []; }
-    // desktopCapturer only exposes window TITLES, not process names — but the "Limit picker to" setting
-    // stores a process name (picked from the running-apps browser, like focus-follow). Correlate the two
-    // by title (both read the same Win32 window title) so a filter like "ms-teams" matches Teams windows.
-    let apps = [];
-    try { apps = (deps.listApps ? await deps.listApps() : []) || []; } catch (e) {}
-    const procByTitle = {};
-    for (const a of apps) if (a && a.title) procByTitle[a.title] = a.processName || '';
+    // The helper's EnumWindows list is the source of truth — desktopCapturer.getSources EXCLUDES
+    // minimized windows and can't name owning processes, so a multi-window app (four Chrome
+    // windows, three Teams windows) would come back incomplete. Electron accepts a source id
+    // fabricated from the HWND ("window:<hwnd>:0") in the display-media handler (verified), so we
+    // don't need getSources at all.
+    let wins = [];
+    try { wins = (deps.listApps ? await deps.listApps() : []) || []; } catch (e) { log('window enumeration failed: ' + e.message); return []; }
     const filter = String(settings().slideAppFilter || '').trim().toLowerCase();
     const out = [];
-    for (const s of sources) {
-      if (!s || !s.id || !s.name) continue;
-      const proc = procByTitle[s.name] || '';
-      // The filter is an exact APP (process name) picked in Settings — match the window's owning
-      // process, so "chrome" lists every Chrome window and nothing else. Title-substring is only
-      // the fallback for windows the helper couldn't correlate. Blank filter = every window.
-      if (filter) {
-        const match = proc ? proc.toLowerCase() === filter : s.name.toLowerCase().includes(filter);
-        if (!match) continue;
-      }
-      out.push({ id: s.id, name: s.name, proc });
+    for (const w of wins) {
+      if (!w || !w.hwnd || !w.title) continue;
+      // The filter is the APP picked in Settings (exact process name) — the panel lists every
+      // window that app owns and nothing else. Blank filter = every window.
+      if (filter && String(w.processName || '').toLowerCase() !== filter) continue;
+      out.push({ id: 'window:' + w.hwnd + ':0', name: w.title, proc: w.processName || '', min: !!w.minimized });
     }
     return out;
   }

@@ -286,6 +286,7 @@ function renderWins(wins) {
     var b = document.createElement('button');
     b.type = 'button'; b.className = 'winTile foc' + (w.name === slideState.target ? ' current' : '');
     var s = document.createElement('span'); s.textContent = w.name; b.appendChild(s);   // two-line clamp; no title= tooltip on a touchscreen
+    if (w.min) { var m = document.createElement('i'); m.className = 'minTag'; m.textContent = 'minimized'; b.appendChild(m); }   // still selectable; capture warns until restored
     b.onclick = function () { pickWindow(w.id, w.name); };
     b.addEventListener('focus', function () { try { b.scrollIntoView({ block: 'nearest' }); } catch (e) {} });   // keep knob/keyboard focus on-screen
     el.appendChild(b);

@@ -24,7 +24,7 @@ if (process.platform === 'win32') {
   catch (e) { console.log('win-ca load failed:', e.message); }
 }
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, powerSaveBlocker, ipcMain, shell, dialog, session, net, safeStorage, clipboard, globalShortcut, nativeTheme, desktopCapturer, Notification } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, powerSaveBlocker, ipcMain, shell, dialog, session, net, safeStorage, clipboard, globalShortcut, nativeTheme, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -2147,19 +2147,18 @@ app.whenReady().then(async () => {
         const folder = (meetingSettings().folder && String(meetingSettings().folder).trim()) || defaultMeetingFolder();
         return { folder, base: st.file.replace(/\.wav$/i, '') };
       },
-      getSources: () => desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } }),
-      listApps: () => desktopFocus.listAllWindows(),   // EVERY window {processName, title} (not deduped) so all of an app's windows correlate
+      listApps: () => desktopFocus.listAllWindows(),   // EnumWindows via the helper: every window {processName, title, hwnd, minimized}
 
       createWindow: () => {
         const sess = session.fromPartition('persist:slidecapture');
         // getDisplayMedia in the hidden page routes here; hand it the window the user picked.
+        // The id is fabricated from the HWND ("window:<hwnd>:0") — Electron accepts a plain
+        // {id, name} here (verified live), which also covers windows getSources would omit
+        // (it excludes minimized ones).
         sess.setDisplayMediaRequestHandler((request, callback) => {
           const id = slideCapture && slideCapture.currentSourceId();
           if (!id) { callback({}); return; }
-          desktopCapturer.getSources({ types: ['window'] }).then(sources => {
-            const src = sources.find(s => s.id === id);
-            callback(src ? { video: src, audio: false } : {});
-          }).catch(() => callback({}));
+          callback({ video: { id, name: 'slide-capture-target' }, audio: false });
         }, { useSystemPicker: false });
         const w = new BrowserWindow({
           show: false, width: 320, height: 200, skipTaskbar: true,

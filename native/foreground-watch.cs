@@ -9,8 +9,11 @@
 //                    one line per change, via SetWinEventHook(EVENT_SYSTEM_FOREGROUND) — purely
 //                    event-driven, zero polling. Prints the current foreground app immediately on
 //                    start. Exits when stdin closes (parent died) so it can never be orphaned.
-//   list             one-shot: JSON array of {ProcessName, MainWindowTitle} for every process
-//                    owning a real window (same shape ConvertTo-Json produced for the old PS path).
+//   list             one-shot: JSON array of {Hwnd, ProcessName, MainWindowTitle, Minimized} for
+//                    EVERY top-level visible titled window (EnumWindows — minimized included,
+//                    tool windows and DWM-cloaked ghosts excluded). One entry PER WINDOW, so
+//                    multi-window apps (four Chrome windows) list all of them — a Process-based
+//                    enumeration only ever sees one MainWindowTitle per process.
 //   find <name...>   one-shot: "OK" (exit 0) if any named process owns a main window, else
 //                    "NOTFOUND" (exit 1). Names may include or omit ".exe".
 //   focus <name...>  one-shot: force-focus the first named process's main window ("OK"/"NOTFOUND").
@@ -33,6 +36,16 @@ static class ForegroundWatch {
   [DllImport("user32.dll")] static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
   [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hWnd);
   [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr hWnd);
+  [DllImport("user32.dll")] static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder sb, int max);
+  [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr hWnd, int index);
+  [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr hWnd, int attr, out int val, int size);
+  delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+  const int GWL_EXSTYLE = -20;
+  const int WS_EX_TOOLWINDOW = 0x00000080;
+  const int DWMWA_CLOAKED = 14;
 
   delegate void WinEventDelegate(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
   [StructLayout(LayoutKind.Sequential)]
@@ -95,18 +108,31 @@ static class ForegroundWatch {
   }
 
   static int List() {
-    List<Dictionary<string, string>> rows = new List<Dictionary<string, string>>();
-    foreach (Process p in Process.GetProcesses()) {
+    List<Dictionary<string, object>> rows = new List<Dictionary<string, object>>();
+    EnumWindows(delegate(IntPtr h, IntPtr l) {
       try {
-        if (p.MainWindowHandle == IntPtr.Zero) continue;
-        string title = p.MainWindowTitle;
-        if (string.IsNullOrEmpty(title)) continue;
-        Dictionary<string, string> row = new Dictionary<string, string>();
-        row["ProcessName"] = p.ProcessName;
-        row["MainWindowTitle"] = title;
+        if (!IsWindowVisible(h)) return true;                                  // hidden (incl. our own capture windows)
+        int len = GetWindowTextLength(h);
+        if (len == 0) return true;                                             // untitled = not a user-facing window
+        if ((GetWindowLong(h, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) != 0) return true;   // palettes/overlays
+        int cloaked = 0;
+        try { DwmGetWindowAttribute(h, DWMWA_CLOAKED, out cloaked, 4); } catch (Exception) {}
+        if (cloaked != 0) return true;                                         // suspended-UWP ghosts
+        System.Text.StringBuilder sb = new System.Text.StringBuilder(len + 1);
+        GetWindowText(h, sb, sb.Capacity);
+        uint pid;
+        GetWindowThreadProcessId(h, out pid);
+        string pname = "";
+        try { pname = Process.GetProcessById((int)pid).ProcessName; } catch (Exception) {}
+        Dictionary<string, object> row = new Dictionary<string, object>();
+        row["Hwnd"] = (long)h;
+        row["ProcessName"] = pname;
+        row["MainWindowTitle"] = sb.ToString();
+        row["Minimized"] = IsIconic(h);
         rows.Add(row);
       } catch (Exception) {}
-    }
+      return true;
+    }, IntPtr.Zero);
     Console.WriteLine(new JavaScriptSerializer().Serialize(rows));
     return 0;
   }

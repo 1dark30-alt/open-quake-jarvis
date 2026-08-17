@@ -152,6 +152,8 @@
   .winTile.current { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, var(--surf)); }
   .winTile.current::before { content:'\2713'; color:var(--accent); font-weight:800; font-size:24px; margin-right:12px; flex:0 0 auto; }
   .winTile.foc:focus-visible, .winTile.foc.kfocus { box-shadow:0 0 0 4px var(--accent); }
+  .winTile .minTag { margin-left:12px; flex:0 0 auto; font-style:normal; font-size:14px; font-weight:700; color:var(--dim);
+    border:1px solid var(--tile-bd); border-radius:7px; padding:3px 8px; }
   .winMsg { grid-column:1 / -1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
     color:var(--dim); font-size:20px; padding:48px 24px; text-align:center; line-height:1.4; }
   .winMsg b { color:var(--fg); font-size:24px; font-weight:800; }

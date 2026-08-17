@@ -72,9 +72,9 @@ function spawnWatcher() {
   });
 }
 
-// Every window owning a real title: [{ processName, title }], one entry PER WINDOW (not deduped).
-// A process can own several windows — e.g. four Chrome windows — and each appears here, so callers
-// that need to map a specific window to its process (slide capture's picker filter) see them all.
+// Every top-level titled window (EnumWindows in the helper — minimized included), one entry PER
+// WINDOW: [{ processName, title, hwnd, minimized }]. A process can own several windows — e.g. four
+// Chrome windows — and each appears here; the hwnd is what slide capture builds its source id from.
 function listAllWindows() {
   return new Promise(resolve => {
     if (process.platform !== 'win32' || !fs.existsSync(WATCH_EXE)) return resolve([]);
@@ -84,7 +84,10 @@ function listAllWindows() {
       try { rows = JSON.parse(String(stdout).trim()); } catch (e) { return resolve([]); }
       if (!Array.isArray(rows)) rows = [rows];
       const out = [];
-      for (const r of rows) { if (r && r.ProcessName) out.push({ processName: r.ProcessName, title: r.MainWindowTitle || '' }); }
+      for (const r of rows) {
+        if (!r || !r.ProcessName) continue;
+        out.push({ processName: r.ProcessName, title: r.MainWindowTitle || '', hwnd: r.Hwnd || 0, minimized: !!r.Minimized });
+      }
       resolve(out);
     });
   });
