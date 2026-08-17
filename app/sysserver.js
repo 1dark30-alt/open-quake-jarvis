@@ -22,13 +22,23 @@ const https = require('https');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const metrics = require('./sysmetrics');
 const nowplaying = require('./nowplaying');
 const haschedule = require('./haschedule');   // HA Schedule dev app (main.js drives its poll start/stop)
 const lyrics = require('./lyrics');           // Music lyrics (LRCLIB), fetched on demand for the now-playing track
 
 const FALLBACK = '<!doctype html><meta charset="utf-8">'
   + '<body style="margin:0;background:#05080d;color:#9fb3c8;font:20px Segoe UI, sans-serif">page asset missing.</body>';
+// System Monitor is retired: its metrics layer (the `systeminformation` package) spawned a
+// PowerShell process per WMI query — hundreds per minute with the page open — which endpoint
+// security tools flag as malware-like process churn. Any still-configured SystemView page gets
+// this notice instead of the dashboard. A churn-free native rebuild may return in a future version.
+const RETIRED_HTML = '<!doctype html><meta charset="utf-8"><title>System Monitor</title>'
+  + '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;'
+  + 'background:#05080d;color:#9fb3c8;font:26px Segoe UI, sans-serif;text-align:center">'
+  + '<div><div style="font-size:44px;margin-bottom:14px">&#128683;</div>'
+  + 'The System Monitor page has been retired.<br>'
+  + '<span style="font-size:19px;color:#5c7186">Its metrics collection created heavy process activity that security software flags.<br>'
+  + 'You can delete this page in the settings editor.</span></div></body>';
 const MEDIA_CMDS = { playpause: 1, next: 1, prev: 1 };
 const LOCAL_APP_CSP = [
   "default-src 'self' http: https: file: data: blob:",
@@ -50,7 +60,6 @@ const LOCAL_APP_CSP = [
 const STATIC_FILES = {
   '/ChatWidget.js': 'application/javascript; charset=utf-8',
   '/owui-widget.css': 'text/css; charset=utf-8',
-  '/sysview.js': 'application/javascript; charset=utf-8',
   '/musicview.js': 'application/javascript; charset=utf-8',
   '/meetingview.js': 'application/javascript; charset=utf-8',
   '/chatview-config.js': 'application/javascript; charset=utf-8',
@@ -75,7 +84,7 @@ for (const appId of ['teams', 'outlook', 'word', 'excel', 'powerpoint', 'onenote
 let server = null, onMedia = null, onLaunch = null, getGridTiles = null, getAppConfig = null, getOfficeData = null, connectOffice = null, onOpenExternal = null, onMeetingAction = null, onOfficeAction = null, getShortcuts = null;
 let getMeetingState = null, onMeetingRecord = null;   // meeting recorder: panel poller + start/stop/setMic remote
 let onMeetingLibrary = null, resolveMeetingAudio = null;   // recordings library + transcription/analysis remotes
-let sysHtml = FALLBACK, musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK;
+let musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK;
 // Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
 // Voice-panel app registry: appId (also the URL path prefix) -> { handlers, voiceToken, htmlFile,
 // htmlContent }. `handlers` is a voicepanel-host.js handlers object; every voice app shares the
@@ -456,7 +465,7 @@ async function handler(req, res) {
   const voicePath = voiceApp ? (url.slice(url.split('/')[1].length + 1) || '/') : null;
   const isAllowedPost = req.method === 'POST' && voiceApp && (VOICE_POST_SUFFIXES.has(voicePath) || voicePath === '/approval-request');
   if (req.method !== 'GET' && !isAllowedPost) { res.writeHead(405); res.end(); return; }
-  if (url === '/' || url === '/index.html') return html(res, sysHtml);
+  if (url === '/' || url === '/index.html') return html(res, RETIRED_HTML);   // retired SystemView page
   if (url === '/music') return html(res, musicHtml);
   if (url === '/meeting') return html(res, meetingHtml);
   if (url === '/recorder') return html(res, recorderHtml);   // hidden meeting-recorder capture page
@@ -514,7 +523,7 @@ async function handler(req, res) {
   }
   if (url === '/app-proxy') return serveAppProxy(req, res, full);
   if (url.indexOf('/app-api/') === 0) return serveAppApi(req, res, full, url);
-  if (url === '/metrics') return json(res, metrics.getSnapshot());
+  if (url === '/metrics') return json(res, { retired: true });   // graceful null for any stale SystemView client
   if (url === '/nowplaying') return json(res, nowplaying.getSnapshot());
   if (url === '/lyrics') { try { await lyrics.ensure(nowplaying.getSnapshot()); } catch (e) {} return json(res, lyrics.getSnapshot()); }   // synced lyrics for the current track
   if (url === '/haschedule-data') return json(res, haschedule.getSnapshot());
@@ -748,7 +757,6 @@ function start(opts) {
   nowplaying.setProvider(opts.getNowPlaying || null);
   return new Promise((resolve, reject) => {
     if (server) return resolve(server.address().port);
-    try { sysHtml = fs.readFileSync(path.join(__dirname, 'sysview.html'), 'utf8'); } catch (e) {}
     try { musicHtml = fs.readFileSync(path.join(__dirname, 'musicview.html'), 'utf8'); } catch (e) {}
     try { meetingHtml = fs.readFileSync(path.join(__dirname, 'meetingview.html'), 'utf8'); } catch (e) {}
     try { recorderHtml = fs.readFileSync(path.join(__dirname, 'recorderview.html'), 'utf8'); } catch (e) {}
@@ -773,17 +781,15 @@ function start(opts) {
 }
 
 // Run only the poller the visible page needs; stop the others. Called by main.js whenever the
-// active panel page changes. which: 'sysview' (metrics) | 'music' (now-playing) | 'office' | null.
+// active panel page changes. which: 'music' (now-playing) | 'office' | null.
 // start()/stop() are idempotent, so this is safe to call on every page push.
 function setActivePage(which) {
   if (which !== 'office') clearOfficeCapability();
-  if (which === 'sysview') { metrics.start(); nowplaying.stop(); }
-  else if (which === 'music') { nowplaying.start(); metrics.stop(); }
-  else { metrics.stop(); nowplaying.stop(); }
+  if (which === 'music') nowplaying.start();
+  else nowplaying.stop();
 }
 
 function stop() {
-  metrics.stop();
   nowplaying.stop();
   if (server) { try { server.close(); } catch (e) {} server = null; }
   clearOfficeCapability();

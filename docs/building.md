@@ -109,10 +109,8 @@ app/                      the Electron launcher + PC grid editor     [MIT]
   index.html              the on-panel UI (grids + web dashboards)
   config.html             the PC editor (pages, tiles, icons)
   config.default.json     seed config (copied to config.json on first run)
-  sysmetrics.js           SystemView: live host metrics (systeminformation + GPU counters)
   nowplaying.js           Music: now-playing from Windows SMTC (via PowerShell)
-  sysserver.js            localhost server for the served app pages (SystemView, Music, chat)
-  sysview.html            SystemView: the on-panel system-monitor dashboard
+  sysserver.js            localhost server for the served app pages (Music, chat, meetings)
   musicview.html          Music: now-playing + transport + the embedded app grid
   chatview.html           Open WebUI chat wrapper + knob push-to-talk
   ChatWidget.js           bundled Open WebUI chat widget   [vendored, MIT]

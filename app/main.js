@@ -257,21 +257,17 @@ function migrateConfig(c) {
   });
   return c;
 }
-// SystemView is a built-in localhost dashboard. Ensure the page exists and its url points at the
-// current (ephemeral) server port. Respect deletion: once injected, if the user removes it we don't
-// re-add it (tracked via config.sysviewInjected) — so deleting it sticks.
+// SystemView (System Monitor) is RETIRED: its metrics layer spawned continuous PowerShell
+// children that endpoint security flags. New pages are never injected; a still-configured page
+// keeps working as a URL but the server now serves a "retired" notice at / instead of the
+// dashboard. Deleting the page in the editor removes the last trace.
 function ensureSystemViewPage(port) {
   const url = `http://127.0.0.1:${port}/`;
   if (!config.grids) config.grids = [];
   const existing = config.grids.find(g => g.id === 'sysview');
-  if (existing) {                                          // keep the user's name/rotate; just refresh the (dynamic) port
-    if (existing.url !== url) { existing.url = url; saveConfig(); if (config.activeGridId === 'sysview') pushToPanel(); }
-    return;
+  if (existing && existing.url !== url) {                  // refresh the (dynamic) port so the notice renders, not a dead socket
+    existing.url = url; saveConfig(); if (config.activeGridId === 'sysview') pushToPanel();
   }
-  if (config.sysviewInjected) return;                      // user deleted it on purpose — leave it gone
-  config.grids.push({ id: 'sysview', name: 'System Monitor', kind: 'web', url, auth: { type: 'none' }, rotate: false });
-  config.sysviewInjected = true;
-  saveConfig();
 }
 // The Music controller is a built-in APP page (kind:'app', app:'music'). Its launcher grid is now the
 // optional native button strip (like the clock apps): gridOn + gridAlign 'right' (the strip is always on
@@ -648,11 +644,10 @@ function saveConfig() {
 function activeGrid() { return config.grids.find(g => g.id === config.activeGridId) || config.grids[0] || { cols: 8, rows: 2, tiles: [] }; }
 function gridList() { return config.grids.filter(g => !g.hidden).map(g => ({ id: g.id, name: g.name })); }
 // Tell the local server which served page is on screen so it runs only that page's poller
-// (SystemView metrics / Music now-playing) and idles the rest — no background polling while hidden.
+// (Music now-playing) and idles the rest — no background polling while hidden.
 function syncPollers(g) {
   if (!sysserver) return;
   const which = monitorMode ? null                                  // panel hidden (monitor mode) -> idle every page poller
-    : (g && g.id === 'sysview') ? 'sysview'
     : (g && g.kind === 'app' && g.app === 'music') ? 'music'
     : (g && g.kind === 'app' && g.app === 'office') ? 'office'
     : null;
