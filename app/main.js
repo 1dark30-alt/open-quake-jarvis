@@ -85,7 +85,7 @@ let meetingLibrary = null;    // recordings list/delete/resolve for the panel's 
 let meetingTranscriber = null; // FIFO diarizer-upload queue (meetingTranscribe.js)
 let meetingAnalyzer = null;   // transcript → markdown analysis via claude/codex CLI (meetingAnalyze.js)
 let micMonitorProc = null;    // native app-scoped mic-in-use monitor child process
-let sysVolCache = null, sysVolAt = 0, sysVolBusy = false;   // throttled cache of the real system volume (0-100)
+let sysVolCache = null, sysVolProc = null, sysVolIdleTimer = null;   // cache of the real system volume (0-100), fed by the persistent watcher
 let lastRingEffect = LED_DEFAULT.effect; // remembered so the tray on/off toggle can restore the prior effect
 let rotateRunning = false;               // screen-rotation runtime on/off (starts per settings on launch)
 let rotationSuspended = false;           // temporarily held off by desktop-focus (a mapped app currently has focus)
@@ -1174,8 +1174,8 @@ function mediaKey(cmd) {
 const ZOOM_OPTION_KEY = { mute: 'zoomMute', video: 'zoomVideo', accept: 'zoomAccept', decline: 'zoomDecline', leave: 'zoomLeave' };
 async function onMeetingActionRequest(platform, action) {
   if (platform === 'system') {
-    if (action === 'volup') { mediaKeys.volume(1); sysVolAt = 0; return { ok: true }; }
-    if (action === 'voldown') { mediaKeys.volume(-1); sysVolAt = 0; return { ok: true }; }
+    if (action === 'volup') { mediaKeys.volume(1); return { ok: true }; }      // the volume watcher reports the new level within a second
+    if (action === 'voldown') { mediaKeys.volume(-1); return { ok: true }; }
     return { ok: false, error: 'unknown system action: ' + action };
   }
   // Utility-rail actions. Share fires the app's screen-share shortcut (Zoom Alt+S; Teams
@@ -1282,20 +1282,37 @@ function migrateLegacyMeetingWavs() {
   } catch (e) { console.log('[meeting] legacy folder migration failed: ' + e.message); }
 }
 
-// Real system-volume read for the meeting OUTPUT rail — throttled + cached so the 1 s panel poll
-// never spawns a process more than ~once a second. Never fabricates a level: cache stays null (panel
-// shows "—") until the helper answers, and on any failure.
-function refreshSystemVolume() {
+// Real system-volume read for the meeting OUTPUT rail. ONE persistent `sysvolume.exe watch`
+// process streams the level on change — the old path spawned the exe once per panel poll
+// (~60 processes/min with the Meeting page open), which endpoint-security tools flag as
+// malware-like churn. The watcher is demand-scoped without any page-tracking plumbing: each
+// panel poll refreshes an idle timer, and 10s without a poll (page left / panel hidden) stops
+// it. Never fabricates a level: cache stays null (panel shows "—") until the helper answers.
+function stopVolumeWatcher() {
+  if (sysVolIdleTimer) { clearTimeout(sysVolIdleTimer); sysVolIdleTimer = null; }
+  if (sysVolProc) { try { sysVolProc.kill(); } catch (e) {} sysVolProc = null; }
+  sysVolCache = null;
+}
+function ensureVolumeWatcher() {
   if (process.platform !== 'win32') return;
-  const now = Date.now();
-  if (sysVolBusy || (now - sysVolAt) < 900 || !fs.existsSync(SYSVOL_EXE)) return;
-  sysVolBusy = true; sysVolAt = now;
-  execFile(SYSVOL_EXE, [], { timeout: 1500, windowsHide: true }, (err, stdout) => {
-    sysVolBusy = false;
-    if (err) return;
-    const n = parseInt(String(stdout).trim(), 10);
-    sysVolCache = (Number.isFinite(n) && n >= 0) ? n : null;
+  if (sysVolIdleTimer) clearTimeout(sysVolIdleTimer);
+  sysVolIdleTimer = setTimeout(stopVolumeWatcher, 10000);
+  if (sysVolProc || !fs.existsSync(SYSVOL_EXE)) return;
+  // stdin stays open (piped): the helper exits on stdin EOF, so it can never outlive the app.
+  try { sysVolProc = spawn(SYSVOL_EXE, ['watch'], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] }); }
+  catch (e) { sysVolProc = null; return; }
+  let buf = '';
+  sysVolProc.stdout.on('data', d => {
+    buf += d.toString('utf8');
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const n = parseInt(buf.slice(0, nl).trim(), 10);
+      buf = buf.slice(nl + 1);
+      sysVolCache = (Number.isFinite(n) && n >= 0) ? n : null;
+    }
   });
+  sysVolProc.on('error', () => {});
+  sysVolProc.on('close', () => { sysVolProc = null; sysVolCache = null; });   // next panel poll respawns it
 }
 
 // State the panel poller reads: recorder runtime state + the configured mic (so the page loads with
@@ -1305,7 +1322,7 @@ function meetingStateForPanel() {
   const m = meetingSettings();
   st.mic = st.mic || m.micDevice || '';
   st.autoRecord = !!m.autoRecord;
-  refreshSystemVolume();       // throttled; updates sysVolCache in the background
+  ensureVolumeWatcher();       // keeps the persistent volume watcher alive while the panel polls
   st.volume = sysVolCache;     // 0-100, or null when unavailable (panel shows "—")
   return st;
 }

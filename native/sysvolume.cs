@@ -1,11 +1,21 @@
-// sysvolume.exe — print the Windows default render device's master volume as an integer 0..100.
+// sysvolume.exe — the Windows default render device's master volume as an integer 0..100.
 // Used by the meeting console's OUTPUT rail so the level display is a REAL read, never a fabricated
-// number. Prints "-1" (and exits 1) if it can't read it, so the caller shows "—". [MIT]
+// number. Prints "-1" if it can't read it, so the caller shows "—". [MIT]
+//
+// Modes:
+//   (no args)  one-shot: print the volume once and exit (exit 1 on failure).
+//   watch      long-running: print a line whenever the volume changes (first read prints
+//              immediately), checking in-process once a second. This replaced the panel poll
+//              spawning this exe ~60×/min — endpoint-security tools flag that much process
+//              creation as malware-like churn; one persistent helper is invisible. The default
+//              endpoint is re-acquired on every tick so device switches are always honored.
+//              Exits when stdin closes (parent died).
 //
 // Raw Core Audio COM interop (no NuGet), same .NET-Framework csc toolchain as the other helpers —
 // vtable order below is load-bearing; unused slots are stubbed to hold their position.
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 class SysVolume {
     enum EDataFlow { eRender = 0, eCapture = 1, eAll = 2 }
@@ -40,20 +50,41 @@ class SysVolume {
 
     static Guid IID_IAudioEndpointVolume = new Guid("5CDF2C82-841E-4546-9722-0CF74078229A");
 
-    static int Main() {
+    static int ReadVolume() {
         try {
             IMMDeviceEnumerator devEnum = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
             IMMDevice dev; devEnum.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eConsole, out dev);
             object volObj; dev.Activate(ref IID_IAudioEndpointVolume, CLSCTX_ALL, IntPtr.Zero, out volObj);
             IAudioEndpointVolume vol = (IAudioEndpointVolume)volObj;
             float level; vol.GetMasterVolumeLevelScalar(out level);
+            Marshal.FinalReleaseComObject(volObj);
+            Marshal.FinalReleaseComObject(dev);
+            Marshal.FinalReleaseComObject(devEnum);
             int pct = (int)Math.Round(level * 100f);
             if (pct < 0) pct = 0; if (pct > 100) pct = 100;
-            Console.Out.Write(pct);
-            return 0;
+            return pct;
         } catch {
-            Console.Out.Write("-1");
-            return 1;
+            return -1;
         }
+    }
+
+    static int Main(string[] args) {
+        if (args.Length > 0 && args[0] == "watch") {
+            Thread stdinWatch = new Thread(delegate() {
+                try { while (Console.In.Read() != -1) {} } catch (Exception) {}
+                Environment.Exit(0);
+            });
+            stdinWatch.IsBackground = true;
+            stdinWatch.Start();
+            int last = int.MinValue;
+            while (true) {
+                int pct = ReadVolume();
+                if (pct != last) { last = pct; Console.WriteLine(pct); }
+                Thread.Sleep(1000);
+            }
+        }
+        int once = ReadVolume();
+        Console.Out.Write(once);
+        return once >= 0 ? 0 : 1;
     }
 }
