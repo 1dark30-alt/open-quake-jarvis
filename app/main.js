@@ -1286,7 +1286,7 @@ function owuiSettings() { return Object.assign({}, OWUI_DEFAULTS, (config.settin
 // Settings live on the lucidtype PAGE's own options (grid.options), like every other app — mic,
 // hotkeys and notifications are all per-page. Dictation runs in the background, so it reads the
 // lucidtype grid's options directly (not activeServedAppConfig, which is only the ACTIVE grid).
-const LUCIDTYPE_DEFAULTS = { micDevice: '', notifyColorChange: false, notifyBeep: false, switchOnDictate: true, dictationHotkey: '', applyHotkey: '', silenceMs: 800, startMode: 'clear',
+const LUCIDTYPE_DEFAULTS = { micDevice: '', notifyColorChange: false, notifyBeep: false, switchOnDictate: true, dictationHotkey: '', applyHotkey: '', silenceMs: 400, startMode: 'clear',
   // Phase 2 — cleanup/rewrite AI
   aiBackend: 'claude', useEndpoint: false, endpoint: '', endpointKey: '', overrideModel: false, model: '', aiTimeoutMs: 30000,
   cleanupHotkey: '', cleanupPrompt: '', rewriteHotkey: '', rewriteMode: 'professional', rewriteCustomPrompt: '',

@@ -67,7 +67,7 @@ function createLucidDictation(deps) {
     const mode = modeOverride || s.startMode;            // buttons pass 'clear'/'append' explicitly; the hotkey uses the setting
     if (mode !== 'append') transcript = '';              // 'clear' (default): fresh box; 'append': keep + add to existing text
     dictating = true;
-    sendCmd({ type: 'start', micDevice: s.micDevice || '', silenceMs: s.silenceMs || 800, beep: !!s.notifyBeep });
+    sendCmd({ type: 'start', micDevice: s.micDevice || '', silenceMs: s.silenceMs || 400, beep: !!s.notifyBeep });
     bump();
     log('dictation start');
     return { ok: true, dictating: true };

@@ -1619,7 +1619,7 @@
         <div class="row"><div id="ltMeterWrap" style="flex:1;height:14px;border-radius:7px;background:#0e1822;overflow:hidden;display:none"><div id="ltMeter" style="height:100%;width:0%;background:#7CFFB2;transition:width .06s"></div></div></div>
         <p class="hint">The mic used for dictation. Set the input <b>level</b> in Windows Sound settings; speak with the test on and watch the bar.</p>
         <div class="row" style="margin-top:10px"><label style="width:auto">Voice pause tolerance</label>
-          <input type="number" id="ltPause" min="400" max="2500" step="100" value="${esc(String(optVal(g, 'silenceMs', 800)))}" style="width:110px">
+          <input type="number" id="ltPause" min="400" max="2500" step="100" value="${esc(String(optVal(g, 'silenceMs', 400)))}" style="width:110px">
           <span class="hint" style="margin:0 0 0 8px">ms of silence before a phrase is transcribed</span></div>
         <p class="hint">Lower = snappier (text appears sooner after you pause); higher = fewer mid-sentence cutoffs. Applies on the next dictation start.</p>
 
@@ -1847,7 +1847,7 @@
       document.getElementById('ltSwitch').onchange = e => setOpt('switchOnDictate', e.target.checked);
       document.getElementById('ltColor').onchange = e => setOpt('notifyColorChange', e.target.checked);
       document.getElementById('ltBeep').onchange = e => setOpt('notifyBeep', e.target.checked);
-      document.getElementById('ltPause').onchange = e => { const v = Math.max(400, Math.min(2500, parseInt(e.target.value, 10) || 800)); e.target.value = v; setOpt('silenceMs', v); };
+      document.getElementById('ltPause').onchange = e => { const v = Math.max(400, Math.min(2500, parseInt(e.target.value, 10) || 400)); e.target.value = v; setOpt('silenceMs', v); };
       document.getElementById('ltStartMode').onchange = e => setOpt('startMode', e.target.value);
       // AI backend + endpoint/model reveals
       const ltAiBackend = document.getElementById('ltAiBackend');

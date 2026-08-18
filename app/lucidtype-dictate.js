@@ -37,7 +37,7 @@
     if (running) return;
     running = true;
     if (msg.beep) beep(800);
-    vad = window.createClaudeVoiceVAD({ hangoverMs: msg.silenceMs || 800 });
+    vad = window.createClaudeVoiceVAD({ hangoverMs: msg.silenceMs || 400 });
     resolveDeviceId(msg.micDevice || '').then(function (id) {
       if (!running) return;   // a stop raced in during device resolution
       vad.setInputDevice(id);
