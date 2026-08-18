@@ -33,6 +33,40 @@ text.addEventListener('input', function () {
   editTimer = setTimeout(flushEdit, 250);
 });
 
+// Clear Text (header) — wipe the box and sync the empty transcript to the host.
+$('btnClear').addEventListener('click', function () {
+  text.value = '';
+  userDirty = true;          // don't let a poll/SSE frame repopulate it
+  flushEdit();
+});
+
+// Settings button -> overlay (like the voice apps); Done closes it. Mode is Phase 2 (no-op for now).
+var settingsOvl = $('ltSettingsOverlay');
+var curMic = '';   // latest mic label from state, so the picker opens on the current selection
+$('btnSettings').addEventListener('click', function () { settingsOvl.classList.remove('hidden'); fillMicPicker(); });
+$('btnSettingsClose').addEventListener('click', function () { settingsOvl.classList.add('hidden'); });
+settingsOvl.addEventListener('click', function (e) { if (e.target === settingsOvl) settingsOvl.classList.add('hidden'); });
+
+// Populate the overlay mic picker with device labels (lazy grant to reveal labels, like the editor).
+// Picking one persists it via /lucidtype-set-mic and applies on the next dictation start.
+function fillMicPicker() {
+  var sel = $('ltOvlMic');
+  function fill(devs) {
+    var inputs = (devs || []).filter(function (d) { return d.kind === 'audioinput' && d.label; });
+    sel.innerHTML = '<option value="">System default</option>';
+    inputs.forEach(function (d) { var o = document.createElement('option'); o.value = d.label; o.textContent = d.label; sel.appendChild(o); });
+    if (curMic && !inputs.some(function (d) { return d.label === curMic; })) { var o = document.createElement('option'); o.value = curMic; o.textContent = curMic + ' (not connected)'; sel.appendChild(o); }
+    sel.value = curMic;
+  }
+  navigator.mediaDevices.enumerateDevices().then(function (devs) {
+    if ((devs || []).some(function (d) { return d.kind === 'audioinput' && d.label; })) return fill(devs);
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(function (tmp) { navigator.mediaDevices.enumerateDevices().then(function (d2) { tmp.getTracks().forEach(function (t) { t.stop(); }); fill(d2); }); })
+      .catch(function () { fill(devs); });
+  }).catch(function () { fill([]); });
+}
+$('ltOvlMic').addEventListener('change', function (e) { curMic = e.target.value; get('/lucidtype-set-mic/' + encodeURIComponent(e.target.value)); });
+
 function applyState(st) {
   if (!st) return;
   var wasDictating = dictating;
@@ -46,14 +80,21 @@ function applyState(st) {
     lastSeq = st.seq;
   }
 
-  $('rMic').textContent = st.mic ? st.mic : 'System default';
-  var stt = $('rStt');
-  if (st.sttHost && st.sttPort) { stt.textContent = st.sttHost + ':' + st.sttPort; stt.className = 'v ok'; }
-  else { stt.textContent = 'not set'; stt.className = 'v bad'; }
+  curMic = st.mic || '';   // remember for the settings picker's current selection
   $('status').textContent = dictating ? 'Listening…' : '';
 }
 
 function pollState() { return get('/lucidtype-state').then(applyState); }
 
-pollState();
-setInterval(pollState, 700);
+pollState();   // immediate load
+
+// Real-time updates over SSE — main pushes on every dictation change, so text appears the instant
+// Whisper returns (no poll lag). The poll is now only a fallback: it fires when the stream isn't
+// open (initial connect gap or a dropped connection), tightened to 400ms so recovery is quick.
+var es = null;
+try {
+  es = new EventSource('/lucidtype-events');
+  es.onmessage = function (e) { try { applyState(JSON.parse(e.data)); } catch (_) {} };
+  es.onerror = function () { /* EventSource auto-reconnects; the fallback poll covers the gap */ };
+} catch (e) { es = null; }
+setInterval(function () { if (!es || es.readyState !== 1) pollState(); }, 400);

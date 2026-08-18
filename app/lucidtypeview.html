@@ -40,34 +40,44 @@
   body.dictating #recLive { display:flex; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
 
+  /* Clear Text button (header, right of the logo) */
+  #btnClear { height:40px; padding:0 18px; border-radius:10px; background:var(--surf); color:var(--fg); font-size:15px; font-weight:700; }
+
   /* ---- reserved strip above the text (future buttons; empty in Phase 1) ---- */
   #actions:not(:empty) { flex:0 0 auto; display:flex; gap:12px; align-items:center; }
 
-  /* ---- body: big text + rail ---- */
+  /* ---- body: big text + button box ---- */
   #body { flex:1; display:flex; gap:16px; min-height:0; }
   #textwrap { flex:1; background:var(--surf2); border-radius:18px; padding:8px; display:flex; min-height:0; }
   #text { flex:1; width:100%; height:100%; resize:none; border:none; outline:none; background:transparent;
     color:var(--fg); font-size:26px; line-height:1.4; padding:16px 18px; }
   #text::placeholder { color:var(--dim); }
 
-  #rail { flex:0 0 340px; background:var(--surf2); border-radius:18px; padding:18px; display:flex; flex-direction:column; gap:14px; }
-  .rlabel { font-size:13px; font-weight:800; letter-spacing:1.5px; color:var(--dim); }
-  .rrow { min-height:56px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px;
-    border-radius:12px; background:var(--surf); color:var(--fg); font-size:16px; font-weight:600; }
-  .rrow .v { color:var(--muted); font-weight:700; max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; }
-  .rrow .v.bad { color:var(--danger); }
-  .rrow .v.ok { color:var(--accent); }
-  .rsep { height:1px; background:var(--tile-bd); opacity:.5; }
-  .rhint { font-size:13px; color:var(--dim); line-height:1.4; }
-  .modebox { background:var(--surf); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:6px; }
-  .modebox .m { font-size:18px; font-weight:800; }
-  .modebox .s { font-size:13px; color:var(--dim); }
+  /* right box: a bottom-anchored button stack (future buttons will stack above Mode/Settings) */
+  #rail { flex:0 0 240px; background:var(--surf2); border-radius:18px; padding:16px; display:flex;
+    flex-direction:column; justify-content:flex-end; gap:12px; }
+  .railbtn { min-height:62px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:18px;
+    font-weight:700; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; }
+  .railbtn .sub { font-size:12px; font-weight:600; color:var(--dim); }
+
+  /* settings overlay — opened from the Settings button, like the voice apps */
+  .ovl { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:30; }
+  .ovl.hidden { display:none; }
+  .ovlcard { width:min(900px,92%); background:var(--surf2); border:1px solid var(--tile-bd); border-radius:16px; padding:22px; }
+  .ovltitle { font-size:20px; font-weight:800; margin-bottom:16px; }
+  .ovlcard .srow { min-height:56px; display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:12px 16px; border-radius:12px; background:var(--surf); font-size:17px; font-weight:600; }
+  .ovlsel { flex:1; max-width:65%; height:48px; border-radius:10px; background:var(--surf2); color:var(--fg);
+    border:1px solid var(--tile-bd); font-size:16px; font-weight:600; padding:0 12px; }
+  .ovlhint { font-size:13px; color:var(--dim); line-height:1.45; margin-top:12px; }
+  .ovlbtn { min-height:48px; min-width:100px; border-radius:11px; background:var(--accent); color:var(--accent-fg,#04121f); font-size:16px; font-weight:800; }
 </style>
 </head>
 <body>
   <div id="wrap">
     <div id="topbar">
       <div id="title">Lucid<span class="accent">Type</span></div>
+      <button id="btnClear" class="press">Clear Text</button>
       <div id="status"></div>
       <div id="spacer"></div>
       <div id="recHost">
@@ -85,17 +95,20 @@
         <textarea id="text" placeholder="Press your dictation hotkey and speak — your words appear here. Edit freely, then press your apply hotkey to paste at your cursor."></textarea>
       </div>
       <div id="rail">
-        <div class="rlabel">SETTINGS</div>
-        <div class="rrow">Microphone <span id="rMic" class="v">System default</span></div>
-        <div class="rrow">STT server <span id="rStt" class="v">—</span></div>
-        <div class="rhint">Configure the microphone, hotkeys and servers in the open-quake editor → Settings → LucidType (and Advanced on this page to override the server).</div>
-        <div class="rsep"></div>
-        <div class="rlabel">MODE</div>
-        <div class="modebox">
-          <div class="m">Raw dictation</div>
-          <div class="s">Cleanup &amp; rewrite modes arrive in Phase 2.</div>
-        </div>
+        <!-- future buttons stack here, above Mode -->
+        <button id="btnMode" class="railbtn press" title="Cleanup &amp; rewrite modes arrive in Phase 2">Mode<span class="sub">Raw dictation</span></button>
+        <button id="btnSettings" class="railbtn press">Settings</button>
       </div>
+    </div>
+  </div>
+
+  <div id="ltSettingsOverlay" class="ovl hidden">
+    <div class="ovlcard">
+      <div class="ovltitle">LucidType settings</div>
+      <div class="srow">Microphone
+        <select id="ltOvlMic" class="ovlsel"><option value="">System default</option></select></div>
+      <p class="ovlhint">The mic used for dictation. Hotkeys, pause tolerance and the transcription server live in the open-quake editor — this page's own settings.</p>
+      <div style="display:flex;justify-content:flex-end;margin-top:14px"><button id="btnSettingsClose" class="ovlbtn press">Done</button></div>
     </div>
   </div>
 <script src="lucidtypeview.js"></script>

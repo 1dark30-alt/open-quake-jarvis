@@ -1611,11 +1611,20 @@
         <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltTest"> Test microphone (live input level)</label></div>
         <div class="row"><div id="ltMeterWrap" style="flex:1;height:14px;border-radius:7px;background:#0e1822;overflow:hidden;display:none"><div id="ltMeter" style="height:100%;width:0%;background:#7CFFB2;transition:width .06s"></div></div></div>
         <p class="hint">The mic used for dictation. Set the input <b>level</b> in Windows Sound settings; speak with the test on and watch the bar.</p>
+        <div class="row" style="margin-top:10px"><label style="width:auto">Voice pause tolerance</label>
+          <input type="number" id="ltPause" min="400" max="2500" step="100" value="${esc(String(optVal(g, 'silenceMs', 800)))}" style="width:110px">
+          <span class="hint" style="margin:0 0 0 8px">ms of silence before a phrase is transcribed</span></div>
+        <p class="hint">Lower = snappier (text appears sooner after you pause); higher = fewer mid-sentence cutoffs. Applies on the next dictation start.</p>
 
         <p class="sectitle" style="margin-top:16px">Hotkeys</p>
         <div class="row"><label style="width:auto">Start / stop dictation</label>
           <input id="ltDictKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'dictationHotkey', ''))}" style="width:220px">
           <button id="ltDictKeyClear" type="button" style="margin-left:8px">Clear</button></div>
+        <div class="row"><label style="width:auto">Starting again</label>
+          <select id="ltStartMode" style="width:230px">
+            <option value="clear" ${optVal(g, 'startMode', 'clear') === 'append' ? '' : 'selected'}>Clears the box and starts fresh</option>
+            <option value="append" ${optVal(g, 'startMode', 'clear') === 'append' ? 'selected' : ''}>Appends to the existing text</option>
+          </select></div>
         <div class="row"><label style="width:auto">Apply text</label>
           <input id="ltApplyKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'applyHotkey', ''))}" style="width:220px">
           <button id="ltApplyKeyClear" type="button" style="margin-left:8px">Clear</button></div>
@@ -1780,6 +1789,8 @@
       document.getElementById('ltSwitch').onchange = e => setOpt('switchOnDictate', e.target.checked);
       document.getElementById('ltColor').onchange = e => setOpt('notifyColorChange', e.target.checked);
       document.getElementById('ltBeep').onchange = e => setOpt('notifyBeep', e.target.checked);
+      document.getElementById('ltPause').onchange = e => { const v = Math.max(400, Math.min(2500, parseInt(e.target.value, 10) || 800)); e.target.value = v; setOpt('silenceMs', v); };
+      document.getElementById('ltStartMode').onchange = e => setOpt('startMode', e.target.value);
     } else if (isOffice) {
       wireOfficeOptions(g);
     } else {

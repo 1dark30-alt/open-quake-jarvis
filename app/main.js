@@ -1272,7 +1272,7 @@ function owuiSettings() { return Object.assign({}, OWUI_DEFAULTS, (config.settin
 // Settings live on the lucidtype PAGE's own options (grid.options), like every other app — mic,
 // hotkeys and notifications are all per-page. Dictation runs in the background, so it reads the
 // lucidtype grid's options directly (not activeServedAppConfig, which is only the ACTIVE grid).
-const LUCIDTYPE_DEFAULTS = { micDevice: '', notifyColorChange: false, notifyBeep: false, switchOnDictate: true, dictationHotkey: '', applyHotkey: '', silenceMs: 800 };
+const LUCIDTYPE_DEFAULTS = { micDevice: '', notifyColorChange: false, notifyBeep: false, switchOnDictate: true, dictationHotkey: '', applyHotkey: '', silenceMs: 800, startMode: 'clear' };
 function lucidtypeGrid() { return (config.grids || []).find(x => x && x.kind === 'app' && x.app === 'lucidtype') || null; }
 function lucidtypeSettings() { const g = lucidtypeGrid(); return Object.assign({}, LUCIDTYPE_DEFAULTS, (g && g.options) || {}); }
 // STT/TTS endpoints for dictation: the lucidtype page's per-page override (Advanced settings) over the
@@ -1302,11 +1302,23 @@ async function lucidApply() {
   return { ok: true };
 }
 function onLucidEditRequest(text) { if (lucidDictation) lucidDictation.setTranscript(text); return { ok: true }; }
+// On-panel mic pick (Settings overlay): persist the label on the lucidtype page's options; applies on
+// the next dictation start (same store the editor's mic picker writes to).
+function onLucidSetMicRequest(label) {
+  const g = lucidtypeGrid();
+  if (!g) return { ok: false, error: 'no lucidtype page' };
+  if (!g.options) g.options = {};
+  g.options.micDevice = String(label == null ? '' : label);
+  saveConfig();
+  try { if (sysserver && sysserver.lucidBroadcast) sysserver.lucidBroadcast(lucidStateForPanel()); } catch (e) {}
+  return { ok: true };
+}
 // State-change hook: capture the paste target + optionally switch to the page on the idle->dictating
 // edge, and drive the tray recording indicator. (Tray swap + beep gating land with the settings/hotkey
 // step; the tray helper is a safe no-op until then.)
 let lucidWasDictating = false;
 function onLucidState(st) {
+  try { if (sysserver && sysserver.lucidBroadcast) sysserver.lucidBroadcast(lucidStateForPanel()); } catch (e) {}   // real-time push to the page (SSE)
   const now = !!(st && st.dictating);
   if (now && !lucidWasDictating) {
     try { lucidApplyFocusProc = desktopFocus.getCommittedProcess() || ''; } catch (e) { lucidApplyFocusProc = ''; }
@@ -2309,7 +2321,7 @@ app.whenReady().then(async () => {
       onMeetingLibrary: onMeetingLibraryRequest, resolveMeetingAudio: resolveMeetingAudioPath,
       onSlide: onSlideRequest,
       getLucidState: lucidStateForPanel, onLucidDictation: onLucidDictationRequest,
-      onLucidApply: lucidApply, onLucidEdit: onLucidEditRequest,
+      onLucidApply: lucidApply, onLucidEdit: onLucidEditRequest, onLucidSetMic: onLucidSetMicRequest,
       getShortcuts: keyboardShortcutsSnapshot,
       // Voice-panel app registry: each entry gets the full /<appId>/* route surface (see
       // sysserver.js). voiceToken gates the claude approval hook's /approval-request long-poll.
@@ -2434,7 +2446,7 @@ app.whenReady().then(async () => {
         try { w.loadURL('http://127.0.0.1:' + serverPort + '/lucidtype-dictate'); } catch (e) { console.log('[lucidtype] loadURL error: ' + e.message); }
         return w;
       },
-      resolveSettings: () => { const s = lucidtypeSettings(); return { micDevice: s.micDevice, silenceMs: s.silenceMs, notifyBeep: !!s.notifyBeep }; },
+      resolveSettings: () => { const s = lucidtypeSettings(); return { micDevice: s.micDevice, silenceMs: s.silenceMs, notifyBeep: !!s.notifyBeep, startMode: s.startMode }; },
       resolveEndpoints: () => lucidtypeVoiceEndpoints(),
       transcribe: async ({ host, port, audio }) => {
         const t = await lucidWyoming.transcribe({ host, port, audio, rate: 16000, width: 2, channels: 1, log: m => console.log('[lucidtype] ' + m) });

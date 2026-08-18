@@ -134,6 +134,13 @@ test('events route subscribes with SSE headers', async () => {
   assert.deepEqual(calls, [['subscribe']]);
 });
 
+test('lucidtype-events serves SSE headers (real-time dictation push)', async () => {
+  const r = await pageFetch('/lucidtype-events');
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /text\/event-stream/);
+  try { await r.body.cancel(); } catch (e) {}   // close the stream so the open subscriber doesn't linger
+});
+
 test('page and static assets are served with correct types', async () => {
   const page = await pageFetch('/claude-voice');
   assert.equal(page.status, 200);

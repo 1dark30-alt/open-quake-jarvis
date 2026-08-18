@@ -61,9 +61,9 @@ function createLucidDictation(deps) {
 
   function start() {
     if (dictating) return { ok: true, dictating: true };
-    transcript = '';                                   // each session owns the box fresh
-    dictating = true;
     const s = d.resolveSettings ? d.resolveSettings() : {};
+    if (s.startMode !== 'append') transcript = '';     // 'clear' (default): fresh box; 'append': keep + add to existing text
+    dictating = true;
     sendCmd({ type: 'start', micDevice: s.micDevice || '', silenceMs: s.silenceMs || 800, beep: !!s.notifyBeep });
     bump();
     log('dictation start');

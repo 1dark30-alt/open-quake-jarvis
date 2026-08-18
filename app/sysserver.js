@@ -88,7 +88,8 @@ let server = null, onMedia = null, onLaunch = null, getGridTiles = null, getAppC
 let getMeetingState = null, onMeetingRecord = null;   // meeting recorder: panel poller + start/stop/setMic remote
 let onMeetingLibrary = null, resolveMeetingAudio = null;   // recordings library + transcription/analysis remotes
 let onSlide = null;   // slide capture: window list / select / start / stop / manual remote
-let getLucidState = null, onLucidDictation = null, onLucidApply = null, onLucidEdit = null;   // LucidType dictation: panel poller + start/stop + apply + edit-sync
+let getLucidState = null, onLucidDictation = null, onLucidApply = null, onLucidEdit = null, onLucidSetMic = null;   // LucidType dictation: panel poller + start/stop + apply + edit-sync + on-panel mic pick
+const lucidSubscribers = new Set();   // open SSE responses for the LucidType page (pushed by main via lucidBroadcast)
 let musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK, slideHtml = FALLBACK, lucidtypeHtml = FALLBACK, lucidtypeDictateHtml = FALLBACK;
 // Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
 // Voice-panel app registry: appId (also the URL path prefix) -> { handlers, voiceToken, htmlFile,
@@ -656,7 +657,16 @@ async function handler(req, res) {
   if (url === '/meeting-state') {
     return json(res, typeof getMeetingState === 'function' ? getMeetingState() : { recording: false });
   }
-  // LucidType dictation: the panel page polls /lucidtype-state and drives start/stop/apply/edit here.
+  // LucidType dictation: the panel page subscribes to /lucidtype-events (SSE, real-time push) and
+  // falls back to polling /lucidtype-state; it drives start/stop/apply/edit here.
+  if (url === '/lucidtype-events') {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'Connection': 'keep-alive' });
+    res.write(': connected\n\n');
+    if (typeof getLucidState === 'function') { try { res.write('data: ' + JSON.stringify(getLucidState()) + '\n\n'); } catch (e) {} }   // fresh subscriber gets the current state at once
+    lucidSubscribers.add(res);
+    req.on('close', () => { lucidSubscribers.delete(res); });
+    return;
+  }
   if (url === '/lucidtype-state') {
     return json(res, typeof getLucidState === 'function' ? getLucidState() : { dictating: false, transcript: '', seq: 0 });
   }
@@ -672,6 +682,14 @@ async function handler(req, res) {
     let result = { ok: false, error: 'not wired' };
     if (typeof onLucidApply === 'function') {
       try { result = await onLucidApply(); } catch (e) { result = { ok: false, error: e.message || 'apply failed' }; }
+    }
+    return json(res, result);
+  }
+  if (url.indexOf('/lucidtype-set-mic/') === 0) {
+    const label = decodeURIComponent(url.slice('/lucidtype-set-mic/'.length));
+    let result = { ok: false, error: 'not wired' };
+    if (typeof onLucidSetMic === 'function') {
+      try { result = await onLucidSetMic(label); } catch (e) { result = { ok: false, error: e.message || 'set-mic failed' }; }
     }
     return json(res, result);
   }
@@ -795,6 +813,7 @@ function start(opts) {
   onLucidDictation = opts.onLucidDictation || null;
   onLucidApply = opts.onLucidApply || null;
   onLucidEdit = opts.onLucidEdit || null;
+  onLucidSetMic = opts.onLucidSetMic || null;
   onOfficeAction = opts.onOfficeAction || null;
   getShortcuts = opts.getShortcuts || null;
   voiceApps = {};
@@ -856,4 +875,11 @@ function stop() {
   officeCapabilityTtlMs = DEFAULT_OFFICE_CAPABILITY_TTL_MS;
 }
 
-module.exports = { start, stop, setActivePage, setAppFolders, issueOfficeCapability, clearOfficeCapability };
+// Push a LucidType state payload to every open /lucidtype-events subscriber (called by main on each
+// dictation state change). Dropped writes prune themselves from the set.
+function lucidBroadcast(payload) {
+  const line = 'data: ' + JSON.stringify(payload) + '\n\n';
+  for (const res of lucidSubscribers) { try { res.write(line); } catch (e) { lucidSubscribers.delete(res); } }
+}
+
+module.exports = { start, stop, setActivePage, setAppFolders, issueOfficeCapability, clearOfficeCapability, lucidBroadcast };
