@@ -61,12 +61,26 @@ It gives you:
   Filing options: per-date or **per-recurring-meeting folders**, a separate clean
   transcript, and a tidy `details\` layout. Multi-select queues and an on-panel notes
   reader included. → [Meeting](docs/meeting.md)
+- **LucidType dictation** — system-wide voice typing: press a **global hotkey**, speak, and
+  your words appear in an editable box on the panel; press apply and they paste at your **PC
+  cursor** — from any app, whether or not open-quake is focused. Optional one-tap **Cleanup**
+  (grammar + filler removal) and **Rewrite** (Professional / Concise / Confident / your own
+  prompt) run the text through your locally installed **Claude Code, Codex, or Copilot CLI**
+  or **Open WebUI** — no API key — or a direct **OpenAI-compatible endpoint**, and show a
+  full-screen **word-diff review** you can refine before applying. Uses the same
+  Wyoming/Whisper transcription server as the Meeting app.
 - **Theming** — a global **light / dark / system** mode and an **accent color** (with savable
   presets) that drives the panel, the bundled apps, and the knob's RGB ring; web dashboards
   follow the light/dark mode, and any page can override the theme in its Advanced settings.
   → [Settings](docs/settings.md)
 - **A PC-side editor** — build pages of tiles, merge adjacent tiles into larger buttons,
   drag-and-drop to rearrange, then **Save** to push to the panel. → [Editor](docs/editor.md)
+- **Three run modes** — run it however suits you: **Panel** drives the DK-QUAKE hardware,
+  **Software** is a normal resizable desktop window (no device required), and **Monitor** uses
+  the QUAKE as an ordinary extra monitor. A **first-run picker** asks which you want; switch
+  anytime from **Settings** or the tray's **Run mode** menu. Software mode makes every bundled
+  app — dictation, meeting notes, the agent panels — fully usable with no hardware at all.
+  → [Settings](docs/settings.md)
 - **Settings** — choose how it launches, **auto-rotate** through pages on a timer, toggle
   the mic, and tune the knob ring; plus a system-tray menu of quick toggles. → [Settings](docs/settings.md)
 - **Reserved Display (Windows, optional)** — keep ordinary application windows from
@@ -75,7 +89,8 @@ It gives you:
 
 > **Status:** early but capable. Touch, knob (incl. RGB ring + hold-to-talk), grids, merged
 > buttons, web dashboards, the bundled apps (clock / world clock / music / meeting / system
-> monitor / AI chat / Microsoft 365 / Claude Code / Codex / Copilot / Open WebUI Voice), light/dark + accent theming, the
+> monitor / AI chat / Microsoft 365 / Claude Code / Codex / Copilot / Open WebUI Voice / LucidType),
+> the three run modes (panel / software / monitor), light/dark + accent theming, the
 > on-board mic, and the editor are working and validated against real hardware. The panel is
 > driven as a normal external monitor (Windows sees a 480×1920 / 1920×480 display); pushing
 > frames over the HID resource channel is not implemented.
