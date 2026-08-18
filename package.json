@@ -1,6 +1,6 @@
 {
   "name": "open-quake",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "private": true,
   "description": "Open driver + multi-grid touchscreen launcher for the DK-QUAKE / ARIS-68 touchscreen-and-knob macro device.",
   "main": "app/main.js",
