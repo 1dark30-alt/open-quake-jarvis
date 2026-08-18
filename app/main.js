@@ -208,6 +208,18 @@ function appSettings() { return Object.assign({}, DEFAULT_SETTINGS, config.setti
 // Windows desktop). Unset defaults to 'panel' so existing installs are unchanged — only a fresh
 // install (firstRun) gets the welcome picker. Chosen at first run, changeable in Settings.
 function runMode() { return resolveRunMode(config.settings); }
+// Keep-display-awake: 'prevent-display-sleep' also stops the Windows screensaver, and there is no
+// per-display option — so honor it ONLY in Panel mode and ONLY when the user turns it on in Settings.
+// Off by default, so the OS screensaver works normally in Software/Monitor mode (and in Panel until opted in).
+let displayBlockerId = -1;
+function applyDisplayBlocker() {
+  const want = !!(config.settings && config.settings.keepDisplayAwake) && runMode() === 'panel';
+  try {
+    const active = displayBlockerId !== -1 && powerSaveBlocker.isStarted(displayBlockerId);
+    if (want && !active) displayBlockerId = powerSaveBlocker.start('prevent-display-sleep');
+    else if (!want && active) { powerSaveBlocker.stop(displayBlockerId); displayBlockerId = -1; }
+  } catch (e) {}
+}
 // ---- theme (global light/dark + accent, with per-card overrides) ----
 function themeGlobal() { return Object.assign({}, THEME_DEFAULT, (config.settings || {}).theme || {}); }
 function isValidHex(h) { return typeof h === 'string' && /^#[0-9a-fA-F]{6}$/.test(h); }
@@ -1818,6 +1830,7 @@ function applyRunModeLive() {
   if (old && !old.isDestroyed()) { try { old.destroy(); } catch (e) {} }
   placeUiForMode();
   refreshTray();
+  applyDisplayBlocker();   // leaving Panel releases the blocker; entering Panel re-applies it (if enabled)
   console.log('run mode switched live -> ' + runMode());
 }
 
@@ -2383,7 +2396,7 @@ app.whenReady().then(async () => {
   if (secretStore.available()) {
     if (needsMigration) saveConfig();                        // migrate plaintext/legacy config to current at-rest form
   } else if (needsMigration) console.log('secret encryption unavailable — refusing to rewrite config secrets');
-  try { powerSaveBlocker.start('prevent-display-sleep'); } catch (e) {}
+  applyDisplayBlocker();   // keep-display-awake only when enabled + in Panel mode; otherwise the screensaver works
   createTray();
   // SystemView: live local metrics server on 127.0.0.1 (OS-assigned port) + ensure the dashboard page.
   // Lazy-required so a metrics/load failure can never crash the rest of the app.
@@ -2782,6 +2795,7 @@ app.whenReady().then(async () => {
     if (!saveConfig()) { config = previousConfig; return { ok: false, error: 'secure persistence failed' }; }
     pushToPanel(); applyKnobSettings(); refreshTray(); applyRotationSettings(wasRot); applyFocusFollowSettings(); applyShortcuts(); applyTheme();
     reservedDisplay.setEnabled(reservedDisplayEnabled(appSettings()));   // stays off in software mode
+    applyDisplayBlocker();                                               // keep-display-awake: only Panel mode + when enabled
     configureHaSchedule();                                          // pick up any haAuth edits without a restart
     startMicMonitor();                                              // re-arm with any edited app allowlist
     if (meetingRecorder) meetingRecorder.setMic(meetingSettings().micDevice);   // push an edited mic to the recorder

@@ -2066,7 +2066,7 @@
   }
 
   // ---- settings page ----
-  const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false, reservedDisplay: false };
+  const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false, reservedDisplay: false, keepDisplayAwake: false };
   function appSettings() { return Object.assign({}, DEFAULT_SETTINGS, config.settings || {}); }
   function renderSettings() {
     ['tilegrid', 'mergebar', 'tileform', 'iconpane'].forEach(id => { const e = document.getElementById(id); if (e) e.innerHTML = ''; });
@@ -2187,6 +2187,10 @@
       <div class="row"><label>At launch</label>
         <input type="checkbox" id="sMic" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">enable the device mic when open-quake starts</span></div>
       <p class="hint">The mic LED and the mic audio are one hardware switch — the light is on whenever the mic is enabled, off when it isn't. Toggle it any time from the tray menu or a “System → mic” tile.</p>
+
+      <p class="sectitle" style="margin-top:22px">Display</p>
+      <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="sKeepAwake" ${s.keepDisplayAwake ? 'checked' : ''}> Keep the display awake while running (disables the screensaver) — Panel mode only</label></div>
+      <p class="hint">Panel mode only. Keeps the screen from sleeping and stops the Windows screensaver so the QUAKE panel stays lit. <b>Off by default</b> (and always off in Software/Monitor mode) so your normal screensaver works. Windows has no per-display option, so when on it suppresses the screensaver on all displays.</p>
 
       <p class="sectitle" style="margin-top:22px">Touchscreen</p>
       <p class="hint">If touches land on the wrong monitor, click <b>Set up touchscreen</b>. open-quake launches Windows' built-in touch-identify wizard (the one Microsoft buried behind the broken-in-24H2 Tablet PC Settings UI) — accept the UAC prompt, then <b>press Enter on your keyboard</b> to skip past your other monitors as the prompt cycles through them, and <b>tap the panel with your finger</b> only when the prompt appears on the panel. That writes a persistent binding under <code>HKLM\\…\\Wisp\\Pen\\Digimon</code> that survives reboot, sleep, and primary-display swaps.</p>
@@ -2710,6 +2714,8 @@
       dashReloadKeyClr.onclick = () => { const d = currentDashReload(); delete d.hotkey; dashReloadKey.value = ''; saveDashReload(d); };
 
     } else if (tab === 'hardware') {
+      const keepAwake = document.getElementById('sKeepAwake');
+      if (keepAwake) keepAwake.onchange = e => setS('keepDisplayAwake', e.target.checked);
       // Lighting writes go straight to the device (and persist in config) via the main process — no Save needed.
       const live = patch => { Object.assign(L, patch); if (!config.settings) config.settings = {}; config.settings.lighting = Object.assign({}, L); configApi.setLighting(patch); markDirty(); };
       const sOvr = document.getElementById('sLedOvr'), sColEl = document.getElementById('sColor');
