@@ -1,5 +1,12 @@
   const configApi = window.openQuakeConfig;
   const VOICE_APPS = ['claude-voice', 'codex-voice', 'copilot-voice', 'owui-voice'];   // apps with STT/TTS voice
+  // Mirrors DEFAULT_CLEANUP_PROMPT + REWRITE_PRESETS in lucidtypeAI.js — pre-filled in the editable prompt boxes.
+  const LT_DEFAULT_CLEANUP_PROMPT = "Fix the grammar, spelling, and punctuation in the user's text. Preserve the author's original wording, tone, and voice as much as possible. Remove filler words (uh, er, ah, um, mm, like when unnecessary), combine fragmented or run-on sentences into clear ones, and drop false starts and repeated words, while keeping the original meaning and voice. Output only the corrected text, with no preamble, quotes, or explanation.";
+  const LT_REWRITE_PRESETS = {
+    professional: "Rewrite the user's text in a clear, professional tone suitable for workplace communication. Fix grammar and punctuation, keep the original meaning, and avoid slang. Output only the rewritten text.",
+    concise: "Rewrite the user's text to be as concise as possible without losing meaning. Cut redundancy and filler; keep it clear and correct. Output only the rewritten text.",
+    confident: "Rewrite the user's text in a confident, direct, assertive tone. Remove hedging and qualifiers, fix grammar, and keep the original meaning. Output only the rewritten text.",
+  };
   let config = { activeGridId: null, grids: [] };
   let gi = 0, ti = -1, selEnd = -1, dragFrom = -1, dirty = false, appDefs = [], view = 'pages', ledState = null, settingsTab = 'software', dashTab = 'page';
   // Left sidebar tab (Pages vs Groups list) + which group is currently being edited when view='groups'.
@@ -1635,6 +1642,55 @@
         <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltColor" ${optVal(g, 'notifyColorChange', false) ? 'checked' : ''}> Turn the tray icon red while recording</label></div>
         <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltBeep" ${optVal(g, 'notifyBeep', false) ? 'checked' : ''}> Beep on dictation start/stop</label></div>
         <p class="hint">Transcription server is the global <b>Settings → TTS/STT</b>; override it for this page under <b>Advanced settings</b> below.</p>
+
+        <p class="sectitle" style="margin-top:18px">AI (Cleanup &amp; Rewrite)</p>
+        <div class="row"><label style="width:auto">Backend</label>
+          <select id="ltAiBackend" style="width:230px">
+            <option value="claude">Claude</option><option value="codex">Codex</option>
+            <option value="copilot">Copilot</option><option value="owui">Open WebUI</option>
+          </select></div>
+        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltUseEndpoint" ${optVal(g, 'useEndpoint', false) ? 'checked' : ''}> Use a direct OpenAI-compatible endpoint instead</label></div>
+        <div id="ltEndpointRows" style="display:${optVal(g, 'useEndpoint', false) ? '' : 'none'}">
+          <div class="row"><label>Endpoint URL</label><input id="ltEndpoint" value="${esc(optVal(g, 'endpoint', ''))}" placeholder="https://host/v1" style="flex:1"></div>
+          <div class="row"><label>API key</label><input id="ltEndpointKey" type="password" value="${esc(optVal(g, 'endpointKey', ''))}" placeholder="blank if none" style="flex:1"></div>
+        </div>
+        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltOverrideModel" ${optVal(g, 'overrideModel', false) ? 'checked' : ''}> Override model</label></div>
+        <div id="ltModelRow" style="display:${optVal(g, 'overrideModel', false) ? '' : 'none'}">
+          <div class="row"><label>Model</label><input id="ltModel" value="${esc(optVal(g, 'model', ''))}" placeholder="e.g. glm-4.7-flash" style="flex:1"></div>
+        </div>
+        <div class="row"><label>Timeout (ms)</label><input type="number" id="ltAiTimeout" min="1000" max="600000" step="1000" value="${esc(String(optVal(g, 'aiTimeoutMs', 30000)))}" style="width:120px"></div>
+        <p class="hint">Cleanup/Rewrite send the box text to this AI. By default the chosen integrated agent (Claude/Codex/Copilot need the CLI on PATH; Open WebUI uses the <b>Auth</b> tab connection). Tick <b>Use Endpoint</b> to POST to an OpenAI-compatible <code>/chat/completions</code> server directly (needs a model — tick Override model).</p>
+
+        <details class="advsec" style="margin-top:14px">
+          <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Cleanup — fix grammar / filler</summary>
+          <div class="row" style="margin-top:8px"><label style="width:auto">Hotkey</label>
+            <input id="ltCleanupKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'cleanupHotkey', ''))}" style="width:220px">
+            <button id="ltCleanupKeyClear" type="button" style="margin-left:8px">Clear</button></div>
+          <div class="row" style="margin-top:6px"><label style="width:auto">Prompt</label></div>
+          <textarea id="ltCleanupPrompt" rows="5" style="width:100%">${esc(optVal(g, 'cleanupPrompt', '') || LT_DEFAULT_CLEANUP_PROMPT)}</textarea>
+          <p class="hint">System prompt for Cleanup. Applies on Save.</p>
+        </details>
+
+        <details class="advsec" style="margin-top:10px">
+          <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Rewrite — restyle</summary>
+          <div class="row" style="margin-top:8px"><label style="width:auto">Hotkey</label>
+            <input id="ltRewriteKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'rewriteHotkey', ''))}" style="width:220px">
+            <button id="ltRewriteKeyClear" type="button" style="margin-left:8px">Clear</button></div>
+          <div class="row"><label style="width:auto">Default mode</label>
+            <select id="ltRewriteMode" style="width:200px">
+              <option value="professional">Professional</option><option value="concise">Concise</option>
+              <option value="confident">Confident</option><option value="custom">Custom</option>
+            </select></div>
+          <p class="hint" style="margin-top:6px">Edit any style's prompt (blank = built-in default). The <b>Default mode</b> is the live one; switch it any time from the panel's <b>Mode</b> button.</p>
+          <div class="row"><label style="width:auto">Professional</label></div>
+          <textarea id="ltRwProfessional" rows="3" style="width:100%">${esc(optVal(g, 'rewritePromptProfessional', '') || LT_REWRITE_PRESETS.professional)}</textarea>
+          <div class="row"><label style="width:auto">Concise</label></div>
+          <textarea id="ltRwConcise" rows="3" style="width:100%">${esc(optVal(g, 'rewritePromptConcise', '') || LT_REWRITE_PRESETS.concise)}</textarea>
+          <div class="row"><label style="width:auto">Confident</label></div>
+          <textarea id="ltRwConfident" rows="3" style="width:100%">${esc(optVal(g, 'rewritePromptConfident', '') || LT_REWRITE_PRESETS.confident)}</textarea>
+          <div class="row"><label style="width:auto">Custom</label></div>
+          <textarea id="ltRewriteCustom" rows="3" style="width:100%" placeholder="Used when mode = Custom">${esc(optVal(g, 'rewriteCustomPrompt', ''))}</textarea>
+        </details>
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
@@ -1791,6 +1847,32 @@
       document.getElementById('ltBeep').onchange = e => setOpt('notifyBeep', e.target.checked);
       document.getElementById('ltPause').onchange = e => { const v = Math.max(400, Math.min(2500, parseInt(e.target.value, 10) || 800)); e.target.value = v; setOpt('silenceMs', v); };
       document.getElementById('ltStartMode').onchange = e => setOpt('startMode', e.target.value);
+      // AI backend + endpoint/model reveals
+      const ltAiBackend = document.getElementById('ltAiBackend');
+      ltAiBackend.value = optVal(g, 'aiBackend', 'claude');
+      ltAiBackend.onchange = e => setOpt('aiBackend', e.target.value);
+      document.getElementById('ltUseEndpoint').onchange = e => { setOpt('useEndpoint', e.target.checked); document.getElementById('ltEndpointRows').style.display = e.target.checked ? '' : 'none'; };
+      document.getElementById('ltEndpoint').oninput = e => setOpt('endpoint', e.target.value.trim());
+      document.getElementById('ltEndpointKey').oninput = e => setOpt('endpointKey', e.target.value);
+      document.getElementById('ltOverrideModel').onchange = e => { setOpt('overrideModel', e.target.checked); document.getElementById('ltModelRow').style.display = e.target.checked ? '' : 'none'; };
+      document.getElementById('ltModel').oninput = e => setOpt('model', e.target.value.trim());
+      document.getElementById('ltAiTimeout').onchange = e => { const v = Math.max(1000, Math.min(600000, parseInt(e.target.value, 10) || 30000)); e.target.value = v; setOpt('aiTimeoutMs', v); };
+      // Cleanup section
+      const ltCleanupKey = document.getElementById('ltCleanupKey');
+      ltCleanupKey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { ltCleanupKey.value = acc; setOpt('cleanupHotkey', acc); } };
+      document.getElementById('ltCleanupKeyClear').onclick = () => { ltCleanupKey.value = ''; setOpt('cleanupHotkey', ''); };
+      document.getElementById('ltCleanupPrompt').oninput = e => setOpt('cleanupPrompt', e.target.value);
+      // Rewrite section
+      const ltRewriteKey = document.getElementById('ltRewriteKey');
+      ltRewriteKey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { ltRewriteKey.value = acc; setOpt('rewriteHotkey', acc); } };
+      document.getElementById('ltRewriteKeyClear').onclick = () => { ltRewriteKey.value = ''; setOpt('rewriteHotkey', ''); };
+      const ltRewriteMode = document.getElementById('ltRewriteMode');
+      ltRewriteMode.value = optVal(g, 'rewriteMode', 'professional');
+      ltRewriteMode.onchange = e => setOpt('rewriteMode', e.target.value);
+      document.getElementById('ltRwProfessional').oninput = e => setOpt('rewritePromptProfessional', e.target.value);
+      document.getElementById('ltRwConcise').oninput = e => setOpt('rewritePromptConcise', e.target.value);
+      document.getElementById('ltRwConfident').oninput = e => setOpt('rewritePromptConfident', e.target.value);
+      document.getElementById('ltRewriteCustom').oninput = e => setOpt('rewriteCustomPrompt', e.target.value);
     } else if (isOffice) {
       wireOfficeOptions(g);
     } else {

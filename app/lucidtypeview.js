@@ -33,6 +33,10 @@ text.addEventListener('input', function () {
   editTimer = setTimeout(flushEdit, 250);
 });
 
+// Start Dictating (fresh) / Stop; Append Text starts dictation WITHOUT clearing the box.
+$('btnDictate').addEventListener('click', function () { get(dictating ? '/lucidtype-dictation/stop' : '/lucidtype-dictation/start?mode=clear').then(pollState); });
+$('btnAppend').addEventListener('click', function () { if (!dictating) get('/lucidtype-dictation/start?mode=append').then(pollState); });
+
 // Clear Text (header) — wipe the box and sync the empty transcript to the host.
 $('btnClear').addEventListener('click', function () {
   text.value = '';
@@ -67,6 +71,72 @@ function fillMicPicker() {
 }
 $('ltOvlMic').addEventListener('change', function (e) { curMic = e.target.value; get('/lucidtype-set-mic/' + encodeURIComponent(e.target.value)); });
 
+// ---- Cleanup / Rewrite (Phase 2) ----
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function cap(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
+function postText(url, t) { return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ text: t }) }).then(function (r) { return r.json(); }).catch(function () { return null; }); }
+
+// word-level LCS diff — marks words the proposal REMOVED from the original (struck red in the Original pane).
+function wordDiff(orig, prop) {
+  var a = String(orig || '').split(/(\s+)/), b = String(prop || '').split(/(\s+)/);
+  var n = a.length, m = b.length, i, j;
+  var dp = []; for (i = 0; i <= n; i++) { dp.push(new Array(m + 1).fill(0)); }
+  for (i = n - 1; i >= 0; i--) for (j = m - 1; j >= 0; j--) dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  var out = ''; i = 0; j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out += esc(a[i]); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out += '<span class="del">' + esc(a[i]) + '</span>'; i++; }
+    else { j++; }
+  }
+  while (i < n) { out += '<span class="del">' + esc(a[i]) + '</span>'; i++; }
+  return out;
+}
+
+var reviewOvl = $('ltReviewOverlay'), modeOvl = $('ltModeOverlay'), revProp = $('revProp');
+var propDirty = false, lastRevStatus = '', showOrig = false, rewriteMode = 'professional', lastReview = { active: false };
+
+$('btnCleanup').addEventListener('click', function () { get('/lucidtype-cleanup'); });
+$('btnRewrite').addEventListener('click', function () { get('/lucidtype-rewrite'); });
+function openModePicker() { renderModePicker(); modeOvl.classList.remove('hidden'); }
+$('btnMode').addEventListener('click', openModePicker);
+$('modeText').addEventListener('click', openModePicker);   // the plain mode text is also a picker opener
+modeOvl.addEventListener('click', function (e) { if (e.target === modeOvl) modeOvl.classList.add('hidden'); });
+Array.prototype.forEach.call(modeOvl.querySelectorAll('.moderow'), function (row) {
+  row.addEventListener('click', function () { get('/lucidtype-set-mode/' + encodeURIComponent(row.getAttribute('data-mode'))); modeOvl.classList.add('hidden'); });
+});
+function renderModePicker() {
+  Array.prototype.forEach.call(modeOvl.querySelectorAll('.moderow'), function (row) { row.classList.toggle('on', row.getAttribute('data-mode') === rewriteMode); });
+}
+
+revProp.addEventListener('input', function () { propDirty = true; });
+$('revApply').addEventListener('click', function () { postText('/lucidtype-review/apply', revProp.value); });
+$('revRefine').addEventListener('click', function () { propDirty = false; postText('/lucidtype-review/refine', revProp.value); });
+$('revCancel').addEventListener('click', function () { get('/lucidtype-review/cancel'); });
+function scrollBoth(dy) { $('revOrig').scrollTop += dy; revProp.scrollTop += dy; }
+$('revUp').addEventListener('click', function () { scrollBoth(-80); });
+$('revDown').addEventListener('click', function () { scrollBoth(80); });
+
+// Header "Show Original" — flip between the review overlay and the plain original text in the box.
+$('btnShowOrig').addEventListener('click', function () { showOrig = !showOrig; renderReview(lastReview); });
+
+function renderReview(rev) {
+  lastReview = rev || { active: false };
+  var active = !!(rev && rev.active);
+  $('btnShowOrig').style.display = active ? '' : 'none';
+  if (!active) { reviewOvl.classList.add('hidden'); showOrig = false; propDirty = false; lastRevStatus = ''; $('btnShowOrig').textContent = 'Show Original'; return; }
+  $('btnShowOrig').textContent = showOrig ? 'Show Review' : 'Show Original';
+  reviewOvl.classList.toggle('hidden', showOrig);            // peeking at the original hides the overlay
+  $('revTitle').textContent = rev.kind === 'rewrite' ? 'Review — Rewrite (' + cap(rev.mode || rewriteMode) + ')' : 'Review — Cleanup';
+  var working = rev.status === 'working', err = rev.status === 'error';
+  $('revApply').disabled = working || err;
+  $('revRefine').disabled = working;
+  revProp.disabled = working;
+  if (working) { $('revOrig').innerHTML = esc(rev.original); if (!propDirty) revProp.value = 'Working…'; }
+  else if (err) { $('revOrig').innerHTML = esc(rev.original); revProp.value = 'Error: ' + (rev.error || 'failed'); }
+  else { $('revOrig').innerHTML = wordDiff(rev.original, rev.proposed); if (lastRevStatus !== 'ready' && !propDirty) revProp.value = rev.proposed || ''; }
+  lastRevStatus = rev.status;
+}
+
 function applyState(st) {
   if (!st) return;
   var wasDictating = dictating;
@@ -81,7 +151,14 @@ function applyState(st) {
   }
 
   curMic = st.mic || '';   // remember for the settings picker's current selection
-  $('status').textContent = dictating ? 'Listening…' : '';
+  rewriteMode = st.rewriteMode || 'professional';
+  $('modeText').textContent = cap(rewriteMode);
+  renderReview(st.review);
+  var bd = $('btnDictate');
+  bd.textContent = dictating ? 'Stop Dictating' : 'Start Dictating';
+  bd.classList.toggle('rec', dictating);
+  $('btnAppend').disabled = dictating;   // append only makes sense when idle
+  // (no "Listening…"/"Thinking…" header text — the DICTATING indicator + review overlay convey state)
 }
 
 function pollState() { return get('/lucidtype-state').then(applyState); }

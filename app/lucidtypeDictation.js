@@ -25,8 +25,10 @@ function createLucidDictation(deps) {
   let transcript = '';
   let seq = 0;
   let pending = 0;   // in-flight transcriptions — lets us hold "stop" as busy until the tail settles
+  // Cleanup/Rewrite review (Phase 2): the AI's proposed text awaiting the user's Apply/Cancel/Refine.
+  let review = { active: false, kind: '', original: '', proposed: '', status: '', error: '', mode: '' };   // status: working|ready|error
 
-  function state() { return { dictating, transcript, seq, pending }; }
+  function state() { return { dictating, transcript, seq, pending, review: Object.assign({}, review) }; }
   function notify() { try { if (d.onState) d.onState(state()); } catch (e) {} }
   function bump() { seq = (seq + 1) % 2147483647; notify(); }
 
@@ -59,10 +61,11 @@ function createLucidDictation(deps) {
     }
   }
 
-  function start() {
+  function start(modeOverride) {
     if (dictating) return { ok: true, dictating: true };
     const s = d.resolveSettings ? d.resolveSettings() : {};
-    if (s.startMode !== 'append') transcript = '';     // 'clear' (default): fresh box; 'append': keep + add to existing text
+    const mode = modeOverride || s.startMode;            // buttons pass 'clear'/'append' explicitly; the hotkey uses the setting
+    if (mode !== 'append') transcript = '';              // 'clear' (default): fresh box; 'append': keep + add to existing text
     dictating = true;
     sendCmd({ type: 'start', micDevice: s.micDevice || '', silenceMs: s.silenceMs || 800, beep: !!s.notifyBeep });
     bump();
@@ -85,7 +88,60 @@ function createLucidDictation(deps) {
   function setTranscript(text) { transcript = String(text == null ? '' : text); return { ok: true }; }
   function currentText() { return transcript; }
 
-  return { ensureWindow, onUtterance, start, stop, toggle, state, setTranscript, currentText, isDictating: () => dictating };
+  // ---- Cleanup / Rewrite (Phase 2) ----
+  // Source is the box text; if the box is empty, pull the clipboard (if it holds text) into the box and
+  // use that. Sends to the AI (deps.transform) and opens a review with the proposed result.
+  async function runTransform(kind) {
+    if (review.active) return { ok: false, error: 'a review is already open' };
+    let src = transcript;
+    if (!src.trim() && d.readClipboard) {
+      const clip = String(d.readClipboard() || '');
+      if (clip.trim()) { transcript = clip; src = clip; bump(); }   // adopt clipboard text into the box
+    }
+    if (!src.trim()) return { ok: false, error: 'nothing to ' + kind + ' — the box and clipboard are empty' };
+    const mode = kind === 'rewrite' ? ((d.resolveSettings ? d.resolveSettings().rewriteMode : '') || 'professional') : '';
+    review = { active: true, kind, original: src, proposed: '', status: 'working', error: '', mode };
+    bump();
+    try {
+      const out = await d.transform({ kind, mode, text: src });
+      if (!review.active) return { ok: false };                     // cancelled while the AI ran
+      review.proposed = String(out || ''); review.status = 'ready'; bump();
+      return { ok: true };
+    } catch (e) {
+      review.status = 'error'; review.error = e.message || String(e); bump();
+      return { ok: false, error: review.error };
+    }
+  }
+  function runCleanup() { return runTransform('cleanup'); }
+  function runRewrite() { return runTransform('rewrite'); }
+  // Re-run the transform on the user's edited proposal (the "Refine" button).
+  async function refineReview(editedProposed) {
+    if (!review.active) return { ok: false, error: 'no review open' };
+    const text = String(editedProposed != null ? editedProposed : review.proposed);
+    review.proposed = text; review.status = 'working'; bump();
+    try {
+      const out = await d.transform({ kind: review.kind, mode: review.mode, text });
+      if (!review.active) return { ok: false };
+      review.proposed = String(out || ''); review.status = 'ready'; bump();
+      return { ok: true };
+    } catch (e) { review.status = 'error'; review.error = e.message || String(e); bump(); return { ok: false, error: review.error }; }
+  }
+  // Accept the (possibly edited) proposal into the box, then the Apply-text hotkey pastes it as usual.
+  function applyReview(editedProposed) {
+    if (!review.active) return { ok: false, error: 'no review open' };
+    transcript = String(editedProposed != null ? editedProposed : review.proposed);
+    review = { active: false, kind: '', original: '', proposed: '', status: '', error: '', mode: '' };
+    bump();
+    return { ok: true };
+  }
+  function cancelReview() {
+    review = { active: false, kind: '', original: '', proposed: '', status: '', error: '', mode: '' };
+    bump();
+    return { ok: true };
+  }
+
+  return { ensureWindow, onUtterance, start, stop, toggle, state, setTranscript, currentText, isDictating: () => dictating,
+    runCleanup, runRewrite, refineReview, applyReview, cancelReview };
 }
 
 module.exports = { createLucidDictation };

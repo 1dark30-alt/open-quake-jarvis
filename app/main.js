@@ -52,6 +52,8 @@ const { createMeetingRecorder } = require('./meetingRecorder'); // hidden-window
 const { createSlideCapture } = require('./slideCapture');       // hidden-window slide capture (getDisplayMedia -> screenshots)
 const { createLucidDictation } = require('./lucidtypeDictation'); // hidden-window LucidType dictation (mic + VAD -> Wyoming STT -> text)
 const lucidWyoming = require('./claudevoice-wyoming');          // Wyoming STT client (transcribe) for dictation
+const lucidAImod = require('./lucidtypeAI');                    // LucidType cleanup/rewrite AI routing (agents / OWUI / direct endpoint)
+const lucidAI = lucidAImod.createLucidAI({ log: msg => console.log('[lucidtype-ai] ' + msg) });
 const { enableLoopbackAudioCapture } = require('./loopback-audio'); // system-audio loopback display-media handler (recorder session only)
 const desktopFocus = require('./desktopFocus');   // tracks the PC's OS-level foreground app; auto-switches the panel to a mapped page
 const ahk = require('./ahk');                  // macro "ahk" step backend (shells out to an installed AutoHotkey.exe)
@@ -1272,21 +1274,68 @@ function owuiSettings() { return Object.assign({}, OWUI_DEFAULTS, (config.settin
 // Settings live on the lucidtype PAGE's own options (grid.options), like every other app — mic,
 // hotkeys and notifications are all per-page. Dictation runs in the background, so it reads the
 // lucidtype grid's options directly (not activeServedAppConfig, which is only the ACTIVE grid).
-const LUCIDTYPE_DEFAULTS = { micDevice: '', notifyColorChange: false, notifyBeep: false, switchOnDictate: true, dictationHotkey: '', applyHotkey: '', silenceMs: 800, startMode: 'clear' };
+const LUCIDTYPE_DEFAULTS = { micDevice: '', notifyColorChange: false, notifyBeep: false, switchOnDictate: true, dictationHotkey: '', applyHotkey: '', silenceMs: 800, startMode: 'clear',
+  // Phase 2 — cleanup/rewrite AI
+  aiBackend: 'claude', useEndpoint: false, endpoint: '', endpointKey: '', overrideModel: false, model: '', aiTimeoutMs: 30000,
+  cleanupHotkey: '', cleanupPrompt: '', rewriteHotkey: '', rewriteMode: 'professional', rewriteCustomPrompt: '',
+  rewritePromptProfessional: '', rewritePromptConcise: '', rewritePromptConfident: '' };
 function lucidtypeGrid() { return (config.grids || []).find(x => x && x.kind === 'app' && x.app === 'lucidtype') || null; }
 function lucidtypeSettings() { const g = lucidtypeGrid(); return Object.assign({}, LUCIDTYPE_DEFAULTS, (g && g.options) || {}); }
 // STT/TTS endpoints for dictation: the lucidtype page's per-page override (Advanced settings) over the
 // global config.settings.voice.
 function lucidtypeVoiceEndpoints() { return voiceConfig.resolveLucidEndpoints(config.settings, config.grids); }
-// Panel poller payload: dictation state + the resolved STT endpoint + mic label (for the rail).
+// Panel poller/SSE payload: dictation state + review state + the resolved STT endpoint + mic label.
 function lucidStateForPanel() {
-  const st = lucidDictation ? lucidDictation.state() : { dictating: false, transcript: '', seq: 0 };
+  const st = lucidDictation ? lucidDictation.state() : { dictating: false, transcript: '', seq: 0, review: { active: false } };
   const ep = lucidtypeVoiceEndpoints();
-  return { dictating: !!st.dictating, transcript: st.transcript || '', seq: st.seq || 0, sttHost: ep.sttHost, sttPort: ep.sttPort, mic: lucidtypeSettings().micDevice || '' };
+  const s = lucidtypeSettings();
+  return { dictating: !!st.dictating, transcript: st.transcript || '', seq: st.seq || 0,
+    review: st.review || { active: false }, rewriteMode: s.rewriteMode || 'professional',
+    sttHost: ep.sttHost, sttPort: ep.sttPort, mic: s.micDevice || '' };
 }
-function onLucidDictationRequest(cmd) {
+// Cleanup/Rewrite (Phase 2): kick off the transform, or drive the open review (apply/refine/cancel),
+// or set the default rewrite mode from the panel's mode picker.
+function onLucidCleanupRequest() { return lucidDictation ? lucidDictation.runCleanup() : { ok: false, error: 'not ready' }; }
+function onLucidRewriteRequest() { return lucidDictation ? lucidDictation.runRewrite() : { ok: false, error: 'not ready' }; }
+function onLucidReviewRequest(op, text) {
   if (!lucidDictation) return { ok: false, error: 'not ready' };
-  if (cmd === 'start') return lucidDictation.start();
+  if (op === 'apply') return lucidDictation.applyReview(text);
+  if (op === 'refine') return lucidDictation.refineReview(text);
+  if (op === 'cancel') return lucidDictation.cancelReview();
+  return { ok: false, error: 'unknown review op' };
+}
+function onLucidSetModeRequest(mode) {
+  const m = ['professional', 'concise', 'confident', 'custom'].includes(mode) ? mode : 'professional';
+  const g = lucidtypeGrid();
+  if (!g) return { ok: false, error: 'no lucidtype page' };
+  if (!g.options) g.options = {};
+  g.options.rewriteMode = m;
+  saveConfig();
+  try { if (sysserver && sysserver.lucidBroadcast) sysserver.lucidBroadcast(lucidStateForPanel()); } catch (e) {}
+  return { ok: true };
+}
+// Resolve the system prompt + backend options for a cleanup/rewrite call (injected into the controller).
+// Rewrite prompt for a mode: the user's edited prompt for that style if set, else the built-in preset
+// (custom falls back to the professional preset if the custom box is empty).
+function lucidRewritePrompt(mode, s) {
+  if (mode === 'custom') return String(s.rewriteCustomPrompt || '').trim() || lucidAImod.REWRITE_PRESETS.professional;
+  const key = 'rewritePrompt' + mode.charAt(0).toUpperCase() + mode.slice(1);
+  return String(s[key] || '').trim() || lucidAImod.REWRITE_PRESETS[mode] || lucidAImod.REWRITE_PRESETS.professional;
+}
+function lucidRunTransform({ kind, mode, text }) {
+  const s = lucidtypeSettings();
+  const systemPrompt = kind === 'rewrite'
+    ? lucidRewritePrompt(mode, s)
+    : (String(s.cleanupPrompt || '').trim() || lucidAImod.DEFAULT_CLEANUP_PROMPT);
+  return lucidAI.transform(systemPrompt, text, {
+    useEndpoint: !!s.useEndpoint, endpoint: s.endpoint, endpointKey: s.endpointKey,
+    backend: s.aiBackend, model: (s.overrideModel || s.useEndpoint) ? String(s.model || '') : '',
+    timeoutMs: Number(s.aiTimeoutMs) || 30000, owui: owuiSettings(),
+  });
+}
+function onLucidDictationRequest(cmd, mode) {
+  if (!lucidDictation) return { ok: false, error: 'not ready' };
+  if (cmd === 'start') return lucidDictation.start(mode === 'append' || mode === 'clear' ? mode : '');
   if (cmd === 'stop') return lucidDictation.stop();
   return { ok: false, error: 'unknown command' };
 }
@@ -2059,6 +2108,24 @@ function applyShortcuts() {
       if (!ok) console.log('shortcut already in use, not registered:', lt.applyHotkey, '-> lucidtype apply');
     } catch (e) { console.log('shortcut register error:', lt.applyHotkey, '-', e.message); }
   }
+  if (lt.cleanupHotkey) {
+    try {
+      const ok = globalShortcut.register(lt.cleanupHotkey, () => {
+        if (process.platform === 'win32') modifiersInAccelerator(lt.cleanupHotkey).forEach(m => mediaKeys.keyUp(m));
+        if (lucidDictation) lucidDictation.runCleanup();
+      });
+      if (!ok) console.log('shortcut already in use, not registered:', lt.cleanupHotkey, '-> lucidtype cleanup');
+    } catch (e) { console.log('shortcut register error:', lt.cleanupHotkey, '-', e.message); }
+  }
+  if (lt.rewriteHotkey) {
+    try {
+      const ok = globalShortcut.register(lt.rewriteHotkey, () => {
+        if (process.platform === 'win32') modifiersInAccelerator(lt.rewriteHotkey).forEach(m => mediaKeys.keyUp(m));
+        if (lucidDictation) lucidDictation.runRewrite();
+      });
+      if (!ok) console.log('shortcut already in use, not registered:', lt.rewriteHotkey, '-> lucidtype rewrite');
+    } catch (e) { console.log('shortcut register error:', lt.rewriteHotkey, '-', e.message); }
+  }
   registerSlideHotkeys();   // last, after the unregisterAll above, so a settings change re-arms them
 }
 // Slide-capture global hotkeys (toggle capture / select window / manual capture). Registered as part
@@ -2322,6 +2389,8 @@ app.whenReady().then(async () => {
       onSlide: onSlideRequest,
       getLucidState: lucidStateForPanel, onLucidDictation: onLucidDictationRequest,
       onLucidApply: lucidApply, onLucidEdit: onLucidEditRequest, onLucidSetMic: onLucidSetMicRequest,
+      onLucidCleanup: onLucidCleanupRequest, onLucidRewrite: onLucidRewriteRequest,
+      onLucidReview: onLucidReviewRequest, onLucidSetMode: onLucidSetModeRequest,
       getShortcuts: keyboardShortcutsSnapshot,
       // Voice-panel app registry: each entry gets the full /<appId>/* route surface (see
       // sysserver.js). voiceToken gates the claude approval hook's /approval-request long-poll.
@@ -2446,12 +2515,14 @@ app.whenReady().then(async () => {
         try { w.loadURL('http://127.0.0.1:' + serverPort + '/lucidtype-dictate'); } catch (e) { console.log('[lucidtype] loadURL error: ' + e.message); }
         return w;
       },
-      resolveSettings: () => { const s = lucidtypeSettings(); return { micDevice: s.micDevice, silenceMs: s.silenceMs, notifyBeep: !!s.notifyBeep, startMode: s.startMode }; },
+      resolveSettings: () => { const s = lucidtypeSettings(); return { micDevice: s.micDevice, silenceMs: s.silenceMs, notifyBeep: !!s.notifyBeep, startMode: s.startMode, rewriteMode: s.rewriteMode }; },
       resolveEndpoints: () => lucidtypeVoiceEndpoints(),
       transcribe: async ({ host, port, audio }) => {
         const t = await lucidWyoming.transcribe({ host, port, audio, rate: 16000, width: 2, channels: 1, log: m => console.log('[lucidtype] ' + m) });
         return voiceConfig.isSttNoisePhrase(t) ? '' : t;
       },
+      transform: lucidRunTransform,                                    // cleanup/rewrite AI (Phase 2)
+      readClipboard: () => { try { return clipboard.readText(); } catch (e) { return ''; } },
       onState: onLucidState,
       log: msg => console.log('[lucidtype] ' + msg),
     });

@@ -21,27 +21,32 @@
   .press:active { transform:scale(.96); filter:brightness(1.12); }
 
   #wrap { display:flex; flex-direction:column; width:100vw; height:100vh; padding:22px; gap:14px; }
+  #actions:empty { display:none; }   /* reserved strip adds no gap while empty, so the text box keeps its height */
 
-  /* ---- header ---- */
-  #topbar { flex:0 0 auto; display:flex; align-items:center; gap:20px; min-height:48px; }
+  /* ---- header ---- (the whole top row is 56px tall — the text box below keeps all remaining height) */
+  #topbar { flex:0 0 auto; display:flex; align-items:center; gap:16px; min-height:56px; }
   #title { font-size:26px; font-weight:800; letter-spacing:.5px; }
   #title .accent { color:var(--accent); }
   #status { font-size:16px; color:var(--dim); font-weight:600; }
   #spacer { flex:1; }
   /* recording indicator — upper right */
   #recHost { display:flex; align-items:center; }
-  #recIdle { display:flex; align-items:center; gap:12px; height:44px; padding:0 20px; border-radius:11px;
-    background:var(--surf); color:var(--dim); font-size:16px; font-weight:700; }
-  #recIdle .dot { width:12px; height:12px; border-radius:50%; background:var(--dim); }
-  #recLive { display:none; align-items:center; gap:14px; height:44px; padding:0 20px; border-radius:11px; background:var(--danger-tint); }
-  #recLive .dot { width:13px; height:13px; border-radius:50%; background:var(--danger); animation:pulse 1.4s infinite; }
-  #recLive .txt { font-size:16px; font-weight:800; color:var(--danger); letter-spacing:.5px; }
+  #recIdle { display:flex; align-items:center; gap:12px; height:52px; padding:0 22px; border-radius:12px;
+    background:var(--surf); color:var(--dim); font-size:18px; font-weight:700; }
+  #recIdle .dot { width:13px; height:13px; border-radius:50%; background:var(--dim); }
+  #recLive { display:none; align-items:center; gap:14px; height:52px; padding:0 22px; border-radius:12px; background:var(--danger-tint); }
+  #recLive .dot { width:14px; height:14px; border-radius:50%; background:var(--danger); animation:pulse 1.4s infinite; }
+  #recLive .txt { font-size:18px; font-weight:800; color:var(--danger); letter-spacing:.5px; }
   body.dictating #recIdle { display:none; }
   body.dictating #recLive { display:flex; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
 
-  /* Clear Text button (header, right of the logo) */
-  #btnClear { height:40px; padding:0 18px; border-radius:10px; background:var(--surf); color:var(--fg); font-size:15px; font-weight:700; }
+  /* header buttons (right of the logo) — filled to the header height for readability */
+  #btnClear, #btnShowOrig, #btnDictate, #btnAppend { height:52px; padding:0 24px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:19px; font-weight:700; }
+  #btnShowOrig { display:none; background:var(--accent); color:var(--accent-fg,#04121f); }
+  #btnDictate { background:var(--accent); color:var(--accent-fg,#04121f); }        /* Start Dictating (green) */
+  #btnDictate.rec { background:var(--danger); color:#1a0505; }                     /* Stop Dictating (red) while active */
+  #btnAppend:disabled { opacity:.4; }
 
   /* ---- reserved strip above the text (future buttons; empty in Phase 1) ---- */
   #actions:not(:empty) { flex:0 0 auto; display:flex; gap:12px; align-items:center; }
@@ -53,12 +58,37 @@
     color:var(--fg); font-size:26px; line-height:1.4; padding:16px 18px; }
   #text::placeholder { color:var(--dim); }
 
-  /* right box: a bottom-anchored button stack (future buttons will stack above Mode/Settings) */
+  /* right box: a top-anchored button stack */
   #rail { flex:0 0 240px; background:var(--surf2); border-radius:18px; padding:16px; display:flex;
-    flex-direction:column; justify-content:flex-end; gap:12px; }
-  .railbtn { min-height:62px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:18px;
-    font-weight:700; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; }
-  .railbtn .sub { font-size:12px; font-weight:600; color:var(--dim); }
+    flex-direction:column; justify-content:flex-start; gap:12px; }
+  .railbtn { min-height:64px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:22px;
+    font-weight:800; display:flex; align-items:center; justify-content:center; }
+  .railbtn.accent { background:var(--accent); color:var(--accent-fg,#04121f); }
+  /* current rewrite mode — plain text under Select Mode */
+  #modeText { text-align:center; font-size:26px; font-weight:800; color:var(--accent); padding:6px 0 2px; cursor:pointer; }
+
+  /* review overlay (Cleanup / Rewrite) — full-screen, opaque; needs the room for big paragraphs */
+  #ltReviewOverlay { background:var(--bg); }
+  .revcard { width:100%; height:100%; max-height:100%; background:var(--surf2); border:none; border-radius:0; padding:22px 24px; display:flex; flex-direction:column; }
+  .revtitle { font-size:20px; font-weight:800; margin-bottom:14px; }
+  .revcols { display:flex; gap:16px; flex:1; min-height:0; }
+  .revcol { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .revlabel { font-size:12px; font-weight:800; letter-spacing:1px; color:var(--dim); margin-bottom:6px; }
+  .revpane { flex:1; min-height:150px; background:var(--surf); border-radius:12px; padding:16px 18px;
+    font-size:20px; line-height:1.4; overflow-y:auto; white-space:pre-wrap; word-break:break-word; }
+  textarea.revpane { border:1px solid var(--accent); outline:none; color:var(--fg); resize:none; }
+  .revpane .del { color:var(--danger); text-decoration:line-through; }
+  .revactions { display:flex; justify-content:space-between; align-items:center; margin-top:16px; }
+  .revbtns { display:flex; gap:12px; }
+  .ovlbtn2 { min-height:48px; min-width:96px; border-radius:11px; background:var(--surf); color:var(--fg); font-size:16px; font-weight:800; }
+  .revscroll .ovlbtn2 { min-width:78px; font-size:20px; }
+
+  /* rewrite mode picker */
+  .moderow { min-height:60px; display:flex; align-items:center; padding:0 20px; border-radius:12px; background:var(--surf);
+    font-size:19px; font-weight:700; margin-bottom:12px; cursor:pointer; }
+  .moderow.on { background:var(--accent); color:var(--accent-fg,#04121f); }
+  .moderow .rd { width:18px; height:18px; border-radius:50%; border:2px solid var(--dim); margin-right:16px; flex:none; }
+  .moderow.on .rd { border-color:var(--accent-fg,#04121f); background:radial-gradient(circle, var(--accent-fg,#04121f) 42%, transparent 46%); }
 
   /* settings overlay — opened from the Settings button, like the voice apps */
   .ovl { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:30; }
@@ -77,7 +107,10 @@
   <div id="wrap">
     <div id="topbar">
       <div id="title">Lucid<span class="accent">Type</span></div>
+      <button id="btnDictate" class="press">Start Dictating</button>
+      <button id="btnAppend" class="press">Append Text</button>
       <button id="btnClear" class="press">Clear Text</button>
+      <button id="btnShowOrig" class="press">Show Original</button>
       <div id="status"></div>
       <div id="spacer"></div>
       <div id="recHost">
@@ -95,10 +128,36 @@
         <textarea id="text" placeholder="Press your dictation hotkey and speak — your words appear here. Edit freely, then press your apply hotkey to paste at your cursor."></textarea>
       </div>
       <div id="rail">
-        <!-- future buttons stack here, above Mode -->
-        <button id="btnMode" class="railbtn press" title="Cleanup &amp; rewrite modes arrive in Phase 2">Mode<span class="sub">Raw dictation</span></button>
         <button id="btnSettings" class="railbtn press">Settings</button>
+        <button id="btnCleanup" class="railbtn accent press">Cleanup</button>
+        <button id="btnRewrite" class="railbtn accent press">Rewrite</button>
+        <button id="btnMode" class="railbtn press">Select Mode</button>
+        <div id="modeText">Professional</div>
       </div>
+    </div>
+  </div>
+
+  <div id="ltReviewOverlay" class="ovl hidden">
+    <div class="revcard">
+      <div class="revtitle" id="revTitle">Review</div>
+      <div class="revcols">
+        <div class="revcol"><div class="revlabel">ORIGINAL</div><div class="revpane" id="revOrig"></div></div>
+        <div class="revcol"><div class="revlabel">PROPOSED (editable)</div><textarea class="revpane" id="revProp"></textarea></div>
+      </div>
+      <div class="revactions">
+        <div class="revscroll" style="display:flex;gap:12px"><button id="revUp" class="ovlbtn2 press">▲</button><button id="revDown" class="ovlbtn2 press">▼</button></div>
+        <div class="revbtns"><button id="revRefine" class="ovlbtn2 press">Refine</button><button id="revCancel" class="ovlbtn2 press">Cancel</button><button id="revApply" class="ovlbtn press">Apply</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="ltModeOverlay" class="ovl hidden">
+    <div class="ovlcard">
+      <div class="ovltitle">Rewrite mode</div>
+      <div class="moderow" data-mode="professional"><span class="rd"></span>Professional</div>
+      <div class="moderow" data-mode="concise"><span class="rd"></span>Concise</div>
+      <div class="moderow" data-mode="confident"><span class="rd"></span>Confident</div>
+      <div class="moderow" data-mode="custom"><span class="rd"></span>Custom</div>
     </div>
   </div>
 

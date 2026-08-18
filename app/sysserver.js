@@ -89,6 +89,7 @@ let getMeetingState = null, onMeetingRecord = null;   // meeting recorder: panel
 let onMeetingLibrary = null, resolveMeetingAudio = null;   // recordings library + transcription/analysis remotes
 let onSlide = null;   // slide capture: window list / select / start / stop / manual remote
 let getLucidState = null, onLucidDictation = null, onLucidApply = null, onLucidEdit = null, onLucidSetMic = null;   // LucidType dictation: panel poller + start/stop + apply + edit-sync + on-panel mic pick
+let onLucidCleanup = null, onLucidRewrite = null, onLucidReview = null, onLucidSetMode = null;   // LucidType cleanup/rewrite (Phase 2): run + review apply/refine/cancel + rewrite-mode pick
 const lucidSubscribers = new Set();   // open SSE responses for the LucidType page (pushed by main via lucidBroadcast)
 let musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK, slideHtml = FALLBACK, lucidtypeHtml = FALLBACK, lucidtypeDictateHtml = FALLBACK;
 // Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
@@ -470,7 +471,7 @@ async function handler(req, res) {
   const voiceApp = voiceApps[url.split('/')[1]] || null;
   const voicePath = voiceApp ? (url.slice(url.split('/')[1].length + 1) || '/') : null;
   const isAllowedPost = (req.method === 'POST' && voiceApp && (VOICE_POST_SUFFIXES.has(voicePath) || voicePath === '/approval-request'))
-    || (req.method === 'POST' && url === '/lucidtype-edit');   // LucidType edit-sync (same-origin gated below)
+    || (req.method === 'POST' && (url === '/lucidtype-edit' || url === '/lucidtype-review/apply' || url === '/lucidtype-review/refine'));   // LucidType edit-sync + review apply/refine (same-origin gated below)
   if (req.method !== 'GET' && !isAllowedPost) { res.writeHead(405); res.end(); return; }
   if (url === '/' || url === '/index.html') return html(res, RETIRED_HTML);   // retired SystemView page
   if (url === '/music') return html(res, musicHtml);
@@ -672,9 +673,10 @@ async function handler(req, res) {
   }
   if (url === '/lucidtype-dictation/start' || url === '/lucidtype-dictation/stop') {
     const cmd = url.endsWith('/start') ? 'start' : 'stop';
+    const mode = new URL(full, 'http://local').searchParams.get('mode') || '';   // clear | append (start only)
     let result = { ok: false, error: 'not wired' };
     if (typeof onLucidDictation === 'function') {
-      try { result = await onLucidDictation(cmd); } catch (e) { result = { ok: false, error: e.message || 'dictation command failed' }; }
+      try { result = await onLucidDictation(cmd, mode); } catch (e) { result = { ok: false, error: e.message || 'dictation command failed' }; }
     }
     return json(res, result);
   }
@@ -699,6 +701,33 @@ async function handler(req, res) {
     if (typeof onLucidEdit === 'function') {
       try { result = await onLucidEdit(body && typeof body.text === 'string' ? body.text : ''); } catch (e) { result = { ok: false, error: e.message }; }
     }
+    return json(res, result);
+  }
+  // Cleanup / Rewrite (Phase 2): kick off the transform (opens a review), then apply/refine/cancel it.
+  if (url === '/lucidtype-cleanup' || url === '/lucidtype-rewrite') {
+    const fn = url.endsWith('cleanup') ? onLucidCleanup : onLucidRewrite;
+    let result = { ok: false, error: 'not wired' };
+    if (typeof fn === 'function') { try { result = await fn(); } catch (e) { result = { ok: false, error: e.message }; } }
+    return json(res, result);
+  }
+  if (url === '/lucidtype-review/apply' || url === '/lucidtype-review/refine') {
+    const op = url.endsWith('apply') ? 'apply' : 'refine';
+    const body = await readJsonBody(req).catch(() => null);
+    let result = { ok: false, error: 'not wired' };
+    if (typeof onLucidReview === 'function') {
+      try { result = await onLucidReview(op, body && typeof body.text === 'string' ? body.text : undefined); } catch (e) { result = { ok: false, error: e.message }; }
+    }
+    return json(res, result);
+  }
+  if (url === '/lucidtype-review/cancel') {
+    let result = { ok: false, error: 'not wired' };
+    if (typeof onLucidReview === 'function') { try { result = await onLucidReview('cancel'); } catch (e) { result = { ok: false, error: e.message }; } }
+    return json(res, result);
+  }
+  if (url.indexOf('/lucidtype-set-mode/') === 0) {
+    const mode = decodeURIComponent(url.slice('/lucidtype-set-mode/'.length));
+    let result = { ok: false, error: 'not wired' };
+    if (typeof onLucidSetMode === 'function') { try { result = await onLucidSetMode(mode); } catch (e) { result = { ok: false, error: e.message }; } }
     return json(res, result);
   }
   // Slide capture: window list + select/start/stop/manual. GET (matching the recorder remotes),
@@ -814,6 +843,10 @@ function start(opts) {
   onLucidApply = opts.onLucidApply || null;
   onLucidEdit = opts.onLucidEdit || null;
   onLucidSetMic = opts.onLucidSetMic || null;
+  onLucidCleanup = opts.onLucidCleanup || null;
+  onLucidRewrite = opts.onLucidRewrite || null;
+  onLucidReview = opts.onLucidReview || null;
+  onLucidSetMode = opts.onLucidSetMode || null;
   onOfficeAction = opts.onOfficeAction || null;
   getShortcuts = opts.getShortcuts || null;
   voiceApps = {};
