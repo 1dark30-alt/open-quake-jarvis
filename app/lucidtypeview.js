@@ -15,7 +15,7 @@ var Q = new URLSearchParams(location.search);
 })();
 
 var text = $('text');
-var lastSeq = -1, userDirty = false, dictating = false, editTimer = null;
+var lastSeq = -1, userDirty = false, dictating = false, editTimer = null, wasReviewActive = false;
 
 function get(url) { return fetch(url, { cache: 'no-store' }).then(function (r) { return r.json(); }).catch(function () { return null; }); }
 
@@ -144,9 +144,19 @@ function applyState(st) {
   document.body.classList.toggle('dictating', dictating);
   if (dictating && !wasDictating) userDirty = false;   // a fresh session owns the box again
 
+  // A Cleanup/Rewrite review just closed (Apply landed the proposal in the host transcript). That is
+  // an authoritative change to the box — adopt it even though typing/pasting set userDirty, which
+  // otherwise blocks host updates. (Dictating also owns the box; a plain edit does not.)
+  var reviewActive = !!(st.review && st.review.active);
+  var reviewJustClosed = wasReviewActive && !reviewActive;
+  wasReviewActive = reviewActive;
+
   // Adopt the host transcript on any new sequence, unless the user is mid-edit (and not dictating).
   if (typeof st.seq === 'number' && st.seq !== lastSeq) {
-    if (dictating || !userDirty) { text.value = st.transcript || ''; }
+    if (dictating || !userDirty || reviewJustClosed) {
+      text.value = st.transcript || '';
+      if (reviewJustClosed) userDirty = false;   // the applied result is now the box's clean baseline
+    }
     lastSeq = st.seq;
   }
 
