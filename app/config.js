@@ -374,7 +374,7 @@
     const hasApr = g.appearance === 'light' || g.appearance === 'dark';
     const hasAcc = /^#[0-9a-fA-F]{6}$/.test(g.accent || '');
     const isHome = config.homePageId === g.id;
-    return `<details class="advsec" id="pageAdvSec" style="margin-top:12px"${(advOpen || hasApr || hasAcc || isHome) ? ' open' : ''}>
+    return `<details class="advsec" id="pageAdvSec" style="margin-top:12px"${advOpen ? ' open' : ''}>
       <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Advanced settings</summary>
       <div class="row" style="margin-top:8px"><label style="width:auto">Home page</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="gHome" ${isHome ? 'checked' : ''}> Set as home page</label></div>
