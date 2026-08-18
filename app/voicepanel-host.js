@@ -69,10 +69,8 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     synthesize: wyoming.synthesize,
     wavHeader: wyoming.wavHeader,
     getTts: () => {
-      const opts = deps.activeServedAppConfig(appId);
-      const host = (opts && opts.options.wyomingHost) || '';
-      const port = (opts && opts.options.wyomingTtsPort) || '';
-      return host && port ? { host, port } : null;
+      const e = deps.voiceEndpoints();
+      return e.ttsHost && e.ttsPort ? { host: e.ttsHost, port: e.ttsPort } : null;
     },
     log: say,
     // A dead/disabled TTS service must never be a SILENT nothing (it fails every sentence and the
@@ -361,10 +359,8 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
   // Transcribes one VAD-trimmed utterance (raw 16kHz/16-bit/mono PCM, matching the page's mic
   // pipeline -- see claudevoice-vad.js) via the configured wyoming-faster-whisper host/port.
   async function transcribe(pcmBuffer) {
-    const opts = deps.activeServedAppConfig(appId);
-    const host = (opts && opts.options.wyomingHost) || '';
-    const port = (opts && opts.options.wyomingSttPort) || '';
-    if (!host || !port) return { ok: false, error: 'Wyoming host/STT port not configured' };
+    const { sttHost: host, sttPort: port } = deps.voiceEndpoints();
+    if (!host || !port) return { ok: false, error: 'STT host/port not configured (Settings → TTS/STT)' };
     try {
       const text = await wyoming.transcribe({ host, port, audio: pcmBuffer, rate: 16000, width: 2, channels: 1, log: say });
       if (isSttNoisePhrase(text)) {
@@ -383,9 +379,7 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
   // us the real sample rate/width/channels (Piper's rate can vary by voice model). Used by the
   // Test-speech button; real replies stream through the per-turn pipeline instead.
   async function synthesize(text, res) {
-    const opts = deps.activeServedAppConfig(appId);
-    const host = (opts && opts.options.wyomingHost) || '';
-    const port = (opts && opts.options.wyomingTtsPort) || '';
+    const { ttsHost: host, ttsPort: port } = deps.voiceEndpoints();
     text = speechLib.prepWholeSpeech(text);   // speech-only markdown cleanup lives server-side
     if (!host || !port || !text) { res.writeHead(400); res.end(); return; }
     let headerWritten = false;

@@ -1,8 +1,12 @@
   const configApi = window.openQuakeConfig;
+  const VOICE_APPS = ['claude-voice', 'codex-voice', 'copilot-voice', 'owui-voice'];   // apps with STT/TTS voice
   let config = { activeGridId: null, grids: [] };
   let gi = 0, ti = -1, selEnd = -1, dragFrom = -1, dirty = false, appDefs = [], view = 'pages', ledState = null, settingsTab = 'software', dashTab = 'page';
   // Left sidebar tab (Pages vs Groups list) + which group is currently being edited when view='groups'.
   let leftTab = 'pages', groupIndex = -1;
+  // Per-page Advanced <details> open state — persisted across re-renders so toggling an override
+  // checkbox inside it (which calls render()) doesn't collapse the section out from under the user.
+  let advOpen = false;
   // QMK RGB-Matrix effect names — index is the value written to the device (0 = ring off).
   const LED_EFFECTS = ['All Off (ring off)', 'Solid Color', 'Alphas Mods', 'Gradient Up/Down', 'Gradient Left/Right', 'Breathing', 'Band Sat.', 'Band Val.', 'Pinwheel Sat.', 'Pinwheel Val.', 'Spiral Sat.', 'Spiral Val.', 'Cycle All', 'Cycle Left/Right', 'Cycle Up/Down', 'Rainbow Moving Chevron', 'Cycle Out/In', 'Cycle Out/In Dual', 'Cycle Pinwheel', 'Cycle Spiral', 'Dual Beacon', 'Rainbow Beacon', 'Rainbow Pinwheels', 'Raindrops', 'Jellybean Raindrops', 'Hue Breathing', 'Hue Pendulum', 'Hue Wave', 'Pixel Rain', 'Pixel Flow', 'Pixel Fractal', 'Typing Heatmap', 'Digital Rain', 'Solid Reactive Simple', 'Solid Reactive', 'Solid Reactive Wide', 'Solid Reactive Multi Wide', 'Solid Reactive Cross', 'Solid Reactive Multi Cross', 'Solid Reactive Nexus', 'Solid Reactive Multi Nexus', 'Splash', 'Multi Splash', 'Solid Splash', 'Solid Multi Splash'];
   const LED_DEFAULT = { effect: 1, brightness: 200, speed: 128, hue: 128, sat: 255 };
@@ -369,7 +373,7 @@
     const hasApr = g.appearance === 'light' || g.appearance === 'dark';
     const hasAcc = /^#[0-9a-fA-F]{6}$/.test(g.accent || '');
     const isHome = config.homePageId === g.id;
-    return `<details class="advsec" style="margin-top:12px"${(hasApr || hasAcc || isHome) ? ' open' : ''}>
+    return `<details class="advsec" id="pageAdvSec" style="margin-top:12px"${(advOpen || hasApr || hasAcc || isHome) ? ' open' : ''}>
       <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Advanced settings</summary>
       <div class="row" style="margin-top:8px"><label style="width:auto">Home page</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="gHome" ${isHome ? 'checked' : ''}> Set as home page</label></div>
@@ -390,6 +394,17 @@
       <div class="row" style="margin-top:8px"><label style="width:auto">Knob</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="gKnobOn" ${g.knobOverride ? 'checked' : ''}> Override</label></div>
       ${g.knobOverride ? `<div class="row"><label style="width:auto">Turn / Click / Dbl</label>${knobSelHtml('gKnobTurn', KNOB_TURN_OPTS, (g.knob && g.knob.turn) || 'pages')} ${knobSelHtml('gKnobClick', KNOB_CLICK_OPTS, (g.knob && g.knob.click) || 'rotation')} ${knobSelHtml('gKnobDblclick', KNOB_DBLCLICK_OPTS, (g.knob && g.knob.dblclick) || 'selector')}</div>` : ''}
+      ${VOICE_APPS.includes(g.app) ? `
+      <div class="row" style="margin-top:8px"><label style="width:auto">STT / TTS</label>
+        <label class="iconopt" style="width:auto"><input type="checkbox" id="gVoiceOn" ${g.options && g.options.voiceOverride ? 'checked' : ''}> Override default TTS/STT servers</label></div>
+      ${g.options && g.options.voiceOverride ? `
+      <div class="row"><label style="width:auto">STT host / port</label>
+        <input id="gVoiceSttHost" value="${esc(optVal(g, 'voiceSttHost', ''))}" placeholder="127.0.0.1" style="flex:1">
+        <input id="gVoiceSttPort" value="${esc(optVal(g, 'voiceSttPort', ''))}" placeholder="10300" style="width:90px;margin-left:8px"></div>
+      <div class="row"><label style="width:auto">TTS host / port</label>
+        <input id="gVoiceTtsHost" value="${esc(optVal(g, 'voiceTtsHost', ''))}" placeholder="127.0.0.1" style="flex:1">
+        <input id="gVoiceTtsPort" value="${esc(optVal(g, 'voiceTtsPort', ''))}" placeholder="10200" style="width:90px;margin-left:8px"></div>` : ''}
+      <p class="hint">Off = use the global <b>Settings → TTS/STT</b> servers. On = this page dials its own STT/TTS host + port.</p>` : ''}
       ${focusRowHtml(g)}
       ${advCloneHtml(g)}
     </details>`;
@@ -717,6 +732,13 @@
     const kT = document.getElementById('gKnobTurn'); if (kT) kT.onchange = e => { if (!g.knob) g.knob = {}; g.knob.turn = e.target.value; markDirty(); };
     const kC = document.getElementById('gKnobClick'); if (kC) kC.onchange = e => { if (!g.knob) g.knob = {}; g.knob.click = e.target.value; markDirty(); };
     const kD = document.getElementById('gKnobDblclick'); if (kD) kD.onchange = e => { if (!g.knob) g.knob = {}; g.knob.dblclick = e.target.value; markDirty(); };
+    const advSec = document.getElementById('pageAdvSec');   // remember open/closed so an override toggle's render() doesn't collapse it
+    if (advSec) advSec.ontoggle = () => { advOpen = advSec.open; };
+    const vOn = document.getElementById('gVoiceOn');   // per-page STT/TTS override (voice apps only)
+    if (vOn) vOn.onchange = e => { if (!g.options) g.options = {}; g.options.voiceOverride = e.target.checked; markDirty(); render(); };
+    const vSetOpt = (key, el) => { const inp = document.getElementById(el); if (inp) inp.oninput = e => { if (!g.options) g.options = {}; g.options[key] = e.target.value.trim(); markDirty(); }; };
+    vSetOpt('voiceSttHost', 'gVoiceSttHost'); vSetOpt('voiceSttPort', 'gVoiceSttPort');
+    vSetOpt('voiceTtsHost', 'gVoiceTtsHost'); vSetOpt('voiceTtsPort', 'gVoiceTtsPort');
     const clone = document.getElementById('gClone'), cloneBtn = document.getElementById('gCloneBtn');
     if (clone && cloneBtn) {
       clone.onchange = () => { cloneBtn.disabled = !clone.value; };
@@ -1569,11 +1591,7 @@
           <input id="cvProjectsRoot" value="${esc(cvVal('projectsRoot', ''))}" style="flex:1">
           <button id="cvProjectsRootBrowse" type="button">Browse…</button></div>
         <p class="hint">The folder the panel's Change folder list scans.</p>`) + `
-        <div class="row"><label>Wyoming host</label><input id="cvWyomingHost" value="${esc(cvVal('wyomingHost', ''))}" style="flex:1"></div>
-        <div class="row"><label>STT / TTS ports</label>
-          <input id="cvSttPort" value="${esc(cvVal('wyomingSttPort', ''))}" style="width:90px">
-          <input id="cvTtsPort" value="${esc(cvVal('wyomingTtsPort', ''))}" style="width:90px;margin-left:8px"></div>
-        <p class="hint">Voice needs Piper (TTS) and Whisper (STT) hosts. Please enter the IP of your server or use <a href="#" id="cvTtsLink">tts-stt-windows</a> to provide both on any Windows machine — install it and set the host to <code>127.0.0.1</code>.</p>` + (isOwuiVoice ? '' : `
+        <p class="hint">Voice STT/TTS servers are set globally under <b>Settings → TTS/STT</b>. Override them for just this page in <b>Advanced settings</b> below.</p>` + (isOwuiVoice ? '' : `
         <div class="row" style="margin-top:10px"><label>Permission mode</label>
           <select id="cvPermMode" style="flex:1">${cvPermChoices.map(c => `<option value="${esc(c[0])}" ${cvVal('permissionMode', cvOptDef('permissionMode').default || '') === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>`) + (isClaudeVoice ? `
         <div class="row"><label>Touch approval</label>
@@ -1657,17 +1675,12 @@
       if (cvProjectPathBrowse) cvProjectPathBrowse.onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('cvProjectPath').value = p; setOpt('projectDir', p); } };
       const cvProjectsRootBrowse = document.getElementById('cvProjectsRootBrowse');
       if (cvProjectsRootBrowse) cvProjectsRootBrowse.onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('cvProjectsRoot').value = p; setOpt('projectsRoot', p); } };
-      document.getElementById('cvWyomingHost').oninput = e => setOpt('wyomingHost', e.target.value.trim());
-      document.getElementById('cvSttPort').oninput = e => setOpt('wyomingSttPort', e.target.value.trim());
-      document.getElementById('cvTtsPort').oninput = e => setOpt('wyomingTtsPort', e.target.value.trim());
       const cvPermMode = document.getElementById('cvPermMode');
       if (cvPermMode) cvPermMode.onchange = e => setOpt('permissionMode', e.target.value);
       const cvApprovals = document.getElementById('cvApprovals');   // claude-only rows
       if (cvApprovals) cvApprovals.onchange = e => setOpt('approvalsEnabled', e.target.checked);
       const cvEditPrompt = document.getElementById('cvEditPrompt');
       if (cvEditPrompt) cvEditPrompt.onclick = () => configApi.editClaudeVoicePrompt();
-      const cvTtsLink = document.getElementById('cvTtsLink');
-      if (cvTtsLink) cvTtsLink.onclick = e => { e.preventDefault(); configApi.openExternal('https://github.com/TeeJS/tts-stt-windows/releases'); };
       // Warn at add-time if the agent CLI this page drives isn't installed (or, for owui-voice,
       // if no connection is configured) -- otherwise the user only finds out when the panel page
       // errors on first use.
@@ -1891,6 +1904,10 @@
     // which app the panel is showing. Same shape as MEETING_DEFAULTS in main.js.
     const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '', slideCaptureEnabled: false, slideAutoStartOnSelect: false, slideNotifications: true, slideHotkeyToggle: 'Ctrl+Alt+S', slideHotkeySelect: 'Ctrl+Alt+W', slideHotkeyManual: 'Ctrl+Alt+C', slideAppFilter: '', slideIdleStopMin: 30 }, (config.settings || {}).meeting || {});
     const me = currentMe();
+    // Global TTS/STT (Wyoming) endpoints (config.settings.voice) — same shape as VOICE_DEFAULTS in
+    // voiceConfig.js. Each service has its own host+port so STT and TTS can live on different servers.
+    const currentVoice = () => Object.assign({ sttHost: '', sttPort: '10300', ttsHost: '', ttsPort: '10200' }, (config.settings || {}).voice || {});
+    const voice = currentVoice();
     // ledState = the device's live lighting (loaded when the page opens); fall back to saved config / defaults.
     const L = Object.assign({}, LED_DEFAULT, (config.settings || {}).lighting || {}, ledState || {});
     const effOpts = LED_EFFECTS.map((n, i) => `<option value="${i}">${esc(n)}</option>`).join('');
@@ -2218,6 +2235,19 @@
         <p class="hint">Where imported drop-in apps are stored — this folder survives app updates (the install folder doesn't).</p>
       </details>`;
 
+    const ttsHtml = `
+      <p class="sectitle">Speech-to-text (Whisper / STT)</p>
+      <div class="row"><label>STT host / port</label>
+        <input id="ttsSttHost" value="${esc(voice.sttHost)}" placeholder="127.0.0.1" style="flex:1">
+        <input id="ttsSttPort" value="${esc(voice.sttPort)}" placeholder="10300" style="width:90px;margin-left:8px"></div>
+
+      <p class="sectitle" style="margin-top:22px">Text-to-speech (Piper / TTS)</p>
+      <div class="row"><label>TTS host / port</label>
+        <input id="ttsTtsHost" value="${esc(voice.ttsHost)}" placeholder="127.0.0.1" style="flex:1">
+        <input id="ttsTtsPort" value="${esc(voice.ttsPort)}" placeholder="10200" style="width:90px;margin-left:8px"></div>
+
+      <p class="hint">The default STT (Whisper) and TTS (Piper) servers for every voice app and meeting dictation. Each service has its own host + port, so they can run on different machines. Enter your server's IP, or run <a href="#" id="ttsHelperLink">tts-stt-windows</a> on any Windows box to provide both and set the host to <code>127.0.0.1</code>. A page can override these in its <b>Advanced settings</b>. Remember to Save.</p>`;
+
     el.innerHTML = `
       <p class="sectitle">Settings</p>
       <div class="tabbar">
@@ -2228,9 +2258,10 @@
         <button id="tabDi" class="tab${tab === 'dropin' ? ' on' : ''}">Drop-In Apps</button>
         <button id="tabAuth" class="tab${tab === 'auth' ? ' on' : ''}">Auth</button>
         <button id="tabMe" class="tab${tab === 'meeting' ? ' on' : ''}">Meeting</button>
+        <button id="tabTts" class="tab${tab === 'ttsstt' ? ' on' : ''}">TTS/STT</button>
         <button id="tabMon" class="tab${tab === 'monitor' ? ' on' : ''}">Monitor</button>
       </div>
-      ${tab === 'software' ? swHtml : tab === 'hardware' ? hwHtml : tab === 'theme' ? thHtml : tab === 'apps' ? appsHtml : tab === 'dropin' ? diHtml : tab === 'auth' ? authHtml : tab === 'meeting' ? meHtml : monHtml}
+      ${tab === 'software' ? swHtml : tab === 'hardware' ? hwHtml : tab === 'theme' ? thHtml : tab === 'apps' ? appsHtml : tab === 'dropin' ? diHtml : tab === 'auth' ? authHtml : tab === 'meeting' ? meHtml : tab === 'ttsstt' ? ttsHtml : monHtml}
       <div class="row" style="margin-top:22px"><button id="sBack">← Back to pages</button></div>`;
 
     document.getElementById('tabSw').onclick = () => { settingsTab = 'software'; renderSettings(); };
@@ -2240,6 +2271,7 @@
     document.getElementById('tabDi').onclick = () => { settingsTab = 'dropin'; renderSettings(); };
     document.getElementById('tabAuth').onclick = () => { settingsTab = 'auth'; renderSettings(); };
     document.getElementById('tabMe').onclick = () => { settingsTab = 'meeting'; renderSettings(); };
+    document.getElementById('tabTts').onclick = () => { settingsTab = 'ttsstt'; renderSettings(); };
     document.getElementById('tabMon').onclick = () => { settingsTab = 'monitor'; renderSettings(); };
     document.getElementById('sBack').onclick = () => { view = 'pages'; render(); };
     const setS = (k, v) => { if (!config.settings) config.settings = {}; config.settings[k] = v; markDirty(); };
@@ -2562,6 +2594,14 @@
       document.getElementById('sMonTap').value = mon.knobTap;
       document.getElementById('sMonTurn').onchange = e => saveMon({ knobTurn: e.target.value });
       document.getElementById('sMonTap').onchange = e => saveMon({ knobTap: e.target.value });
+    } else if (tab === 'ttsstt') {
+      const saveVoice = (k, v) => { if (!config.settings) config.settings = {}; if (!config.settings.voice) config.settings.voice = {}; config.settings.voice[k] = v; markDirty(); };
+      document.getElementById('ttsSttHost').oninput = e => saveVoice('sttHost', e.target.value.trim());
+      document.getElementById('ttsSttPort').oninput = e => saveVoice('sttPort', e.target.value.trim());
+      document.getElementById('ttsTtsHost').oninput = e => saveVoice('ttsHost', e.target.value.trim());
+      document.getElementById('ttsTtsPort').oninput = e => saveVoice('ttsPort', e.target.value.trim());
+      const helper = document.getElementById('ttsHelperLink');
+      if (helper) helper.onclick = e => { e.preventDefault(); configApi.openExternal('https://github.com/TeeJS/tts-stt-windows/releases'); };
     } else if (tab === 'meeting') {
       const saveMe = patch => { if (!config.settings) config.settings = {}; config.settings.meeting = Object.assign(currentMe(), patch); markDirty(); };
       document.getElementById('meFolder').oninput = e => saveMe({ folder: e.target.value.trim() });

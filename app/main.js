@@ -62,6 +62,7 @@ const { findClaudeExe } = require('./claudevoice-session'); // CLI presence prob
 const { createOwuiVoiceAdapter } = require('./owuivoice-session'); // Open WebUI chat adapter (HTTP/SSE, no CLI)
 const owuiClient = require('./owuiClient'); // shared OWUI URL normalization + model-list probe
 const { resolveRunMode, reservedDisplayEnabled } = require('./runMode'); // pure run-mode helpers (panel/software/monitor)
+const voiceConfig = require('./voiceConfig'); // global TTS/STT endpoints + per-page override resolution + legacy migration
 const claudeVoiceApprovals = require('./claudevoice-approvals'); // required directly ONLY for the boot-time leftover-hook sweep below
 const HA_SCHEDULE_APPS = ['haschedule', 'agenda', 'events'];   // dev apps backed by the shared HA /haschedule-data snapshot
 
@@ -177,9 +178,16 @@ const owuiVoiceHost = createVoicePanelHost({
 // only the ON-SCREEN voice app may drive (or clear) the ring override -- a background app's
 // session finishing must never repaint the ring under the active page. (Page changes already
 // clear any override via gotoGrid.)
+// Effective STT/TTS endpoints for the CURRENTLY-ACTIVE instance of `appId`: the global
+// config.settings.voice unless that page overrides it (grid.options.voiceOverride). Returns blank
+// hosts when the app isn't the active served page, so a backgrounded app never dials out.
+function resolveVoiceEndpoints(appId) {
+  return voiceConfig.resolveVoiceEndpoints(config.settings, (activeServedAppConfig(appId) || {}).options || null);
+}
 function voicePanelDeps(appId) {
   return {
     activeServedAppConfig: id => activeServedAppConfig(id),
+    voiceEndpoints: () => resolveVoiceEndpoints(appId),
     activeGrid: () => activeGrid(),
     getConfig: () => config,
     saveConfig: () => saveConfig(),
@@ -263,6 +271,7 @@ function migrateConfig(c) {
       }
     }
   });
+  voiceConfig.migrateVoiceConfig(c);   // legacy per-page wyoming* -> global config.settings.voice + per-page override
   return c;
 }
 // SystemView (System Monitor) is RETIRED: its metrics layer spawned continuous PowerShell
