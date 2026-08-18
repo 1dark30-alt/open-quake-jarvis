@@ -1,4 +1,8 @@
   const panelApi = window.openQuakePanel;
+  // Software mode = the panel served into a normal desktop window (?mode=software). No device, no knob:
+  // the stage scales to fit the window (never rotates) and a floating button drives the page menu.
+  const SOFTWARE_MODE = new URLSearchParams(location.search).get('mode') === 'software';
+  if (SOFTWARE_MODE) document.documentElement.classList.add('swmode');
   const grid = document.getElementById('grid'), vol = document.getElementById('vol'), web = document.getElementById('web');
   const webgrid = document.getElementById('webgrid');   // button strip beside a dashboard
   const selector = document.getElementById('selector'), selitems = document.getElementById('selitems');
@@ -89,6 +93,16 @@
   function layoutStage() {
     const stage = document.getElementById('stage');
     const w = window.innerWidth, h = window.innerHeight;
+    if (SOFTWARE_MODE) {
+      // Desktop window: scale the 1920x480 content to fit, centered and letterboxed. The window
+      // aspect is locked to 1920:480 so the letterbox is ~0, but min() + centering stays correct
+      // during resize. Never rotate — this is a landscape window driven by the OS cursor.
+      const scale = Math.min(w / 1920, h / 480);
+      const offX = Math.round((w - 1920 * scale) / 2), offY = Math.round((h - 480 * scale) / 2);
+      stage.style.transformOrigin = '0 0';
+      stage.style.transform = `translate(${offX}px, ${offY}px) scale(${scale})`;
+      return;
+    }
     // Portrait display (e.g. 480x1920): rotate the 1920x480 stage 90° to fill it.
     // Landscape display (1920x480, Windows Orientation = Landscape): no rotation, so the
     // OS mouse cursor and the content agree (otherwise the cursor reads 90° off).
@@ -199,7 +213,10 @@
   });
 
   // ---- first-run intro overlay (one-time "double-click the knob" hint) ----
-  panelApi.onIntro(() => { if (introOpen) return; introOpen = true; intro.classList.add('open'); });
+  panelApi.onIntro(() => {
+    if (SOFTWARE_MODE) { panelApi.introDone(); return; }   // no knob to teach in a desktop window
+    if (introOpen) return; introOpen = true; intro.classList.add('open');
+  });
   function dismissIntro() { if (!introOpen) return; introOpen = false; intro.classList.remove('open'); panelApi.introDone(); }
   introok.addEventListener('click', dismissIntro);   // PC mouse
 
@@ -346,6 +363,7 @@
     items.forEach((it, i) => {
       const d = document.createElement('div');
       d.className = 'selitem' + (i === selIdx ? ' sel' : '');
+      d.dataset.si = i;                                   // software mode: click-to-pick maps back to this index
       d.textContent = it.rot ? (rotRunning ? '⏸ Rotation: ON' : '▶ Rotation: OFF') : it.name;
       selitems.appendChild(d);
     });
@@ -367,6 +385,28 @@
     else if (it) panelApi.switchGrid(it.id);
   }
   function resetAutoClose() { clearTimeout(selAutoClose); selAutoClose = setTimeout(closeSelector, 4500); }
+
+  // ---- software mode: mouse drives the page menu (no knob) ----
+  // The ☰ button toggles the page menu; clicking an item picks it; clicking the dim backdrop closes;
+  // the wheel scrolls the list. In panel/monitor mode none of this is wired (the knob owns the menu).
+  if (SOFTWARE_MODE) {
+    const swBtn = document.getElementById('swpages');
+    if (swBtn) swBtn.addEventListener('click', () => { selOpen ? closeSelector() : openSelector(); });
+    selitems.addEventListener('click', (e) => {
+      const it = e.target.closest && e.target.closest('[data-si]');
+      if (!it) return;
+      selIdx = parseInt(it.dataset.si, 10); confirmSelector();
+    });
+    selector.addEventListener('click', (e) => { if (e.target === selector) closeSelector(); });
+    selector.addEventListener('wheel', (e) => { e.preventDefault(); moveSelector(e.deltaY > 0 ? 1 : -1); }, { passive: false });
+    document.addEventListener('keydown', (e) => {
+      if (!selOpen) { if (e.key === 'Escape') return; return; }
+      if (e.key === 'Escape') closeSelector();
+      else if (e.key === 'ArrowDown') { e.preventDefault(); moveSelector(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); moveSelector(-1); }
+      else if (e.key === 'Enter') { e.preventDefault(); confirmSelector(); }
+    });
+  }
 
   // ---- knob ----
   // The knob does click-type detection in hardware: press index 1 = single-click, 2 = double-click.

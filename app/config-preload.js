@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('openQuakeConfig', {
   setLighting(lighting) { ipcRenderer.send('setLighting', lighting); },
   saveLightingToDevice() { return ipcRenderer.invoke('saveLightingToDevice'); },
   listRunningApps() { return ipcRenderer.invoke('listRunningApps'); },
+  // Run-mode picker: reopen the first-run welcome window. A mode change applies live on Save.
+  openWelcome() { return ipcRenderer.invoke('openWelcome'); },
   // Global Home Assistant cache: registries + dashboards in main's memory; per-entity states lazy.
   getHaCache() { return ipcRenderer.invoke('getHaCache'); },
   refreshHaCache() { return ipcRenderer.invoke('refreshHaCache'); },

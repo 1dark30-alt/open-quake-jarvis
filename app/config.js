@@ -1899,14 +1899,24 @@
 
     // Software tab — on launch + screen rotation
     const swHtml = `
-      <p class="sectitle">On launch</p>
+      <p class="sectitle">Run mode</p>
+      <div class="row"><label style="width:auto">How you run open-quake</label>
+        <select id="sRunMode" style="width:300px">
+          <option value="panel">Panel — QUAKE / open-bedrock hardware</option>
+          <option value="software">Software — normal desktop window</option>
+          <option value="monitor">Monitor — QUAKE as a regular monitor</option>
+        </select></div>
+      <div class="row"><button id="sRunSetup">Re-run first-time setup…</button></div>
+      <p class="hint"><b>Software</b> mode runs in an ordinary desktop window and needs no special hardware — ideal for the meeting workflow on any PC. <b>Panel</b> and <b>Monitor</b> use the QUAKE display. A mode change applies as soon as you click <b>Save</b> — no restart.</p>
+
+      <p class="sectitle" style="margin-top:22px">On launch</p>
       <div class="row"><label style="width:auto">Editor window</label>
         <select id="sLaunch" style="width:230px">
           <option value="editor">Open the editor window</option>
           <option value="minimized">Open minimized to taskbar</option>
           <option value="tray">Tray only (no window)</option>
         </select></div>
-      <p class="hint">The panel always activates on launch — this only controls the PC-side editor window. Tray-only hides it; reopen from the tray icon.</p>
+      <p class="hint">Controls the PC-side editor window on launch. In Panel/Monitor mode the device panel always activates too; Tray-only hides the editor — reopen it from the tray icon.</p>
 
       <p class="sectitle" style="margin-top:22px">Screen rotation</p>
       <div class="row"><label>Auto-rotate</label>
@@ -2450,6 +2460,11 @@
     }
 
     if (tab === 'software') {
+      const runModeVal = (s.runMode === 'software' || s.runMode === 'monitor') ? s.runMode : 'panel';
+      const runSel = document.getElementById('sRunMode');
+      if (runSel) { runSel.value = runModeVal; runSel.onchange = e => setS('runMode', e.target.value); }
+      const runSetupBtn = document.getElementById('sRunSetup');
+      if (runSetupBtn) runSetupBtn.onclick = () => { try { configApi.openWelcome(); } catch (e) {} };
       document.getElementById('sLaunch').value = s.launchMode;
       document.getElementById('sLaunch').onchange = e => setS('launchMode', e.target.value);
       const saveRot = r => { if (!config.settings) config.settings = {}; config.settings.rotation = r; markDirty(); };

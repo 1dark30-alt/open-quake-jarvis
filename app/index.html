@@ -81,6 +81,16 @@
   .tile-counter button { background: color-mix(in srgb, var(--tile-bd) 35%, transparent); border: none; color: var(--tile-fg); width: 25%; font-size: 36px; font-weight: bold; cursor: pointer; transition: background 0.1s; }
   .tile-counter button:active { background: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--sel-on); }
   .tile-counter button.btn-hit { background: color-mix(in srgb, var(--accent) 75%, transparent) !important; color: var(--sel-on) !important; transition: none !important; }
+
+  /* Software mode (normal desktop window, no knob): a floating button opens the page menu, and the
+     page-menu items become clickable. Hidden entirely in panel/monitor mode. */
+  #swpages { position: fixed; left: 14px; top: 14px; z-index: 40; display: none;
+    width: 46px; height: 46px; border-radius: 12px; border: 1px solid var(--tile-bd);
+    background: linear-gradient(160deg, var(--tile1), var(--tile2)); color: var(--tile-fg);
+    font-size: 22px; line-height: 1; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+  #swpages:active { transform: scale(.94); }
+  html.swmode #swpages { display: inline-flex; align-items: center; justify-content: center; }
+  html.swmode .selitem { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -97,6 +107,7 @@
       <button class="introok" id="introok">OK</button>
     </div>
   </div>
+  <button id="swpages" title="Switch page">☰</button>
 <script src="index.js"></script>
 </body>
 </html>

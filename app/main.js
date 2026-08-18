@@ -61,6 +61,7 @@ const { createCopilotVoiceAdapter, findCopilotExe } = require('./copilotvoice-se
 const { findClaudeExe } = require('./claudevoice-session'); // CLI presence probe for the editor's voice-app warning
 const { createOwuiVoiceAdapter } = require('./owuivoice-session'); // Open WebUI chat adapter (HTTP/SSE, no CLI)
 const owuiClient = require('./owuiClient'); // shared OWUI URL normalization + model-list probe
+const { resolveRunMode, reservedDisplayEnabled } = require('./runMode'); // pure run-mode helpers (panel/software/monitor)
 const claudeVoiceApprovals = require('./claudevoice-approvals'); // required directly ONLY for the boot-time leftover-hook sweep below
 const HA_SCHEDULE_APPS = ['haschedule', 'agenda', 'events'];   // dev apps backed by the shared HA /haschedule-data snapshot
 
@@ -102,7 +103,7 @@ let touchDown = false, touchIdle = null; // monitor-mode touch -> OS mouse butto
 let sysserver = null;                    // SystemView/Music local server (lazy-required in whenReady)
 let serverPort = 0;                      // the local server's ephemeral port (for music-page routing)
 let config = loadConfig();
-let panelWin = null, configWin = null, tray = null;
+let panelWin = null, configWin = null, tray = null, welcomeWin = null;
 let dashSession = null, cookieFlushT = null;   // dashboard webview session + a debounced cookie-store flush
 const dev = new MultiKnob({ hid: HID });
 let reservedRefreshTimer = null;
@@ -188,6 +189,11 @@ function voicePanelDeps(appId) {
   };
 }
 function appSettings() { return Object.assign({}, DEFAULT_SETTINGS, config.settings || {}); }
+// Persisted run mode: how the app presents itself. 'panel' (frameless on the DK-QUAKE display),
+// 'software' (normal resizable desktop window, no hardware needed), or 'monitor' (device shows the
+// Windows desktop). Unset defaults to 'panel' so existing installs are unchanged — only a fresh
+// install (firstRun) gets the welcome picker. Chosen at first run, changeable in Settings.
+function runMode() { return resolveRunMode(config.settings); }
 // ---- theme (global light/dark + accent, with per-card overrides) ----
 function themeGlobal() { return Object.assign({}, THEME_DEFAULT, (config.settings || {}).theme || {}); }
 function isValidHex(h) { return typeof h === 'string' && /^#[0-9a-fA-F]{6}$/.test(h); }
@@ -1589,6 +1595,7 @@ function placePanel() {
     panelWin.on('move', () => refreshReservedDisplay('panel moved', 350));
     panelWin.on('resize', () => refreshReservedDisplay('panel bounds changed', 350));
     panelWin.once('ready-to-show', () => {
+      if (monitorMode) { pushToPanel(); return; }   // monitor mode was set before first show -> stay hidden (desktop shows)
       const dd = deviceDisplay() || d;
       applyPanelDisplayMode(dd); panelWin.setAlwaysOnTop(true); panelWin.show(); panelWin.focus();
       setTimeout(() => panelWin.setAlwaysOnTop(false), 1500);
@@ -1598,6 +1605,81 @@ function placePanel() {
       refreshReservedDisplay('panel placed', 350);
     });
   } else { applyPanelDisplayMode(d); panelWin.show(); pushToPanel(); refreshReservedDisplay('panel placed', 350); }
+}
+
+// ---- software mode: the panel UI in a normal desktop window (no QUAKE hardware) ----
+// Same served UI as the device panel, loaded with ?mode=software so the page scales its 1920x480
+// stage to fit and shows a mouse-driven page menu. Reuses the panelWin variable so every existing
+// `panelWin && !panelWin.isDestroyed()` path (touch/knob sends, pushToPanel, meeting IPC) just works.
+// The window aspect is locked to 1920:480; closing it drops to the tray (reopen from the tray).
+function createSoftwareWindow() {
+  if (panelWin && !panelWin.isDestroyed()) { panelWin.show(); panelWin.focus(); return; }
+  const wa = screen.getPrimaryDisplay().workArea;
+  const width = Math.max(760, Math.min(1280, wa.width - 80));
+  const height = Math.round(width * 480 / 1920);
+  panelWin = new BrowserWindow({
+    width, height,
+    x: wa.x + Math.round((wa.width - width) / 2),
+    y: wa.y + Math.round((wa.height - height) / 2),
+    minWidth: 760, minHeight: Math.round(760 * 480 / 1920),
+    title: 'open-quake', frame: true, show: false, resizable: true, movable: true,
+    minimizable: true, maximizable: true, fullscreenable: false, autoHideMenuBar: true,
+    backgroundColor: '#000000',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'panel-preload.js'),
+      webviewTag: true,
+    },
+  });
+  const win = panelWin;   // capture: a live mode switch destroys this window while creating another — the
+                          // stale window's events must not clobber the module-level panelWin of the new one.
+  try { win.setAspectRatio(1920 / 480); } catch (e) {}
+  win.loadFile(path.join(__dirname, 'index.html'), { query: { mode: 'software' } });
+  win.once('ready-to-show', () => { if (win.isDestroyed()) return; win.show(); win.focus(); if (panelWin === win) pushToPanel(); });
+  win.on('closed', () => { if (panelWin === win) panelWin = null; });
+  console.log('software mode: window created (' + width + 'x' + height + ')');
+}
+
+// Create/show the UI window for the current run mode and set reserved-display accordingly. Shared by
+// the initial launch and the live mode switch, so both go through exactly the same placement path.
+function placeUiForMode() {
+  const mode = runMode();
+  if (mode === 'software') {
+    createSoftwareWindow();                              // a desktop window has no device display to protect
+  } else {
+    placePanel();                                        // panel + monitor both live on the QUAKE display
+    if (mode === 'monitor' && panelWin && !panelWin.isDestroyed()) enterMonitorMode();   // boot straight into monitor mode
+  }
+  reservedDisplay.setEnabled(reservedDisplayEnabled(appSettings()));   // forced off in software mode; per-setting otherwise
+}
+
+// Show the UI per the persisted run mode, then apply the launch-time settings that are mode-independent.
+// Called directly on a returning launch, or from the welcome window's Continue on first run.
+function applyRunModeAndLaunch() {
+  placeUiForMode();
+  reservedDisplay.start();
+  if (rotationCfg().enabled) setRotation(true);          // auto-start cycling on launch when enabled
+  applyFocusFollowSettings();                             // auto-start foreground-app polling on launch when enabled
+  applyShortcuts();                                       // register per-page global hotkeys
+  applyTheme();                                           // set OS theme source (drives dashboards) + paint panel + knob accent
+  const ls = appSettings();
+  if (firstRun || ls.launchMode === 'editor') openConfigWindow();
+  else if (ls.launchMode === 'minimized') { openConfigWindow(); if (configWin && !configWin.isDestroyed()) configWin.minimize(); }
+  // 'tray' -> stay quiet (tray + panel/window only)
+}
+
+// Switch run mode WITHOUT relaunching. A relaunch (app.relaunch + app.exit) races the single-instance
+// lock — the new process sees the old lock still held and force-exits, leaving no window — and app.exit
+// skips before-quit so the device keep-alive dies and the panel goes dark. Instead, tear the current
+// window down and rebuild it for the new mode in-process. Persist runMode BEFORE calling this.
+function applyRunModeLive() {
+  if (monitorMode) { monitorMode = false; reservedDisplay.setSuspended(false); releaseTouch(); }   // drop monitor state without re-showing the old panel
+  const old = panelWin; panelWin = null;
+  if (old && !old.isDestroyed()) { try { old.destroy(); } catch (e) {} }
+  placeUiForMode();
+  refreshTray();
+  console.log('run mode switched live -> ' + runMode());
 }
 
 // ---- monitor mode: use the device as a normal monitor ----
@@ -1631,6 +1713,16 @@ function exitMonitorMode(reason) {
   console.log('monitor mode: OFF (' + (reason || '') + ')');
 }
 function toggleMonitorMode() { monitorMode ? exitMonitorMode('tray') : enterMonitorMode(); }
+
+// Persisted run-mode switch from the tray. Applies live in-process (see applyRunModeLive) — no relaunch.
+function switchRunMode(m) {
+  if (m !== 'panel' && m !== 'software' && m !== 'monitor') return;
+  if (runMode() === m) return;
+  if (!config.settings) config.settings = {};
+  config.settings.runMode = m;
+  saveConfig();
+  applyRunModeLive();
+}
 
 // Monitor-mode touch -> OS cursor: tap = left-click, drag = move with the button held, lift = release.
 // Maps the panel's bottom-left-origin coords (x:0..1920, y:0..480) onto the device monitor's screen rect.
@@ -1669,6 +1761,28 @@ function monitorKnob(k) {
     else if (m.knobTap === 'rightclick') mediaKeys.click('right');
     else mediaKeys.volume('mute');
   }
+}
+
+// First-run / re-run run-mode picker. A small centered window; its Continue button invokes the
+// setRunMode IPC, which persists the choice, closes this window, and resumes the launch.
+function createWelcomeWindow() {
+  if (welcomeWin && !welcomeWin.isDestroyed()) { welcomeWin.show(); welcomeWin.focus(); return; }
+  const wa = screen.getPrimaryDisplay().workArea;
+  const width = 800, height = 460;
+  welcomeWin = new BrowserWindow({
+    width, height,
+    x: wa.x + Math.round((wa.width - width) / 2),
+    y: wa.y + Math.round((wa.height - height) / 2),
+    title: 'Welcome to open-quake', backgroundColor: '#05080d',
+    resizable: false, minimizable: false, maximizable: false, fullscreenable: false, autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'welcome-preload.js'),
+    },
+  });
+  welcomeWin.loadFile(path.join(__dirname, 'welcome.html'));
+  welcomeWin.on('closed', () => { welcomeWin = null; });
 }
 
 function openConfigWindow() {
@@ -1970,9 +2084,25 @@ function trayMenu() {
     { label: ringOn ? 'Knob ring: on — click to turn off' : 'Knob ring: off — click to turn on', click: () => toggleKnobRing() },
   ];
   if (rotationCfg().enabled) items.push({ label: rotateRunning ? 'Auto-rotate: on — click to pause' : 'Auto-rotate: off — click to start', click: () => toggleRotation() });
+  const rm = runMode();
+  items.push({
+    label: 'Run mode',
+    submenu: [
+      { label: 'Panel (QUAKE hardware)', type: 'radio', checked: rm === 'panel', click: () => switchRunMode('panel') },
+      { label: 'Software window', type: 'radio', checked: rm === 'software', click: () => switchRunMode('software') },
+      { label: 'Monitor (device as display)', type: 'radio', checked: rm === 'monitor', click: () => switchRunMode('monitor') },
+    ],
+  });
+  if (rm === 'software') {
+    // Software mode: the window may have been closed (app stays in the tray) -> offer to reopen it.
+    items.push({ label: (panelWin && !panelWin.isDestroyed()) ? 'Show window' : 'Open window', click: () => createSoftwareWindow() });
+  } else {
+    items.push(
+      { label: monitorMode ? 'Monitor mode: on — click to return to panel' : 'Switch to monitor mode (use device as a normal monitor)', click: () => toggleMonitorMode() },
+      { label: 'Re-place panel on device', enabled: !monitorMode, click: () => { try { dev.screenOn(); } catch (e) {} placePanel(); } },
+    );
+  }
   items.push(
-    { label: monitorMode ? 'Monitor mode: on — click to return to panel' : 'Switch to monitor mode (use device as a normal monitor)', click: () => toggleMonitorMode() },
-    { label: 'Re-place panel on device', enabled: !monitorMode, click: () => { try { dev.screenOn(); } catch (e) {} placePanel(); } },
     { type: 'separator' },
     { label: 'Quit', click: () => { try { dev.stop(); } catch (e) {} app.quit(); } },
   );
@@ -2003,7 +2133,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
 app.on('second-instance', () => {
   try { dev.screenOn(); } catch (e) {}
-  placePanel();
+  if (runMode() === 'software') createSoftwareWindow(); else placePanel();
   if (configWin && !configWin.isDestroyed()) { configWin.show(); configWin.focus(); }
   else openConfigWindow();
 });
@@ -2407,6 +2537,7 @@ app.whenReady().then(async () => {
     const previousConfig = config;
     const active = config.activeGridId;                          // the knob owns the live page — editor edits never change it
     const wasRot = rotationCfg().enabled;                        // detect a fresh off->on to auto-start (else keep the runtime pause)
+    const prevMode = runMode();                                  // detect a run-mode change to rebuild the window live
     const oauth = config.settings && config.settings.oauth;
     if (oauth) {
       if (!newCfg.settings) newCfg.settings = {};
@@ -2417,10 +2548,11 @@ app.whenReady().then(async () => {
     else if (!config.grids.some(g => g.id === config.activeGridId)) config.activeGridId = (config.grids[0] || {}).id || null;
     if (!saveConfig()) { config = previousConfig; return { ok: false, error: 'secure persistence failed' }; }
     pushToPanel(); applyKnobSettings(); refreshTray(); applyRotationSettings(wasRot); applyFocusFollowSettings(); applyShortcuts(); applyTheme();
-    reservedDisplay.setEnabled(!!appSettings().reservedDisplay);
+    reservedDisplay.setEnabled(reservedDisplayEnabled(appSettings()));   // stays off in software mode
     configureHaSchedule();                                          // pick up any haAuth edits without a restart
     startMicMonitor();                                              // re-arm with any edited app allowlist
     if (meetingRecorder) meetingRecorder.setMic(meetingSettings().micDevice);   // push an edited mic to the recorder
+    if (runMode() !== prevMode) applyRunModeLive();                 // run mode changed on the Software tab -> rebuild the window in-place
     return { ok: true };
   });
   ipcMain.handle('pickProgram', async (e) => {
@@ -2530,18 +2662,32 @@ app.whenReady().then(async () => {
   ipcMain.handle('saveLightingToDevice', (e) => { if (!isFrom(e, configWin)) return false; try { return dev.saveLighting(); } catch (er) { return false; } });
   ipcMain.handle('listRunningApps', async (e) => isFrom(e, configWin) ? await desktopFocus.listRunningApps() : []);
 
-  placePanel();
-  reservedDisplay.setEnabled(!!appSettings().reservedDisplay);
-  reservedDisplay.start();
-  if (rotationCfg().enabled) setRotation(true);          // auto-start cycling on launch when enabled
-  applyFocusFollowSettings();                             // auto-start foreground-app polling on launch when enabled
-  applyShortcuts();                                       // register per-page global hotkeys
-  applyTheme();                                           // set OS theme source (drives dashboards) + paint panel + knob accent
+  // ---- run-mode picker (welcome window) + Settings re-run/relaunch ----
+  ipcMain.handle('getWelcomeInfo', (e) => {
+    if (!isFrom(e, welcomeWin)) return {};
+    return { deviceDisplayPresent: !!deviceDisplay(), currentMode: (config.settings || {}).runMode || null };
+  });
+  ipcMain.handle('setRunMode', (e, mode) => {
+    if (!isFrom(e, welcomeWin)) return false;
+    const m = (mode === 'software' || mode === 'monitor') ? mode : 'panel';
+    if (!config.settings) config.settings = {};
+    const uiUp = !!(panelWin && !panelWin.isDestroyed());
+    const changed = config.settings.runMode !== m;
+    config.settings.runMode = m;
+    saveConfig();
+    try { if (welcomeWin && !welcomeWin.isDestroyed()) welcomeWin.close(); } catch (er) {}
+    if (!uiUp) applyRunModeAndLaunch();                    // first run: nothing placed yet -> launch now
+    else if (changed) applyRunModeLive();                  // re-run while UI is up: rebuild the window in-process
+    return true;
+  });
+  ipcMain.handle('openWelcome', (e) => { if (!isFrom(e, configWin)) return false; createWelcomeWindow(); return true; });
+
   nativeTheme.on('updated', () => { if (themeGlobal().appearance === 'system') applyTheme(); });   // follow the OS light/dark in System mode
-  const ls = appSettings();
-  if (firstRun || ls.launchMode === 'editor') openConfigWindow();
-  else if (ls.launchMode === 'minimized') { openConfigWindow(); if (configWin && !configWin.isDestroyed()) configWin.minimize(); }
-  // 'tray' -> stay quiet (tray + panel only)
+  // First run with no prior config -> ask which run mode before placing any UI; the welcome window's
+  // Continue resumes into applyRunModeAndLaunch(). Returning installs (runMode defaults to 'panel')
+  // launch straight away.
+  if (firstRun) createWelcomeWindow();
+  else applyRunModeAndLaunch();
 
   dev.on('touch', pts => {
     if (monitorMode) { const p = pts.find(q => q.action === 1) || pts[0]; if (p) injectTouch(p); return; }   // monitor mode: touch drives the Windows cursor
@@ -2572,7 +2718,16 @@ app.whenReady().then(async () => {
   dev.on('error', e => console.log('dev error:', e.message));
   dev.start();
 
-  screen.on('display-added', () => { dev.screenOn(); refreshReservedDisplay('display added'); setTimeout(placePanel, 800); });
+  screen.on('display-added', () => {
+    dev.screenOn(); refreshReservedDisplay('display added');
+    // Panel/monitor mode place the panel when the QUAKE display appears. In monitor mode, enter it
+    // once the panel exists so a later-connected device boots into desktop-passthrough as configured.
+    setTimeout(() => {
+      if (runMode() === 'software') return;
+      placePanel();
+      if (runMode() === 'monitor' && !monitorMode && panelWin && !panelWin.isDestroyed()) enterMonitorMode();
+    }, 800);
+  });
   screen.on('display-removed', () => { dev.screenOn(); refreshReservedDisplay('display removed'); });
   screen.on('display-metrics-changed', () => { refreshReservedDisplay('display metrics changed'); setTimeout(placePanel, 500); });
 });
