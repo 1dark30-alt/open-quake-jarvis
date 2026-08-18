@@ -50,6 +50,8 @@ const touchSetup = require('./touchSetup');   // Bind a touchscreen to its physi
 const meetingControl = require('./meetingControl');   // Zoom/Teams call-control keystrokes (Meeting app page)
 const { createMeetingRecorder } = require('./meetingRecorder'); // hidden-window meeting recorder (mic + system loopback -> WAV)
 const { createSlideCapture } = require('./slideCapture');       // hidden-window slide capture (getDisplayMedia -> screenshots)
+const { createLucidDictation } = require('./lucidtypeDictation'); // hidden-window LucidType dictation (mic + VAD -> Wyoming STT -> text)
+const lucidWyoming = require('./claudevoice-wyoming');          // Wyoming STT client (transcribe) for dictation
 const { enableLoopbackAudioCapture } = require('./loopback-audio'); // system-audio loopback display-media handler (recorder session only)
 const desktopFocus = require('./desktopFocus');   // tracks the PC's OS-level foreground app; auto-switches the panel to a mapped page
 const ahk = require('./ahk');                  // macro "ahk" step backend (shells out to an installed AutoHotkey.exe)
@@ -84,6 +86,8 @@ let firstRun = false;     // set by loadConfig when there was no prior config (f
 let micState = false;     // current device mic state (LED follows it)
 let meetingRecorder = null;   // hidden-window meeting recorder (created once the panel server is up)
 let slideCapture = null;      // hidden-window slide capture controller (created alongside the recorder)
+let lucidDictation = null;    // hidden-window LucidType dictation controller (created alongside the recorder)
+let lucidApplyFocusProc = '';  // foreground process captured at dictation start, so Apply can restore focus in software mode
 const completedRecordings = new Set();   // basenames whose finalize (header patch) has finished — the only safe time to rename
 let meetingLibrary = null;    // recordings list/delete/resolve for the panel's library screens
 let meetingTranscriber = null; // FIFO diarizer-upload queue (meetingTranscribe.js)
@@ -1264,6 +1268,62 @@ function meetingSettings() { return Object.assign({}, MEETING_DEFAULTS, (config.
 // secretStore, plaintext in memory like haAuth.token.
 const OWUI_DEFAULTS = { url: '', apiKey: '', model: '' };
 function owuiSettings() { return Object.assign({}, OWUI_DEFAULTS, (config.settings || {}).owui || {}); }
+// ---- LucidType dictation (Phase 1) ----
+// Settings live on the lucidtype PAGE's own options (grid.options), like every other app — mic,
+// hotkeys and notifications are all per-page. Dictation runs in the background, so it reads the
+// lucidtype grid's options directly (not activeServedAppConfig, which is only the ACTIVE grid).
+const LUCIDTYPE_DEFAULTS = { micDevice: '', notifyColorChange: false, notifyBeep: false, switchOnDictate: true, dictationHotkey: '', applyHotkey: '', silenceMs: 800 };
+function lucidtypeGrid() { return (config.grids || []).find(x => x && x.kind === 'app' && x.app === 'lucidtype') || null; }
+function lucidtypeSettings() { const g = lucidtypeGrid(); return Object.assign({}, LUCIDTYPE_DEFAULTS, (g && g.options) || {}); }
+// STT/TTS endpoints for dictation: the lucidtype page's per-page override (Advanced settings) over the
+// global config.settings.voice.
+function lucidtypeVoiceEndpoints() { return voiceConfig.resolveLucidEndpoints(config.settings, config.grids); }
+// Panel poller payload: dictation state + the resolved STT endpoint + mic label (for the rail).
+function lucidStateForPanel() {
+  const st = lucidDictation ? lucidDictation.state() : { dictating: false, transcript: '', seq: 0 };
+  const ep = lucidtypeVoiceEndpoints();
+  return { dictating: !!st.dictating, transcript: st.transcript || '', seq: st.seq || 0, sttHost: ep.sttHost, sttPort: ep.sttPort, mic: lucidtypeSettings().micDevice || '' };
+}
+function onLucidDictationRequest(cmd) {
+  if (!lucidDictation) return { ok: false, error: 'not ready' };
+  if (cmd === 'start') return lucidDictation.start();
+  if (cmd === 'stop') return lucidDictation.stop();
+  return { ok: false, error: 'unknown command' };
+}
+function toggleLucidDictation() { if (lucidDictation) lucidDictation.toggle(); }
+// Apply = paste the current transcript at the PC cursor. Restore the app that had focus when dictation
+// started first (software mode steals focus; panel/monitor never do, so the restore is a no-op there).
+async function lucidApply() {
+  if (!lucidDictation) return { ok: false, error: 'not ready' };
+  const text = lucidDictation.currentText();
+  if (!text) return { ok: false, error: 'nothing to apply' };
+  try { if (lucidApplyFocusProc) { await meetingControl.focusProcessWindow([lucidApplyFocusProc]); await new Promise(r => setTimeout(r, 80)); } } catch (e) {}
+  try { pasteText(text); } catch (e) { console.log('[lucidtype] paste failed: ' + e.message); }
+  return { ok: true };
+}
+function onLucidEditRequest(text) { if (lucidDictation) lucidDictation.setTranscript(text); return { ok: true }; }
+// State-change hook: capture the paste target + optionally switch to the page on the idle->dictating
+// edge, and drive the tray recording indicator. (Tray swap + beep gating land with the settings/hotkey
+// step; the tray helper is a safe no-op until then.)
+let lucidWasDictating = false;
+function onLucidState(st) {
+  const now = !!(st && st.dictating);
+  if (now && !lucidWasDictating) {
+    try { lucidApplyFocusProc = desktopFocus.getCommittedProcess() || ''; } catch (e) { lucidApplyFocusProc = ''; }
+    if (lucidtypeSettings().switchOnDictate) { const g = lucidtypeGrid(); if (g) gotoGrid(g.id, true); }
+    setLucidTrayRecording(true);
+  } else if (!now && lucidWasDictating) {
+    setLucidTrayRecording(false);
+  }
+  lucidWasDictating = now;
+}
+function setLucidTrayRecording(on) {
+  if (!lucidtypeSettings().notifyColorChange || !tray) return;   // only when the user enabled the indicator
+  try {
+    tray.setImage(on ? (trayImgRecording || trayImgNormal) : (trayImgNormal || nativeImage.createEmpty()));
+    tray.setToolTip(on ? 'open-quake — dictating…' : 'open-quake');
+  } catch (e) {}
+}
 function defaultMeetingFolder() { return path.join(app.getPath('documents'), 'OpenQuake Meetings', 'unprocessed'); }
 function defaultProcessedFolder() { return path.join(app.getPath('documents'), 'OpenQuake Meetings', 'processed'); }
 // Blank folder settings mean "use the default", same convention as the recorder.
@@ -1966,6 +2026,27 @@ function applyShortcuts() {
       if (!ok) console.log('shortcut already in use, not registered:', dashReload.hotkey, '-> dashboard reload');
     } catch (e) { console.log('shortcut register error:', dashReload.hotkey, '-', e.message); }
   }
+  // LucidType dictation hotkeys: toggle dictation + apply text. Global (fire regardless of focus) so
+  // dictation starts from any app and Apply pastes into whatever window is foreground.
+  const lt = lucidtypeSettings();
+  if (lt.dictationHotkey) {
+    try {
+      const ok = globalShortcut.register(lt.dictationHotkey, () => {
+        if (process.platform === 'win32') modifiersInAccelerator(lt.dictationHotkey).forEach(m => mediaKeys.keyUp(m));
+        toggleLucidDictation();
+      });
+      if (!ok) console.log('shortcut already in use, not registered:', lt.dictationHotkey, '-> lucidtype dictation');
+    } catch (e) { console.log('shortcut register error:', lt.dictationHotkey, '-', e.message); }
+  }
+  if (lt.applyHotkey) {
+    try {
+      const ok = globalShortcut.register(lt.applyHotkey, () => {
+        if (process.platform === 'win32') modifiersInAccelerator(lt.applyHotkey).forEach(m => mediaKeys.keyUp(m));
+        lucidApply();
+      });
+      if (!ok) console.log('shortcut already in use, not registered:', lt.applyHotkey, '-> lucidtype apply');
+    } catch (e) { console.log('shortcut register error:', lt.applyHotkey, '-', e.message); }
+  }
   registerSlideHotkeys();   // last, after the unregisterAll above, so a settings change re-arms them
 }
 // Slide-capture global hotkeys (toggle capture / select window / manual capture). Registered as part
@@ -2118,6 +2199,23 @@ function trayMenu() {
   return Menu.buildFromTemplate(items);
 }
 function refreshTray() { if (tray) tray.setContextMenu(trayMenu()); }
+let trayImgNormal = null, trayImgRecording = null;
+// Red-tinted copy of the tray icon for the LucidType "dictating" state — derived from the app icon at
+// startup (no separate asset), so it's unmistakably the same app in a recording state. Windows only;
+// the macOS menu-bar icon is a template glyph that can't carry color.
+function tintIconRed(img) {
+  try {
+    const size = img.getSize();
+    if (!size.width || !size.height) return img;
+    const bmp = img.toBitmap();   // BGRA
+    for (let i = 0; i < bmp.length; i += 4) {
+      bmp[i] = Math.round(bmp[i] * 0.20);                            // B
+      bmp[i + 1] = Math.round(bmp[i + 1] * 0.20);                    // G
+      bmp[i + 2] = Math.min(255, Math.round(bmp[i + 2] * 0.5 + 150)); // R (boosted)
+    }
+    return nativeImage.createFromBitmap(bmp, { width: size.width, height: size.height });
+  } catch (e) { return img; }
+}
 function createTray() {
   if (tray) return;
   let img;
@@ -2128,6 +2226,8 @@ function createTray() {
       img.setTemplateImage(true);                      // monochrome menu-bar glyph that adapts to light/dark (macOS HIG)
     }
   } catch (e) { img = nativeImage.createEmpty(); }
+  trayImgNormal = img;
+  trayImgRecording = process.platform === 'darwin' ? img : tintIconRed(img);
   tray = new Tray(img);
   tray.setToolTip('open-quake');
   refreshTray();
@@ -2208,6 +2308,8 @@ app.whenReady().then(async () => {
       getMeetingState: meetingStateForPanel, onMeetingRecord: onMeetingRecordRequest,
       onMeetingLibrary: onMeetingLibraryRequest, resolveMeetingAudio: resolveMeetingAudioPath,
       onSlide: onSlideRequest,
+      getLucidState: lucidStateForPanel, onLucidDictation: onLucidDictationRequest,
+      onLucidApply: lucidApply, onLucidEdit: onLucidEditRequest,
       getShortcuts: keyboardShortcutsSnapshot,
       // Voice-panel app registry: each entry gets the full /<appId>/* route surface (see
       // sysserver.js). voiceToken gates the claude approval hook's /approval-request long-poll.
@@ -2314,6 +2416,36 @@ app.whenReady().then(async () => {
       log: msg => console.log('[slide] ' + msg),
     });
     applySlideHotkeys();
+
+    // LucidType dictation: a hidden capture window on its own session (persist:lucidtype) with a mic
+    // grant, running the shared VAD; each utterance is transcribed via Wyoming and appended to the
+    // running transcript the /lucidtype page shows and Apply pastes. Independent of the meeting recorder.
+    lucidDictation = createLucidDictation({
+      createWindow: () => {
+        const sess = session.fromPartition('persist:lucidtype');
+        sess.setPermissionRequestHandler(handleDashboardPermissionRequest);   // grants getUserMedia mic for our local page
+        const w = new BrowserWindow({
+          show: false, width: 320, height: 200, skipTaskbar: true,
+          webPreferences: {
+            nodeIntegration: false, contextIsolation: true, backgroundThrottling: false,
+            preload: path.join(__dirname, 'lucidtype-dictate-preload.js'), session: sess,
+          },
+        });
+        try { w.loadURL('http://127.0.0.1:' + serverPort + '/lucidtype-dictate'); } catch (e) { console.log('[lucidtype] loadURL error: ' + e.message); }
+        return w;
+      },
+      resolveSettings: () => { const s = lucidtypeSettings(); return { micDevice: s.micDevice, silenceMs: s.silenceMs, notifyBeep: !!s.notifyBeep }; },
+      resolveEndpoints: () => lucidtypeVoiceEndpoints(),
+      transcribe: async ({ host, port, audio }) => {
+        const t = await lucidWyoming.transcribe({ host, port, audio, rate: 16000, width: 2, channels: 1, log: m => console.log('[lucidtype] ' + m) });
+        return voiceConfig.isSttNoisePhrase(t) ? '' : t;
+      },
+      onState: onLucidState,
+      log: msg => console.log('[lucidtype] ' + msg),
+    });
+    lucidDictation.ensureWindow();   // arm the hidden window so a hotkey can start dictation instantly
+    ipcMain.on('lucid-pcm', (e, bytes) => { try { if (lucidDictation && bytes) lucidDictation.onUtterance(Buffer.from(bytes)); } catch (er) {} });
+    ipcMain.on('lucid-log', (e, msg) => console.log('[lucidtype] ' + msg));
 
     // Transcription pipeline: library (list/delete), diarizer upload queue, and CLI analysis.
     // Lazy-required + individually try/caught like the recorder so a failure here can never take

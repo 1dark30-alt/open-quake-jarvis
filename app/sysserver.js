@@ -62,6 +62,8 @@ const STATIC_FILES = {
   '/owui-widget.css': 'text/css; charset=utf-8',
   '/musicview.js': 'application/javascript; charset=utf-8',
   '/meetingview.js': 'application/javascript; charset=utf-8',
+  '/lucidtypeview.js': 'application/javascript; charset=utf-8',
+  '/lucidtype-dictate.js': 'application/javascript; charset=utf-8',
   '/chatview-config.js': 'application/javascript; charset=utf-8',
   '/chatview-main.js': 'application/javascript; charset=utf-8',
   '/chatview-ptt.js': 'application/javascript; charset=utf-8',
@@ -86,7 +88,8 @@ let server = null, onMedia = null, onLaunch = null, getGridTiles = null, getAppC
 let getMeetingState = null, onMeetingRecord = null;   // meeting recorder: panel poller + start/stop/setMic remote
 let onMeetingLibrary = null, resolveMeetingAudio = null;   // recordings library + transcription/analysis remotes
 let onSlide = null;   // slide capture: window list / select / start / stop / manual remote
-let musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK, slideHtml = FALLBACK;
+let getLucidState = null, onLucidDictation = null, onLucidApply = null, onLucidEdit = null;   // LucidType dictation: panel poller + start/stop + apply + edit-sync
+let musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK, slideHtml = FALLBACK, lucidtypeHtml = FALLBACK, lucidtypeDictateHtml = FALLBACK;
 // Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
 // Voice-panel app registry: appId (also the URL path prefix) -> { handlers, voiceToken, htmlFile,
 // htmlContent }. `handlers` is a voicepanel-host.js handlers object; every voice app shares the
@@ -465,11 +468,14 @@ async function handler(req, res) {
   // apps share identical suffixes; everything about the request below is resolved per-app.
   const voiceApp = voiceApps[url.split('/')[1]] || null;
   const voicePath = voiceApp ? (url.slice(url.split('/')[1].length + 1) || '/') : null;
-  const isAllowedPost = req.method === 'POST' && voiceApp && (VOICE_POST_SUFFIXES.has(voicePath) || voicePath === '/approval-request');
+  const isAllowedPost = (req.method === 'POST' && voiceApp && (VOICE_POST_SUFFIXES.has(voicePath) || voicePath === '/approval-request'))
+    || (req.method === 'POST' && url === '/lucidtype-edit');   // LucidType edit-sync (same-origin gated below)
   if (req.method !== 'GET' && !isAllowedPost) { res.writeHead(405); res.end(); return; }
   if (url === '/' || url === '/index.html') return html(res, RETIRED_HTML);   // retired SystemView page
   if (url === '/music') return html(res, musicHtml);
   if (url === '/meeting') return html(res, meetingHtml);
+  if (url === '/lucidtype') return html(res, lucidtypeHtml);
+  if (url === '/lucidtype-dictate') return html(res, lucidtypeDictateHtml);   // hidden LucidType capture page
   if (url === '/recorder') return html(res, recorderHtml);   // hidden meeting-recorder capture page
   if (url === '/slidecapture') return html(res, slideHtml);  // hidden slide-capture window
   if (url === '/chat') return html(res, chatHtml);
@@ -650,6 +656,33 @@ async function handler(req, res) {
   if (url === '/meeting-state') {
     return json(res, typeof getMeetingState === 'function' ? getMeetingState() : { recording: false });
   }
+  // LucidType dictation: the panel page polls /lucidtype-state and drives start/stop/apply/edit here.
+  if (url === '/lucidtype-state') {
+    return json(res, typeof getLucidState === 'function' ? getLucidState() : { dictating: false, transcript: '', seq: 0 });
+  }
+  if (url === '/lucidtype-dictation/start' || url === '/lucidtype-dictation/stop') {
+    const cmd = url.endsWith('/start') ? 'start' : 'stop';
+    let result = { ok: false, error: 'not wired' };
+    if (typeof onLucidDictation === 'function') {
+      try { result = await onLucidDictation(cmd); } catch (e) { result = { ok: false, error: e.message || 'dictation command failed' }; }
+    }
+    return json(res, result);
+  }
+  if (url === '/lucidtype-apply') {
+    let result = { ok: false, error: 'not wired' };
+    if (typeof onLucidApply === 'function') {
+      try { result = await onLucidApply(); } catch (e) { result = { ok: false, error: e.message || 'apply failed' }; }
+    }
+    return json(res, result);
+  }
+  if (url === '/lucidtype-edit' && req.method === 'POST') {
+    const body = await readJsonBody(req).catch(() => null);
+    let result = { ok: false };
+    if (typeof onLucidEdit === 'function') {
+      try { result = await onLucidEdit(body && typeof body.text === 'string' ? body.text : ''); } catch (e) { result = { ok: false, error: e.message }; }
+    }
+    return json(res, result);
+  }
   // Slide capture: window list + select/start/stop/manual. GET (matching the recorder remotes),
   // same-origin-gated above. Slide state itself rides in /meeting-state so the column polls with it.
   if (url === '/slide/windows' || url === '/slide/select' || url === '/slide/start' || url === '/slide/stop' || url === '/slide/manual') {
@@ -758,6 +791,10 @@ function start(opts) {
   onSlide = opts.onSlide || null;
   onMeetingLibrary = opts.onMeetingLibrary || null;
   resolveMeetingAudio = opts.resolveMeetingAudio || null;
+  getLucidState = opts.getLucidState || null;
+  onLucidDictation = opts.onLucidDictation || null;
+  onLucidApply = opts.onLucidApply || null;
+  onLucidEdit = opts.onLucidEdit || null;
   onOfficeAction = opts.onOfficeAction || null;
   getShortcuts = opts.getShortcuts || null;
   voiceApps = {};
@@ -775,6 +812,8 @@ function start(opts) {
     if (server) return resolve(server.address().port);
     try { musicHtml = fs.readFileSync(path.join(__dirname, 'musicview.html'), 'utf8'); } catch (e) {}
     try { meetingHtml = fs.readFileSync(path.join(__dirname, 'meetingview.html'), 'utf8'); } catch (e) {}
+    try { lucidtypeHtml = fs.readFileSync(path.join(__dirname, 'lucidtypeview.html'), 'utf8'); } catch (e) {}
+    try { lucidtypeDictateHtml = fs.readFileSync(path.join(__dirname, 'lucidtype-dictate.html'), 'utf8'); } catch (e) {}
     try { recorderHtml = fs.readFileSync(path.join(__dirname, 'recorderview.html'), 'utf8'); } catch (e) {}
     try { slideHtml = fs.readFileSync(path.join(__dirname, 'slidecapture.html'), 'utf8'); } catch (e) {}
     try { chatHtml = fs.readFileSync(path.join(__dirname, 'chatview.html'), 'utf8'); } catch (e) {}

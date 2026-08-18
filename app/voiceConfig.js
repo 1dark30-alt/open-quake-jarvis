@@ -73,4 +73,20 @@ function migrateVoiceConfig(config) {
   return config;
 }
 
-module.exports = { VOICE_APPS, VOICE_DEFAULTS, voiceSettings, resolveVoiceEndpoints, migrateVoiceConfig };
+// Endpoints for LucidType dictation: the first lucidtype grid's own options (honoring its per-page
+// override) over the global default. Pure so it's testable without electron — dictation runs in the
+// background, so it can't use activeServedAppConfig (which only returns the ACTIVE grid).
+function resolveLucidEndpoints(settings, grids) {
+  const g = (grids || []).find(x => x && x.kind === 'app' && x.app === 'lucidtype');
+  return resolveVoiceEndpoints(settings, (g && g.options) || {});
+}
+
+// Whisper near-silence hallucinations to drop (exact whole-utterance match after normalization, so a
+// real sentence that merely contains these words still passes). Mirrors voicepanel-host.js.
+const STT_NOISE_PHRASES = ['thanks for watching'];
+function isSttNoisePhrase(text) {
+  const norm = String(text || '').toLowerCase().replace(/[^a-z' ]/g, ' ').replace(/\s+/g, ' ').trim();
+  return STT_NOISE_PHRASES.includes(norm);
+}
+
+module.exports = { VOICE_APPS, VOICE_DEFAULTS, voiceSettings, resolveVoiceEndpoints, resolveLucidEndpoints, migrateVoiceConfig, isSttNoisePhrase };

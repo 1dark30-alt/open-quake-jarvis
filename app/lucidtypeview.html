@@ -1,0 +1,103 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>LucidType</title>
+<style>
+  * { box-sizing:border-box; }
+  :root {
+    --bg:#05080d; --fg:#e8eef6; --muted:#c2d1e0; --dim:#8194a8; --surf:#16232f; --surf2:#0e1822;
+    --tile-bd:#2a3b4e; --accent:#7CFFB2; --danger:#ff5a5a;
+    --danger-tint:rgba(255,90,90,.16);
+  }
+  body.light { --bg:#e6ecf3; --fg:#12202c; --muted:#37485a; --dim:#5b6b7a; --surf:#ffffff; --surf2:#dde5ee;
+    --tile-bd:#c3cfdb; --danger:#e23b3b; --danger-tint:rgba(226,59,59,.12); }
+  html, body { margin:0; width:100%; height:100%; }
+  html, body, button, input, select, textarea { font-family:"Segoe UI", system-ui, sans-serif; }
+  body { background:var(--bg); color:var(--fg); overflow:hidden; touch-action:manipulation; }
+  button { border:none; background:none; color:inherit; cursor:pointer; }
+
+  .press { transition:transform .12s ease, filter .12s ease, box-shadow .12s ease, background .12s ease; }
+  .press:active { transform:scale(.96); filter:brightness(1.12); }
+
+  #wrap { display:flex; flex-direction:column; width:100vw; height:100vh; padding:22px; gap:14px; }
+
+  /* ---- header ---- */
+  #topbar { flex:0 0 auto; display:flex; align-items:center; gap:20px; min-height:48px; }
+  #title { font-size:26px; font-weight:800; letter-spacing:.5px; }
+  #title .accent { color:var(--accent); }
+  #status { font-size:16px; color:var(--dim); font-weight:600; }
+  #spacer { flex:1; }
+  /* recording indicator — upper right */
+  #recHost { display:flex; align-items:center; }
+  #recIdle { display:flex; align-items:center; gap:12px; height:44px; padding:0 20px; border-radius:11px;
+    background:var(--surf); color:var(--dim); font-size:16px; font-weight:700; }
+  #recIdle .dot { width:12px; height:12px; border-radius:50%; background:var(--dim); }
+  #recLive { display:none; align-items:center; gap:14px; height:44px; padding:0 20px; border-radius:11px; background:var(--danger-tint); }
+  #recLive .dot { width:13px; height:13px; border-radius:50%; background:var(--danger); animation:pulse 1.4s infinite; }
+  #recLive .txt { font-size:16px; font-weight:800; color:var(--danger); letter-spacing:.5px; }
+  body.dictating #recIdle { display:none; }
+  body.dictating #recLive { display:flex; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+  /* ---- reserved strip above the text (future buttons; empty in Phase 1) ---- */
+  #actions:not(:empty) { flex:0 0 auto; display:flex; gap:12px; align-items:center; }
+
+  /* ---- body: big text + rail ---- */
+  #body { flex:1; display:flex; gap:16px; min-height:0; }
+  #textwrap { flex:1; background:var(--surf2); border-radius:18px; padding:8px; display:flex; min-height:0; }
+  #text { flex:1; width:100%; height:100%; resize:none; border:none; outline:none; background:transparent;
+    color:var(--fg); font-size:26px; line-height:1.4; padding:16px 18px; }
+  #text::placeholder { color:var(--dim); }
+
+  #rail { flex:0 0 340px; background:var(--surf2); border-radius:18px; padding:18px; display:flex; flex-direction:column; gap:14px; }
+  .rlabel { font-size:13px; font-weight:800; letter-spacing:1.5px; color:var(--dim); }
+  .rrow { min-height:56px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px;
+    border-radius:12px; background:var(--surf); color:var(--fg); font-size:16px; font-weight:600; }
+  .rrow .v { color:var(--muted); font-weight:700; max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; }
+  .rrow .v.bad { color:var(--danger); }
+  .rrow .v.ok { color:var(--accent); }
+  .rsep { height:1px; background:var(--tile-bd); opacity:.5; }
+  .rhint { font-size:13px; color:var(--dim); line-height:1.4; }
+  .modebox { background:var(--surf); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:6px; }
+  .modebox .m { font-size:18px; font-weight:800; }
+  .modebox .s { font-size:13px; color:var(--dim); }
+</style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="topbar">
+      <div id="title">Lucid<span class="accent">Type</span></div>
+      <div id="status"></div>
+      <div id="spacer"></div>
+      <div id="recHost">
+        <div id="recIdle"><span class="dot"></span>Idle</div>
+        <div id="recLive"><span class="dot"></span><span class="txt">DICTATING</span></div>
+      </div>
+    </div>
+
+    <!-- Buttons above the text: reserved for a later phase. Dictation start/stop and apply are
+         driven entirely by the global hotkeys, not on-screen buttons. -->
+    <div id="actions"></div>
+
+    <div id="body">
+      <div id="textwrap">
+        <textarea id="text" placeholder="Press your dictation hotkey and speak — your words appear here. Edit freely, then press your apply hotkey to paste at your cursor."></textarea>
+      </div>
+      <div id="rail">
+        <div class="rlabel">SETTINGS</div>
+        <div class="rrow">Microphone <span id="rMic" class="v">System default</span></div>
+        <div class="rrow">STT server <span id="rStt" class="v">—</span></div>
+        <div class="rhint">Configure the microphone, hotkeys and servers in the open-quake editor → Settings → LucidType (and Advanced on this page to override the server).</div>
+        <div class="rsep"></div>
+        <div class="rlabel">MODE</div>
+        <div class="modebox">
+          <div class="m">Raw dictation</div>
+          <div class="s">Cleanup &amp; rewrite modes arrive in Phase 2.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+<script src="lucidtypeview.js"></script>
+</body>
+</html>

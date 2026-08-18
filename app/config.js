@@ -7,6 +7,7 @@
   // Per-page Advanced <details> open state — persisted across re-renders so toggling an override
   // checkbox inside it (which calls render()) doesn't collapse the section out from under the user.
   let advOpen = false;
+  let ltMeterStop = null;   // teardown for the LucidType mic test meter (getUserMedia); stopped on any editor re-render
   // QMK RGB-Matrix effect names — index is the value written to the device (0 = ring off).
   const LED_EFFECTS = ['All Off (ring off)', 'Solid Color', 'Alphas Mods', 'Gradient Up/Down', 'Gradient Left/Right', 'Breathing', 'Band Sat.', 'Band Val.', 'Pinwheel Sat.', 'Pinwheel Val.', 'Spiral Sat.', 'Spiral Val.', 'Cycle All', 'Cycle Left/Right', 'Cycle Up/Down', 'Rainbow Moving Chevron', 'Cycle Out/In', 'Cycle Out/In Dual', 'Cycle Pinwheel', 'Cycle Spiral', 'Dual Beacon', 'Rainbow Beacon', 'Rainbow Pinwheels', 'Raindrops', 'Jellybean Raindrops', 'Hue Breathing', 'Hue Pendulum', 'Hue Wave', 'Pixel Rain', 'Pixel Flow', 'Pixel Fractal', 'Typing Heatmap', 'Digital Rain', 'Solid Reactive Simple', 'Solid Reactive', 'Solid Reactive Wide', 'Solid Reactive Multi Wide', 'Solid Reactive Cross', 'Solid Reactive Multi Cross', 'Solid Reactive Nexus', 'Solid Reactive Multi Nexus', 'Splash', 'Multi Splash', 'Solid Splash', 'Solid Multi Splash'];
   const LED_DEFAULT = { effect: 1, brightness: 200, speed: 128, hue: 128, sat: 255 };
@@ -394,7 +395,7 @@
       <div class="row" style="margin-top:8px"><label style="width:auto">Knob</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="gKnobOn" ${g.knobOverride ? 'checked' : ''}> Override</label></div>
       ${g.knobOverride ? `<div class="row"><label style="width:auto">Turn / Click / Dbl</label>${knobSelHtml('gKnobTurn', KNOB_TURN_OPTS, (g.knob && g.knob.turn) || 'pages')} ${knobSelHtml('gKnobClick', KNOB_CLICK_OPTS, (g.knob && g.knob.click) || 'rotation')} ${knobSelHtml('gKnobDblclick', KNOB_DBLCLICK_OPTS, (g.knob && g.knob.dblclick) || 'selector')}</div>` : ''}
-      ${VOICE_APPS.includes(g.app) ? `
+      ${(VOICE_APPS.includes(g.app) || g.app === 'lucidtype') ? `
       <div class="row" style="margin-top:8px"><label style="width:auto">STT / TTS</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="gVoiceOn" ${g.options && g.options.voiceOverride ? 'checked' : ''}> Override default TTS/STT servers</label></div>
       ${g.options && g.options.voiceOverride ? `
@@ -1539,6 +1540,7 @@
     const isOwuiVoice = g.app === 'owui-voice';
     const isVoiceApp = isClaudeVoice || isCodexVoice || isCopilotVoice || isOwuiVoice;   // all four share the hand-rendered options box below (owui omits the folder/mode rows)
     const isOffice = g.app === 'office';
+    const isLucidType = g.app === 'lucidtype';
     const musicBox = `<fieldset style="border:1px solid #2a3a4e; border-radius:8px; padding:6px 14px 10px; margin:10px 0">
         <legend style="padding:0 6px; color:#9fb3c8; font-size:13px">Panels</legend>
         <div><label class="iconopt" style="width:auto"><input type="checkbox" id="pArt" ${optVal(g, 'art', true) ? 'checked' : ''}> Show album art</label></div>
@@ -1602,7 +1604,32 @@
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
-    const optsBlock = isMusic ? musicBox : isHaDash ? haBox : isKeyShortcuts ? keyShortcutsBox : isVoiceApp ? claudeVoiceBox : isOffice ? officeOptionsHtml(g, def) : ('<div id="appOpts"></div>' + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
+    const lucidTypeBox = `<div style="margin-top:10px">
+        <p class="sectitle">Microphone</p>
+        <div class="row"><label>Capture device</label>
+          <select id="ltMic" style="flex:1"><option value="">System default</option></select></div>
+        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltTest"> Test microphone (live input level)</label></div>
+        <div class="row"><div id="ltMeterWrap" style="flex:1;height:14px;border-radius:7px;background:#0e1822;overflow:hidden;display:none"><div id="ltMeter" style="height:100%;width:0%;background:#7CFFB2;transition:width .06s"></div></div></div>
+        <p class="hint">The mic used for dictation. Set the input <b>level</b> in Windows Sound settings; speak with the test on and watch the bar.</p>
+
+        <p class="sectitle" style="margin-top:16px">Hotkeys</p>
+        <div class="row"><label style="width:auto">Start / stop dictation</label>
+          <input id="ltDictKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'dictationHotkey', ''))}" style="width:220px">
+          <button id="ltDictKeyClear" type="button" style="margin-left:8px">Clear</button></div>
+        <div class="row"><label style="width:auto">Apply text</label>
+          <input id="ltApplyKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'applyHotkey', ''))}" style="width:220px">
+          <button id="ltApplyKeyClear" type="button" style="margin-left:8px">Clear</button></div>
+        <p class="hint">Global combos (need a modifier) that fire from any app. To <b>jump to this page</b>, use the page's <b>Hotkey shortcut</b> above. Applies on Save.</p>
+
+        <p class="sectitle" style="margin-top:16px">Notifications</p>
+        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltSwitch" ${optVal(g, 'switchOnDictate', true) ? 'checked' : ''}> Switch the panel to this page when dictation starts</label></div>
+        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltColor" ${optVal(g, 'notifyColorChange', false) ? 'checked' : ''}> Turn the tray icon red while recording</label></div>
+        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltBeep" ${optVal(g, 'notifyBeep', false) ? 'checked' : ''}> Beep on dictation start/stop</label></div>
+        <p class="hint">Transcription server is the global <b>Settings → TTS/STT</b>; override it for this page under <b>Advanced settings</b> below.</p>
+      </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
+        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
+      <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
+    const optsBlock = isMusic ? musicBox : isHaDash ? haBox : isKeyShortcuts ? keyShortcutsBox : isVoiceApp ? claudeVoiceBox : isLucidType ? lucidTypeBox : isOffice ? officeOptionsHtml(g, def) : ('<div id="appOpts"></div>' + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : ''));
     el.innerHTML = tabBar + `
@@ -1696,6 +1723,63 @@
           warn.style.display = '';
         }
       }).catch(() => {});
+    } else if (isLucidType) {
+      const setOpt = (key, val) => { if (!g.options) g.options = {}; g.options[key] = val; markDirty(); };
+      // Live mic test meter — peak level off a getUserMedia AnalyserNode; torn down on re-render (render()).
+      function startLtMeter(label) {
+        if (ltMeterStop) { ltMeterStop(); }
+        const wrap = document.getElementById('ltMeterWrap'), bar = document.getElementById('ltMeter');
+        if (wrap) wrap.style.display = '';
+        let stream = null, ctx = null, raf = 0, dead = false;
+        ltMeterStop = () => { dead = true; try { cancelAnimationFrame(raf); } catch (e) {} try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (e) {} try { if (ctx) ctx.close(); } catch (e) {} if (wrap) wrap.style.display = 'none'; if (bar) bar.style.width = '0%'; ltMeterStop = null; };
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(function (grant) {
+          return (label ? navigator.mediaDevices.enumerateDevices() : Promise.resolve([])).then(function (devs) {
+            var m = (devs || []).find(function (d) { return d.kind === 'audioinput' && d.label === label; });
+            grant.getTracks().forEach(function (t) { t.stop(); });
+            return navigator.mediaDevices.getUserMedia({ audio: m ? { deviceId: { ideal: m.deviceId } } : true });
+          });
+        }).then(function (s) {
+          if (dead) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
+          stream = s;
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          var an = ctx.createAnalyser(); an.fftSize = 512;
+          ctx.createMediaStreamSource(stream).connect(an);
+          var data = new Uint8Array(an.fftSize);
+          var tick = function () {
+            an.getByteTimeDomainData(data);
+            var peak = 0; for (var i = 0; i < data.length; i++) { var v = Math.abs(data[i] - 128); if (v > peak) peak = v; }
+            if (bar) bar.style.width = Math.min(100, Math.round((peak / 128) * 140)) + '%';
+            raf = requestAnimationFrame(tick);
+          };
+          tick();
+        }).catch(function () { if (ltMeterStop) ltMeterStop(); });
+      }
+      (function () {
+        const sel = document.getElementById('ltMic'); const cur = optVal(g, 'micDevice', '');
+        const fill = devs => {
+          const inputs = (devs || []).filter(d => d.kind === 'audioinput' && d.label);
+          sel.innerHTML = '<option value="">System default</option>';
+          inputs.forEach(d => { const o = document.createElement('option'); o.value = d.label; o.textContent = d.label; sel.appendChild(o); });
+          if (cur && !inputs.some(d => d.label === cur)) { const o = document.createElement('option'); o.value = cur; o.textContent = cur + ' (not connected)'; sel.appendChild(o); }
+          sel.value = cur;
+          sel.onchange = e => { setOpt('micDevice', e.target.value); if (document.getElementById('ltTest').checked) startLtMeter(e.target.value); };
+        };
+        navigator.mediaDevices.enumerateDevices().then(devs => {
+          if ((devs || []).some(d => d.kind === 'audioinput' && d.label)) return fill(devs);
+          navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(tmp => navigator.mediaDevices.enumerateDevices().then(d2 => { tmp.getTracks().forEach(t => t.stop()); fill(d2); }))
+            .catch(() => fill(devs));
+        }).catch(() => fill([]));
+      })();
+      document.getElementById('ltTest').onchange = e => { if (e.target.checked) startLtMeter(document.getElementById('ltMic').value); else if (ltMeterStop) ltMeterStop(); };
+      const ltDictKey = document.getElementById('ltDictKey'), ltApplyKey = document.getElementById('ltApplyKey');
+      ltDictKey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { ltDictKey.value = acc; setOpt('dictationHotkey', acc); } };
+      document.getElementById('ltDictKeyClear').onclick = () => { ltDictKey.value = ''; setOpt('dictationHotkey', ''); };
+      ltApplyKey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { ltApplyKey.value = acc; setOpt('applyHotkey', acc); } };
+      document.getElementById('ltApplyKeyClear').onclick = () => { ltApplyKey.value = ''; setOpt('applyHotkey', ''); };
+      document.getElementById('ltSwitch').onchange = e => setOpt('switchOnDictate', e.target.checked);
+      document.getElementById('ltColor').onchange = e => setOpt('notifyColorChange', e.target.checked);
+      document.getElementById('ltBeep').onchange = e => setOpt('notifyBeep', e.target.checked);
     } else if (isOffice) {
       wireOfficeOptions(g);
     } else {
@@ -1762,6 +1846,7 @@
   }
 
   function render() {
+    if (ltMeterStop) { try { ltMeterStop(); } catch (e) {} ltMeterStop = null; }   // stop the LucidType mic test meter on any re-render
     renderGrids();
     renderGroups();
     // Sidebar: which list is visible + which + buttons row + which tab is highlighted.

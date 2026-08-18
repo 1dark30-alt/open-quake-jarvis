@@ -6334,5 +6334,12 @@
       { "key": "spkDevice", "label": "Speaker (set from the panel Settings)", "type": "text", "default": "" },
       { "key": "modelPick", "label": "Model (set from the panel Settings; blank = the Auth tab's default model)", "type": "text", "default": "" }
     ]
+  },
+  {
+    "id": "lucidtype",
+    "name": "LucidType",
+    "file": "lucidtypeview.html",
+    "served": true,
+    "options": []
   }
 ]
