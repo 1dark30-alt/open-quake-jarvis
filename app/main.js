@@ -1290,7 +1290,7 @@ const LUCIDTYPE_DEFAULTS = { micDevice: '', notifyColorChange: false, notifyBeep
   // Phase 2 — cleanup/rewrite AI
   aiBackend: 'claude', useEndpoint: false, endpoint: '', endpointKey: '', overrideModel: false, model: '', aiTimeoutMs: 30000,
   cleanupHotkey: '', cleanupPrompt: '', rewriteHotkey: '', rewriteMode: 'professional', rewriteCustomPrompt: '',
-  rewritePromptProfessional: '', rewritePromptConcise: '', rewritePromptConfident: '', copyOnApply: false };
+  rewritePromptProfessional: '', rewritePromptConcise: '', rewritePromptConfident: '' };
 function lucidtypeGrid() { return (config.grids || []).find(x => x && x.kind === 'app' && x.app === 'lucidtype') || null; }
 function lucidtypeSettings() { const g = lucidtypeGrid(); return Object.assign({}, LUCIDTYPE_DEFAULTS, (g && g.options) || {}); }
 // STT/TTS endpoints for dictation: the lucidtype page's per-page override (Advanced settings) over the
@@ -1313,9 +1313,8 @@ function onLucidReviewRequest(op, text) {
   if (!lucidDictation) return { ok: false, error: 'not ready' };
   if (op === 'apply') {
     const r = lucidDictation.applyReview(text);
-    // "Copy text to clipboard when applying": also drop the applied result on the clipboard so it can
-    // be pasted anywhere, on top of updating the box.
-    if (r && r.ok && lucidtypeSettings().copyOnApply) {
+    // Applying always drops the result on the clipboard too, so it can be pasted anywhere.
+    if (r && r.ok) {
       try { clipboard.writeText(lucidDictation.currentText() || ''); }
       catch (e) { console.log('[lucidtype] clipboard copy on apply failed: ' + e.message); }
     }
@@ -1361,14 +1360,19 @@ function onLucidDictationRequest(cmd, mode) {
   return { ok: false, error: 'unknown command' };
 }
 function toggleLucidDictation() { if (lucidDictation) lucidDictation.toggle(); }
-// Apply = paste the current transcript at the PC cursor. Restore the app that had focus when dictation
-// started first (software mode steals focus; panel/monitor never do, so the restore is a no-op there).
-async function lucidApply() {
+// Apply-text hotkey — mirrors the on-screen Apply. If a Cleanup/Rewrite review is open (Apply button
+// showing), accept its proposal into the box (which also copies it to the clipboard). Otherwise just
+// copy the box text to the clipboard so it can be pasted anywhere. No auto-paste at the cursor.
+function lucidApply() {
   if (!lucidDictation) return { ok: false, error: 'not ready' };
+  const st = lucidDictation.state();
+  if (st.review && st.review.active) {
+    if (st.review.status !== 'ready') return { ok: false, error: 'review not ready' };
+    return onLucidReviewRequest('apply', st.review.proposed);
+  }
   const text = lucidDictation.currentText();
   if (!text) return { ok: false, error: 'nothing to apply' };
-  try { if (lucidApplyFocusProc) { await meetingControl.focusProcessWindow([lucidApplyFocusProc]); await new Promise(r => setTimeout(r, 80)); } } catch (e) {}
-  try { pasteText(text); } catch (e) { console.log('[lucidtype] paste failed: ' + e.message); }
+  try { clipboard.writeText(text); } catch (e) { console.log('[lucidtype] clipboard write failed: ' + e.message); }
   return { ok: true };
 }
 function onLucidEditRequest(text) { if (lucidDictation) lucidDictation.setTranscript(text); return { ok: true }; }
