@@ -1660,6 +1660,8 @@
         </div>
         <div class="row"><label>Timeout (ms)</label><input type="number" id="ltAiTimeout" min="1000" max="600000" step="1000" value="${esc(String(optVal(g, 'aiTimeoutMs', 30000)))}" style="width:120px"></div>
         <p class="hint">Cleanup/Rewrite send the box text to this AI. By default the chosen integrated agent (Claude/Codex/Copilot need the CLI on PATH; Open WebUI uses the <b>Auth</b> tab connection). Tick <b>Use Endpoint</b> to POST to an OpenAI-compatible <code>/chat/completions</code> server directly (needs a model — tick Override model).</p>
+        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltCopyClip" ${optVal(g, 'copyOnApply', false) ? 'checked' : ''}> Copy text to clipboard when applying</label></div>
+        <p class="hint">On <b>Apply</b> of a Cleanup or Rewrite, also copy the result to the clipboard (so you can paste it anywhere) — in addition to updating the box.</p>
 
         <details class="advsec" style="margin-top:14px">
           <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Cleanup — fix grammar / filler</summary>
@@ -1857,6 +1859,7 @@
       document.getElementById('ltOverrideModel').onchange = e => { setOpt('overrideModel', e.target.checked); document.getElementById('ltModelRow').style.display = e.target.checked ? '' : 'none'; };
       document.getElementById('ltModel').oninput = e => setOpt('model', e.target.value.trim());
       document.getElementById('ltAiTimeout').onchange = e => { const v = Math.max(1000, Math.min(600000, parseInt(e.target.value, 10) || 30000)); e.target.value = v; setOpt('aiTimeoutMs', v); };
+      document.getElementById('ltCopyClip').onchange = e => setOpt('copyOnApply', e.target.checked);
       // Cleanup section
       const ltCleanupKey = document.getElementById('ltCleanupKey');
       ltCleanupKey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { ltCleanupKey.value = acc; setOpt('cleanupHotkey', acc); } };

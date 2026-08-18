@@ -1278,7 +1278,7 @@ const LUCIDTYPE_DEFAULTS = { micDevice: '', notifyColorChange: false, notifyBeep
   // Phase 2 — cleanup/rewrite AI
   aiBackend: 'claude', useEndpoint: false, endpoint: '', endpointKey: '', overrideModel: false, model: '', aiTimeoutMs: 30000,
   cleanupHotkey: '', cleanupPrompt: '', rewriteHotkey: '', rewriteMode: 'professional', rewriteCustomPrompt: '',
-  rewritePromptProfessional: '', rewritePromptConcise: '', rewritePromptConfident: '' };
+  rewritePromptProfessional: '', rewritePromptConcise: '', rewritePromptConfident: '', copyOnApply: false };
 function lucidtypeGrid() { return (config.grids || []).find(x => x && x.kind === 'app' && x.app === 'lucidtype') || null; }
 function lucidtypeSettings() { const g = lucidtypeGrid(); return Object.assign({}, LUCIDTYPE_DEFAULTS, (g && g.options) || {}); }
 // STT/TTS endpoints for dictation: the lucidtype page's per-page override (Advanced settings) over the
@@ -1299,7 +1299,16 @@ function onLucidCleanupRequest() { return lucidDictation ? lucidDictation.runCle
 function onLucidRewriteRequest() { return lucidDictation ? lucidDictation.runRewrite() : { ok: false, error: 'not ready' }; }
 function onLucidReviewRequest(op, text) {
   if (!lucidDictation) return { ok: false, error: 'not ready' };
-  if (op === 'apply') return lucidDictation.applyReview(text);
+  if (op === 'apply') {
+    const r = lucidDictation.applyReview(text);
+    // "Copy text to clipboard when applying": also drop the applied result on the clipboard so it can
+    // be pasted anywhere, on top of updating the box.
+    if (r && r.ok && lucidtypeSettings().copyOnApply) {
+      try { clipboard.writeText(lucidDictation.currentText() || ''); }
+      catch (e) { console.log('[lucidtype] clipboard copy on apply failed: ' + e.message); }
+    }
+    return r;
+  }
   if (op === 'refine') return lucidDictation.refineReview(text);
   if (op === 'cancel') return lucidDictation.cancelReview();
   return { ok: false, error: 'unknown review op' };
