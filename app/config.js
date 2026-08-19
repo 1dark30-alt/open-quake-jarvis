@@ -402,7 +402,7 @@
       <div class="row" style="margin-top:8px"><label style="width:auto">Knob</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="gKnobOn" ${g.knobOverride ? 'checked' : ''}> Override</label></div>
       ${g.knobOverride ? `<div class="row"><label style="width:auto">Turn / Click / Dbl</label>${knobSelHtml('gKnobTurn', KNOB_TURN_OPTS, (g.knob && g.knob.turn) || 'pages')} ${knobSelHtml('gKnobClick', KNOB_CLICK_OPTS, (g.knob && g.knob.click) || 'rotation')} ${knobSelHtml('gKnobDblclick', KNOB_DBLCLICK_OPTS, (g.knob && g.knob.dblclick) || 'selector')}</div>` : ''}
-      ${(VOICE_APPS.includes(g.app) || g.app === 'lucidtype' || g.app === 'livetranslate') ? `
+      ${(VOICE_APPS.includes(g.app) || g.app === 'lucidtype') ? `
       <div class="row" style="margin-top:8px"><label style="width:auto">STT / TTS</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="gVoiceOn" ${g.options && g.options.voiceOverride ? 'checked' : ''}> Override default TTS/STT servers</label></div>
       ${g.options && g.options.voiceOverride ? `
@@ -1696,38 +1696,14 @@
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
-    const xlProvider = optVal(g, 'provider', 'soniox');
     const liveTranslateBox = `<div style="margin-top:10px">
-        <div class="row"><label>Provider</label>
-          <select id="xlProvider" style="flex:1">
-            <option value="soniox" ${xlProvider === 'soniox' ? 'selected' : ''}>Soniox — cloud real-time translation (recommended)</option>
-            <option value="wyoming" ${xlProvider === 'wyoming' ? 'selected' : ''}>Wyoming STT endpoint (legacy / self-hosted)</option>
-          </select></div>
-        ${xlProvider === 'soniox' ? `
         <div class="row"><label>Soniox API key</label>${secretInput(optVal(g, 'sonioxApiKey', ''), 'id="xlSoniKey" style="flex:1"')}</div>
         <p class="hint">From <b>soniox.com</b>. Stored encrypted; the panel uses a short-lived temp key so the real key never leaves this machine. ~$0.18/hr while actively translating.</p>
         <div class="row" style="margin-top:10px"><label>Target language</label>
           <input id="xlTargetLang" value="${esc(optVal(g, 'targetLanguage', 'en'))}" placeholder="en" style="width:120px"></div>
         <div class="row"><label>Source hint</label>
           <input id="xlSourceHint" value="${esc(optVal(g, 'sourceHint', ''))}" placeholder="blank = auto-detect (e.g. de)" style="width:230px"></div>
-        <p class="hint">Language codes (en, es, de, …) — <a href="#" id="xlLangLink">browse all Soniox languages ↗</a>. Source hint is optional; Soniox auto-detects otherwise (setting it removes the startup delay).</p>` : xlProvider === 'whisperlive' ? `
-        <div class="row"><label>WhisperLive URL</label>
-          <input id="xlWlUrl" value="${esc(optVal(g, 'whisperUrl', ''))}" placeholder="ws://192.168.1.25:19000" style="flex:1"></div>
-        <div class="row"><label>Token (optional)</label>${secretInput(optVal(g, 'whisperToken', ''), 'id="xlWlToken" style="flex:1"')}</div>
-        <div class="row"><label>Whisper model</label>
-          <input id="xlWlModel" value="${esc(optVal(g, 'whisperModel', 'large-v3'))}" placeholder="large-v3" style="width:180px"></div>
-        <div class="row" style="margin-top:10px"><label>Target language</label>
-          <input id="xlTargetLang" value="${esc(optVal(g, 'targetLanguage', 'en'))}" placeholder="en" style="width:120px"></div>
-        <div class="row"><label>Source hint</label>
-          <input id="xlSourceHint" value="${esc(optVal(g, 'sourceHint', ''))}" placeholder="blank = auto-detect (e.g. de)" style="width:230px"></div>
-        <p class="hint">Language codes (en, es, de, …) — <a href="#" id="xlLangLink">browse language codes ↗</a>. Runs Whisper large-v3 + translation on your own GPU.</p>
-        <p class="sectitle" style="margin-top:12px">On-demand GPU (optional)</p>
-        <div class="row"><label>Start command</label>
-          <input id="xlWlStart" value="${esc(optVal(g, 'whisperStartCmd', ''))}" placeholder="ssh root@192.168.1.25 docker start whisper-live" style="flex:1"></div>
-        <div class="row"><label>Stop command</label>
-          <input id="xlWlStop" value="${esc(optVal(g, 'whisperStopCmd', ''))}" placeholder="ssh root@192.168.1.25 docker stop whisper-live" style="flex:1"></div>
-        <p class="hint">Run when you start/stop listening, so the container (and the GPU) only run on demand. Blank = assume it's always up. OQ waits for the WS port after the start command before connecting.</p>` : `
-        <p class="hint">Wyoming: point this page's STT server at a <b>streaming</b> endpoint under <b>Advanced settings</b> below. (Utterance-final STT lags badly on continuous speech — Soniox is recommended for live use.)</p>`}
+        <p class="hint">Language codes (en, es, de, …) — <a href="#" id="xlLangLink">browse all Soniox languages ↗</a>. Source hint is optional; Soniox auto-detects otherwise (setting it removes the startup delay).</p>
         <p class="sectitle" style="margin-top:14px">Microphone</p>
         <div class="row"><label>Capture device</label>
           <select id="xlMic" style="flex:1"><option value="">System default</option></select></div>
@@ -1741,10 +1717,6 @@
           <input id="xlSaveFolder" value="${esc(optVal(g, 'saveFolder', ''))}" placeholder="Documents\\OpenQuake Translations" readonly style="flex:1">
           <button id="xlSaveFolderBrowse" type="button">Browse…</button></div>
         <p class="hint">Where saved translations are written. Blank = Documents\\OpenQuake Translations.</p>
-        ${xlProvider === 'wyoming' ? `
-        <div class="row" style="margin-top:10px"><label style="width:auto">Voice pause tolerance</label>
-          <input type="number" id="xlPause" min="400" max="2500" step="100" value="${esc(String(optVal(g, 'vadHangoverMs', 800)))}" style="width:110px">
-          <span class="hint" style="margin:0 0 0 8px">ms of silence before a phrase is sent</span></div>` : ''}
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
@@ -1930,19 +1902,12 @@
       document.getElementById('ltRewriteCustom').oninput = e => setOpt('rewriteCustomPrompt', e.target.value);
     } else if (isLiveTranslate) {
       const setOpt = (key, val) => { if (!g.options) g.options = {}; g.options[key] = val; markDirty(); };
-      document.getElementById('xlProvider').onchange = e => { setOpt('provider', e.target.value); render(); };   // re-render to swap provider-specific fields
-      const soniKey = document.getElementById('xlSoniKey'); if (soniKey) soniKey.onchange = e => setOpt('sonioxApiKey', e.target.value);
-      const tl = document.getElementById('xlTargetLang'); if (tl) tl.oninput = e => setOpt('targetLanguage', e.target.value.trim());
-      const sh = document.getElementById('xlSourceHint'); if (sh) sh.oninput = e => setOpt('sourceHint', e.target.value.trim());
-      const pause = document.getElementById('xlPause'); if (pause) pause.oninput = e => setOpt('vadHangoverMs', e.target.value);
+      document.getElementById('xlSoniKey').onchange = e => setOpt('sonioxApiKey', e.target.value);
+      document.getElementById('xlTargetLang').oninput = e => setOpt('targetLanguage', e.target.value.trim());
+      document.getElementById('xlSourceHint').oninput = e => setOpt('sourceHint', e.target.value.trim());
       document.getElementById('xlSave').onchange = e => setOpt('saveToFile', e.target.checked);
-      const xlLangLink = document.getElementById('xlLangLink'); if (xlLangLink) xlLangLink.onclick = e => { e.preventDefault(); configApi.openExternal('https://soniox.com/docs/stt/concepts/supported-languages'); };
-      const xlSfBrowse = document.getElementById('xlSaveFolderBrowse'); if (xlSfBrowse) xlSfBrowse.onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('xlSaveFolder').value = p; setOpt('saveFolder', p); } };
-      const xlWlUrl = document.getElementById('xlWlUrl'); if (xlWlUrl) xlWlUrl.oninput = e => setOpt('whisperUrl', e.target.value.trim());
-      const xlWlToken = document.getElementById('xlWlToken'); if (xlWlToken) xlWlToken.onchange = e => setOpt('whisperToken', e.target.value);
-      const xlWlStart = document.getElementById('xlWlStart'); if (xlWlStart) xlWlStart.oninput = e => setOpt('whisperStartCmd', e.target.value);
-      const xlWlStop = document.getElementById('xlWlStop'); if (xlWlStop) xlWlStop.oninput = e => setOpt('whisperStopCmd', e.target.value);
-      const xlWlModel = document.getElementById('xlWlModel'); if (xlWlModel) xlWlModel.oninput = e => setOpt('whisperModel', e.target.value.trim());
+      document.getElementById('xlLangLink').onclick = e => { e.preventDefault(); configApi.openExternal('https://soniox.com/docs/stt/concepts/supported-languages'); };
+      document.getElementById('xlSaveFolderBrowse').onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('xlSaveFolder').value = p; setOpt('saveFolder', p); } };
       const xlHotkey = document.getElementById('xlHotkey'); if (xlHotkey) { xlHotkey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { xlHotkey.value = acc; setOpt('micHotkey', acc); } }; document.getElementById('xlHotkeyClear').onclick = () => { xlHotkey.value = ''; setOpt('micHotkey', ''); }; }
       // Microphone dropdown — the app's default capture device (same pattern as LucidType/Meeting).
       // enumerateDevices exposes labels only after a getUserMedia grant, so grab-then-release once.
