@@ -50,7 +50,7 @@ It gives you:
   calls** (your mic on the left channel, everyone else on the right; can auto-start with
   Zoom/Teams calls and auto-stop on silence), then — right from the panel — sends
   recordings to a **diarizing transcription server** ([tts-sst](https://github.com/TeeJS/tts-stt-windows)
-  or meeting-diarizer) for a **speaker-labeled transcript**, and turns transcripts into
+  or [meeting-diarizer](https://github.com/TeeJS/meeting-diarizer)) for a **speaker-labeled transcript**, and turns transcripts into
   **AI meeting notes** (summary, attendees, decisions, action items, cleaned transcript)
   with your locally installed **Claude Code, Codex, or Copilot CLI** — no API key — or your
   own **Open WebUI** server (local models). With the
