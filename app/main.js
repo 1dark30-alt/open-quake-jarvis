@@ -1286,7 +1286,7 @@ function owuiSettings() { return Object.assign({}, OWUI_DEFAULTS, (config.settin
 // Settings live on the lucidtype PAGE's own options (grid.options), like every other app — mic,
 // hotkeys and notifications are all per-page. Dictation runs in the background, so it reads the
 // lucidtype grid's options directly (not activeServedAppConfig, which is only the ACTIVE grid).
-const LUCIDTYPE_DEFAULTS = { micDevice: '', notifyColorChange: false, notifyBeep: false, switchOnDictate: true, dictationHotkey: '', applyHotkey: '', silenceMs: 400, startMode: 'clear',
+const LUCIDTYPE_DEFAULTS = { micDevice: '', notifyColorChange: false, notifyBeep: false, switchOnDictate: true, dictationHotkey: '', applyHotkey: '', applyStopsRecording: true, silenceMs: 400, startMode: 'clear',
   // Phase 2 — cleanup/rewrite AI
   aiBackend: 'claude', useEndpoint: false, endpoint: '', endpointKey: '', overrideModel: false, model: '', aiTimeoutMs: 30000,
   cleanupHotkey: '', cleanupPrompt: '', rewriteHotkey: '', rewriteMode: 'professional', rewriteCustomPrompt: '',
@@ -1365,6 +1365,8 @@ function toggleLucidDictation() { if (lucidDictation) lucidDictation.toggle(); }
 // copy the box text to the clipboard so it can be pasted anywhere. No auto-paste at the cursor.
 function lucidApply() {
   if (!lucidDictation) return { ok: false, error: 'not ready' };
+  // "Apply text stops recording" (default on): end an in-progress dictation before applying.
+  if (lucidtypeSettings().applyStopsRecording && lucidDictation.isDictating()) lucidDictation.stop();
   const st = lucidDictation.state();
   if (st.review && st.review.active) {
     if (st.review.status !== 'ready') return { ok: false, error: 'review not ready' };
@@ -2220,9 +2222,27 @@ function keyboardShortcutsSnapshot() {
   const pages = (config.grids || [])
     .filter(g => g.shortcut)
     .map(g => ({ id: g.id, name: g.name || g.id, shortcut: g.shortcut, stopsRotation: !!g.shortcutStopsRotation }));
+  // Each app's OWN hotkeys (not the page-jump shortcut above): action label + the page/app name.
+  const apps = [];
+  const addApp = (shortcut, action, app) => { if (shortcut) apps.push({ shortcut, action, app }); };
+  (config.grids || []).filter(g => g.kind === 'app' && g.app === 'lucidtype').forEach(g => {
+    const o = g.options || {}, nm = g.name || 'LucidType';
+    addApp(o.dictationHotkey, 'Start / stop dictation', nm);
+    addApp(o.applyHotkey, 'Apply text', nm);
+    addApp(o.cleanupHotkey, 'Cleanup', nm);
+    addApp(o.rewriteHotkey, 'Rewrite', nm);
+  });
+  const mtg = meetingSettings();
+  if (mtg.slideCaptureEnabled) {
+    addApp(mtg.slideHotkeyToggle, 'Slide capture — start / stop', 'Meeting');
+    addApp(mtg.slideHotkeySelect, 'Slide capture — select window', 'Meeting');
+    addApp(mtg.slideHotkeyManual, 'Slide capture — capture now', 'Meeting');
+  }
+  addApp(dashboardReloadCfg().hotkey, 'Reload the current dashboard', 'Dashboards');
   return {
     rotation: (rot.enabled && rot.hotkey) ? { hotkey: rot.hotkey } : null,
     pages,
+    apps,
     custom: customShortcutsCfg(),
   };
 }

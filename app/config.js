@@ -1635,6 +1635,7 @@
         <div class="row"><label style="width:auto">Apply text</label>
           <input id="ltApplyKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'applyHotkey', ''))}" style="width:220px">
           <button id="ltApplyKeyClear" type="button" style="margin-left:8px">Clear</button></div>
+        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltApplyStops" ${optVal(g, 'applyStopsRecording', true) ? 'checked' : ''}> Apply text also stops recording</label></div>
         <p class="hint">Global combos (need a modifier) that fire from any app. To <b>jump to this page</b>, use the page's <b>Hotkey shortcut</b> above. Applies on Save.</p>
 
         <p class="sectitle" style="margin-top:16px">Notifications</p>
@@ -1847,6 +1848,7 @@
       document.getElementById('ltBeep').onchange = e => setOpt('notifyBeep', e.target.checked);
       document.getElementById('ltPause').onchange = e => { const v = Math.max(400, Math.min(2500, parseInt(e.target.value, 10) || 400)); e.target.value = v; setOpt('silenceMs', v); };
       document.getElementById('ltStartMode').onchange = e => setOpt('startMode', e.target.value);
+      document.getElementById('ltApplyStops').onchange = e => setOpt('applyStopsRecording', e.target.checked);
       // AI backend + endpoint/model reveals
       const ltAiBackend = document.getElementById('ltAiBackend');
       ltAiBackend.value = optVal(g, 'aiBackend', 'claude');
