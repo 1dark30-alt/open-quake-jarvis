@@ -96,7 +96,7 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
       }, res => {
         let data = ''; res.on('data', d => data += d); res.on('end', () => {
           let j = null; try { j = JSON.parse(data); } catch (e) {}
-          if (res.statusCode === 200 && j && j.api_key) resolve({ ok: true, apiKey: j.api_key, expiresAt: j.expires_at });
+          if (res.statusCode >= 200 && res.statusCode < 300 && j && j.api_key) resolve({ ok: true, apiKey: j.api_key, expiresAt: j.expires_at });
           else { say('Soniox token mint failed: ' + res.statusCode + ' ' + data.slice(0, 200)); resolve({ ok: false, error: (j && (j.error_message || j.message)) || ('Soniox HTTP ' + res.statusCode) }); }
         });
       });
