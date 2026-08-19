@@ -559,6 +559,7 @@ function anPoll() {
     var queued = (st.queue || []).length;
     if (st.running) { n.textContent = 'Analyzing ' + splitRel(st.name).base + ' — ' + fmtDur(Date.now() - st.startedAt) + (queued ? ' · ' + queued + ' queued' : ''); n.classList.remove('err'); }
     else if (st.error) { n.textContent = splitRel(st.error.name).base + ': ' + st.error.error; n.classList.add('err'); }
+    else if (st.joplin && st.joplin.ok === false) { n.textContent = 'Joplin note failed (' + st.joplin.name + '): ' + st.joplin.error; n.classList.add('err'); }
     else { n.textContent = ''; n.classList.remove('err'); }
     var fin = (st.lastDone && st.lastDone.finishedAt) || 0;
     var finErr = (st.error && st.error.finishedAt) || 0;

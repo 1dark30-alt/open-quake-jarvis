@@ -1284,7 +1284,7 @@ async function onMeetingActionRequest(platform, action) {
 // Settings live under config.settings.meeting (global, like config.settings.monitor) so auto-record
 // works regardless of which app the panel is showing — the meeting page's per-grid options only
 // exist while it's the active app, which is useless for background recording.
-const MEETING_DEFAULTS = { folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '', slideCaptureEnabled: false, slideAutoStartOnSelect: false, slideNotifications: true, slideHotkeyToggle: 'Ctrl+Alt+S', slideHotkeySelect: 'Ctrl+Alt+W', slideHotkeyManual: 'Ctrl+Alt+C', slideAppFilter: '', slideIdleStopMin: 30 };
+const MEETING_DEFAULTS = { folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '', joplinEnabled: false, joplinUrl: '', joplinToken: '', joplinNotebook: 'NW Pipe', slideCaptureEnabled: false, slideAutoStartOnSelect: false, slideNotifications: true, slideHotkeyToggle: 'Ctrl+Alt+S', slideHotkeySelect: 'Ctrl+Alt+W', slideHotkeyManual: 'Ctrl+Alt+C', slideAppFilter: '', slideIdleStopMin: 30 };
 function meetingSettings() { return Object.assign({}, MEETING_DEFAULTS, (config.settings || {}).meeting || {}); }
 // Open WebUI connection (config.settings.owui, edited on the Auth tab): shared by the meeting
 // Analysis-AI backend and the owui-voice panel app. apiKey is a secret — encrypted at rest by
@@ -2638,6 +2638,10 @@ app.whenReady().then(async () => {
         resolveTaskList: () => {
           const m = meetingSettings();
           return { enabled: !!m.taskListEnabled, folder: m.taskListFolder || '' };
+        },
+        resolveJoplin: () => {
+          const m = meetingSettings();
+          return { enabled: !!m.joplinEnabled, url: m.joplinUrl || '', token: m.joplinToken || '', notebook: m.joplinNotebook || '' };
         },
         log: msg => console.log('[meeting] ' + msg),
       });
