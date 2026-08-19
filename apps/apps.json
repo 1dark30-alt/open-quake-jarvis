@@ -6357,6 +6357,7 @@
       { "key": "whisperModel", "label": "WhisperLive model (large-v3 recommended)", "type": "text", "default": "large-v3" },
       { "key": "whisperStartCmd", "label": "WhisperLive start command (optional)", "type": "text", "default": "" },
       { "key": "whisperStopCmd", "label": "WhisperLive stop command (optional)", "type": "text", "default": "" },
+      { "key": "gpuOnDemand", "label": "Start/stop the WhisperLive container on demand", "type": "bool", "default": false },
       { "key": "targetLangLabel", "label": "Panel label override (optional)", "type": "text", "default": "" },
       { "key": "saveToFile", "label": "Save transcript to a file", "type": "bool", "default": false },
       { "key": "saveFolder", "label": "Save folder (blank = Documents\\OpenQuake Translations)", "type": "text", "default": "" },

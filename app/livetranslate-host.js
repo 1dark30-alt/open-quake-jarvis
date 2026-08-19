@@ -148,8 +148,10 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
     const url = String(o.whisperUrl || '').trim();
     const token = String(o.whisperToken || '').trim();
     if (!url) return { ok: false, error: 'WhisperLive URL not set (this page’s settings)' };
-    const startErr = await runShellCmd(o.whisperStartCmd, 30000);
-    if (startErr) say('WhisperLive start command reported: ' + startErr);   // non-fatal — it may already be running
+    if (truthy(o.gpuOnDemand)) {   // only touch the container when on-demand GPU is enabled; otherwise assume it's always up
+      const startErr = await runShellCmd(o.whisperStartCmd, 30000);
+      if (startErr) say('WhisperLive start command reported: ' + startErr);   // non-fatal — it may already be running
+    }
     const hp = parseWsHostPort(url);
     if (hp) {
       const up = await waitForPort(hp.host, hp.port, 45000);   // large-v3 can take a while to load after start
@@ -157,7 +159,7 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
     }
     return { ok: true, url, token };
   }
-  function whisperStop() { const o = pageOptions() || {}; runShellCmd(o.whisperStopCmd, 15000); return { ok: true }; }
+  function whisperStop() { const o = pageOptions() || {}; if (truthy(o.gpuOnDemand)) runShellCmd(o.whisperStopCmd, 15000); return { ok: true }; }
 
   // Snapshot for the page's on-load /state fetch: which provider, whether it's configured, target
   // language, the Wyoming endpoint (legacy path), and the current save state.

@@ -1721,12 +1721,15 @@
         <div class="row"><label>Source hint</label>
           <input id="xlSourceHint" value="${esc(optVal(g, 'sourceHint', ''))}" placeholder="blank = auto-detect (e.g. de)" style="width:230px"></div>
         <p class="hint">Language codes (en, es, de, …) — <a href="#" id="xlLangLink">browse language codes ↗</a>. Runs Whisper large-v3 + translation on your own GPU.</p>
-        <p class="sectitle" style="margin-top:12px">On-demand GPU (optional)</p>
-        <div class="row"><label>Start command</label>
-          <input id="xlWlStart" value="${esc(optVal(g, 'whisperStartCmd', ''))}" placeholder="ssh root@192.168.1.25 docker start whisper-live" style="flex:1"></div>
-        <div class="row"><label>Stop command</label>
-          <input id="xlWlStop" value="${esc(optVal(g, 'whisperStopCmd', ''))}" placeholder="ssh root@192.168.1.25 docker stop whisper-live" style="flex:1"></div>
-        <p class="hint">Run when you start/stop listening, so the container (and the GPU) only run on demand. Blank = assume it's always up. OQ waits for the WS port after the start command before connecting.</p>`}
+        <details class="advsec" style="margin-top:12px"${optVal(g, 'gpuOnDemand', false) ? ' open' : ''}>
+          <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">On-demand GPU (optional)</summary>
+          <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="xlGpu" ${optVal(g, 'gpuOnDemand', false) ? 'checked' : ''}> Start/stop the container on demand</label></div>
+          <p class="hint">When on, open-quake runs the start command as you begin translating and the stop command as you stop — so the container (and the GPU) only run on demand. Leave off if the server is always up. OQ waits for the WS port after the start command before connecting.</p>
+          <div class="row"><label>Start command</label>
+            <input id="xlWlStart" value="${esc(optVal(g, 'whisperStartCmd', ''))}" placeholder="ssh root@192.168.1.25 docker start whisper-live" style="flex:1"></div>
+          <div class="row" style="margin-top:8px"><label>Stop command</label>
+            <input id="xlWlStop" value="${esc(optVal(g, 'whisperStopCmd', ''))}" placeholder="ssh root@192.168.1.25 docker stop whisper-live" style="flex:1"></div>
+        </details>`}
         <p class="sectitle" style="margin-top:14px">Microphone</p>
         <div class="row"><label>Capture device</label>
           <select id="xlMic" style="flex:1"><option value="">System default</option></select></div>
@@ -1936,6 +1939,7 @@
       const xlWlToken = document.getElementById('xlWlToken'); if (xlWlToken) xlWlToken.onchange = e => setOpt('whisperToken', e.target.value);
       const xlWlStart = document.getElementById('xlWlStart'); if (xlWlStart) xlWlStart.oninput = e => setOpt('whisperStartCmd', e.target.value);
       const xlWlStop = document.getElementById('xlWlStop'); if (xlWlStop) xlWlStop.oninput = e => setOpt('whisperStopCmd', e.target.value);
+      const xlGpu = document.getElementById('xlGpu'); if (xlGpu) xlGpu.onchange = e => setOpt('gpuOnDemand', e.target.checked);
       const xlWlModel = document.getElementById('xlWlModel'); if (xlWlModel) xlWlModel.oninput = e => setOpt('whisperModel', e.target.value.trim());
       const xlHotkey = document.getElementById('xlHotkey'); if (xlHotkey) { xlHotkey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { xlHotkey.value = acc; setOpt('micHotkey', acc); } }; document.getElementById('xlHotkeyClear').onclick = () => { xlHotkey.value = ''; setOpt('micHotkey', ''); }; }
       // Microphone dropdown — the app's default capture device (same pattern as LucidType/Meeting).
