@@ -2099,6 +2099,20 @@ function applyShortcuts() {
       if (!ok) console.log('shortcut already in use, not registered:', g.shortcut, '->', g.id);
     } catch (e) { console.log('shortcut register error:', g.shortcut, '-', e.message); }
   }
+  // Live Translate: a per-page hotkey that toggles translation (start/stop listening). Global, so it
+  // fires from any app; if the page isn't on-screen it is switched to first, then the mic toggles.
+  for (const g of (config.grids || [])) {
+    if (!(g.kind === 'app' && g.app === 'livetranslate' && g.options && g.options.micHotkey)) continue;
+    try {
+      const ok = globalShortcut.register(g.options.micHotkey, () => {
+        if (process.platform === 'win32') modifiersInAccelerator(g.options.micHotkey).forEach(m => mediaKeys.keyUp(m));
+        const active = activeGrid();
+        if (!(active && active.id === g.id)) gotoGrid(g.id, true);   // bring the page on-screen (loads it)
+        if (panelWin && !panelWin.isDestroyed()) panelWin.webContents.send('micToggle');
+      });
+      if (!ok) console.log('shortcut already in use, not registered:', g.options.micHotkey, '-> livetranslate toggle', g.id);
+    } catch (e) { console.log('shortcut register error:', g.options.micHotkey, '-', e.message); }
+  }
   // Rotation toggle hotkey: same start/stop path as the knob, tray, and panel, so all three stay in sync.
   // Only registered while auto-rotate is enabled — matches the tray item (which hides when it's off) and
   // avoids holding a global combo hostage for a feature that can't run. Page hotkeys register first, so a

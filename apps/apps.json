@@ -6360,7 +6360,8 @@
       { "key": "saveToFile", "label": "Save transcript to a file", "type": "bool", "default": false },
       { "key": "saveFolder", "label": "Save folder (blank = Documents\\OpenQuake Translations)", "type": "text", "default": "" },
       { "key": "vadHangoverMs", "label": "Voice pause tolerance (ms, Wyoming provider only)", "type": "text", "default": "800" },
-      { "key": "micDevice", "label": "Microphone (set from the panel Settings)", "type": "text", "default": "" }
+      { "key": "micDevice", "label": "Microphone (set from the panel Settings)", "type": "text", "default": "" },
+      { "key": "micHotkey", "label": "Toggle-translation hotkey (global)", "type": "text", "default": "" }
     ]
   }
 ]

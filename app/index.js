@@ -14,6 +14,7 @@
   let knobSel = -1;   // knob "select button" mode: index of the highlighted tile (-1 = none)
   let pendingRotFlash = false;   // a knob click just toggled rotation -> flash the new state when it comes back
   let webMode = false, curUrl = '', webReady = false, webDown = false, lastWeb = { x: 0, y: 0 }, webIdle = null;
+  let pendingMicToggle = false;   // a translation-toggle hotkey fired while the page was still loading; run on dom-ready
   let haToken = '', haInject = false, webExternalLinks = false, webAttached = false, pendingWebUrl = null;
   let webThemed = false, lastTheme = null;   // our served app pages (Music/Chat): inject live light/dark + accent into the guest
   // dashboard button strip: webRegion = the webview's sub-rect, webStrip = the tile-strip geometry (null = none)
@@ -34,6 +35,7 @@
   }
   web.addEventListener('dom-ready', () => {
     webReady = true;
+    if (pendingMicToggle) { pendingMicToggle = false; web.executeJavaScript('window.oqxToggleConversation && window.oqxToggleConversation()').catch(function () {}); }
     if (!webAttached) {
       webAttached = true;
       try { defaultUA = web.getUserAgent(); } catch (e) {}      // true default (about:blank), before any override
@@ -407,6 +409,15 @@
       else if (e.key === 'Enter') { e.preventDefault(); confirmSelector(); }
     });
   }
+
+  // ---- translation-toggle hotkey ----
+  // A global hotkey (registered in main) sends 'micToggle'; run the served page's own mic toggle --
+  // the exact hook the knob uses (window.oqxToggleConversation). If main just switched to the page
+  // and the webview isn't ready yet, defer until dom-ready fires.
+  panelApi.onMicToggle(() => {
+    if (webMode && webReady) web.executeJavaScript('window.oqxToggleConversation && window.oqxToggleConversation()').catch(function () {});
+    else pendingMicToggle = true;
+  });
 
   // ---- knob ----
   // The knob does click-type detection in hardware: press index 1 = single-click, 2 = double-click.
