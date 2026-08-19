@@ -1714,6 +1714,8 @@
         <div class="row"><label>WhisperLive URL</label>
           <input id="xlWlUrl" value="${esc(optVal(g, 'whisperUrl', ''))}" placeholder="ws://192.168.1.25:19000" style="flex:1"></div>
         <div class="row"><label>Token (optional)</label>${secretInput(optVal(g, 'whisperToken', ''), 'id="xlWlToken" style="flex:1"')}</div>
+        <div class="row"><label>Whisper model</label>
+          <input id="xlWlModel" value="${esc(optVal(g, 'whisperModel', 'large-v3'))}" placeholder="large-v3" style="width:180px"></div>
         <div class="row" style="margin-top:10px"><label>Target language</label>
           <input id="xlTargetLang" value="${esc(optVal(g, 'targetLanguage', 'en'))}" placeholder="en" style="width:120px"></div>
         <div class="row"><label>Source hint</label>
@@ -1936,6 +1938,7 @@
       const xlWlToken = document.getElementById('xlWlToken'); if (xlWlToken) xlWlToken.onchange = e => setOpt('whisperToken', e.target.value);
       const xlWlStart = document.getElementById('xlWlStart'); if (xlWlStart) xlWlStart.oninput = e => setOpt('whisperStartCmd', e.target.value);
       const xlWlStop = document.getElementById('xlWlStop'); if (xlWlStop) xlWlStop.oninput = e => setOpt('whisperStopCmd', e.target.value);
+      const xlWlModel = document.getElementById('xlWlModel'); if (xlWlModel) xlWlModel.oninput = e => setOpt('whisperModel', e.target.value.trim());
       // Microphone dropdown — the app's default capture device (same pattern as LucidType/Meeting).
       // enumerateDevices exposes labels only after a getUserMedia grant, so grab-then-release once.
       (function () {

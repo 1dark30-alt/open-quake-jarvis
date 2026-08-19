@@ -6354,6 +6354,7 @@
       { "key": "sourceHint", "label": "Source language hint (optional, e.g. de)", "type": "text", "default": "" },
       { "key": "whisperUrl", "label": "WhisperLive WebSocket URL (e.g. ws://192.168.1.25:19000)", "type": "text", "default": "" },
       { "key": "whisperToken", "label": "WhisperLive token (optional)", "type": "secret", "default": "" },
+      { "key": "whisperModel", "label": "WhisperLive model (large-v3 recommended)", "type": "text", "default": "large-v3" },
       { "key": "whisperStartCmd", "label": "WhisperLive start command (optional)", "type": "text", "default": "" },
       { "key": "whisperStopCmd", "label": "WhisperLive stop command (optional)", "type": "text", "default": "" },
       { "key": "targetLangLabel", "label": "Panel label override (optional)", "type": "text", "default": "" },
