@@ -21,6 +21,7 @@ function esc(s) { var d = document.createElement('div'); d.textContent = s == nu
 var provider = Q.get('provider') || 'soniox';
 var targetLanguage = (Q.get('targetLanguage') || 'en').trim();
 var sourceHint = (Q.get('sourceHint') || '').trim();
+var whisperModel = (Q.get('whisperModel') || 'large-v3').trim();   // WhisperLive: model requested per connection
 $('targetLang').textContent = Q.get('targetLangLabel') || (provider === 'wyoming' ? 'English' : targetLanguage.toUpperCase());
 
 // ---- captions ----
@@ -257,7 +258,7 @@ function openWhisper(url, token) {
   try { wlWs = new WebSocket(full); } catch (e) { listening = false; syncMicUI(); setStatus('error', 'WhisperLive: bad URL'); return; }
   wlWs.binaryType = 'arraybuffer';
   wlWs.onopen = function () {
-    wlWs.send(JSON.stringify({ uid: wlUid, language: sourceHint || null, task: 'transcribe', use_vad: true,
+    wlWs.send(JSON.stringify({ uid: wlUid, language: sourceHint || null, task: 'transcribe', model: whisperModel, use_vad: true,
       send_last_n_segments: 10, enable_translation: true, target_language: targetLanguage }));
   };
   wlWs.onmessage = function (ev) {
