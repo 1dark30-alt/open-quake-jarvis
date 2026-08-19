@@ -1696,12 +1696,12 @@
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
-    const xlProvider = optVal(g, 'provider', 'soniox');
+    const xlProvider = optVal(g, 'provider', 'soniox') === 'whisperlive' ? 'whisperlive' : 'soniox';   // legacy 'wyoming' folds to soniox
     const liveTranslateBox = `<div style="margin-top:10px">
         <div class="row"><label>Provider</label>
           <select id="xlProvider" style="flex:1">
             <option value="soniox" ${xlProvider === 'soniox' ? 'selected' : ''}>Soniox — cloud real-time translation (recommended)</option>
-            <option value="wyoming" ${xlProvider === 'wyoming' ? 'selected' : ''}>Wyoming STT endpoint (legacy / self-hosted)</option>
+            <option value="whisperlive" ${xlProvider === 'whisperlive' ? 'selected' : ''}>WhisperLive — self-hosted GPU (streaming)</option>
           </select></div>
         ${xlProvider === 'soniox' ? `
         <div class="row"><label>Soniox API key</label>${secretInput(optVal(g, 'sonioxApiKey', ''), 'id="xlSoniKey" style="flex:1"')}</div>
@@ -1710,7 +1710,7 @@
           <input id="xlTargetLang" value="${esc(optVal(g, 'targetLanguage', 'en'))}" placeholder="en" style="width:120px"></div>
         <div class="row"><label>Source hint</label>
           <input id="xlSourceHint" value="${esc(optVal(g, 'sourceHint', ''))}" placeholder="blank = auto-detect (e.g. de)" style="width:230px"></div>
-        <p class="hint">Language codes (en, es, de, …) — <a href="#" id="xlLangLink">browse all Soniox languages ↗</a>. Source hint is optional; Soniox auto-detects otherwise (setting it removes the startup delay).</p>` : xlProvider === 'whisperlive' ? `
+        <p class="hint">Language codes (en, es, de, …) — <a href="#" id="xlLangLink">browse all Soniox languages ↗</a>. Source hint is optional; Soniox auto-detects otherwise (setting it removes the startup delay).</p>` : `
         <div class="row"><label>WhisperLive URL</label>
           <input id="xlWlUrl" value="${esc(optVal(g, 'whisperUrl', ''))}" placeholder="ws://192.168.1.25:19000" style="flex:1"></div>
         <div class="row"><label>Token (optional)</label>${secretInput(optVal(g, 'whisperToken', ''), 'id="xlWlToken" style="flex:1"')}</div>
@@ -1726,8 +1726,7 @@
           <input id="xlWlStart" value="${esc(optVal(g, 'whisperStartCmd', ''))}" placeholder="ssh root@192.168.1.25 docker start whisper-live" style="flex:1"></div>
         <div class="row"><label>Stop command</label>
           <input id="xlWlStop" value="${esc(optVal(g, 'whisperStopCmd', ''))}" placeholder="ssh root@192.168.1.25 docker stop whisper-live" style="flex:1"></div>
-        <p class="hint">Run when you start/stop listening, so the container (and the GPU) only run on demand. Blank = assume it's always up. OQ waits for the WS port after the start command before connecting.</p>` : `
-        <p class="hint">Wyoming: legacy same-language STT via the global <b>Settings → TTS/STT</b> endpoint (utterance-final — lags on continuous speech; Soniox or WhisperLive is recommended for live use).</p>`}
+        <p class="hint">Run when you start/stop listening, so the container (and the GPU) only run on demand. Blank = assume it's always up. OQ waits for the WS port after the start command before connecting.</p>`}
         <p class="sectitle" style="margin-top:14px">Microphone</p>
         <div class="row"><label>Capture device</label>
           <select id="xlMic" style="flex:1"><option value="">System default</option></select></div>
@@ -1741,10 +1740,6 @@
           <input id="xlSaveFolder" value="${esc(optVal(g, 'saveFolder', ''))}" placeholder="Documents\\OpenQuake Translations" readonly style="flex:1">
           <button id="xlSaveFolderBrowse" type="button">Browse…</button></div>
         <p class="hint">Where saved translations are written. Blank = Documents\\OpenQuake Translations.</p>
-        ${xlProvider === 'wyoming' ? `
-        <div class="row" style="margin-top:10px"><label style="width:auto">Voice pause tolerance</label>
-          <input type="number" id="xlPause" min="400" max="2500" step="100" value="${esc(String(optVal(g, 'vadHangoverMs', 800)))}" style="width:110px">
-          <span class="hint" style="margin:0 0 0 8px">ms of silence before a phrase is sent</span></div>` : ''}
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
@@ -1934,7 +1929,6 @@
       const soniKey = document.getElementById('xlSoniKey'); if (soniKey) soniKey.onchange = e => setOpt('sonioxApiKey', e.target.value);
       const tl = document.getElementById('xlTargetLang'); if (tl) tl.oninput = e => setOpt('targetLanguage', e.target.value.trim());
       const sh = document.getElementById('xlSourceHint'); if (sh) sh.oninput = e => setOpt('sourceHint', e.target.value.trim());
-      const pause = document.getElementById('xlPause'); if (pause) pause.oninput = e => setOpt('vadHangoverMs', e.target.value);
       document.getElementById('xlSave').onchange = e => setOpt('saveToFile', e.target.checked);
       const xlLangLink = document.getElementById('xlLangLink'); if (xlLangLink) xlLangLink.onclick = e => { e.preventDefault(); configApi.openExternal('https://soniox.com/docs/stt/concepts/supported-languages'); };
       const xlSfBrowse = document.getElementById('xlSaveFolderBrowse'); if (xlSfBrowse) xlSfBrowse.onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('xlSaveFolder').value = p; setOpt('saveFolder', p); } };

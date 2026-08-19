@@ -6348,7 +6348,7 @@
     "file": "livetranslateview.html",
     "served": true,
     "options": [
-      { "key": "provider", "label": "Translation provider", "type": "select", "default": "soniox", "choices": [ ["soniox", "Soniox — cloud real-time translation (recommended)"], ["whisperlive", "WhisperLive — self-hosted GPU (streaming)"], ["wyoming", "Wyoming STT endpoint (legacy)"] ] },
+      { "key": "provider", "label": "Translation provider", "type": "select", "default": "soniox", "choices": [ ["soniox", "Soniox — cloud real-time translation (recommended)"], ["whisperlive", "WhisperLive — self-hosted GPU (streaming)"] ] },
       { "key": "sonioxApiKey", "label": "Soniox API key", "type": "secret", "default": "" },
       { "key": "targetLanguage", "label": "Target language code (e.g. en, es, de)", "type": "text", "default": "en" },
       { "key": "sourceHint", "label": "Source language hint (optional, e.g. de)", "type": "text", "default": "" },
@@ -6360,7 +6360,6 @@
       { "key": "targetLangLabel", "label": "Panel label override (optional)", "type": "text", "default": "" },
       { "key": "saveToFile", "label": "Save transcript to a file", "type": "bool", "default": false },
       { "key": "saveFolder", "label": "Save folder (blank = Documents\\OpenQuake Translations)", "type": "text", "default": "" },
-      { "key": "vadHangoverMs", "label": "Voice pause tolerance (ms, Wyoming provider only)", "type": "text", "default": "800" },
       { "key": "micDevice", "label": "Microphone (set from the panel Settings)", "type": "text", "default": "" },
       { "key": "micHotkey", "label": "Toggle-translation hotkey (global)", "type": "text", "default": "" }
     ]
