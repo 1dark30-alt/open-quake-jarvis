@@ -69,6 +69,14 @@ It gives you:
   or **Open WebUI** — no API key — or a direct **OpenAI-compatible endpoint**, and show a
   full-screen **word-diff review** you can refine before applying. Uses the same
   Wyoming/Whisper transcription server as the Meeting app.
+- **Live Translate** — real-time speech **translation captions on the panel**: point the mic at a
+  conversation, film, or meeting and watch it translated into your language, live, word by word (not
+  after a pause). Two interchangeable providers behind one page — **[Soniox](https://soniox.com)**
+  (cloud, ~$0.18/hr, paste a key, excellent quality) for anyone, and a **self-hosted GPU** option
+  ([openquake-translate](https://github.com/TeeJS/openquake-translate), a WhisperLive + NLLB container)
+  that runs on your own NVIDIA card, free and offline, with **on-demand start/stop** so the GPU is idle
+  when you're not translating. Optional save-to-file and a global **toggle hotkey**.
+  → [Live Translate](docs/live-translate.md)
 - **Theming** — a global **light / dark / system** mode and an **accent color** (with savable
   presets) that drives the panel, the bundled apps, and the knob's RGB ring; web dashboards
   follow the light/dark mode, and any page can override the theme in its Advanced settings.
@@ -89,7 +97,7 @@ It gives you:
 
 > **Status:** early but capable. Touch, knob (incl. RGB ring + hold-to-talk), grids, merged
 > buttons, web dashboards, the bundled apps (clock / world clock / music / meeting / system
-> monitor / AI chat / Microsoft 365 / Claude Code / Codex / Copilot / Open WebUI Voice / LucidType),
+> monitor / AI chat / Microsoft 365 / Claude Code / Codex / Copilot / Open WebUI Voice / LucidType / Live Translate),
 > the three run modes (panel / software / monitor), light/dark + accent theming, the
 > on-board mic, and the editor are working and validated against real hardware. The panel is
 > driven as a normal external monitor (Windows sees a 480×1920 / 1920×480 display); pushing
@@ -100,7 +108,7 @@ It gives you:
 Detailed guides live in **[docs/](docs/README.md)**:
 
 - [The editor](docs/editor.md) · [Web dashboards](docs/dashboards.md) · [Bundled apps](docs/apps.md)
-- [Music controller](docs/music.md) · [System monitor](docs/system-monitor.md) · [Open WebUI chat + voice](docs/ai-chat.md) · [Claude Code voice + text](docs/claude-voice.md) · [Codex voice + text](docs/codex-voice.md) · [Copilot voice + text](docs/copilot-voice.md) · [Open WebUI Voice](docs/owui-voice.md)
+- [Music controller](docs/music.md) · [System monitor](docs/system-monitor.md) · [Open WebUI chat + voice](docs/ai-chat.md) · [Claude Code voice + text](docs/claude-voice.md) · [Codex voice + text](docs/codex-voice.md) · [Copilot voice + text](docs/copilot-voice.md) · [Open WebUI Voice](docs/owui-voice.md) · [Live Translate](docs/live-translate.md)
 - [Home Assistant integration](docs/home-assistant.md) · [Settings & knob lighting](docs/settings.md) · [Reserved Display](docs/reserved-display.md) · [Building & how it works](docs/building.md) · [Device protocol](docs/DEVICE_PROTOCOL.md)
 
 ## Companion project
