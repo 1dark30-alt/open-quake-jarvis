@@ -402,7 +402,7 @@
       <div class="row" style="margin-top:8px"><label style="width:auto">Knob</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="gKnobOn" ${g.knobOverride ? 'checked' : ''}> Override</label></div>
       ${g.knobOverride ? `<div class="row"><label style="width:auto">Turn / Click / Dbl</label>${knobSelHtml('gKnobTurn', KNOB_TURN_OPTS, (g.knob && g.knob.turn) || 'pages')} ${knobSelHtml('gKnobClick', KNOB_CLICK_OPTS, (g.knob && g.knob.click) || 'rotation')} ${knobSelHtml('gKnobDblclick', KNOB_DBLCLICK_OPTS, (g.knob && g.knob.dblclick) || 'selector')}</div>` : ''}
-      ${(VOICE_APPS.includes(g.app) || g.app === 'lucidtype' || g.app === 'livetranslate') ? `
+      ${(VOICE_APPS.includes(g.app) || g.app === 'lucidtype') ? `
       <div class="row" style="margin-top:8px"><label style="width:auto">STT / TTS</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="gVoiceOn" ${g.options && g.options.voiceOverride ? 'checked' : ''}> Override default TTS/STT servers</label></div>
       ${g.options && g.options.voiceOverride ? `
@@ -1727,7 +1727,7 @@
         <div class="row"><label>Stop command</label>
           <input id="xlWlStop" value="${esc(optVal(g, 'whisperStopCmd', ''))}" placeholder="ssh root@192.168.1.25 docker stop whisper-live" style="flex:1"></div>
         <p class="hint">Run when you start/stop listening, so the container (and the GPU) only run on demand. Blank = assume it's always up. OQ waits for the WS port after the start command before connecting.</p>` : `
-        <p class="hint">Wyoming: point this page's STT server at a <b>streaming</b> endpoint under <b>Advanced settings</b> below. (Utterance-final STT lags badly on continuous speech — Soniox is recommended for live use.)</p>`}
+        <p class="hint">Wyoming: legacy same-language STT via the global <b>Settings → TTS/STT</b> endpoint (utterance-final — lags on continuous speech; Soniox or WhisperLive is recommended for live use).</p>`}
         <p class="sectitle" style="margin-top:14px">Microphone</p>
         <div class="row"><label>Capture device</label>
           <select id="xlMic" style="flex:1"><option value="">System default</option></select></div>
