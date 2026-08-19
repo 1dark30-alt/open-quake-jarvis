@@ -2170,7 +2170,7 @@
     const th = currentTheme();
     // Meeting recording settings (config.settings.meeting) — global so auto-record works regardless of
     // which app the panel is showing. Same shape as MEETING_DEFAULTS in main.js.
-    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '', slideCaptureEnabled: false, slideAutoStartOnSelect: false, slideNotifications: true, slideHotkeyToggle: 'Ctrl+Alt+S', slideHotkeySelect: 'Ctrl+Alt+W', slideHotkeyManual: 'Ctrl+Alt+C', slideAppFilter: '', slideIdleStopMin: 30 }, (config.settings || {}).meeting || {});
+    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '', joplinEnabled: false, joplinUrl: '', joplinToken: '', joplinNotebook: 'NW Pipe', slideCaptureEnabled: false, slideAutoStartOnSelect: false, slideNotifications: true, slideHotkeyToggle: 'Ctrl+Alt+S', slideHotkeySelect: 'Ctrl+Alt+W', slideHotkeyManual: 'Ctrl+Alt+C', slideAppFilter: '', slideIdleStopMin: 30 }, (config.settings || {}).meeting || {});
     const me = currentMe();
     // Global TTS/STT (Wyoming) endpoints (config.settings.voice) — same shape as VOICE_DEFAULTS in
     // voiceConfig.js. Each service has its own host+port so STT and TTS can live on different servers.
@@ -2410,6 +2410,13 @@
       <div class="row"><label>Task-list folder</label>
         <input id="meTaskFolder" value="${esc(me.taskListFolder)}" placeholder="blank = task-list under Processed Recordings" style="flex:1">
         <button id="meTaskFolderBrowse" type="button">Browse…</button></div>
+      <div class="row" style="margin-top:12px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meJoplin" ${me.joplinEnabled ? 'checked' : ''}> Create Joplin notes for analyses</label></div>
+      <p class="hint">After each analysis, creates a note in Joplin via the Web Clipper API of Joplin Desktop (Tools › Options › Web Clipper): title = recording name, body = the analysis, tagged <b>meeting notes</b> + the year + title keywords. Only tags that already exist in Joplin are applied — none are created. Joplin Desktop must be running when the analysis finishes.</p>
+      <div class="row"><label>Joplin API URL</label>
+        <input id="meJoplinUrl" value="${esc(me.joplinUrl)}" placeholder="e.g. http://192.168.1.50:41184" style="flex:1"></div>
+      <div class="row"><label>API token</label>${secretInput(me.joplinToken || '', 'id="meJoplinToken" placeholder="Joplin › Tools › Options › Web Clipper"', 'flex:1')}</div>
+      <div class="row"><label>Notebook</label>
+        <input id="meJoplinNb" value="${esc(me.joplinNotebook)}" style="width:230px"></div>
       <div class="row" style="margin-top:12px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meDetails" ${me.useDetailsFolder ? 'checked' : ''}> Use Details Folder</label></div>
       <p class="hint">At analysis, everything except the notes .md (WAV, transcript, meeting info, clean transcript) moves into a <b>details\\</b> subfolder of the meeting's folder.</p>
       <div class="row" style="margin-top:12px"><label>Speaker threshold</label>
@@ -2915,6 +2922,10 @@
         const p = await configApi.pickFolder();
         if (p) { document.getElementById('meTaskFolder').value = p; saveMe({ taskListFolder: p }); }
       };
+      document.getElementById('meJoplin').onchange = e => saveMe({ joplinEnabled: e.target.checked });
+      document.getElementById('meJoplinUrl').oninput = e => saveMe({ joplinUrl: e.target.value.trim() });
+      document.getElementById('meJoplinToken').oninput = e => saveMe({ joplinToken: e.target.value.trim() });
+      document.getElementById('meJoplinNb').oninput = e => saveMe({ joplinNotebook: e.target.value.trim() });
       document.getElementById('meHooks').onchange = e => saveMe({ transcribeHooksEnabled: e.target.checked });
       document.getElementById('meHookPre').oninput = e => saveMe({ preTranscribeCmd: e.target.value });
       document.getElementById('meHookPost').oninput = e => saveMe({ postTranscribeCmd: e.target.value });

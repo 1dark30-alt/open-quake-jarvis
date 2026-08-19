@@ -156,6 +156,17 @@ Recording and transcription for the Meeting panel (details in [meeting.md](meeti
   per analyzed meeting, pointing at its `-analysis.md` (and meeting metadata when the
   calendar integration provided it) — the hand-off for pulling action items onto a
   kanban board. Only successful analyses are listed.
+- **Advanced → Create Joplin notes for analyses** — after each analysis, creates a note
+  in Joplin through the **Joplin API URL** (the Web Clipper service of Joplin Desktop,
+  Tools › Options › Web Clipper — default port 41184) using the **API token** shown
+  there (stored encrypted). Title = the recording basename, body = the analysis
+  markdown, filed to **Notebook** (default `NW Pipe`), tagged `meeting notes` + the
+  year + title keywords. Only tags that already exist in Joplin are applied — none are
+  created; skipped tags are logged. Joplin Desktop must be running when the analysis
+  finishes; a failed note is reported on the panel but never fails the analysis.
+  Analyses also send the calendar meeting-info JSON and any companion Teams `.vtt`
+  caption file (same folder, same timestamp prefix) to the AI as speaker-identity
+  aids, and the `.vtt` is filed with the recording's other artifacts afterwards.
 - **Advanced → Run commands before/after transcription** — start and stop the
   transcription server around each batch (e.g. `ssh root@host "docker start
   meeting-diarizer"` — a loaded diarizer holds ~3.4 GB of GPU memory). **Before** runs
