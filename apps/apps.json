@@ -6353,7 +6353,8 @@
       { "key": "targetLanguage", "label": "Target language code (e.g. en, es, de)", "type": "text", "default": "en" },
       { "key": "sourceHint", "label": "Source language hint (optional, e.g. de)", "type": "text", "default": "" },
       { "key": "targetLangLabel", "label": "Panel label override (optional)", "type": "text", "default": "" },
-      { "key": "saveToFile", "label": "Save transcript to a file (Documents\\OpenQuake Translations)", "type": "bool", "default": false },
+      { "key": "saveToFile", "label": "Save transcript to a file", "type": "bool", "default": false },
+      { "key": "saveFolder", "label": "Save folder (blank = Documents\\OpenQuake Translations)", "type": "text", "default": "" },
       { "key": "vadHangoverMs", "label": "Voice pause tolerance (ms, Wyoming provider only)", "type": "text", "default": "800" },
       { "key": "micDevice", "label": "Microphone (set from the panel Settings)", "type": "text", "default": "" }
     ]

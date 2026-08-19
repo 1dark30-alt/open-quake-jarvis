@@ -48,7 +48,11 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
     return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '-' +
       p(d.getHours()) + '-' + p(d.getMinutes()) + '-' + p(d.getSeconds());
   }
-  function saveFolder() { return path.join(deps.getDocumentsPath() || '', 'OpenQuake Translations'); }
+  function saveFolder() {
+    const o = pageOptions();
+    const custom = o && String(o.saveFolder || '').trim();
+    return custom || path.join(deps.getDocumentsPath() || '', 'OpenQuake Translations');
+  }
 
   // Append one finalized line to the running file when Save-to-file is on. One file per save session:
   // the name is stamped when the first line lands and reused until saving is toggled off.
