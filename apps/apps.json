@@ -6348,9 +6348,13 @@
     "file": "livetranslateview.html",
     "served": true,
     "options": [
-      { "key": "targetLangLabel", "label": "Target language label (shown on the panel)", "type": "text", "default": "English" },
+      { "key": "provider", "label": "Translation provider", "type": "select", "default": "soniox", "choices": [ ["soniox", "Soniox — cloud real-time translation (recommended)"], ["wyoming", "Wyoming STT endpoint (legacy / self-hosted)"] ] },
+      { "key": "sonioxApiKey", "label": "Soniox API key", "type": "secret", "default": "" },
+      { "key": "targetLanguage", "label": "Target language code (e.g. en, es, de)", "type": "text", "default": "en" },
+      { "key": "sourceHint", "label": "Source language hint (optional, e.g. de)", "type": "text", "default": "" },
+      { "key": "targetLangLabel", "label": "Panel label override (optional)", "type": "text", "default": "" },
       { "key": "saveToFile", "label": "Save transcript to a file (Documents\\OpenQuake Translations)", "type": "bool", "default": false },
-      { "key": "vadHangoverMs", "label": "Voice pause tolerance (ms)", "type": "text", "default": "800" },
+      { "key": "vadHangoverMs", "label": "Voice pause tolerance (ms, Wyoming provider only)", "type": "text", "default": "800" },
       { "key": "micDevice", "label": "Microphone (set from the panel Settings)", "type": "text", "default": "" }
     ]
   }

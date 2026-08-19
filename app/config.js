@@ -1696,20 +1696,32 @@
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
+    const xlProvider = optVal(g, 'provider', 'soniox');
     const liveTranslateBox = `<div style="margin-top:10px">
-        <p class="sectitle">Microphone</p>
+        <div class="row"><label>Provider</label>
+          <select id="xlProvider" style="flex:1">
+            <option value="soniox" ${xlProvider === 'soniox' ? 'selected' : ''}>Soniox — cloud real-time translation (recommended)</option>
+            <option value="wyoming" ${xlProvider === 'wyoming' ? 'selected' : ''}>Wyoming STT endpoint (legacy / self-hosted)</option>
+          </select></div>
+        ${xlProvider === 'soniox' ? `
+        <div class="row"><label>Soniox API key</label>${secretInput(optVal(g, 'sonioxApiKey', ''), 'id="xlSoniKey" style="flex:1"')}</div>
+        <p class="hint">From <b>soniox.com</b>. Stored encrypted; the panel uses a short-lived temp key so the real key never leaves this machine. ~$0.18/hr while actively translating.</p>
+        <div class="row" style="margin-top:10px"><label>Target language</label>
+          <input id="xlTargetLang" value="${esc(optVal(g, 'targetLanguage', 'en'))}" placeholder="en" style="width:120px"></div>
+        <div class="row"><label>Source hint</label>
+          <input id="xlSourceHint" value="${esc(optVal(g, 'sourceHint', ''))}" placeholder="blank = auto-detect (e.g. de)" style="width:230px"></div>
+        <p class="hint">Language codes (en, es, de, …). Source hint is optional — Soniox auto-detects otherwise.</p>` : `
+        <p class="hint">Wyoming: point this page's STT server at a <b>streaming</b> endpoint under <b>Advanced settings</b> below. (Utterance-final STT lags badly on continuous speech — Soniox is recommended for live use.)</p>`}
+        <p class="sectitle" style="margin-top:14px">Microphone</p>
         <div class="row"><label>Capture device</label>
           <select id="xlMic" style="flex:1"><option value="">System default</option></select></div>
         <p class="hint">The mic used for live translation (also selectable from the panel's Settings).</p>
-        <div class="row" style="margin-top:10px"><label>Target language</label>
-          <input id="xlLang" value="${esc(optVal(g, 'targetLangLabel', 'English'))}" style="flex:1"></div>
-        <p class="hint">Label shown on the panel. Tier 1 uses a translate-mode Whisper endpoint, which outputs English.</p>
         <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="xlSave" ${optVal(g, 'saveToFile', false) ? 'checked' : ''}> Save transcript to a file</label></div>
-        <p class="hint">Appends finalized lines to Documents\\OpenQuake Translations (toggle live from the panel too).</p>
+        <p class="hint">Appends to Documents\\OpenQuake Translations.</p>
+        ${xlProvider === 'wyoming' ? `
         <div class="row" style="margin-top:10px"><label style="width:auto">Voice pause tolerance</label>
           <input type="number" id="xlPause" min="400" max="2500" step="100" value="${esc(String(optVal(g, 'vadHangoverMs', 800)))}" style="width:110px">
-          <span class="hint" style="margin:0 0 0 8px">ms of silence before a phrase is translated</span></div>
-        <p class="hint">Point the STT server at a translate-mode endpoint: global <b>Settings → TTS/STT</b>, or override it for this page under <b>Advanced settings</b> below.</p>
+          <span class="hint" style="margin:0 0 0 8px">ms of silence before a phrase is sent</span></div>` : ''}
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
@@ -1895,7 +1907,13 @@
       document.getElementById('ltRewriteCustom').oninput = e => setOpt('rewriteCustomPrompt', e.target.value);
     } else if (isLiveTranslate) {
       const setOpt = (key, val) => { if (!g.options) g.options = {}; g.options[key] = val; markDirty(); };
-      // Microphone dropdown — the app's default capture device, same pattern as LucidType/Meeting.
+      document.getElementById('xlProvider').onchange = e => { setOpt('provider', e.target.value); render(); };   // re-render to swap provider-specific fields
+      const soniKey = document.getElementById('xlSoniKey'); if (soniKey) soniKey.onchange = e => setOpt('sonioxApiKey', e.target.value);
+      const tl = document.getElementById('xlTargetLang'); if (tl) tl.oninput = e => setOpt('targetLanguage', e.target.value.trim());
+      const sh = document.getElementById('xlSourceHint'); if (sh) sh.oninput = e => setOpt('sourceHint', e.target.value.trim());
+      const pause = document.getElementById('xlPause'); if (pause) pause.oninput = e => setOpt('vadHangoverMs', e.target.value);
+      document.getElementById('xlSave').onchange = e => setOpt('saveToFile', e.target.checked);
+      // Microphone dropdown — the app's default capture device (same pattern as LucidType/Meeting).
       // enumerateDevices exposes labels only after a getUserMedia grant, so grab-then-release once.
       (function () {
         const sel = document.getElementById('xlMic'); const cur = optVal(g, 'micDevice', '');
@@ -1914,9 +1932,6 @@
             .catch(() => fill(devs));
         }).catch(() => fill([]));
       })();
-      document.getElementById('xlLang').oninput = e => setOpt('targetLangLabel', e.target.value);
-      document.getElementById('xlSave').onchange = e => setOpt('saveToFile', e.target.checked);
-      document.getElementById('xlPause').oninput = e => setOpt('vadHangoverMs', e.target.value);
     } else if (isOffice) {
       wireOfficeOptions(g);
     } else {

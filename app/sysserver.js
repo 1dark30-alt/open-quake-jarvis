@@ -435,6 +435,7 @@ const VOICE_POST_SUFFIXES = new Set([
   '/model',
   '/tts',
   '/option',
+  '/append-line',
 ]);
 
 // TTS handoff: reply text can be many KB -- far beyond what fits in a GET query string (Node
@@ -575,6 +576,21 @@ async function handler(req, res) {
       const key = body && typeof body.key === 'string' ? body.key : '';
       if (!key || body.value == null || !h.setOption) return done(res, false);
       let ok = false; try { ok = !!h.setOption(key, String(body.value)); } catch (e) {}
+      return done(res, ok);
+    }
+    // Live Translate (Soniox provider): mint a short-lived temp key server-side so the real key never
+    // reaches the renderer; the page authenticates its Soniox WebSocket with it. GET, same-origin-gated.
+    if (voicePath === '/soniox-token') {
+      if (!h.sonioxToken) return json(res, { ok: false });
+      let out; try { out = await h.sonioxToken(); } catch (e) { out = { ok: false, error: e.message }; }
+      return json(res, out || { ok: false });
+    }
+    // Live Translate: persist the streamed translation to the save file (posted on stop).
+    if (voicePath === '/append-line' && req.method === 'POST') {
+      let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+      const text = body && typeof body.text === 'string' ? body.text : '';
+      if (!text || !h.appendLine) return done(res, false);
+      let ok = false; try { ok = !!(h.appendLine(text) || {}).ok; } catch (e) {}
       return done(res, ok);
     }
     if (voicePath === '/tts' && req.method === 'POST') {
