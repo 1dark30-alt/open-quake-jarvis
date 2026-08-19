@@ -71,11 +71,8 @@ It gives you:
   Wyoming/Whisper transcription server as the Meeting app.
 - **Live Translate** — real-time speech **translation captions on the panel**: point the mic at a
   conversation, film, or meeting and watch it translated into your language, live, word by word (not
-  after a pause). Two interchangeable providers behind one page — **[Soniox](https://soniox.com)**
-  (cloud, ~$0.18/hr, paste a key, excellent quality) for anyone, and a **self-hosted GPU** option
-  ([openquake-translate](https://github.com/TeeJS/openquake-translate), a WhisperLive + NLLB container)
-  that runs on your own NVIDIA card, free and offline, with **on-demand start/stop** so the GPU is idle
-  when you're not translating. Optional save-to-file and a global **toggle hotkey**.
+  after a pause). Powered by **[Soniox](https://soniox.com)** (cloud, ~$0.18/hr while translating) —
+  paste an API key, pick a target language, done. Optional save-to-file and a global **toggle hotkey**.
   → [Live Translate](docs/live-translate.md)
 - **Theming** — a global **light / dark / system** mode and an **accent color** (with savable
   presets) that drives the panel, the bundled apps, and the knob's RGB ring; web dashboards
