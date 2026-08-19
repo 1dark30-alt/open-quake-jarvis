@@ -1548,6 +1548,7 @@
     const isVoiceApp = isClaudeVoice || isCodexVoice || isCopilotVoice || isOwuiVoice;   // all four share the hand-rendered options box below (owui omits the folder/mode rows)
     const isOffice = g.app === 'office';
     const isLucidType = g.app === 'lucidtype';
+    const isLiveTranslate = g.app === 'livetranslate';
     const musicBox = `<fieldset style="border:1px solid #2a3a4e; border-radius:8px; padding:6px 14px 10px; margin:10px 0">
         <legend style="padding:0 6px; color:#9fb3c8; font-size:13px">Panels</legend>
         <div><label class="iconopt" style="width:auto"><input type="checkbox" id="pArt" ${optVal(g, 'art', true) ? 'checked' : ''}> Show album art</label></div>
@@ -1695,7 +1696,24 @@
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
-    const optsBlock = isMusic ? musicBox : isHaDash ? haBox : isKeyShortcuts ? keyShortcutsBox : isVoiceApp ? claudeVoiceBox : isLucidType ? lucidTypeBox : isOffice ? officeOptionsHtml(g, def) : ('<div id="appOpts"></div>' + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
+    const liveTranslateBox = `<div style="margin-top:10px">
+        <p class="sectitle">Microphone</p>
+        <div class="row"><label>Capture device</label>
+          <select id="xlMic" style="flex:1"><option value="">System default</option></select></div>
+        <p class="hint">The mic used for live translation (also selectable from the panel's Settings).</p>
+        <div class="row" style="margin-top:10px"><label>Target language</label>
+          <input id="xlLang" value="${esc(optVal(g, 'targetLangLabel', 'English'))}" style="flex:1"></div>
+        <p class="hint">Label shown on the panel. Tier 1 uses a translate-mode Whisper endpoint, which outputs English.</p>
+        <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="xlSave" ${optVal(g, 'saveToFile', false) ? 'checked' : ''}> Save transcript to a file</label></div>
+        <p class="hint">Appends finalized lines to Documents\\OpenQuake Translations (toggle live from the panel too).</p>
+        <div class="row" style="margin-top:10px"><label style="width:auto">Voice pause tolerance</label>
+          <input type="number" id="xlPause" min="400" max="2500" step="100" value="${esc(String(optVal(g, 'vadHangoverMs', 800)))}" style="width:110px">
+          <span class="hint" style="margin:0 0 0 8px">ms of silence before a phrase is translated</span></div>
+        <p class="hint">Point the STT server at a translate-mode endpoint: global <b>Settings → TTS/STT</b>, or override it for this page under <b>Advanced settings</b> below.</p>
+      </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
+        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
+      <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
+    const optsBlock = isMusic ? musicBox : isHaDash ? haBox : isKeyShortcuts ? keyShortcutsBox : isVoiceApp ? claudeVoiceBox : isLucidType ? lucidTypeBox : isLiveTranslate ? liveTranslateBox : isOffice ? officeOptionsHtml(g, def) : ('<div id="appOpts"></div>' + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : ''));
     el.innerHTML = tabBar + `
@@ -1875,6 +1893,30 @@
       document.getElementById('ltRwConcise').oninput = e => setOpt('rewritePromptConcise', e.target.value);
       document.getElementById('ltRwConfident').oninput = e => setOpt('rewritePromptConfident', e.target.value);
       document.getElementById('ltRewriteCustom').oninput = e => setOpt('rewriteCustomPrompt', e.target.value);
+    } else if (isLiveTranslate) {
+      const setOpt = (key, val) => { if (!g.options) g.options = {}; g.options[key] = val; markDirty(); };
+      // Microphone dropdown — the app's default capture device, same pattern as LucidType/Meeting.
+      // enumerateDevices exposes labels only after a getUserMedia grant, so grab-then-release once.
+      (function () {
+        const sel = document.getElementById('xlMic'); const cur = optVal(g, 'micDevice', '');
+        const fill = devs => {
+          const inputs = (devs || []).filter(d => d.kind === 'audioinput' && d.label);
+          sel.innerHTML = '<option value="">System default</option>';
+          inputs.forEach(d => { const o = document.createElement('option'); o.value = d.label; o.textContent = d.label; sel.appendChild(o); });
+          if (cur && !inputs.some(d => d.label === cur)) { const o = document.createElement('option'); o.value = cur; o.textContent = cur + ' (not connected)'; sel.appendChild(o); }
+          sel.value = cur;
+          sel.onchange = e => setOpt('micDevice', e.target.value);
+        };
+        navigator.mediaDevices.enumerateDevices().then(devs => {
+          if ((devs || []).some(d => d.kind === 'audioinput' && d.label)) return fill(devs);
+          navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(tmp => navigator.mediaDevices.enumerateDevices().then(d2 => { tmp.getTracks().forEach(t => t.stop()); fill(d2); }))
+            .catch(() => fill(devs));
+        }).catch(() => fill([]));
+      })();
+      document.getElementById('xlLang').oninput = e => setOpt('targetLangLabel', e.target.value);
+      document.getElementById('xlSave').onchange = e => setOpt('saveToFile', e.target.checked);
+      document.getElementById('xlPause').oninput = e => setOpt('vadHangoverMs', e.target.value);
     } else if (isOffice) {
       wireOfficeOptions(g);
     } else {
