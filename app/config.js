@@ -1710,14 +1710,17 @@
           <input id="xlTargetLang" value="${esc(optVal(g, 'targetLanguage', 'en'))}" placeholder="en" style="width:120px"></div>
         <div class="row"><label>Source hint</label>
           <input id="xlSourceHint" value="${esc(optVal(g, 'sourceHint', ''))}" placeholder="blank = auto-detect (e.g. de)" style="width:230px"></div>
-        <p class="hint">Language codes (en, es, de, …). Source hint is optional — Soniox auto-detects otherwise.</p>` : `
+        <p class="hint">Language codes (en, es, de, …) — <a href="#" id="xlLangLink">browse all Soniox languages ↗</a>. Source hint is optional; Soniox auto-detects otherwise (setting it removes the startup delay).</p>` : `
         <p class="hint">Wyoming: point this page's STT server at a <b>streaming</b> endpoint under <b>Advanced settings</b> below. (Utterance-final STT lags badly on continuous speech — Soniox is recommended for live use.)</p>`}
         <p class="sectitle" style="margin-top:14px">Microphone</p>
         <div class="row"><label>Capture device</label>
           <select id="xlMic" style="flex:1"><option value="">System default</option></select></div>
         <p class="hint">The mic used for live translation (also selectable from the panel's Settings).</p>
         <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="xlSave" ${optVal(g, 'saveToFile', false) ? 'checked' : ''}> Save transcript to a file</label></div>
-        <p class="hint">Appends to Documents\\OpenQuake Translations.</p>
+        <div class="row"><label>Save folder</label>
+          <input id="xlSaveFolder" value="${esc(optVal(g, 'saveFolder', ''))}" placeholder="Documents\\OpenQuake Translations" readonly style="flex:1">
+          <button id="xlSaveFolderBrowse" type="button">Browse…</button></div>
+        <p class="hint">Where saved translations are written. Blank = Documents\\OpenQuake Translations.</p>
         ${xlProvider === 'wyoming' ? `
         <div class="row" style="margin-top:10px"><label style="width:auto">Voice pause tolerance</label>
           <input type="number" id="xlPause" min="400" max="2500" step="100" value="${esc(String(optVal(g, 'vadHangoverMs', 800)))}" style="width:110px">
@@ -1913,6 +1916,8 @@
       const sh = document.getElementById('xlSourceHint'); if (sh) sh.oninput = e => setOpt('sourceHint', e.target.value.trim());
       const pause = document.getElementById('xlPause'); if (pause) pause.oninput = e => setOpt('vadHangoverMs', e.target.value);
       document.getElementById('xlSave').onchange = e => setOpt('saveToFile', e.target.checked);
+      const xlLangLink = document.getElementById('xlLangLink'); if (xlLangLink) xlLangLink.onclick = e => { e.preventDefault(); configApi.openExternal('https://soniox.com/docs/stt/concepts/supported-languages'); };
+      const xlSfBrowse = document.getElementById('xlSaveFolderBrowse'); if (xlSfBrowse) xlSfBrowse.onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('xlSaveFolder').value = p; setOpt('saveFolder', p); } };
       // Microphone dropdown — the app's default capture device (same pattern as LucidType/Meeting).
       // enumerateDevices exposes labels only after a getUserMedia grant, so grab-then-release once.
       (function () {
