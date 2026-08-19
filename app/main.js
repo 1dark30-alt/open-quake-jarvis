@@ -64,6 +64,7 @@ const { createCodexVoiceAdapter, findCodexExe } = require('./codexvoice-session'
 const { createCopilotVoiceAdapter, findCopilotExe } = require('./copilotvoice-session'); // GitHub Copilot CLI session adapter (ACP JSON-RPC over stdio)
 const { findClaudeExe } = require('./claudevoice-session'); // CLI presence probe for the editor's voice-app warning
 const { createOwuiVoiceAdapter } = require('./owuivoice-session'); // Open WebUI chat adapter (HTTP/SSE, no CLI)
+const { createLiveTranslateHost } = require('./livetranslate-host'); // Live Translate app host (Wyoming STT -> captions, no LLM)
 const owuiClient = require('./owuiClient'); // shared OWUI URL normalization + model-list probe
 const { resolveRunMode, reservedDisplayEnabled } = require('./runMode'); // pure run-mode helpers (panel/software/monitor)
 const voiceConfig = require('./voiceConfig'); // global TTS/STT endpoints + per-page override resolution + legacy migration
@@ -179,6 +180,14 @@ const owuiVoiceHost = createVoicePanelHost({
   },
   adapter: createOwuiVoiceAdapter({ resolveOwui: () => owuiSettings(), log: owuiVoiceLog }),
   deps: voicePanelDeps('owui-voice'),
+});
+// Live Translate (Tier 1): a captions page, NOT an agent -- a lightweight host with no LLM adapter,
+// just Wyoming STT -> text + optional file save. Reuses the voice-panel deps for STT endpoint
+// resolution (global settings.voice, or this page's Advanced override) and config persistence.
+const liveTranslateHost = createLiveTranslateHost({
+  appId: 'livetranslate',
+  log: message => console.log('[livetranslate] ' + message),
+  deps: voicePanelDeps('livetranslate'),
 });
 // Shared main.js plumbing for a voice-panel host. The ring guards are the two-app arbitration:
 // only the ON-SCREEN voice app may drive (or clear) the ring override -- a background app's
@@ -2462,6 +2471,12 @@ app.whenReady().then(async () => {
         'owui-voice': {
           htmlFile: 'claudevoiceview.html',
           handlers: owuiVoiceHost.handlers,
+        },
+        // Live Translate: a captions page, not an agent. Only transcribe/getState/setOption are
+        // implemented; no voiceToken and none of the LLM turn/SSE/speech routes are used.
+        'livetranslate': {
+          htmlFile: 'livetranslateview.html',
+          handlers: liveTranslateHost.handlers,
         },
       },
     });

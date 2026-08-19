@@ -6341,5 +6341,17 @@
     "file": "lucidtypeview.html",
     "served": true,
     "options": []
+  },
+  {
+    "id": "livetranslate",
+    "name": "Live Translate",
+    "file": "livetranslateview.html",
+    "served": true,
+    "options": [
+      { "key": "targetLangLabel", "label": "Target language label (shown on the panel)", "type": "text", "default": "English" },
+      { "key": "saveToFile", "label": "Save transcript to a file (Documents\\OpenQuake Translations)", "type": "bool", "default": false },
+      { "key": "vadHangoverMs", "label": "Voice pause tolerance (ms)", "type": "text", "default": "800" },
+      { "key": "micDevice", "label": "Microphone (set from the panel Settings)", "type": "text", "default": "" }
+    ]
   }
 ]
