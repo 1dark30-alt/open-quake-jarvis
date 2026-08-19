@@ -1,25 +1,17 @@
 'use strict';
-// Lightweight HOST for the "Live Translate" panel app (Tier 1). Unlike the voice-panel host
-// (voicepanel-host.js) it has NO LLM adapter and none of the turn/SSE/speech machinery -- it only
-// turns one VAD-trimmed mic utterance (raw 16 kHz/16-bit/mono PCM, matching claudevoice-vad.js) into
-// text via the configured Wyoming STT endpoint, and optionally appends each finalized line to a
-// running text file.
+// Lightweight HOST for the "Live Translate" panel app. No LLM adapter, no turn/SSE/speech machinery:
+// it mints short-lived Soniox credentials for the page, persists panel-tunable options, and appends
+// finalized translations to a running text file when Save-to-file is on.
 //
-// "Translation to English" is NOT done here: it happens inside wyoming-faster-whisper when that STT
-// server is launched with `--whisper-task translate` (a server-global flag -- confirmed per-request
-// task selection is not supported). So the recommended setup points THIS page's STT override
-// (grid.options.voiceOverride + voiceSttHost/voiceSttPort) at a translate-mode Whisper endpoint
-// (e.g. a second port on the tts-stt-windows helper). This host is task-agnostic and simply shows
-// whatever text the STT returns -- English when the endpoint is in translate mode, verbatim otherwise.
+// The page (livetranslateview.js) does the actual streaming: continuous 16 kHz mono PCM to Soniox's
+// real-time translation WebSocket, authenticated with a temporary key from /soniox-token below — the
+// real API key never leaves the main process (plaintext in memory, encrypted at rest by secretStore).
 //
 // deps (reuses main.js's voicePanelDeps('livetranslate')):
-//   voiceEndpoints() -> { sttHost, sttPort, ... }   activeServedAppConfig(appId)
-//   activeGrid()   saveConfig()   getDocumentsPath()
+//   activeServedAppConfig(appId)   activeGrid()   saveConfig()   getDocumentsPath()
 const fs = require('fs');
 const path = require('path');
 const https = require('https');                         // Soniox temporary-API-key mint
-const wyoming = require('./claudevoice-wyoming');       // pure Wyoming STT/TTS protocol client
-const { isSttNoisePhrase } = require('./voiceConfig');  // drops whisper's near-silence hallucinations
 
 function truthy(v) { return v === true || v === '1' || v === 'true'; }
 
@@ -28,7 +20,6 @@ function truthy(v) { return v === true || v === '1' || v === 'true'; }
 const PANEL_OPTIONS = {
   saveToFile: v => (v === true || v === '1' || v === false || v === '0' || v === 'true' || v === 'false')
     ? (truthy(v) ? '1' : '0') : null,
-  vadHangoverMs: v => { const n = parseInt(v, 10); return n >= 400 && n <= 2500 ? String(n) : null; },
   // Mic pick is stored as a LABEL, not a deviceId (Chromium salts ids per origin, and the served
   // origin's port changes every launch); the page re-matches label -> id at startup. '' = default.
   micDevice: v => typeof v === 'string' && v.length <= 200 ? v : null,
@@ -67,27 +58,8 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
     } catch (e) { say('Save-to-file failed: ' + e.message); }
   }
 
-  // Transcribes one VAD-trimmed utterance via the configured wyoming-faster-whisper host/port.
-  async function transcribe(pcmBuffer) {
-    const { sttHost: host, sttPort: port } = deps.voiceEndpoints();
-    if (!host || !port) {
-      return { ok: false, error: 'STT host/port not configured (this page’s Advanced override, or Settings → TTS/STT)' };
-    }
-    try {
-      const text = await wyoming.transcribe({ host, port, audio: pcmBuffer, rate: 16000, width: 2, channels: 1, log: say });
-      if (isSttNoisePhrase(text)) { say('STT dropped a known noise-hallucination phrase: ' + JSON.stringify(text)); return { ok: true, text: '' }; }
-      const clean = String(text || '').trim();
-      if (clean) maybeSave(clean);
-      return { ok: true, text: clean };
-    } catch (e) {
-      say('STT error: ' + e.message);
-      return { ok: false, error: e.message };
-    }
-  }
-
-  // Mint a SHORT-LIVED Soniox temporary API key from the page's stored key (plaintext in memory,
-  // encrypted at rest by secretStore). The renderer authenticates its Soniox WebSocket with this temp
-  // key, so the real key never leaves the main process.
+  // Mint a SHORT-LIVED Soniox temporary API key from the page's stored key. The renderer
+  // authenticates its Soniox WebSocket with this temp key, so the real key never leaves main.
   function sonioxToken() {
     const o = pageOptions();
     const key = o && String(o.sonioxApiKey || '').trim();
@@ -109,71 +81,17 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
     });
   }
 
-  // Append finalized translation to the save file (streaming providers post the session text on stop).
+  // Append finalized translation to the save file (the page posts the session text on stop).
   function appendLine(text) { const t = String(text || '').trim(); if (t) maybeSave(t); return { ok: true }; }
 
-  // ---- WhisperLive (self-hosted GPU streaming) provider ----
-  // Runs optional container start/stop commands (same temp-.cmd pattern as the meeting hooks) and waits
-  // for the WS port before the page connects, so the GPU is only spun up on demand and freed on stop.
-  function runShellCmd(cmd, timeoutMs) {
-    return new Promise(resolve => {
-      const c = String(cmd || '').trim();
-      if (!c) return resolve(null);
-      const os = require('os'), cp = require('child_process');
-      const file = path.join(os.tmpdir(), 'oq-livetranslate-cmd-' + Date.now() + '.cmd');
-      try { fs.writeFileSync(file, '@echo off\r\n' + c.replace(/\r?\n/g, '\r\n') + '\r\n'); }
-      catch (e) { return resolve(e.message); }
-      cp.execFile('cmd.exe', ['/d', '/s', '/c', file], { timeout: timeoutMs || 30000, windowsHide: true, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-        try { fs.unlinkSync(file); } catch (e) {}
-        resolve(err ? (String(stderr || '').trim() || err.message).slice(0, 300) : null);
-      });
-    });
-  }
-  function parseWsHostPort(url) {
-    const m = /^wss?:\/\/([^:/?#]+):(\d+)/i.exec(String(url || '').trim());
-    return m ? { host: m[1], port: parseInt(m[2], 10) } : null;
-  }
-  function waitForPort(host, port, timeoutMs) {
-    const net = require('net'); const deadline = Date.now() + timeoutMs;
-    return new Promise(resolve => {
-      (function attempt() {
-        const s = net.connect({ host, port });
-        s.on('connect', () => { s.destroy(); resolve(true); });
-        s.on('error', () => { s.destroy(); if (Date.now() > deadline) resolve(false); else setTimeout(attempt, 800); });
-      })();
-    });
-  }
-  async function whisperStart() {
-    const o = pageOptions() || {};
-    const url = String(o.whisperUrl || '').trim();
-    const token = String(o.whisperToken || '').trim();
-    if (!url) return { ok: false, error: 'WhisperLive URL not set (this page’s settings)' };
-    const startErr = await runShellCmd(o.whisperStartCmd, 30000);
-    if (startErr) say('WhisperLive start command reported: ' + startErr);   // non-fatal — it may already be running
-    const hp = parseWsHostPort(url);
-    if (hp) {
-      const up = await waitForPort(hp.host, hp.port, 45000);   // large-v3 can take a while to load after start
-      if (!up) return { ok: false, error: 'WhisperLive did not answer on ' + hp.host + ':' + hp.port + (String(o.whisperStartCmd || '').trim() ? '' : ' (no start command set — is the container running?)') };
-    }
-    return { ok: true, url, token };
-  }
-  function whisperStop() { const o = pageOptions() || {}; runShellCmd(o.whisperStopCmd, 15000); return { ok: true }; }
-
-  // Snapshot for the page's on-load /state fetch: which provider, whether it's configured, target
-  // language, the Wyoming endpoint (legacy path), and the current save state.
+  // Snapshot for the page's on-load /state fetch: configured?, target language, save state.
   function getState() {
-    const { sttHost, sttPort } = deps.voiceEndpoints();
     const o = pageOptions() || {};
-    const provider = o.provider || 'soniox';
     return {
       ok: true,
       status: 'idle',
-      provider,
       sonioxConfigured: !!String(o.sonioxApiKey || '').trim(),
-      whisperConfigured: !!String(o.whisperUrl || '').trim(),
       targetLanguage: o.targetLanguage || 'en',
-      sttConfigured: !!(sttHost && sttPort),
-      sttEndpoint: sttHost && sttPort ? (sttHost + ':' + sttPort) : '',
       targetLangLabel: o.targetLangLabel || '',
       saveToFile: truthy(o.saveToFile),
       savePath: currentSavePath || '',
@@ -198,7 +116,7 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
 
   return {
     appId,
-    handlers: { transcribe, getState, setOption, sonioxToken, appendLine, whisperStart, whisperStop },
+    handlers: { getState, setOption, sonioxToken, appendLine },
     shutdown() {},   // nothing long-lived to tear down
   };
 }
