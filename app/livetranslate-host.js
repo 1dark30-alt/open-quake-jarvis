@@ -17,6 +17,7 @@
 //   activeGrid()   saveConfig()   getDocumentsPath()
 const fs = require('fs');
 const path = require('path');
+const https = require('https');                         // Soniox temporary-API-key mint
 const wyoming = require('./claudevoice-wyoming');       // pure Wyoming STT/TTS protocol client
 const { isSttNoisePhrase } = require('./voiceConfig');  // drops whisper's near-silence hallucinations
 
@@ -80,17 +81,48 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
     }
   }
 
-  // Snapshot for the page's on-load /state fetch: whether an STT endpoint is set, its host:port (for
-  // the dim source line), the target-language label, and the current save state/path.
+  // Mint a SHORT-LIVED Soniox temporary API key from the page's stored key (plaintext in memory,
+  // encrypted at rest by secretStore). The renderer authenticates its Soniox WebSocket with this temp
+  // key, so the real key never leaves the main process.
+  function sonioxToken() {
+    const o = pageOptions();
+    const key = o && String(o.sonioxApiKey || '').trim();
+    if (!key) return Promise.resolve({ ok: false, error: 'Soniox API key not set (this page’s settings)' });
+    const body = JSON.stringify({ usage_type: 'transcribe_websocket', expires_in_seconds: 300, max_session_duration_seconds: 3600 });
+    return new Promise(resolve => {
+      const req = https.request('https://api.soniox.com/v1/auth/temporary-api-key', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+      }, res => {
+        let data = ''; res.on('data', d => data += d); res.on('end', () => {
+          let j = null; try { j = JSON.parse(data); } catch (e) {}
+          if (res.statusCode >= 200 && res.statusCode < 300 && j && j.api_key) resolve({ ok: true, apiKey: j.api_key, expiresAt: j.expires_at });
+          else { say('Soniox token mint failed: ' + res.statusCode + ' ' + data.slice(0, 200)); resolve({ ok: false, error: (j && (j.error_message || j.message)) || ('Soniox HTTP ' + res.statusCode) }); }
+        });
+      });
+      req.on('error', e => { say('Soniox token error: ' + e.message); resolve({ ok: false, error: e.message }); });
+      req.write(body); req.end();
+    });
+  }
+
+  // Append finalized translation to the save file (the Soniox path posts the session text on stop).
+  function appendLine(text) { const t = String(text || '').trim(); if (t) maybeSave(t); return { ok: true }; }
+
+  // Snapshot for the page's on-load /state fetch: which provider, whether it's configured, target
+  // language, the Wyoming endpoint (legacy path), and the current save state.
   function getState() {
     const { sttHost, sttPort } = deps.voiceEndpoints();
     const o = pageOptions() || {};
+    const provider = o.provider || 'soniox';
     return {
       ok: true,
       status: 'idle',
+      provider,
+      sonioxConfigured: !!String(o.sonioxApiKey || '').trim(),
+      targetLanguage: o.targetLanguage || 'en',
       sttConfigured: !!(sttHost && sttPort),
       sttEndpoint: sttHost && sttPort ? (sttHost + ':' + sttPort) : '',
-      targetLangLabel: o.targetLangLabel || 'English',
+      targetLangLabel: o.targetLangLabel || '',
       saveToFile: truthy(o.saveToFile),
       savePath: currentSavePath || '',
     };
@@ -114,7 +146,7 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
 
   return {
     appId,
-    handlers: { transcribe, getState, setOption },
+    handlers: { transcribe, getState, setOption, sonioxToken, appendLine },
     shutdown() {},   // nothing long-lived to tear down
   };
 }

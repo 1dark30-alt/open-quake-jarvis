@@ -17,7 +17,11 @@ var BASE = '/' + (location.pathname.split('/')[1] || 'livetranslate');
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 
-$('targetLang').textContent = Q.get('targetLangLabel') || 'English';
+// Provider: 'soniox' (cloud streaming translation, the good path) or 'wyoming' (legacy utterance STT).
+var provider = Q.get('provider') || 'soniox';
+var targetLanguage = (Q.get('targetLanguage') || 'en').trim();
+var sourceHint = (Q.get('sourceHint') || '').trim();
+$('targetLang').textContent = Q.get('targetLangLabel') || (provider === 'soniox' ? targetLanguage.toUpperCase() : 'English');
 
 // ---- captions ----
 // Finalized lines only (Wyoming STT here is utterance-final -- no interim tokens). The still-being-
@@ -25,13 +29,14 @@ $('targetLang').textContent = Q.get('targetLangLabel') || 'English';
 var MAX_LINES = 200;
 var lines = [];
 var livePending = false;
+var livePendingText = '';   // provisional (not-yet-final) tail shown on the live line (Soniox streaming)
 function renderLines() {
   var list = $('list');
   $('empty').style.display = (lines.length || livePending) ? 'none' : '';
   var html = lines.map(function (t, i) {
     return '<div class="line' + (i >= lines.length - 2 ? ' recent' : '') + '">' + esc(t) + '</div>';
   }).join('');
-  if (livePending) html += '<div class="line live"></div>';
+  if (livePending) html += '<div class="line live">' + esc(livePendingText) + '</div>';
   list.innerHTML = html;
   $('card').scrollTop = $('card').scrollHeight;
 }
@@ -94,11 +99,12 @@ function pickMic(label) {
   postOption('micDevice', label);
   matchDevices();
   syncMicPickVal();
-  if (listening && vad) {   // live: reopen the mic on the new device now
+  if (listening && provider !== 'soniox' && vad) {   // live (wyoming): reopen the mic on the new device now
     vad.stop();
     vad.setInputDevice(micDeviceId);
     vad.start(onSpeechStart, onSpeechEnd, onLevel).catch(function (e) { setStatus('error', 'Microphone switch failed: ' + (e && e.message ? e.message : e)); });
   }
+  // Soniox: the new device applies on the next start (avoids tearing a live cloud session).
 }
 $('micPickBtn').onclick = function () {
   $('devOverlay').classList.remove('hidden');
@@ -134,7 +140,97 @@ function onLevel(level) {
   r.addEventListener('animationend', function () { r.remove(); });
 }
 function syncMicUI() { $('micBtn').classList.toggle('on', listening); $('micBtn').classList.toggle('off', !listening); }
+
+// ---- Soniox real-time translation (streaming; the cloud provider) ----
+// Continuous mic PCM -> Soniox WebSocket -> live translated tokens. The real API key never reaches
+// this page: main mints a short-lived temporary key (GET /soniox-token) that we authenticate with.
+var soniWs = null, soniCtx = null, soniStream = null, soniProc = null;
+var soniFinal = '', soniProv = '';
+function renderSoniox() {
+  // Committed translation split into sentence-ish lines; the provisional tail is the blinking live line.
+  lines = (soniFinal.match(/[^.!?]+[.!?]*/g) || []).map(function (s) { return s.trim(); }).filter(Boolean);
+  if (lines.length > MAX_LINES) lines = lines.slice(-MAX_LINES);
+  livePending = true; livePendingText = soniProv.trim();
+  renderLines();
+}
+function toggleSoniox() {
+  if (listening) { stopSoniox(); return; }
+  listening = true; setStatus('listening'); syncMicUI();
+  fetch(BASE + '/soniox-token', { cache: 'no-store' }).then(function (r) { return r.json(); })
+    .then(function (t) {
+      if (!listening) return;   // toggled back off while the token was in flight
+      if (!t || !t.ok || !t.apiKey) throw new Error((t && t.error) || 'could not get a Soniox token');
+      return ensureDeviceIds().then(function () { if (listening) openSoniox(t.apiKey); });
+    })
+    .catch(function (e) { listening = false; syncMicUI(); setStatus('error', 'Soniox: ' + (e && e.message ? e.message : e)); });
+}
+function openSoniox(apiKey) {
+  soniFinal = ''; soniProv = ''; lines = []; renderLines();
+  soniWs = new WebSocket('wss://stt-rt.soniox.com/transcribe-websocket');
+  soniWs.binaryType = 'arraybuffer';
+  soniWs.onopen = function () {
+    var cfg = { api_key: apiKey, model: 'stt-rt-v5', audio_format: 's16le', sample_rate: 16000, num_channels: 1,
+      translation: { type: 'one_way', target_language: targetLanguage } };
+    if (sourceHint) cfg.language_hints = [sourceHint];
+    soniWs.send(JSON.stringify(cfg));
+    startSoniCapture();
+  };
+  soniWs.onmessage = function (ev) {
+    var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    if (msg.error_code || msg.error_message) { setStatus('error', 'Soniox: ' + (msg.error_message || msg.error_code)); stopSoniox(); return; }
+    var prov = '';
+    (msg.tokens || []).forEach(function (tk) {
+      if (!tk.text || tk.translation_status !== 'translation') return;
+      if (tk.is_final) soniFinal += tk.text; else prov += tk.text;
+    });
+    soniProv = prov;
+    renderSoniox();
+    if (msg.finished) stopSoniox();
+  };
+  soniWs.onerror = function () { setStatus('error', 'Soniox connection error.'); };
+}
+function startSoniCapture() {
+  navigator.mediaDevices.getUserMedia({ audio: micDeviceId ? { deviceId: { ideal: micDeviceId } } : true }).then(function (stream) {
+    if (!listening) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+    soniStream = stream;
+    soniCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    var src = soniCtx.createMediaStreamSource(stream);
+    soniProc = soniCtx.createScriptProcessor(4096, 1, 1);
+    var mute = soniCtx.createGain(); mute.gain.value = 0;   // route to destination (some engines need it) but silent
+    src.connect(soniProc); soniProc.connect(mute); mute.connect(soniCtx.destination);
+    soniProc.onaudioprocess = function (e) {
+      if (!soniWs || soniWs.readyState !== 1) return;
+      var f = e.inputBuffer.getChannelData(0);
+      var pcm = new Int16Array(f.length);
+      var peak = 0;
+      for (var i = 0; i < f.length; i++) { var s = Math.max(-1, Math.min(1, f[i])); pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff; if (Math.abs(f[i]) > peak) peak = Math.abs(f[i]); }
+      try { soniWs.send(pcm.buffer); } catch (e2) {}
+      onLevel(peak);   // drive the mic-button ripples off the live input level
+    };
+  }).catch(function (e) {
+    setStatus('error', 'Microphone access failed: ' + (e && e.message ? e.message : e));
+    stopSoniox();
+  });
+}
+function stopSoniox() {
+  var wasListening = listening;
+  listening = false; syncMicUI();
+  try { if (soniProc) soniProc.disconnect(); } catch (e) {}
+  try { if (soniCtx) soniCtx.close(); } catch (e) {}
+  try { if (soniStream) soniStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+  soniProc = soniCtx = soniStream = null;
+  try { if (soniWs && soniWs.readyState === 1) soniWs.send(new ArrayBuffer(0)); } catch (e) {}   // empty frame = end of audio
+  try { if (soniWs) soniWs.close(); } catch (e) {}
+  soniWs = null;
+  if (wasListening && saveOn && soniFinal.trim()) {   // persist the whole session's translation on stop
+    postJson('/append-line', { text: soniFinal.trim() });
+  }
+  livePending = false; renderLines();
+  setStatus('idle');
+}
+
 function toggleListening() {
+  if (provider === 'soniox') { toggleSoniox(); return; }
   if (!vad) { setStatus('error', 'Microphone engine failed to load.'); return; }
   if (listening) {
     listening = false; vad.stop(); clearPending(); renderLines(); setStatus('idle'); syncMicUI();
@@ -181,20 +277,24 @@ function wireScrollButtons(listId, upId, downId) {
 }
 wireScrollButtons('devList', 'devScrollUp', 'devScrollDown');
 
-function postOption(key, value) {
-  fetch(BASE + '/option', {
-    method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key: key, value: String(value) }),
-  }).catch(function () {});
+function postOption(key, value) { postJson('/option', { key: key, value: String(value) }); }
+function postJson(path, body) {
+  fetch(BASE + path, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(function () {});
 }
 
 // On-load snapshot: the real STT endpoint (for the source line) and the persisted save/target state.
 fetch(BASE + '/state', { cache: 'no-store' }).then(function (r) { return r.json(); })
   .then(function (s) {
     if (s.targetLangLabel) $('targetLang').textContent = s.targetLangLabel;
+    else if (s.provider === 'soniox' && s.targetLanguage) $('targetLang').textContent = s.targetLanguage.toUpperCase();
     saveOn = !!s.saveToFile; syncSaveUI();
-    $('srcPill').textContent = s.sttConfigured ? ('STT ' + s.sttEndpoint) : 'STT not configured';
-    if (!s.sttConfigured) setStatus('idle', 'No STT endpoint set — use this page’s Advanced override, or Settings → TTS/STT.');
+    if (s.provider === 'soniox') {
+      $('srcPill').textContent = s.sonioxConfigured ? ('Soniox → ' + (s.targetLanguage || targetLanguage).toUpperCase()) : 'Soniox API key not set';
+      if (!s.sonioxConfigured) setStatus('idle', 'Add your Soniox API key in this page’s settings (config editor).');
+    } else {
+      $('srcPill').textContent = s.sttConfigured ? ('STT ' + s.sttEndpoint) : 'STT not configured';
+      if (!s.sttConfigured) setStatus('idle', 'No STT endpoint set — use this page’s Advanced override, or Settings → TTS/STT.');
+    }
   }).catch(function () {});
 
 applyPause();
