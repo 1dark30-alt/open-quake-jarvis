@@ -21,7 +21,7 @@ function esc(s) { var d = document.createElement('div'); d.textContent = s == nu
 var provider = Q.get('provider') || 'soniox';
 var targetLanguage = (Q.get('targetLanguage') || 'en').trim();
 var sourceHint = (Q.get('sourceHint') || '').trim();
-$('targetLang').textContent = Q.get('targetLangLabel') || (provider === 'soniox' ? targetLanguage.toUpperCase() : 'English');
+$('targetLang').textContent = Q.get('targetLangLabel') || (provider === 'wyoming' ? 'English' : targetLanguage.toUpperCase());
 
 // ---- captions ----
 // Finalized lines only (Wyoming STT here is utterance-final -- no interim tokens). The still-being-
@@ -229,8 +229,94 @@ function stopSoniox() {
   setStatus('idle');
 }
 
+// ---- WhisperLive (self-hosted GPU streaming) ----
+// Continuous mic PCM (float32, unlike Soniox's s16le) -> WhisperLive WebSocket -> translated_segments.
+// The host runs the optional container start/stop commands around the session so the GPU frees when idle.
+var wlWs = null, wlCtx = null, wlStream = null, wlProc = null, wlUid = '';
+var wlCommitted = [], wlLastStart = -1, wlProv = '';
+function renderWhisper() {
+  lines = wlCommitted.slice(-MAX_LINES);
+  livePending = true; livePendingText = wlProv.trim();
+  renderLines();
+}
+function toggleWhisper() {
+  if (listening) { stopWhisper(); return; }
+  listening = true; setStatus('listening'); syncMicUI();
+  fetch(BASE + '/whisper-start', { method: 'POST', cache: 'no-store' }).then(function (r) { return r.json(); })
+    .then(function (s) {
+      if (!listening) return;
+      if (!s || !s.ok || !s.url) throw new Error((s && s.error) || 'WhisperLive not available');
+      return ensureDeviceIds().then(function () { if (listening) openWhisper(s.url, s.token); });
+    })
+    .catch(function (e) { listening = false; syncMicUI(); setStatus('error', 'WhisperLive: ' + (e && e.message ? e.message : e)); });
+}
+function openWhisper(url, token) {
+  wlCommitted = []; wlLastStart = -1; wlProv = ''; lines = []; renderLines();
+  wlUid = 'oq-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
+  var full = url + (token ? (url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(token) : '');
+  try { wlWs = new WebSocket(full); } catch (e) { listening = false; syncMicUI(); setStatus('error', 'WhisperLive: bad URL'); return; }
+  wlWs.binaryType = 'arraybuffer';
+  wlWs.onopen = function () {
+    wlWs.send(JSON.stringify({ uid: wlUid, language: sourceHint || null, task: 'transcribe', use_vad: true,
+      send_last_n_segments: 10, enable_translation: true, target_language: targetLanguage }));
+  };
+  wlWs.onmessage = function (ev) {
+    if (typeof ev.data !== 'string') return;   // WhisperLive replies are JSON text frames
+    var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    if (msg.uid && msg.uid !== wlUid) return;
+    if (msg.message === 'SERVER_READY') { startWhisperCapture(); return; }   // wait for ready before streaming
+    if (msg.status === 'ERROR' || msg.message === 'ERROR') { setStatus('error', 'WhisperLive: ' + (msg.message || 'error')); stopWhisper(); return; }
+    var segs = msg.translated_segments;   // the translation (original text is in msg.segments, ignored)
+    if (segs && segs.length) {
+      var prov = '';
+      segs.forEach(function (s) {
+        var t = String(s.text || '').trim();
+        if (!t) return;
+        if (s.completed) { if (typeof s.start === 'number' && s.start > wlLastStart) { wlCommitted.push(t); wlLastStart = s.start; } }
+        else prov = t;
+      });
+      wlProv = prov;
+      renderWhisper();
+    }
+  };
+  wlWs.onerror = function () { setStatus('error', 'WhisperLive connection error.'); };
+}
+function startWhisperCapture() {
+  navigator.mediaDevices.getUserMedia({ audio: micDeviceId ? { deviceId: { ideal: micDeviceId } } : true }).then(function (stream) {
+    if (!listening) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+    wlStream = stream;
+    wlCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    var src = wlCtx.createMediaStreamSource(stream);
+    wlProc = wlCtx.createScriptProcessor(4096, 1, 1);
+    var mute = wlCtx.createGain(); mute.gain.value = 0;
+    src.connect(wlProc); wlProc.connect(mute); mute.connect(wlCtx.destination);
+    wlProc.onaudioprocess = function (e) {
+      if (!wlWs || wlWs.readyState !== 1) return;
+      var f = e.inputBuffer.getChannelData(0);
+      try { wlWs.send(new Float32Array(f).buffer); } catch (e2) {}   // WhisperLive expects raw float32, not s16le
+      var peak = 0; for (var i = 0; i < f.length; i++) { if (Math.abs(f[i]) > peak) peak = Math.abs(f[i]); }
+      onLevel(peak);
+    };
+  }).catch(function (e) { setStatus('error', 'Microphone access failed: ' + (e && e.message ? e.message : e)); stopWhisper(); });
+}
+function stopWhisper() {
+  var was = listening; listening = false; syncMicUI();
+  try { if (wlProc) wlProc.disconnect(); } catch (e) {}
+  try { if (wlCtx) wlCtx.close(); } catch (e) {}
+  try { if (wlStream) wlStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+  wlProc = wlCtx = wlStream = null;
+  try { if (wlWs && wlWs.readyState === 1) wlWs.send('END_OF_AUDIO'); } catch (e) {}
+  try { if (wlWs) wlWs.close(); } catch (e) {}
+  wlWs = null;
+  if (was && saveOn && wlCommitted.length) postJson('/append-line', { text: wlCommitted.join(' ') });
+  fetch(BASE + '/whisper-stop', { method: 'POST', cache: 'no-store' }).catch(function () {});   // run stop command — frees the GPU
+  livePending = false; renderLines();
+  setStatus('idle');
+}
+
 function toggleListening() {
   if (provider === 'soniox') { toggleSoniox(); return; }
+  if (provider === 'whisperlive') { toggleWhisper(); return; }
   if (!vad) { setStatus('error', 'Microphone engine failed to load.'); return; }
   if (listening) {
     listening = false; vad.stop(); clearPending(); renderLines(); setStatus('idle'); syncMicUI();
@@ -286,11 +372,14 @@ function postJson(path, body) {
 fetch(BASE + '/state', { cache: 'no-store' }).then(function (r) { return r.json(); })
   .then(function (s) {
     if (s.targetLangLabel) $('targetLang').textContent = s.targetLangLabel;
-    else if (s.provider === 'soniox' && s.targetLanguage) $('targetLang').textContent = s.targetLanguage.toUpperCase();
+    else if ((s.provider === 'soniox' || s.provider === 'whisperlive') && s.targetLanguage) $('targetLang').textContent = s.targetLanguage.toUpperCase();
     saveOn = !!s.saveToFile; syncSaveUI();
     if (s.provider === 'soniox') {
       $('srcPill').textContent = s.sonioxConfigured ? ('Soniox → ' + (s.targetLanguage || targetLanguage).toUpperCase()) : 'Soniox API key not set';
       if (!s.sonioxConfigured) setStatus('idle', 'Add your Soniox API key in this page’s settings (config editor).');
+    } else if (s.provider === 'whisperlive') {
+      $('srcPill').textContent = s.whisperConfigured ? ('WhisperLive → ' + (s.targetLanguage || targetLanguage).toUpperCase()) : 'WhisperLive URL not set';
+      if (!s.whisperConfigured) setStatus('idle', 'Set the WhisperLive URL in this page’s settings (config editor).');
     } else {
       $('srcPill').textContent = s.sttConfigured ? ('STT ' + s.sttEndpoint) : 'STT not configured';
       if (!s.sttConfigured) setStatus('idle', 'No STT endpoint set — use this page’s Advanced override, or Settings → TTS/STT.');

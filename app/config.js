@@ -1710,7 +1710,21 @@
           <input id="xlTargetLang" value="${esc(optVal(g, 'targetLanguage', 'en'))}" placeholder="en" style="width:120px"></div>
         <div class="row"><label>Source hint</label>
           <input id="xlSourceHint" value="${esc(optVal(g, 'sourceHint', ''))}" placeholder="blank = auto-detect (e.g. de)" style="width:230px"></div>
-        <p class="hint">Language codes (en, es, de, …) — <a href="#" id="xlLangLink">browse all Soniox languages ↗</a>. Source hint is optional; Soniox auto-detects otherwise (setting it removes the startup delay).</p>` : `
+        <p class="hint">Language codes (en, es, de, …) — <a href="#" id="xlLangLink">browse all Soniox languages ↗</a>. Source hint is optional; Soniox auto-detects otherwise (setting it removes the startup delay).</p>` : xlProvider === 'whisperlive' ? `
+        <div class="row"><label>WhisperLive URL</label>
+          <input id="xlWlUrl" value="${esc(optVal(g, 'whisperUrl', ''))}" placeholder="ws://192.168.1.25:19000" style="flex:1"></div>
+        <div class="row"><label>Token (optional)</label>${secretInput(optVal(g, 'whisperToken', ''), 'id="xlWlToken" style="flex:1"')}</div>
+        <div class="row" style="margin-top:10px"><label>Target language</label>
+          <input id="xlTargetLang" value="${esc(optVal(g, 'targetLanguage', 'en'))}" placeholder="en" style="width:120px"></div>
+        <div class="row"><label>Source hint</label>
+          <input id="xlSourceHint" value="${esc(optVal(g, 'sourceHint', ''))}" placeholder="blank = auto-detect (e.g. de)" style="width:230px"></div>
+        <p class="hint">Language codes (en, es, de, …) — <a href="#" id="xlLangLink">browse language codes ↗</a>. Runs Whisper large-v3 + translation on your own GPU.</p>
+        <p class="sectitle" style="margin-top:12px">On-demand GPU (optional)</p>
+        <div class="row"><label>Start command</label>
+          <input id="xlWlStart" value="${esc(optVal(g, 'whisperStartCmd', ''))}" placeholder="ssh root@192.168.1.25 docker start whisper-live" style="flex:1"></div>
+        <div class="row"><label>Stop command</label>
+          <input id="xlWlStop" value="${esc(optVal(g, 'whisperStopCmd', ''))}" placeholder="ssh root@192.168.1.25 docker stop whisper-live" style="flex:1"></div>
+        <p class="hint">Run when you start/stop listening, so the container (and the GPU) only run on demand. Blank = assume it's always up. OQ waits for the WS port after the start command before connecting.</p>` : `
         <p class="hint">Wyoming: point this page's STT server at a <b>streaming</b> endpoint under <b>Advanced settings</b> below. (Utterance-final STT lags badly on continuous speech — Soniox is recommended for live use.)</p>`}
         <p class="sectitle" style="margin-top:14px">Microphone</p>
         <div class="row"><label>Capture device</label>
@@ -1918,6 +1932,10 @@
       document.getElementById('xlSave').onchange = e => setOpt('saveToFile', e.target.checked);
       const xlLangLink = document.getElementById('xlLangLink'); if (xlLangLink) xlLangLink.onclick = e => { e.preventDefault(); configApi.openExternal('https://soniox.com/docs/stt/concepts/supported-languages'); };
       const xlSfBrowse = document.getElementById('xlSaveFolderBrowse'); if (xlSfBrowse) xlSfBrowse.onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('xlSaveFolder').value = p; setOpt('saveFolder', p); } };
+      const xlWlUrl = document.getElementById('xlWlUrl'); if (xlWlUrl) xlWlUrl.oninput = e => setOpt('whisperUrl', e.target.value.trim());
+      const xlWlToken = document.getElementById('xlWlToken'); if (xlWlToken) xlWlToken.onchange = e => setOpt('whisperToken', e.target.value);
+      const xlWlStart = document.getElementById('xlWlStart'); if (xlWlStart) xlWlStart.oninput = e => setOpt('whisperStartCmd', e.target.value);
+      const xlWlStop = document.getElementById('xlWlStop'); if (xlWlStop) xlWlStop.oninput = e => setOpt('whisperStopCmd', e.target.value);
       // Microphone dropdown — the app's default capture device (same pattern as LucidType/Meeting).
       // enumerateDevices exposes labels only after a getUserMedia grant, so grab-then-release once.
       (function () {
