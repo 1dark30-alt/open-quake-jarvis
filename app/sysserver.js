@@ -75,6 +75,7 @@ const STATIC_FILES = {
   '/schedule-app.js': 'application/javascript; charset=utf-8',
   '/keyshortcutsview.js': 'application/javascript; charset=utf-8',
   '/claudevoiceview.js': 'application/javascript; charset=utf-8',
+  '/livetranslateview.js': 'application/javascript; charset=utf-8',
   '/claudevoice-vad.js': 'application/javascript; charset=utf-8',
   '/recorderview.js': 'application/javascript; charset=utf-8',
   '/system-audio-capture.js': 'application/javascript; charset=utf-8',
