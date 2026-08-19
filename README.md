@@ -50,7 +50,7 @@ It gives you:
   calls** (your mic on the left channel, everyone else on the right; can auto-start with
   Zoom/Teams calls and auto-stop on silence), then — right from the panel — sends
   recordings to a **diarizing transcription server** ([tts-sst](https://github.com/TeeJS/tts-stt-windows)
-  or meeting-diarizer) for a **speaker-labeled transcript**, and turns transcripts into
+  or [meeting-diarizer](https://github.com/TeeJS/meeting-diarizer)) for a **speaker-labeled transcript**, and turns transcripts into
   **AI meeting notes** (summary, attendees, decisions, action items, cleaned transcript)
   with your locally installed **Claude Code, Codex, or Copilot CLI** — no API key — or your
   own **Open WebUI** server (local models). With the
@@ -69,6 +69,11 @@ It gives you:
   or **Open WebUI** — no API key — or a direct **OpenAI-compatible endpoint**, and show a
   full-screen **word-diff review** you can refine before applying. Uses the same
   Wyoming/Whisper transcription server as the Meeting app.
+- **Live Translate** — real-time speech **translation captions on the panel**: point the mic at a
+  conversation, film, or meeting and watch it translated into your language, live, word by word (not
+  after a pause). Powered by **[Soniox](https://soniox.com)** (cloud, ~$0.18/hr while translating) —
+  paste an API key, pick a target language, done. Optional save-to-file and a global **toggle hotkey**.
+  → [Live Translate](docs/live-translate.md)
 - **Theming** — a global **light / dark / system** mode and an **accent color** (with savable
   presets) that drives the panel, the bundled apps, and the knob's RGB ring; web dashboards
   follow the light/dark mode, and any page can override the theme in its Advanced settings.
@@ -89,7 +94,7 @@ It gives you:
 
 > **Status:** early but capable. Touch, knob (incl. RGB ring + hold-to-talk), grids, merged
 > buttons, web dashboards, the bundled apps (clock / world clock / music / meeting / system
-> monitor / AI chat / Microsoft 365 / Claude Code / Codex / Copilot / Open WebUI Voice / LucidType),
+> monitor / AI chat / Microsoft 365 / Claude Code / Codex / Copilot / Open WebUI Voice / LucidType / Live Translate),
 > the three run modes (panel / software / monitor), light/dark + accent theming, the
 > on-board mic, and the editor are working and validated against real hardware. The panel is
 > driven as a normal external monitor (Windows sees a 480×1920 / 1920×480 display); pushing
@@ -100,7 +105,7 @@ It gives you:
 Detailed guides live in **[docs/](docs/README.md)**:
 
 - [The editor](docs/editor.md) · [Web dashboards](docs/dashboards.md) · [Bundled apps](docs/apps.md)
-- [Music controller](docs/music.md) · [System monitor](docs/system-monitor.md) · [Open WebUI chat + voice](docs/ai-chat.md) · [Claude Code voice + text](docs/claude-voice.md) · [Codex voice + text](docs/codex-voice.md) · [Copilot voice + text](docs/copilot-voice.md) · [Open WebUI Voice](docs/owui-voice.md)
+- [Music controller](docs/music.md) · [System monitor](docs/system-monitor.md) · [Open WebUI chat + voice](docs/ai-chat.md) · [Claude Code voice + text](docs/claude-voice.md) · [Codex voice + text](docs/codex-voice.md) · [Copilot voice + text](docs/copilot-voice.md) · [Open WebUI Voice](docs/owui-voice.md) · [Live Translate](docs/live-translate.md)
 - [Home Assistant integration](docs/home-assistant.md) · [Settings & knob lighting](docs/settings.md) · [Reserved Display](docs/reserved-display.md) · [Building & how it works](docs/building.md) · [Device protocol](docs/DEVICE_PROTOCOL.md)
 
 ## Companion project
