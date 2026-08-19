@@ -109,8 +109,55 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
     });
   }
 
-  // Append finalized translation to the save file (the Soniox path posts the session text on stop).
+  // Append finalized translation to the save file (streaming providers post the session text on stop).
   function appendLine(text) { const t = String(text || '').trim(); if (t) maybeSave(t); return { ok: true }; }
+
+  // ---- WhisperLive (self-hosted GPU streaming) provider ----
+  // Runs optional container start/stop commands (same temp-.cmd pattern as the meeting hooks) and waits
+  // for the WS port before the page connects, so the GPU is only spun up on demand and freed on stop.
+  function runShellCmd(cmd, timeoutMs) {
+    return new Promise(resolve => {
+      const c = String(cmd || '').trim();
+      if (!c) return resolve(null);
+      const os = require('os'), cp = require('child_process');
+      const file = path.join(os.tmpdir(), 'oq-livetranslate-cmd-' + Date.now() + '.cmd');
+      try { fs.writeFileSync(file, '@echo off\r\n' + c.replace(/\r?\n/g, '\r\n') + '\r\n'); }
+      catch (e) { return resolve(e.message); }
+      cp.execFile('cmd.exe', ['/d', '/s', '/c', file], { timeout: timeoutMs || 30000, windowsHide: true, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+        try { fs.unlinkSync(file); } catch (e) {}
+        resolve(err ? (String(stderr || '').trim() || err.message).slice(0, 300) : null);
+      });
+    });
+  }
+  function parseWsHostPort(url) {
+    const m = /^wss?:\/\/([^:/?#]+):(\d+)/i.exec(String(url || '').trim());
+    return m ? { host: m[1], port: parseInt(m[2], 10) } : null;
+  }
+  function waitForPort(host, port, timeoutMs) {
+    const net = require('net'); const deadline = Date.now() + timeoutMs;
+    return new Promise(resolve => {
+      (function attempt() {
+        const s = net.connect({ host, port });
+        s.on('connect', () => { s.destroy(); resolve(true); });
+        s.on('error', () => { s.destroy(); if (Date.now() > deadline) resolve(false); else setTimeout(attempt, 800); });
+      })();
+    });
+  }
+  async function whisperStart() {
+    const o = pageOptions() || {};
+    const url = String(o.whisperUrl || '').trim();
+    const token = String(o.whisperToken || '').trim();
+    if (!url) return { ok: false, error: 'WhisperLive URL not set (this page’s settings)' };
+    const startErr = await runShellCmd(o.whisperStartCmd, 30000);
+    if (startErr) say('WhisperLive start command reported: ' + startErr);   // non-fatal — it may already be running
+    const hp = parseWsHostPort(url);
+    if (hp) {
+      const up = await waitForPort(hp.host, hp.port, 45000);   // large-v3 can take a while to load after start
+      if (!up) return { ok: false, error: 'WhisperLive did not answer on ' + hp.host + ':' + hp.port + (String(o.whisperStartCmd || '').trim() ? '' : ' (no start command set — is the container running?)') };
+    }
+    return { ok: true, url, token };
+  }
+  function whisperStop() { const o = pageOptions() || {}; runShellCmd(o.whisperStopCmd, 15000); return { ok: true }; }
 
   // Snapshot for the page's on-load /state fetch: which provider, whether it's configured, target
   // language, the Wyoming endpoint (legacy path), and the current save state.
@@ -123,6 +170,7 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
       status: 'idle',
       provider,
       sonioxConfigured: !!String(o.sonioxApiKey || '').trim(),
+      whisperConfigured: !!String(o.whisperUrl || '').trim(),
       targetLanguage: o.targetLanguage || 'en',
       sttConfigured: !!(sttHost && sttPort),
       sttEndpoint: sttHost && sttPort ? (sttHost + ':' + sttPort) : '',
@@ -150,7 +198,7 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
 
   return {
     appId,
-    handlers: { transcribe, getState, setOption, sonioxToken, appendLine },
+    handlers: { transcribe, getState, setOption, sonioxToken, appendLine, whisperStart, whisperStop },
     shutdown() {},   // nothing long-lived to tear down
   };
 }

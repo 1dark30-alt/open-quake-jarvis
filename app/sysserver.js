@@ -436,6 +436,8 @@ const VOICE_POST_SUFFIXES = new Set([
   '/tts',
   '/option',
   '/append-line',
+  '/whisper-start',
+  '/whisper-stop',
 ]);
 
 // TTS handoff: reply text can be many KB -- far beyond what fits in a GET query string (Node
@@ -591,6 +593,17 @@ async function handler(req, res) {
       const text = body && typeof body.text === 'string' ? body.text : '';
       if (!text || !h.appendLine) return done(res, false);
       let ok = false; try { ok = !!(h.appendLine(text) || {}).ok; } catch (e) {}
+      return done(res, ok);
+    }
+    // Live Translate (WhisperLive provider): run the on-demand container start command + wait for the
+    // WS port, returning the url/token for the page to connect; stop runs the stop command (frees GPU).
+    if (voicePath === '/whisper-start' && req.method === 'POST') {
+      if (!h.whisperStart) return json(res, { ok: false });
+      let out; try { out = await h.whisperStart(); } catch (e) { out = { ok: false, error: e.message }; }
+      return json(res, out || { ok: false });
+    }
+    if (voicePath === '/whisper-stop' && req.method === 'POST') {
+      let ok = false; try { ok = !!(h.whisperStop ? (h.whisperStop() || {}).ok : false); } catch (e) {}
       return done(res, ok);
     }
     if (voicePath === '/tts' && req.method === 'POST') {
