@@ -273,7 +273,7 @@ function openWhisper(url, token) {
       segs.forEach(function (s) {
         var t = String(s.text || '').trim();
         if (!t) return;
-        if (s.completed) { if (typeof s.start === 'number' && s.start > wlLastStart) { wlCommitted.push(t); wlLastStart = s.start; } }
+        if (s.completed) { var st = parseFloat(s.start); if (isFinite(st) && st > wlLastStart) { wlCommitted.push(t); wlLastStart = st; } }   // WhisperLive sends start as a string ("0.110")
         else prov = t;
       });
       wlProv = prov;
