@@ -473,6 +473,43 @@
       if (inputs.length) inputs[inputs.length - 1].focus();
     };
   }
+  // ---- AI Profiles rows (Settings -> AI Profiles): name + prompt per row, add/remove ----
+  // Same live-edit model as the custom-shortcut rows: mutate config.settings.aiProfiles in place,
+  // markDirty(), Save persists. Ids are stable (never edited); new rows mint one.
+  function aiProfileRowsHtml(list) {
+    const rows = Array.isArray(list) ? list : [];
+    if (!rows.length) return '<p class="hint">No profiles yet — add one below.</p>';
+    return rows.map((p, i) => `<div class="row" data-idx="${i}" style="margin-top:10px;align-items:flex-start">
+        <input class="apName" placeholder="Profile name" value="${esc(p.name || '')}" style="width:200px">
+        <textarea class="apPrompt" placeholder="Instruction for the AI (empty = plain chat)" rows="2" style="flex:1;margin-left:8px;font-family:inherit">${esc(p.prompt || '')}</textarea>
+        <button class="apRemove" type="button" data-rm="${i}" title="Remove" style="margin-left:8px">✕</button>
+      </div>`).join('');
+  }
+  function wireAiProfileRows() {
+    const host = document.getElementById('sAiProfileRows');
+    if (!host) return;
+    const list = () => { if (!config.settings) config.settings = {}; if (!Array.isArray(config.settings.aiProfiles)) config.settings.aiProfiles = []; return config.settings.aiProfiles; };
+    const redraw = () => { host.innerHTML = aiProfileRowsHtml(list()); wireRows(); };
+    function wireRows() {
+      host.querySelectorAll('.apName').forEach((inp, i) => {
+        inp.oninput = e => { const l = list(); if (l[i]) { l[i].name = e.target.value; markDirty(); } };
+      });
+      host.querySelectorAll('.apPrompt').forEach((ta, i) => {
+        ta.oninput = e => { const l = list(); if (l[i]) { l[i].prompt = e.target.value; markDirty(); } };
+      });
+      host.querySelectorAll('.apRemove').forEach(btn => {
+        btn.onclick = () => { list().splice(parseInt(btn.getAttribute('data-rm'), 10), 1); markDirty(); redraw(); };
+      });
+    }
+    wireRows();
+    const addBtn = document.getElementById('sAiProfileAdd');
+    if (addBtn) addBtn.onclick = () => {
+      list().push({ id: 'p' + Date.now().toString(36), name: '', prompt: '' });
+      markDirty(); redraw();
+      const inputs = host.querySelectorAll('.apName');
+      if (inputs.length) inputs[inputs.length - 1].focus();
+    };
+  }
   function officeOptionDefault(def, key) {
     const option = (def.options || []).find(item => item.key === key);
     return option ? option.default : '';
@@ -1646,7 +1683,10 @@
           <input id="cvProjectsRoot" value="${esc(cvVal('projectsRoot', ''))}" style="flex:1">
           <button id="cvProjectsRootBrowse" type="button">Browse…</button></div>
         <p class="hint">The folder the panel's Change folder list scans.</p>`) + `
-        <p class="hint">Voice STT/TTS servers are set globally under <b>Settings → TTS/STT</b>. Override them for just this page in <b>Advanced settings</b> below.</p>` + (!cvModes ? '' : `
+        <p class="hint">Voice STT/TTS servers are set globally under <b>Settings → TTS/STT</b>. Override them for just this page in <b>Advanced settings</b> below.</p>
+        <div class="row" style="margin-top:10px"><label>Default profile</label>
+          <select id="cvProfile" style="flex:1">${(((config.settings || {}).aiProfiles) || []).map((p, i) => `<option value="${esc(p.id)}" ${(cvVal('profilePick', '') || (((config.settings || {}).aiProfiles) || [{}])[0].id) === p.id ? 'selected' : ''}>${esc(p.name || '(unnamed)')}</option>`).join('')}</select></div>
+        <p class="hint">The AI profile this page starts with — a named instruction that shapes the AI (translate, summarize, write…). Switch live from the panel's <b>Profile</b> button; manage the list under <b>Settings → AI Profiles</b>.</p>` + (!cvModes ? '' : `
         <div class="row" style="margin-top:10px"><label>Permission mode</label>
           <select id="cvPermMode" style="flex:1">${cvModes.choices.map(c => `<option value="${esc(c[0])}" ${cvMode === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>`) + (cvBackend === 'claude' ? `
         <div class="row"><label>Touch approval</label>
@@ -1871,6 +1911,8 @@
       if (cvProjectsRootBrowse) cvProjectsRootBrowse.onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('cvProjectsRoot').value = p; setOpt('projectsRoot', p); } };
       const cvPermMode = document.getElementById('cvPermMode');
       if (cvPermMode) cvPermMode.onchange = e => setOpt('permissionMode', e.target.value);
+      const cvProfile = document.getElementById('cvProfile');
+      if (cvProfile) cvProfile.onchange = e => setOpt('profilePick', e.target.value);
       const cvApprovals = document.getElementById('cvApprovals');   // claude-only rows
       if (cvApprovals) cvApprovals.onchange = e => setOpt('approvalsEnabled', e.target.checked);
       const cvEditPrompt = document.getElementById('cvEditPrompt');
@@ -2635,6 +2677,12 @@
 
       <p class="hint">The default STT (Whisper) and TTS (Piper) servers for every voice app and meeting dictation. Each service has its own host + port, so they can run on different machines. Enter your server's IP, or run <a href="#" id="ttsHelperLink">tts-stt-windows</a> on any Windows box to provide both and set the host to <code>127.0.0.1</code>. A page can override these in its <b>Advanced settings</b>. Remember to Save.</p>`;
 
+    // AI Profiles (Smart Profiles): the global library the AI Voice app's Profile picker offers.
+    const apHtml = `
+      <p class="sectitle">AI Profiles</p>
+      <p class="hint">Named instructions for the <b>AI Voice</b> app — pick one on the panel (the Profile button) and the AI behaves accordingly: translate, summarize, write, and so on. The instruction is sent to the AI as its role for the conversation. An empty instruction (General Chat) means plain, unmodified chat. Every AI Voice page remembers its own current profile. Remember to Save.</p>
+      <div id="sAiProfileRows">${aiProfileRowsHtml((config.settings || {}).aiProfiles)}</div>
+      <button id="sAiProfileAdd" type="button" style="margin-top:10px">+ Add profile</button>`;
     el.innerHTML = `
       <p class="sectitle">Settings</p>
       <div class="tabbar">
@@ -2644,11 +2692,12 @@
         <button id="tabApps" class="tab${tab === 'apps' ? ' on' : ''}">Apps</button>
         <button id="tabDi" class="tab${tab === 'dropin' ? ' on' : ''}">Drop-In Apps</button>
         <button id="tabAuth" class="tab${tab === 'auth' ? ' on' : ''}">Auth</button>
+        <button id="tabAp" class="tab${tab === 'aiprofiles' ? ' on' : ''}">AI Profiles</button>
         <button id="tabMe" class="tab${tab === 'meeting' ? ' on' : ''}">Meeting</button>
         <button id="tabTts" class="tab${tab === 'ttsstt' ? ' on' : ''}">TTS/STT</button>
         <button id="tabMon" class="tab${tab === 'monitor' ? ' on' : ''}">Monitor</button>
       </div>
-      ${tab === 'software' ? swHtml : tab === 'hardware' ? hwHtml : tab === 'theme' ? thHtml : tab === 'apps' ? appsHtml : tab === 'dropin' ? diHtml : tab === 'auth' ? authHtml : tab === 'meeting' ? meHtml : tab === 'ttsstt' ? ttsHtml : monHtml}
+      ${tab === 'software' ? swHtml : tab === 'hardware' ? hwHtml : tab === 'theme' ? thHtml : tab === 'apps' ? appsHtml : tab === 'dropin' ? diHtml : tab === 'auth' ? authHtml : tab === 'aiprofiles' ? apHtml : tab === 'meeting' ? meHtml : tab === 'ttsstt' ? ttsHtml : monHtml}
       <div class="row" style="margin-top:22px"><button id="sBack">← Back to pages</button></div>`;
 
     document.getElementById('tabSw').onclick = () => { settingsTab = 'software'; renderSettings(); };
@@ -2657,6 +2706,8 @@
     document.getElementById('tabApps').onclick = () => { settingsTab = 'apps'; renderSettings(); };
     document.getElementById('tabDi').onclick = () => { settingsTab = 'dropin'; renderSettings(); };
     document.getElementById('tabAuth').onclick = () => { settingsTab = 'auth'; renderSettings(); };
+    document.getElementById('tabAp').onclick = () => { settingsTab = 'aiprofiles'; renderSettings(); };
+    wireAiProfileRows();   // no-op unless the AI Profiles tab is showing
     document.getElementById('tabMe').onclick = () => { settingsTab = 'meeting'; renderSettings(); };
     document.getElementById('tabTts').onclick = () => { settingsTab = 'ttsstt'; renderSettings(); };
     document.getElementById('tabMon').onclick = () => { settingsTab = 'monitor'; renderSettings(); };

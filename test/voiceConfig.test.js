@@ -85,6 +85,32 @@ test('old voice app ids migrate to ai-voice with the matching backend', () => {
   assert.equal(cfg.grids[3].options.modelPick, 'llama3');
 });
 
+test('ensureAiProfiles seeds once and never touches user edits', () => {
+  const { ensureAiProfiles, DEFAULT_AI_PROFILES } = require('../app/voiceConfig');
+  const cfg = {};
+  ensureAiProfiles(cfg);
+  assert.equal(cfg.settings.aiProfiles.length, DEFAULT_AI_PROFILES.length);
+  assert.equal(cfg.settings.aiProfiles[0].id, 'chat');
+  assert.equal(cfg.settings.aiProfiles[0].prompt, '');   // General Chat = plain behavior
+  // User edits and deletions survive re-runs.
+  cfg.settings.aiProfiles = [{ id: 'mine', name: 'Mine', prompt: 'be mine' }];
+  ensureAiProfiles(cfg);
+  assert.deepEqual(cfg.settings.aiProfiles, [{ id: 'mine', name: 'Mine', prompt: 'be mine' }]);
+  // Even an emptied list stays empty (a deliberate delete-all is respected).
+  cfg.settings.aiProfiles = [];
+  ensureAiProfiles(cfg);
+  assert.deepEqual(cfg.settings.aiProfiles, []);
+});
+
+test('resolveAiProfile falls back to the first profile for blank or deleted ids', () => {
+  const { resolveAiProfile } = require('../app/voiceConfig');
+  const settings = { aiProfiles: [{ id: 'a', name: 'A', prompt: 'pa' }, { id: 'b', name: 'B', prompt: 'pb' }] };
+  assert.equal(resolveAiProfile(settings, 'b').prompt, 'pb');
+  assert.equal(resolveAiProfile(settings, '').id, 'a');
+  assert.equal(resolveAiProfile(settings, 'gone').id, 'a');
+  assert.equal(resolveAiProfile({ aiProfiles: [] }, 'x').prompt, '');   // emptied library = plain chat
+});
+
 test('id migration never overwrites an existing backend and is idempotent', () => {
   const cfg = { grids: [{ kind: 'app', app: 'claude-voice', options: { backend: 'codex' } }] };
   migrateVoiceConfig(cfg);

@@ -232,3 +232,11 @@ One connection shared by the meeting **Analysis AI** (Meeting tab) and the
 
 The existing per-page [Open WebUI chat widget](ai-chat.md) keeps its own endpoint options and is
 unaffected.
+
+## AI Profiles
+
+The global library behind the [AI Voice](ai-voice.md) app's **Profile** button: each row is a
+name plus the instruction the AI receives for the conversation (Translator, Summarizer, Writer, …).
+Rename, rewrite, add, or remove rows here — changes apply the next time a profile is picked (or a
+session starts). **General Chat** ships with an empty instruction, which means plain, unmodified
+chat. Deleting a profile that a page was using safely falls back to the first one in the list.

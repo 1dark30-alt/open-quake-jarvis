@@ -26,7 +26,7 @@ var BASE = '/' + (location.pathname.split('/')[1] || 'ai-voice') + '/' + BACKEND
 })();
 
 var projectDir = Q.get('projectDir') || '';
-$('project').textContent = projectDir ? projectDir.split(/[\\/]/).filter(Boolean).pop() : '(no project set)';
+setProjectHeader(projectDir);   // rail label + the Settings overlay's Folder row value
 
 function esc(s) {
   var d = document.createElement('div');
@@ -164,6 +164,9 @@ function connectEvents() {
       showApprovalOverlay(msg.requestId, msg.toolName, msg.toolInput);
     } else if (msg.type === 'approval-decision' || msg.type === 'approval-timeout') {
       if (msg.requestId === pendingApprovalRequestId) hideApprovalOverlay();
+    } else if (msg.type === 'profile') {
+      currentProfileId = msg.id || '';
+      syncProfileUI();
     } else if (msg.type === 'permission-mode') {
       currentMode = msg.mode || currentMode;
       syncModeUI();
@@ -265,7 +268,10 @@ function applyMeta(meta) {
   $('approvalAlways').classList.toggle('hidden', !meta.approvalAlways);   // only agents whose protocol supports session-wide approval
   // Chat-only backends (owui/api) have no working directory and no permission modes -- hide the
   // buttons instead of leaving dead claude-shaped controls on screen.
-  $('vpProject').classList.toggle('hidden', meta.hasProject === false);
+  // Chat backends (owui/api) have no working directory: hide the rail's folder-name line and the
+  // Settings overlay's Folder row.
+  $('project').classList.toggle('hidden', meta.hasProject === false);
+  $('folderPickBtn').style.display = meta.hasProject === false ? 'none' : '';
   $('vpMode').classList.toggle('hidden', !(meta.modes && meta.modes.length));
   if (meta.modes && meta.modes.length) {
     MODE_LABELS = {};
@@ -291,6 +297,11 @@ function applyMeta(meta) {
   if (meta.models && meta.models.length) {
     MODEL_PICKS = meta.models.map(function (m) { return [m.id, m.label]; });
     syncPickButtons();
+  }
+  if (meta.profiles) {
+    PROFILES = meta.profiles;
+    if (typeof meta.profile === 'string') currentProfileId = meta.profile;
+    syncProfileUI();
   }
 }
 fetch(BASE + '/state', { cache: 'no-store' }).then(function (r) { return r.json(); })
@@ -570,7 +581,7 @@ $('devCancel').onclick = function () { $('devOverlay').classList.add('hidden'); 
 // start/end on its own, no holding anything down), a second tap closes it. See the plan's hard
 // constraint #4 -- push-to-talk was explicitly rejected.
 var conversationOpen = false;
-var vadHangoverMs = parseInt(Q.get('vadHangoverMs'), 10) || 800;
+var vadHangoverMs = parseInt(Q.get('vadHangoverMs'), 10) || 400;   // 0.4s default — snappier out of the box (matches LucidType)
 var vad = window.createClaudeVoiceVAD ? window.createClaudeVoiceVAD({ hangoverMs: vadHangoverMs }) : null;
 function onVADSpeechStart() {
   if (suppressVAD) return;
@@ -653,7 +664,10 @@ function onVADLevel(level) {
 // first (accent border), then everything under the root alphabetically; the current folder is the
 // single solid accent-filled pill.
 function baseName(p) { return String(p || '').split(/[\\/]/).filter(Boolean).pop() || p; }
-function setProjectHeader(dir) { $('project').textContent = dir ? baseName(dir) : '(no folder set)'; }
+function setProjectHeader(dir) {
+  $('project').textContent = dir ? baseName(dir) : '(no folder set)';
+  $('folderPickVal').textContent = dir ? baseName(dir) : 'not set';
+}
 var projRoot = '';
 function pickProject(dir) {
   $('projectOverlay').classList.add('hidden');
@@ -729,7 +743,8 @@ function wireScrollButtons(listId, upId, downId) {
 }
 wireScrollButtons('projList', 'projScrollUp', 'projScrollDown');
 wireScrollButtons('devList', 'devScrollUp', 'devScrollDown');
-$('vpProject').onclick = function () { openProjectOverlay(); };
+// Folder lives in Settings (rarely changed) — the row closes Settings and opens the folder picker.
+$('folderPickBtn').onclick = function () { $('settingsOverlay').classList.add('hidden'); openProjectOverlay(); };
 $('projCancel').onclick = function () { $('projectOverlay').classList.add('hidden'); };
 $('projCreate').onclick = function () {
   var name = $('projNewName').value.trim();
@@ -774,6 +789,44 @@ applyPause();
 // Switching restarts the claude process with --resume + the new --permission-mode (mode is a
 // launch-only CLI flag; the mid-session control message is undocumented/unsupported). The
 // conversation itself carries over -- expect a ~2s pause before the next turn responds.
+// ---- AI profile (Smart Profiles): big-card grid picker, list delivered via meta ----
+var PROFILES = [];            // [{id, name}] from meta.profiles
+var currentProfileId = '';
+function syncProfileUI() {
+  var cur = null;
+  for (var i = 0; i < PROFILES.length; i++) if (PROFILES[i].id === currentProfileId) cur = PROFILES[i];
+  $('vpProfile').textContent = cur ? 'Profile: ' + cur.name : 'Profile';
+  $('vpProfile').classList.toggle('hidden', !PROFILES.length);
+  document.querySelectorAll('.profileOpt').forEach(function (b) {
+    b.classList.toggle('current', b.getAttribute('data-profile') === currentProfileId);
+  });
+}
+function renderProfileGrid() {
+  var grid = $('profileGrid');
+  grid.innerHTML = '';
+  PROFILES.forEach(function (p) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'profileOpt';
+    b.setAttribute('data-profile', p.id);
+    b.textContent = p.name;
+    b.onclick = function () {
+      $('profileOverlay').classList.add('hidden');
+      if (p.id === currentProfileId) return;
+      fetch(BASE + '/profile', {
+        method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: p.id }),
+      }).then(function (r) { return r.json(); })
+        .then(function (r) { if (!r || !r.ok) setStatus(conversationOpen ? 'listening' : 'idle', 'Profile switch failed.'); })
+        .catch(function () { setStatus('error', 'Could not reach the panel server.'); });
+    };
+    grid.appendChild(b);
+  });
+  syncProfileUI();
+}
+$('vpProfile').onclick = function () { renderProfileGrid(); $('profileOverlay').classList.remove('hidden'); };
+$('profileCancel').onclick = function () { $('profileOverlay').classList.add('hidden'); };
+
 var MODE_LABELS = { manual: 'Manual', acceptEdits: 'Accept edits', plan: 'Plan', bypassPermissions: 'Full auto' };
 var currentMode = '';
 function syncModeUI() {

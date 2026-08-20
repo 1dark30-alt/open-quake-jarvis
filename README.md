@@ -45,7 +45,9 @@ It gives you:
   — one app, five backends: a real **Claude Code**, **Codex**, or **Copilot** agent session on the
   panel, or plain chat against your **Open WebUI** server or **any OpenAI-compatible API**
   (OpenAI, DeepSeek, OpenRouter, LiteLLM/Ollama — your own key) — tap the knob to start/stop a
-  hands-free conversation, with touch approvals and a full text transcript. → [Apps](docs/apps.md)
+  hands-free conversation, with touch approvals, a full text transcript, and switchable **AI
+  profiles** (Translator, Summarizer, Writer, … — editable instructions that reshape the AI in one
+  tap). → [Apps](docs/apps.md)
 - **Meeting recording → transcript → meeting notes** — the Meeting app **records your
   calls** (your mic on the left channel, everyone else on the right; can auto-start with
   Zoom/Teams calls and auto-stop on silence), then — right from the panel — sends

@@ -114,6 +114,19 @@ Toggling the checkbox takes effect the next time a panel session starts. If the 
 unreachable or doesn't respond in time, the request **fails closed** (denied) — never an
 unattended auto-allow.
 
+## Profiles (Smart Profiles)
+
+The **Profile** button switches what the AI *is* for this conversation — a named instruction like
+Translator, Summarizer, Writer, Coder, Math, or Email. Tap it for a full-screen grid of big cards;
+one tap switches. Ships with 9 editable defaults; manage them (rename, rewrite, add, delete) under
+**Settings → AI Profiles**. Each AI Voice page remembers its own current profile, and the editor's
+**Default profile** row sets what a page starts with.
+
+**General Chat** has an empty instruction — plain, unmodified behavior. How a switch lands depends
+on the backend: API and Open WebUI pages apply it instantly mid-conversation; Claude Code quietly
+restarts the session (keeping the conversation, like the Mode button); Codex and Copilot carry it
+into their next message.
+
 ## Models
 
 The panel's **Settings → Model** picker follows the backend: Claude's fixed pick list, Codex and

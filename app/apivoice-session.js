@@ -28,6 +28,7 @@ function createApiVoiceAdapter({ resolveApi, log, client }) {
   let modelList = null;      // null until /models answers; then an array of id strings
   let stream = null;         // in-flight { destroy() } from streamChat
   let acc = '';              // assistant text accumulated for the current turn
+  let profilePrompt = '';    // active AI profile instruction; prepended as a system message per request
 
   function cfg() { return (resolveApi && resolveApi()) || {}; }
   function baseUrl() { return String(cfg().apiBaseUrl || '').trim().replace(/\/+$/, ''); }
@@ -64,7 +65,7 @@ function createApiVoiceAdapter({ resolveApi, log, client }) {
 
   return {
     // ---- lifecycle ----
-    start({ model }) {
+    start({ model, profilePrompt: pp }) {
       if (!baseUrl() || !String(cfg().apiKey || '').trim()) {
         say('start refused: API endpoint or key not configured');
         emitter.emit('error', { message: 'API endpoint not configured — set the URL and key in this page’s settings (config editor).' });
@@ -76,9 +77,13 @@ function createApiVoiceAdapter({ resolveApi, log, client }) {
       history = [];
       acc = '';
       modelPick = model || '';
+      profilePrompt = String(pp || '');
       fetchModels();
       return true;
     },
+    // AI profile switch — takes effect on the next request (the system message is prepended per
+    // send, so it can never be evicted by the history cap). Instant, no restart.
+    setProfilePrompt(text) { profilePrompt = String(text || ''); return true; },
     stop() {
       if (stream) { try { stream.destroy(); } catch (e) {} stream = null; }
       running = false;
@@ -103,7 +108,7 @@ function createApiVoiceAdapter({ resolveApi, log, client }) {
       acc = '';
       emitter.emit('assistant-start');
       let sawLength = false;
-      const payload = { model, stream: true, messages: history.slice() };
+      const payload = { model, stream: true, messages: (profilePrompt ? [{ role: 'system', content: profilePrompt }] : []).concat(history) };
       // DeepSeek v4 defaults to thinking mode (long reasoning delays, answer can land outside
       // content). Disable it; only for DeepSeek models — true-OpenAI endpoints reject unknown params.
       if (/deepseek/i.test(model)) payload.thinking = { type: 'disabled' };

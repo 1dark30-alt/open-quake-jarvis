@@ -348,6 +348,7 @@ function migrateConfig(c) {
     }
   });
   voiceConfig.migrateVoiceConfig(c);   // legacy per-page wyoming* -> global config.settings.voice + per-page override
+  voiceConfig.ensureAiProfiles(c);     // seed the Smart Profiles library once (user edits are never touched)
   return c;
 }
 // SystemView (System Monitor) is RETIRED: its metrics layer spawned continuous PowerShell

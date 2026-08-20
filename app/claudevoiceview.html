@@ -18,6 +18,9 @@
      Settings. Icon buttons follow the Music page's transport aesthetic exactly: circular, 2px
      border, soft gradient fill, currentColor SVG glyphs, scale-down on press. All chrome, so
      user-select:none. */
+  /* Height budget: title + icon row + THREE vpBtns (Profile/Settings/Mode) + folder name fit 480px.
+     Change folder lives in the Settings overlay (rarely used), which is what freed the Profile
+     button's slot without shrinking anything. */
   #voicePanel { flex: 0 0 284px; display: flex; flex-direction: column; gap: 14px; align-items: center;
     justify-content: space-between; user-select: none; }
   #vizRow { display: flex; gap: 16px; justify-content: center; }
@@ -147,6 +150,24 @@
     font-weight: 600; cursor: pointer; text-align: left; padding: 10px 16px; }
   .modeOpt small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); margin-top: 2px; }
   .modeOpt.current { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: -2px; }
+  /* AI profile picker (Smart Profiles): full-screen grid of big touch cards — all nine visible at
+     1920x480 with no scrolling; the current profile is a filled accent card. */
+  #profileOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex;
+    align-items: center; justify-content: center; padding: 24px; z-index: 45; user-select: none; }
+  #profileOverlay.hidden { display: none; }
+  #profileCard { width: min(1600px, 100%); background: var(--surf); border: 1px solid var(--tile-bd);
+    border-radius: 16px; padding: 20px 24px; box-shadow: 0 12px 40px rgba(0,0,0,.4); }
+  #profileHead { display: flex; align-items: center; margin-bottom: 14px; }
+  #profileTitle { font-size: 18px; font-weight: 700; }
+  #profileCancel { margin-left: auto; min-height: 48px; min-width: 110px; border-radius: 10px;
+    border: 1px solid var(--tile-bd); background: var(--surf2); color: var(--fg); font-size: 15px;
+    font-weight: 600; cursor: pointer; }
+  #profileGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .profileOpt { min-height: 88px; border-radius: 14px; border: 1px solid var(--tile-bd);
+    background: var(--surf2); color: var(--fg); font-size: 24px; font-weight: 700; cursor: pointer;
+    padding: 10px 16px; text-align: center; overflow: hidden; }
+  .profileOpt:active { background: var(--tile-bd); }
+  .profileOpt.current { background: var(--accent); color: var(--accent-fg, #04120b); border-color: transparent; }
   #modeCancel { min-height: 48px; min-width: 96px; border-radius: 10px; border: 1px solid var(--tile-bd);
     background: var(--surf2); color: var(--fg); font-size: 15px; font-weight: 600; cursor: pointer; }
 
@@ -243,6 +264,8 @@
      keeps the accent so the primary action stays unmistakable. */
   #approvalAlways { background: var(--surf2); color: var(--fg); border: 1px solid var(--tile-bd); }
   #approvalAlways.hidden { display: none; }
+  .vpBtn.hidden { display: none; }   /* meta-driven hiding of rail buttons (Project/Mode/Profile) */
+  #project.hidden { display: none; } /* chat backends: no folders, so no "(no project set)" line */
   #approvalApprove { background: var(--accent); color: var(--accent-fg, #04120b); }
 </style>
 </head>
@@ -269,7 +292,7 @@
           <svg class="ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.6"/><line x1="4.6" y1="4.6" x2="19.4" y2="19.4"/></svg>
         </button>
       </div>
-      <button id="vpProject" class="vpBtn" type="button">Change folder</button>
+      <button id="vpProfile" class="vpBtn" type="button">Profile</button>
       <button id="vpSettings" class="vpBtn" type="button">Settings</button>
       <button id="vpMode" class="vpBtn" type="button">Mode</button>
       <div id="project"></div>
@@ -307,6 +330,12 @@
       <div style="display:flex;justify-content:flex-end"><button id="modeCancel" type="button">Cancel</button></div>
     </div>
   </div>
+  <div id="profileOverlay" class="hidden">
+    <div id="profileCard">
+      <div id="profileHead"><div id="profileTitle">AI profile</div><button id="profileCancel" type="button">Cancel</button></div>
+      <div id="profileGrid"></div>
+    </div>
+  </div>
   <div id="settingsOverlay" class="hidden">
     <div id="settingsCard">
       <div id="settingsTitle">Settings</div>
@@ -320,7 +349,10 @@
             <button id="pauseMinus" class="stepBtn" type="button">–</button>
             <span id="pauseVal" class="stepVal"></span>
             <button id="pausePlus" class="stepBtn" type="button">+</button></div>
-          <p class="hint" style="margin:0">Pause tolerance = how long you can go quiet mid-sentence before the utterance is sent. Raise it if swallowing or thinking pauses cut you off.</p>
+          <p class="hint" style="margin:0 0 12px">Pause tolerance = how long you can go quiet mid-sentence before the utterance is sent. Raise it if swallowing or thinking pauses cut you off.</p>
+          <button id="folderPickBtn" class="pickRow" type="button">
+            <span class="pickName">Folder</span><span id="folderPickVal" class="pickVal"></span><span class="pickChevron">›</span>
+          </button>
         </div>
         <div class="scol">
           <button id="micPickBtn" class="pickRow" type="button">
@@ -332,8 +364,8 @@
           <button id="modelPickBtn" class="pickRow" type="button">
             <span class="pickName">Model</span><span id="modelPickVal" class="pickVal"></span><span class="pickChevron">›</span>
           </button>
-          <div class="srow" style="margin:0"><button id="ttsTestBtn" class="vpBtn" type="button">🔊 Test speech</button>
-            <span class="hint">Speaks Claude's last reply through the configured voice.</span></div>
+          <div class="srow" style="margin:0"><button id="ttsTestBtn" class="vpBtn" type="button" style="width:auto;flex:0 0 auto;padding:8px 20px">🔊 Test speech</button>
+            <span class="hint" style="flex:1;min-width:0">Speaks the last reply through the configured voice.</span></div>
         </div>
       </div>
       <div class="srow" style="justify-content:flex-end;margin:12px 0 0"><button id="settingsClose" type="button">Done</button></div>

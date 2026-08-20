@@ -22,6 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const speechLib = require('./claudevoice-speech');   // pure: sentence cutter + sanitizer + per-turn WAV pipeline
 const wyoming = require('./claudevoice-wyoming');    // pure: Wyoming STT/TTS protocol client
+const { resolveAiProfile } = require('./voiceConfig'); // pure: AI-profile library lookup (Smart Profiles)
 
 // Whisper hallucinates stock phrases on background noise/near-silence ("thanks for watching" is the
 // classic, from YouTube training data). Exact-phrase blocklist, compared case/punctuation-insensitively --
@@ -220,6 +221,30 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     return speechId;
   }
 
+  // The active page's AI profile (Smart Profiles): per-page pick resolved against the global
+  // library; '' or a deleted id falls back to the library's first entry (General Chat).
+  function currentProfile() {
+    const opts = deps.activeServedAppConfig(appId);
+    const settings = (deps.getConfig() || {}).settings;
+    return resolveAiProfile(settings, (opts && opts.options.profilePick) || '');
+  }
+
+  // Panel Profile picker: persist the pick on the page, hand the prompt to the adapter (chat
+  // backends apply it on the next request; claude quietly restarts-with-resume; codex/copilot
+  // prefix their next turn), and tell every subscribed page.
+  function setProfile(id) {
+    if (typeof id !== 'string' || id.length > 64) return false;
+    const g = deps.activeGrid();
+    if (!ownsGrid(g)) return false;
+    if (!g.options) g.options = {};
+    g.options.profilePick = id;
+    deps.saveConfig();
+    const prof = currentProfile();
+    if (adapter.setProfilePrompt) adapter.setProfilePrompt(prof.prompt || '');
+    broadcast({ type: 'profile', id: prof.id, name: prof.name });
+    return true;
+  }
+
   function getState() {
     const opts = deps.activeServedAppConfig(appId);
     return Object.assign({}, state, {
@@ -247,6 +272,9 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       approvalAlways: !!adapter.supportsAlwaysApproval,   // "Always" = approve + stop asking this session (codex acceptForSession)
       // Backends without a working directory (owui/api chat) hide the page's folder button.
       hasProject: brand.hasProject !== false,
+      // Smart Profiles: the global library (names only) + this page's current pick.
+      profiles: ((((deps.getConfig() || {}).settings || {}).aiProfiles) || []).map(p => ({ id: p.id, name: p.name })),
+      profile: currentProfile().id,
     };
   }
 
@@ -328,6 +356,7 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       mode: opts.options.permissionMode || undefined,
       model: opts.options.modelPick,
       approvalsEnabled: !!opts.options.approvalsEnabled,
+      profilePrompt: currentProfile().prompt || '',
     });
     state = { running: true, status: 'idle', lastUserText: '', lastAssistantText: '', error: null };
     turnActive = false;
@@ -423,6 +452,7 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       getProjects,
       setOption,
       setPermissionMode,
+      setProfile,
       setModel: model => adapter.setModel(model),
       sessionStart: startSession,
       sessionStop: stopSession,
