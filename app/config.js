@@ -3397,4 +3397,21 @@
     try { appDefs = await configApi.getApps(); } catch (e) {}
     try { haCacheLocal = await configApi.getHaCache(); } catch (e) {}   // for iconHtml's HA icon resolution
     render(); setState('');
+
+    // Pages can arrive while the editor is open — an accepted AI panel is added by the main process,
+    // not by this window. Re-read so it shows up (and so this window's next Save doesn't write a
+    // stale copy back over it). With unsaved edits we must not clobber them, so say so instead.
+    if (configApi.onConfigChangedExternally) {
+      configApi.onConfigChangedExternally(async () => {
+        if (dirty) { setState('● unsaved changes — the panel added a page; save or reload to see it', 'dirty'); return; }
+        const fresh = await configApi.getConfig();
+        if (!fresh) return;
+        config = fresh;
+        if (!config.grids) config.grids = [];
+        if (!Array.isArray(config.groups)) config.groups = [];
+        if (gi >= config.grids.length) { gi = Math.max(0, config.grids.length - 1); ti = -1; }
+        render();
+        setState('updated from the panel');
+      });
+    }
   })();

@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('openQuakeConfig', {
   getAppVersion() { return ipcRenderer.invoke('getAppVersion'); },
   getApps() { return ipcRenderer.invoke('getApps'); },
   saveConfig(config) { return ipcRenderer.invoke('saveConfigFromEditor', config); },
+  // Fired when something outside the editor changed config (an accepted AI panel, a counter tile).
+  onConfigChangedExternally(cb) { ipcRenderer.on('configChangedExternally', () => cb()); },
   listOAuthProviders() { return ipcRenderer.invoke('listOAuthProviders'); },
   connectOAuthProvider(provider, scopes) { return ipcRenderer.invoke('connectOAuthProvider', provider, scopes); },
   disconnectOAuthProvider(provider) { return ipcRenderer.invoke('disconnectOAuthProvider', provider); },

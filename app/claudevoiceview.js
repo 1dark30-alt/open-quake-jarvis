@@ -164,6 +164,10 @@ function connectEvents() {
       showApprovalOverlay(msg.requestId, msg.toolName, msg.toolInput);
     } else if (msg.type === 'approval-decision' || msg.type === 'approval-timeout') {
       if (msg.requestId === pendingApprovalRequestId) hideApprovalOverlay();
+    } else if (msg.type === 'panel-review') {
+      showPanelReview(msg.panel);
+    } else if (msg.type === 'panel-accepted') {
+      setStatus(conversationOpen ? 'listening' : 'idle', 'Added "' + (msg.name || 'panel') + '".');
     } else if (msg.type === 'profile') {
       currentProfileId = msg.id || '';
       syncProfileUI();
@@ -313,6 +317,7 @@ fetch(BASE + '/state', { cache: 'no-store' }).then(function (r) { return r.json(
     if (s.permissionMode) { currentMode = s.permissionMode; syncModeUI(); }
     if (s.model) { liveModel = s.model; syncPickButtons(); }
     if (s.projectDir) setProjectHeader(s.projectDir);   // live truth beats the (possibly stale) page-load query param
+    if (s.panel && s.panel.active) showPanelReview(s.panel);   // rotating away mid-review must not lose the proposal
     setStatus(s.status, s.error);
   }).catch(function () {});
 connectEvents();
@@ -826,6 +831,127 @@ function renderProfileGrid() {
 }
 $('vpProfile').onclick = function () { renderProfileGrid(); $('profileOverlay').classList.remove('hidden'); };
 $('profileCancel').onclick = function () { $('profileOverlay').classList.add('hidden'); };
+
+// ---- Panel Builder review ----
+// The Panel Builder profile makes the AI answer with a page rather than prose. The host validates it
+// and pushes it here; this draws it as real tiles so what the user sees is what gets saved. Nothing
+// reaches the config until Accept — and a panel containing shell/AutoHotkey steps shows the actual
+// commands and needs a second, informed yes.
+var panelRiskyPending = false;   // true once the risky commands are on screen awaiting confirmation
+
+function showPanelReview(p) {
+  var ov = $('panelOverlay');
+  if (!p || !p.active) { ov.classList.add('hidden'); panelRiskyPending = false; return; }
+  panelRiskyPending = false;
+  var warn = $('panelWarn'), risky = $('panelRisky'), grid = $('panelPreview');
+  grid.innerHTML = '';
+
+  if (p.status === 'error' || !p.page) {
+    $('panelTitle').textContent = "That panel didn't work";
+    $('panelNote').textContent = p.error || '';
+    risky.classList.add('hidden');
+    warn.classList.add('hidden');
+    $('panelAccept').style.display = 'none';
+    ov.classList.remove('hidden');
+    return;
+  }
+
+  var page = p.page;
+  var used = 0;
+  for (var i = 0; i < page.tiles.length; i++) if (page.tiles[i].type) used++;
+  $('panelTitle').textContent = page.name;
+  $('panelNote').textContent = used + (used === 1 ? ' button' : ' buttons') + ' · ' + page.cols + '×' + page.rows;
+  // After a panel has been accepted, the next proposal in the same conversation is almost always a
+  // FIX of it ("the tab-1 button does nothing"), so Replace leads and Accept becomes "Add as new".
+  var rep = $('panelReplace');
+  $('panelAccept').style.display = '';
+  if (p.replaces) {
+    rep.classList.remove('hidden');
+    rep.textContent = 'Replace ' + (p.replaces.name.length > 18 ? p.replaces.name.slice(0, 17) + '…' : p.replaces.name);
+    $('panelAccept').textContent = 'Add as new';
+    $('panelAccept').classList.add('secondary');
+  } else {
+    rep.classList.add('hidden');
+    $('panelAccept').textContent = 'Accept';
+    $('panelAccept').classList.remove('secondary');
+  }
+
+  var riskyIdx = {};
+  (p.risky || []).forEach(function (r) { riskyIdx[r.index] = true; });
+  grid.style.gridTemplateColumns = 'repeat(' + page.cols + ', 1fr)';
+  grid.style.gridTemplateRows = 'repeat(' + page.rows + ', 1fr)';
+  grid.style.aspectRatio = page.cols + ' / ' + page.rows;   // square cells, like the real panel
+  page.tiles.forEach(function (t, idx) {
+    var d = document.createElement('div');
+    d.className = 'pvTile' + (t.type ? '' : ' empty') + (riskyIdx[idx] ? ' risk' : '');
+    if (t.type) {
+      var ic = document.createElement('div');
+      ic.className = 'pvIcon';
+      ic.textContent = t.icon || '▫️';
+      var lb = document.createElement('div');
+      lb.className = 'pvLabel';
+      lb.textContent = t.label || '';
+      d.appendChild(ic); d.appendChild(lb);
+    }
+    grid.appendChild(d);
+  });
+
+  if (p.warnings && p.warnings.length) {
+    warn.textContent = '· ' + p.warnings.join('; ');
+    warn.title = p.warnings.join('\n');       // the header truncates; the full list stays reachable
+    warn.classList.remove('hidden');
+  } else warn.classList.add('hidden');
+  risky.classList.add('hidden');
+  ov.classList.remove('hidden');
+}
+
+// Second stage for a panel that would run commands: show exactly what runs before asking again.
+function showPanelRisky(list) {
+  var risky = $('panelRisky');
+  risky.innerHTML = '';
+  var head = document.createElement('div');
+  head.textContent = 'This panel runs commands on your PC. Accept only if you recognize them:';
+  risky.appendChild(head);
+  list.forEach(function (r) {
+    var line = document.createElement('div');
+    line.textContent = '• ' + (r.label || 'unnamed') + ' (' + r.type + ')';
+    var code = document.createElement('code');
+    code.textContent = r.command;
+    line.appendChild(code);
+    risky.appendChild(line);
+  });
+  risky.classList.remove('hidden');
+  $('panelAccept').textContent = 'Run these — Accept';
+  panelRiskyPending = true;
+}
+
+function sendPanelAccept(replace) {
+  fetch(BASE + '/panel-accept', {
+    method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirm: panelRiskyPending, replace: !!replace }),
+  }).then(function (r) { return r.json(); })
+    .then(function (r) {
+      if (r && r.ok) { $('panelOverlay').classList.add('hidden'); panelRiskyPending = false; return; }
+      if (r && r.needsConfirm) { panelReplacePending = !!replace; return showPanelRisky(r.risky || []); }
+      setStatus(conversationOpen ? 'listening' : 'idle', (r && r.error) || 'That panel could not be added.');
+    })
+    .catch(function () { setStatus('error', 'Could not reach the panel server.'); });
+}
+var panelReplacePending = false;   // which button opened the consent stage, so the second yes matches it
+$('panelAccept').onclick = function () { sendPanelAccept(panelRiskyPending ? panelReplacePending : false); };
+$('panelReplace').onclick = function () { panelReplacePending = true; sendPanelAccept(true); };
+$('panelRetry').onclick = function () {
+  // Refinement is just the next thing you say — the session still has the context, so a new reply
+  // supersedes this proposal. Close the overlay and reopen the mic.
+  $('panelOverlay').classList.add('hidden');
+  panelRiskyPending = false;
+  if (!conversationOpen && window.oqxToggleConversation) window.oqxToggleConversation();
+};
+$('panelCancel').onclick = function () {
+  $('panelOverlay').classList.add('hidden');
+  panelRiskyPending = false;
+  fetch(BASE + '/panel-cancel', { method: 'POST', cache: 'no-store' }).catch(function () {});
+};
 
 var MODE_LABELS = { manual: 'Manual', acceptEdits: 'Accept edits', plan: 'Plan', bypassPermissions: 'Full auto' };
 var currentMode = '';
