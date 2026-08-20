@@ -61,7 +61,8 @@ test('unusable key combos are replaced with an empty tile, not passed through', 
 });
 
 test('validCombo accepts the combos the runtime can actually tap', () => {
-  for (const good of ['a', 'q', '5', 'f5', 'f12', 'alt+F4', 'win+l', 'control+shift+t', 'ctrl+alt+delete', 'audio_play']) {
+  for (const good of ['a', 'q', '5', 'f5', 'f12', 'alt+F4', 'win+l', 'control+shift+t', 'ctrl+alt+delete', 'audio_play',
+    '[', ']', 'control+;', 'shift+,', '/', 'control+alt+r']) {   // punctuation keys are real shortcuts
     assert.equal(validCombo(good), true, good);
   }
   for (const bad of ['', 'shift', 'control+alt', 'f0', 'f13', 'ctrl+banana']) {

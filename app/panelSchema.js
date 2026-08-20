@@ -64,8 +64,11 @@ function validCombo(value) {
   }
   if (!key) return false;
   if (NAMED_KEYS[key]) return true;
-  if (/^[a-z0-9]$/.test(key)) return true;
   if (/^f([1-9]|1[0-2])$/.test(key)) return true;
+  // Any single character: robotjs taps characters directly, so punctuation keys are as valid as
+  // letters. Photoshop's [ and ] (brush size) and ; , . / etc. all land here — rejecting them would
+  // silently gut generated panels for real applications.
+  if (Array.from(key).length === 1) return true;
   return false;
 }
 
