@@ -2185,37 +2185,41 @@
       enforceMusicCap(g);   // re-apply the 2-of-3 panel cap (grid/art/lyrics)
     });
     if (def.id === 'screensaver') {
-      // Collapsed scene picker right under "Show" — a dropdown so five checkboxes don't eat the box.
-      if (String((g.options || {}).source || 'scenes') !== 'media') appendScreensaverScenesRow(el, g, def);
-      // Browse/Open buttons under each folder text field that's visible (photos and videos live in
-      // separate folders; scenes-only pages have neither).
+      // Two collapsed multiselects at the top: Show (scenes/photos/videos — any mix) and, when
+      // scenes are on, the Scenes picker. Dropdowns so the checkboxes don't eat the box.
+      const showRow = appendScreensaverMultiRow(el, g, def, 'Show', ['showScenes', 'showPhotos', 'showVideos'], null, true);
+      const scenesOn = (g.options && 'showScenes' in g.options) ? !!g.options.showScenes : true;
+      if (scenesOn) appendScreensaverMultiRow(el, g, def, 'Scenes', ['sceneWaves', 'sceneStarfield', 'sceneLava', 'sceneFireflies', 'sceneFlurry'], showRow, false);
+      // Browse/Open buttons under each folder text field — always present; hiding folder rows by
+      // mode just hides configuration people are looking for.
       appendScreensaverFolderButtons(el, g, 'photosDir', 'photos');
       appendScreensaverFolderButtons(el, g, 'videosDir', 'videos');
     }
     enforceMusicCap(g);
   }
-  // Screensaver: the scene picks live behind ONE collapsed dropdown (five always-visible checkbox
-  // rows ate the whole box). The manifest keeps them as ordinary bool options (query delivery,
-  // seeding, panel — all unchanged); `editorCustom` only skips the generic per-row rendering here.
-  function appendScreensaverScenesRow(el, g, def) {
-    const scenes = (def.options || []).filter(o => o.editorCustom);
-    if (!scenes.length) return;
-    const srcSel = el.querySelector('.aopt[data-key="source"]');
-    if (!srcSel) return;
-    const on = o => { const opts = g.options || {}; return (o.key in opts) ? !!opts[o.key] : !!o.default; };
-    // Collapsed label deliberately does NOT echo the picked scenes — a value there reads like a
+  // Screensaver: the group picks (Show, Scenes) live behind collapsed multiselect dropdowns —
+  // always-visible checkbox rows ate the whole box. The manifest keeps every pick as an ordinary
+  // bool option (query delivery, seeding, panel — all unchanged); `editorCustom` only skips the
+  // generic per-row rendering here. `rerender` re-runs renderAppOpts on change for groups whose
+  // toggles gate OTHER rows (the Show group).
+  function appendScreensaverMultiRow(el, g, def, rowLabel, keys, afterEl, rerender) {
+    const opts = (def.options || []).filter(o => keys.includes(o.key));
+    if (!opts.length) return null;
+    const on = o => { const go = g.options || {}; return (o.key in go) ? !!go[o.key] : !!o.default; };
+    // Collapsed label deliberately does NOT echo the picks — a value there reads like a
     // single-choice select. Only the all-off footgun still surfaces.
-    const summary = () => scenes.some(on) ? 'Click to select scenes' : 'None selected — nothing will show';
+    const summary = () => opts.some(on) ? `Click to select` : 'None selected — nothing will show';
     const row = document.createElement('div');
     row.className = 'row';
     row.style.position = 'relative';
-    row.innerHTML = `<label>Scenes</label>
-      <button id="ssScenesBtn" type="button" style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></button>
-      <div id="ssScenesMenu" style="display:none;position:absolute;left:78px;right:0;top:100%;z-index:30;background:#121a24;border:1px solid #2a3a4e;border-radius:8px;padding:8px 12px">
-        ${scenes.map(o => `<label class="iconopt" style="display:block;width:auto;margin:4px 0"><input type="checkbox" data-sk="${esc(o.key)}" ${on(o) ? 'checked' : ''}> ${esc(o.label)}</label>`).join('')}
+    row.innerHTML = `<label>${esc(rowLabel)}</label>
+      <button type="button" data-ms-btn style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></button>
+      <div data-ms-menu style="display:none;position:absolute;left:78px;right:0;top:100%;z-index:30;background:#121a24;border:1px solid #2a3a4e;border-radius:8px;padding:8px 12px">
+        ${opts.map(o => `<label class="iconopt" style="display:block;width:auto;margin:4px 0"><input type="checkbox" data-sk="${esc(o.key)}" ${on(o) ? 'checked' : ''}> ${esc(o.label)}</label>`).join('')}
       </div>`;
-    srcSel.closest('.row').insertAdjacentElement('afterend', row);
-    const btn = row.querySelector('#ssScenesBtn'), menu = row.querySelector('#ssScenesMenu');
+    if (afterEl) afterEl.insertAdjacentElement('afterend', row);
+    else el.insertAdjacentElement('afterbegin', row);
+    const btn = row.querySelector('[data-ms-btn]'), menu = row.querySelector('[data-ms-menu]');
     const setLabel = () => { btn.textContent = '▾ ' + summary(); };
     setLabel();
     btn.onclick = e => {
@@ -2231,7 +2235,9 @@
       g.options[cb.dataset.sk] = cb.checked;
       markDirty();
       setLabel();
+      if (rerender) renderAppOpts(g, def);   // Show toggles gate the style/crop/Scenes rows
     });
+    return row;
   }
   // Screensaver: each media folder needs a real folder picker and an "open in Explorer" shortcut —
   // dynamic things apps.json can't express. Buttons are inserted right under that folder's own

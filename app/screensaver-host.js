@@ -28,14 +28,16 @@ const boolOpt = v => (v === true || v === '1' || v === false || v === '0' || v =
   ? (truthy(v) ? '1' : '0') : null;
 const dirOpt = v => (typeof v === 'string' && v.length <= 500) ? v.trim() : null;   // '' = default folder
 const PANEL_OPTIONS = {
-  source: v => (v === 'scenes' || v === 'media' || v === 'both') ? v : null,
-  // Scene picks are independent toggles (any mix); all five off is a legitimate "nothing" state.
+  // Show is a flat multiselect of the three groups; all off is a legitimate "nothing" state.
+  showScenes: boolOpt,
+  showPhotos: boolOpt,
+  showVideos: boolOpt,
+  // Scene picks are independent toggles (any mix) within the Scenes group.
   sceneWaves: boolOpt,
   sceneStarfield: boolOpt,
   sceneLava: boolOpt,
   sceneFireflies: boolOpt,
   sceneFlurry: boolOpt,
-  mediaKind: v => (v === 'both' || v === 'photos' || v === 'videos') ? v : null,
   imageFit: v => (v === 'cover' || v === 'contain') ? v : null,   // images only; videos never crop
   imageStyle: v => (v === 'slide' || v === 'collage') ? v : null, // full-screen slideshow vs scrapbook pile
   intervalSec: v => { const n = parseInt(v, 10); return n >= 3 && n <= 86400 ? String(n) : null; },

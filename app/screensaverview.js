@@ -24,10 +24,13 @@
 
   // ---- options (query-string delivery; panel edits POST /option and update this copy) ----
   var opts = {
-    source: Q.get('source') || 'scenes',           // scenes | media | both
-    mediaKind: Q.get('mediaKind') || 'both',       // both | photos | videos — which media folders play
-    imageFit: Q.get('imageFit') || 'cover',        // cover | contain — images only; videos never crop
-    imageStyle: Q.get('imageStyle') || 'slide',    // slide | collage — how images are shown
+    // One flat multiselect: any mix of the three groups (all on by default — empty folders
+    // simply contribute nothing until files land in them).
+    showScenes: Q.get('showScenes') !== '0',
+    showPhotos: Q.get('showPhotos') !== '0',
+    showVideos: Q.get('showVideos') !== '0',
+    imageFit: Q.get('imageFit') || 'cover',        // cover | contain — photos only; videos never crop
+    imageStyle: Q.get('imageStyle') || 'slide',    // slide | collage — how photos are shown
     intervalSec: parseInt(Q.get('intervalSec'), 10) || 10,
     shuffle: Q.get('shuffle') === '1',
     idleMinutes: Q.get('idleMinutes') || '10',
@@ -40,9 +43,6 @@
   var photos = [], videos = [];                  // file NAMES from /state (photos + videos folders)
   var photosDirLabel = '', videosDirLabel = '', photosDefault = true, videosDefault = true;
   function mediaUrl(kind, name) { return '/screensaver/media?k=' + (kind === 'video' ? 'v' : 'p') + '&f=' + encodeURIComponent(name); }
-  function wantPhotos() { return opts.mediaKind !== 'videos'; }
-  // Videos never join a collage; in videos-only mode the style is moot and they play as a slideshow.
-  function wantVideos() { return opts.mediaKind !== 'photos' && !(opts.imageStyle === 'collage' && wantPhotos()); }
 
   // =====================================================================================
   // Built-in scenes: tiny animation programs drawing 1920x480 frames. Each returns a stop().
@@ -410,23 +410,19 @@
 
   function buildPlaylist() {
     var items = [];
-    var wantScenes = opts.source === 'scenes' || opts.source === 'both';
-    var wantMedia = opts.source === 'media' || opts.source === 'both';
-    if (wantScenes) {
+    if (opts.showScenes) {
       SCENES.filter(function (n) { return opts.sceneOn[n]; }).forEach(function (n) { items.push({ kind: 'scene', name: n }); });
     }
-    if (wantMedia) {
-      if (wantPhotos()) {
-        if (opts.imageStyle === 'collage') {
-          // Collage consumes the photos itself (one pseudo-item that stamps prints on its own
-          // clock); videos sit collage out — a tilted playing video in the pile is a mess.
-          if (photos.length) items.push({ kind: 'collage' });
-        } else {
-          photos.forEach(function (n) { items.push({ kind: 'image', name: n }); });
-        }
+    if (opts.showPhotos) {
+      if (opts.imageStyle === 'collage') {
+        // Collage consumes the photos itself (one pseudo-item that stamps prints on its own
+        // clock, fills the board, holds, then hands the rotation on).
+        if (photos.length) items.push({ kind: 'collage' });
+      } else {
+        photos.forEach(function (n) { items.push({ kind: 'image', name: n }); });
       }
-      if (wantVideos()) videos.forEach(function (n) { items.push({ kind: 'video', name: n }); });
     }
+    if (opts.showVideos) videos.forEach(function (n) { items.push({ kind: 'video', name: n }); });
     playlist = items;
     reshuffle();
   }
@@ -573,9 +569,22 @@
   }
 
   function syncSettingsUI() {
-    renderSeg($('segSource'), [['scenes', 'Built-in scenes'], ['media', 'My media'], ['both', 'Both']], opts.source, function (v) {
-      opts.source = v; postOption('source', v); syncSettingsUI(); restart();
-    });
+    // Show is a flat multiselect: any mix of the three groups.
+    (function () {
+      var el = $('segShow');
+      el.innerHTML = '';
+      [['showScenes', 'Scenes'], ['showPhotos', 'Photos'], ['showVideos', 'Videos']].forEach(function (pair) {
+        var b = document.createElement('button');
+        b.textContent = pair[1];
+        if (opts[pair[0]]) b.classList.add('on');
+        b.addEventListener('click', function () {
+          opts[pair[0]] = !opts[pair[0]];
+          postOption(pair[0], opts[pair[0]] ? '1' : '0');
+          syncSettingsUI(); restart();
+        });
+        el.appendChild(b);
+      });
+    })();
     // Scenes are independent toggles — tap any mix on/off (all off = the honest empty state).
     (function () {
       var el = $('segScene');
@@ -592,9 +601,6 @@
         el.appendChild(b);
       });
     })();
-    renderSeg($('segKind'), [['both', 'Photos + videos'], ['photos', 'Photos'], ['videos', 'Videos']], opts.mediaKind, function (v) {
-      opts.mediaKind = v; postOption('mediaKind', v); syncSettingsUI(); restart();
-    });
     renderSeg($('segStyle'), [['slide', 'Slideshow'], ['collage', 'Collage']], opts.imageStyle, function (v) {
       opts.imageStyle = v; postOption('imageStyle', v); syncSettingsUI(); restart();
     });
@@ -610,13 +616,11 @@
     renderSeg($('segIdle'), [['0', 'Never'], ['1', '1m'], ['5', '5m'], ['10', '10m'], ['30', '30m'], ['60', '1h']], String(opts.idleMinutes), function (v) {
       opts.idleMinutes = v; postOption('idleMinutes', v); syncSettingsUI();
     });
-    var noMedia = opts.source === 'scenes';
-    $('rowScene').style.display = opts.source === 'media' ? 'none' : '';
-    $('rowKind').style.display = noMedia ? 'none' : '';
-    $('rowStyle').style.display = (noMedia || opts.mediaKind === 'videos') ? 'none' : '';
-    $('rowFill').style.display = (noMedia || !wantPhotos() || opts.imageStyle === 'collage') ? 'none' : '';   // crop applies to slideshow photos only
-    $('rowPhotosDir').style.display = (noMedia || !wantPhotos()) ? 'none' : '';
-    $('rowVideosDir').style.display = (noMedia || !wantVideos()) ? 'none' : '';
+    $('rowScene').style.display = opts.showScenes ? '' : 'none';
+    $('rowStyle').style.display = opts.showPhotos ? '' : 'none';
+    $('rowFill').style.display = (opts.showPhotos && opts.imageStyle === 'slide') ? '' : 'none';   // crop applies to slideshow photos only
+    // Folder rows stay visible no matter what's toggled — hiding them by mode just hides
+    // configuration people are looking for.
     $('photosVal').textContent = photosDirLabel ? (photosDirLabel + (photosDefault ? '  (default)' : '')) : '—';
     $('videosVal').textContent = videosDirLabel ? (videosDirLabel + (videosDefault ? '  (default)' : '')) : '—';
   }

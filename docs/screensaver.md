@@ -15,14 +15,17 @@ immediately, nothing to download or configure.
   molten blobs), **Fireflies** (glowing wanderers over a meadow), and **Flurry** (glowing
   smoke comets with cycling colors). Each scene is its own on/off toggle — the cycle plays
   whatever mix you leave on (the editor keeps the toggles behind one Scenes dropdown).
-- **My media** — your own photos (jpg/png/gif/webp) and videos (mp4/webm/mov), kept in **two
-  separate folders**, with a **Media** pick of *Photos + videos*, *Photos only*, or *Videos
-  only*. Photos show in one of two styles: a crossfading **slideshow** (a photo per interval,
-  cropped to fill or letterboxed) or a **collage** — prints drop in every 0.5–1.5s, tilted with
-  white borders, until the screen is full; the finished board then holds for the interval before
-  a fresh one starts. Videos always play through full-screen, muted, never cropped (and only in
-  slideshow style). Shuffle optional.
-- **Both** — scenes and media mixed into one rotation.
+**Show** is one multiselect — any mix of three groups plays in one rotation:
+
+- **Built-in scenes** — the live-drawn animations above, each its own toggle.
+- **My photos** (jpg/png/gif/webp) — a crossfading **slideshow** (a photo per interval, cropped
+  to fill or letterboxed) or a **collage**: prints drop in every 0.5–1.5s, tilted with white
+  borders, until the screen is full; the finished board then holds for the interval before a
+  fresh one starts.
+- **My videos** (mp4/webm/mov) — always full-screen, played through to the end, muted, never
+  cropped.
+
+Shuffle optional, across whatever's enabled.
 
 ### The photos and videos folders
 
@@ -59,14 +62,13 @@ the ⚙ settings button).
 
 | Option | Meaning |
 |---|---|
-| Show | Built-in scenes / My media / Both |
-| Scenes | One collapsed dropdown of independent toggles — Waves, Starfield, Lava lamp, Fireflies, Flurry, any mix (hidden for media-only pages) |
-| Media | Photos + videos, Photos only, or Videos only |
-| Image style | Slideshow (one at a time) or Collage (scrapbook pile) — videos only play in Slideshow |
+| Show | One multiselect dropdown — any mix of Built-in scenes, My photos, My videos |
+| Scenes | A second multiselect — Waves, Starfield, Lava lamp, Fireflies, Flurry, any mix (shown while scenes are on) |
+| Photo style | Slideshow (one at a time) or Collage (scrapbook pile) — videos always play full-screen |
 | Photos | Crop to fill the screen, or don't crop (letterbox) — slideshow photos only; videos never crop |
 | Change every (s) | Seconds per photo/scene; videos play through; a finished collage board displays for this long |
-| Shuffle | Randomize the order — the checkbox text names what it shuffles (scenes, media, or both) per the Show setting |
+| Shuffle | Randomize the play order across whatever's enabled |
 | Idle auto-start | Minutes of no input before auto-start; 0 = never |
-| Photos / Videos folder | Blank = the app's own per-kind folder; Browse…/Open buttons below each (shown when that kind is in play) |
+| Photos / Videos folder | Always shown; blank = the app's own per-kind folder; Browse…/Open buttons under each |
 
 Everything except the folder path can also be changed on the panel: tap → **⚙**.
