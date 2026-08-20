@@ -103,45 +103,76 @@
 
   function sceneLava(cv) {
     var ctx = cv.getContext('2d'), run = true, t = 0;
-    // Metaball goo: blobs drawn small + heavily blurred, then a contrast step merges the fields
-    // into gooey shapes. Rendered at 1/4 res offscreen and upscaled — the blur stays cheap.
-    var os = document.createElement('canvas'); os.width = 480; os.height = 120;
-    var octx = os.getContext('2d');
-    var hasFilter = typeof octx.filter === 'string';
+    // Real metaballs, not glow-orbs: each blob contributes a radial falloff to a luminance FIELD;
+    // a hard per-pixel threshold turns the summed field into crisp wax shapes that visibly merge
+    // and pinch apart. Field + threshold run at 1/4 res (480x120 = 57.6k px) and upscale.
+    var FW = 480, FH = 120;
+    var field = document.createElement('canvas'); field.width = FW; field.height = FH;
+    var fctx = field.getContext('2d', { willReadFrequently: true });
+    var mask = document.createElement('canvas'); mask.width = FW; mask.height = FH;
+    var mctx = mask.getContext('2d');
+    var maskData = mctx.createImageData(FW, FH);
     var blobs = [];
     for (var i = 0; i < 8; i++) {
       blobs.push({
-        // Even horizontal bands (+ jitter) so the goo never clumps into one corner for good.
-        x: (i + 0.5) * (480 / 8) + (Math.random() - 0.5) * 40,
+        // Even horizontal bands (+ jitter) so the wax never clumps into one corner for good.
+        x: (i + 0.5) * (FW / 8) + (Math.random() - 0.5) * 40,
         y: 20 + Math.random() * 80,
-        r: 14 + Math.random() * 18, vy: (Math.random() * 0.16 + 0.05) * (i % 2 ? 1 : -1),
-        wob: Math.random() * 6.28, hot: i % 3 === 0,   // a few brighter "hot" blobs
+        r: 13 + Math.random() * 15, vy: (Math.random() * 0.14 + 0.04) * (i % 2 ? 1 : -1),
+        wob: Math.random() * 6.28,
       });
     }
     (function frame() {
       if (!run) return;
       t++;
-      octx.setTransform(1, 0, 0, 1, 0, 0);
-      octx.filter = 'none';
-      octx.fillStyle = '#000'; octx.fillRect(0, 0, 480, 120);
-      if (hasFilter) octx.filter = 'blur(8px) contrast(12)';   // softer threshold keeps orange fade at merge edges
+      // 1) Luminance field: additive white radial falloffs (roughly 1/r^2-shaped via the gradient).
+      fctx.globalCompositeOperation = 'source-over';
+      fctx.fillStyle = '#000'; fctx.fillRect(0, 0, FW, FH);
+      fctx.globalCompositeOperation = 'lighter';
       for (var i = 0; i < blobs.length; i++) {
         var b = blobs[i];
         b.y += b.vy;
-        var breathe = 1 + Math.sin(t * 0.01 + b.wob) * 0.18;
-        // A blob that drifts off the top sinks back from the bottom (and vice versa) at a new size.
-        if (b.y < -b.r * 2) { b.y = 120 + b.r; b.vy = -(Math.random() * 0.16 + 0.05); b.r = 14 + Math.random() * 18; }
-        if (b.y > 120 + b.r * 2) { b.y = -b.r; b.vy = Math.random() * 0.16 + 0.05; b.r = 14 + Math.random() * 18; }
-        var x = b.x + Math.sin(t * 0.004 + b.wob) * 14;
-        // Slow molten wobble; hot cores keep a tight red-orange hue — above ~hue 20 at this
-        // lightness the contrast step tips them lime-green.
-        var hue = b.hot ? 10 + Math.sin(t * 0.002 + b.wob) * 4 : 18 + Math.sin(t * 0.002 + b.wob) * 10;
-        octx.fillStyle = 'hsl(' + hue + ',95%,' + (b.hot ? 57 : 46) + '%)';
-        octx.beginPath(); octx.arc(x, b.y, b.r * breathe, 0, 6.2832); octx.fill();
+        if (b.y < -b.r * 2) { b.y = FH + b.r; b.vy = -(Math.random() * 0.14 + 0.04); b.r = 13 + Math.random() * 15; }
+        if (b.y > FH + b.r * 2) { b.y = -b.r; b.vy = Math.random() * 0.14 + 0.04; b.r = 13 + Math.random() * 15; }
+        var x = b.x + Math.sin(t * 0.004 + b.wob) * 12;
+        var breathe = 1 + Math.sin(t * 0.009 + b.wob) * 0.12;
+        var R = b.r * 2.1 * breathe;                       // falloff extent (larger than the visible core)
+        var stretch = 1 + Math.min(0.35, Math.abs(b.vy) * 2.2);   // rising/sinking wax elongates vertically
+        fctx.save();
+        fctx.translate(x, b.y); fctx.scale(1, stretch);
+        var g = fctx.createRadialGradient(0, 0, 0, 0, 0, R);
+        g.addColorStop(0, 'rgba(255,255,255,0.9)');
+        g.addColorStop(0.45, 'rgba(255,255,255,0.32)');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        fctx.fillStyle = g;
+        fctx.beginPath(); fctx.arc(0, 0, R, 0, 6.2832); fctx.fill();
+        fctx.restore();
       }
-      ctx.imageSmoothingEnabled = true;
+      // 2) Hard threshold with a 2-3px anti-alias band -> a binary alpha mask of the wax.
+      var src = fctx.getImageData(0, 0, FW, FH).data;
+      var dst = maskData.data;
+      for (var p = 0, n = FW * FH * 4; p < n; p += 4) {
+        var lum = src[p];                                  // white-on-black field: red channel = luminance
+        var a = (lum - 108) * 7;                           // threshold ~108; ~36-level AA band keeps the upscaled edge smooth
+        dst[p] = 255; dst[p + 1] = 255; dst[p + 2] = 255;
+        dst[p + 3] = a <= 0 ? 0 : (a >= 255 ? 255 : a);
+      }
+      mctx.putImageData(maskData, 0, 0);
+      // 3) Colorize the mask: molten gradient (deep red up top, hot orange near the lamp base).
+      mctx.globalCompositeOperation = 'source-in';
+      var wax = mctx.createLinearGradient(0, 0, 0, FH);
+      wax.addColorStop(0, 'hsl(4,88%,40%)');
+      wax.addColorStop(0.65, 'hsl(14,95%,47%)');
+      wax.addColorStop(1, 'hsl(28,100%,54%)');
+      mctx.fillStyle = wax; mctx.fillRect(0, 0, FW, FH);
+      mctx.globalCompositeOperation = 'source-over';
+      // 4) Compose: black lamp + faint heat glow at the base, then the wax upscaled.
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-      ctx.drawImage(os, 0, 0, W, H);
+      var glow = ctx.createRadialGradient(W / 2, H + 140, 60, W / 2, H + 140, 560);
+      glow.addColorStop(0, 'rgba(255,90,0,0.10)'); glow.addColorStop(1, 'rgba(255,90,0,0)');
+      ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(mask, 0, 0, W, H);
       requestAnimationFrame(frame);
     })();
     return function () { run = false; };

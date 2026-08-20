@@ -40,8 +40,8 @@ Sampler settings in the loop template are load-bearing — two-stage `KSamplerAd
 `length = seconds × 16 + 1` and must be ≡1 mod 4: **81 = 5s, 121 = 7.5s, 161 = 10s**. After trimming the duplicate last frame you get exactly N-1 frames = whole seconds.
 
 - 1920×480 has the same pixel budget as 720p — Wan's sweet spot; fits the 3090 with fp8+Lightning.
-- Validated render times: 81f ≈ 7–15 min, 121f ≈ 13–15 min. 161f is untested — expect ~20+ min and watch for VRAM pressure.
-- Length choice: slow ambient scenes (sky, clouds, aurora) → 121; scenes with a static subject and only texture motion (rain, neon flicker) → 81 is plenty.
+- Validated render times: 81f ≈ 7–15 min, 121f ≈ 13–15 min, 161f ≈ 20 min (validated, no VRAM issues).
+- **Length policy (T.J., 2026-08-20): 5s is the minimum, not the target — build amazing videos, up to 30s when the content earns it.** Longer runtime is the tool for making big motions (orbits, fly-throughs) loop gracefully instead of feeling rushed. Texture-only motion (rain, neon flicker) can stay short; camera moves and slow ambient scenes should go long. Beyond ~161f per render, chain segments (below) rather than pushing a single render.
 
 ## Prompting the motion
 
@@ -69,6 +69,17 @@ ffmpeg -y -v error -i raw.mp4 -vf "select='lt(n\,120)',setpts=N/16/TB" -r 16 \
 
 Output is 16 fps (Wan 2.2 14B native). If T.J. wants it smoother, offer ffmpeg `minterpolate` to 60fps as a post-step — don't do it unasked.
 
+## Big camera moves: multi-segment loops
+
+A one-shot FLF render can only loop motion that stays near the start view. Asking it for a **360° orbit or a long fly-through in one go fails** — at the midpoint the model has to invent unseen geometry and it morphs (observed: doubled wheels, mangled car front). Chain segments instead:
+
+1. **Segment 1** — plain `WanImageToVideo` (no end pin) from the start still, prompting the motion outward ("camera orbits toward the rear of the car"). The model moves freely and convincingly when it doesn't have to return.
+2. **Extract segment 1's final frame** (ffmpeg), upload it, and check it's clean before continuing.
+3. **Segment 2** — `WanFirstLastFrameToVideo` with `start_image` = segment 1's last frame, `end_image` = the original still, prompting the motion to continue home. FLF interpolating between two *real* frames is exactly what it's good at.
+4. **Concatenate**: segment1 frames `[0..N-1]` + segment2 frames `[1..M-2]` (drop seg2's first frame = seam duplicate, and its last frame = loop duplicate). Use the same seed style/prompt phrasing in both segments so speed feels continuous across the seam.
+
+Two 121f segments ≈ 15s total. For even longer arcs, insert more unpinned middle segments before the FLF closer — but each unpinned segment accumulates drift, so verify each segment's end frame before building on it.
+
 ## Batch runs (multiple videos)
 
 ComfyUI queues prompts and runs them serially — POST all jobs at once (capture each `prompt_id`), then watch with one Monitor task polling `/history/<id>` every ~20s, emitting `<name> DONE` / `<name> ERROR` per job. Process each video (download → verify → trim → deliver) as its notification arrives. Don't foreground-wait on renders; a single Bash call will time out before a render finishes.
@@ -79,4 +90,6 @@ ComfyUI queues prompts and runs them serially — POST all jobs at once (capture
 - ffmpeg select-filter commas need escaping: `select='eq(n\,0)'`.
 - `SaveVideo` writes to output subfolder `video/` — download with `sub="video"`.
 - Node schemas: GET `/object_info/<NodeName>` when anything mismatches — verify, don't guess.
-- One render at a time on the GPU; a queued job's poll just takes longer to start. Check `/queue` if unsure whether something is already running.
+- One render at a time on the GPU; a queued job's poll just takes longer to start. Check `/queue` if unsure whether something is already running. Remove a not-yet-started job with POST `/queue` `{"delete": ["<prompt_id>"]}`.
+- Don't assume a reference wallpaper loops cleanly — check its first vs last frame (the DK-Suite car.mp4 jumps hard at the loop point, RMSE 75). We can beat the references, not just match them.
+- Multi-frame-check big motions: for orbits/fly-throughs, extract frames at 25/50/75% and confirm the motion actually happened and nothing morphed — endpoint RMSE alone passes broken videos.
