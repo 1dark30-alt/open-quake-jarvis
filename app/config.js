@@ -2157,7 +2157,7 @@
       const cur = String(valOf(o.showIf.key));
       return ('not' in o.showIf) ? cur !== String(o.showIf.not) : cur === String(o.showIf.value);
     };
-    el.innerHTML = (def.options || []).filter(visible).map(o => {
+    el.innerHTML = (def.options || []).filter(o => !o.editorCustom).filter(visible).map(o => {
       let v = (o.key in g.options) ? g.options[o.key] : o.default;
       let field;
       if (o.type === 'select') {
@@ -2184,10 +2184,54 @@
       if (o && (o.type === 'select' || o.type === 'bool')) renderAppOpts(g, def);   // re-evaluate conditional (showIf) options
       enforceMusicCap(g);   // re-apply the 2-of-3 panel cap (grid/art/lyrics)
     });
-    // Browse/Open buttons under the mediaDir text field — only when that field is visible
-    // (scenes-only pages have no media folder to manage).
-    if (def.id === 'screensaver' && el.querySelector('.aopt[data-key="mediaDir"]')) appendScreensaverFolderRow(el, g);
+    if (def.id === 'screensaver') {
+      // Collapsed scene picker right under "Show" — a dropdown so five checkboxes don't eat the box.
+      if (String((g.options || {}).source || 'scenes') !== 'media') appendScreensaverScenesRow(el, g, def);
+      // Browse/Open buttons under the mediaDir text field — only when that field is visible
+      // (scenes-only pages have no media folder to manage).
+      if (el.querySelector('.aopt[data-key="mediaDir"]')) appendScreensaverFolderRow(el, g);
+    }
     enforceMusicCap(g);
+  }
+  // Screensaver: the scene picks live behind ONE collapsed dropdown (five always-visible checkbox
+  // rows ate the whole box). The manifest keeps them as ordinary bool options (query delivery,
+  // seeding, panel — all unchanged); `editorCustom` only skips the generic per-row rendering here.
+  function appendScreensaverScenesRow(el, g, def) {
+    const scenes = (def.options || []).filter(o => o.editorCustom);
+    if (!scenes.length) return;
+    const srcSel = el.querySelector('.aopt[data-key="source"]');
+    if (!srcSel) return;
+    const on = o => { const opts = g.options || {}; return (o.key in opts) ? !!opts[o.key] : !!o.default; };
+    const summary = () => {
+      const names = scenes.filter(on).map(o => o.label);
+      return names.length === scenes.length ? 'All scenes' : (names.length ? names.join(', ') : 'None selected — nothing will show');
+    };
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.position = 'relative';
+    row.innerHTML = `<label>Scenes</label>
+      <button id="ssScenesBtn" type="button" style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></button>
+      <div id="ssScenesMenu" style="display:none;position:absolute;left:78px;right:0;top:100%;z-index:30;background:#121a24;border:1px solid #2a3a4e;border-radius:8px;padding:8px 12px">
+        ${scenes.map(o => `<label class="iconopt" style="display:block;width:auto;margin:4px 0"><input type="checkbox" data-sk="${esc(o.key)}" ${on(o) ? 'checked' : ''}> ${esc(o.label)}</label>`).join('')}
+      </div>`;
+    srcSel.closest('.row').insertAdjacentElement('afterend', row);
+    const btn = row.querySelector('#ssScenesBtn'), menu = row.querySelector('#ssScenesMenu');
+    const setLabel = () => { btn.textContent = '▾ ' + summary(); };
+    setLabel();
+    btn.onclick = e => {
+      e.stopPropagation();
+      const opening = menu.style.display === 'none';
+      menu.style.display = opening ? '' : 'none';
+      // Close on the next click anywhere outside; clicks inside the menu don't bubble this far.
+      if (opening) setTimeout(() => document.addEventListener('click', () => { menu.style.display = 'none'; }, { once: true }), 0);
+    };
+    menu.onclick = e => e.stopPropagation();
+    menu.querySelectorAll('input[data-sk]').forEach(cb => cb.onchange = () => {
+      if (!g.options) g.options = {};
+      g.options[cb.dataset.sk] = cb.checked;
+      markDirty();
+      setLabel();
+    });
   }
   // Screensaver: the media folder needs a real folder picker and an "open in Explorer" shortcut —
   // dynamic things apps.json can't express. Appended INSIDE renderAppOpts so the row survives the

@@ -6295,11 +6295,11 @@
         ["media", "My media folder (images/videos)"],
         ["both", "Scenes + my media"]
       ] },
-      { "key": "sceneWaves", "label": "Scenes", "type": "bool", "default": true, "inline": "Waves", "showIf": { "key": "source", "not": "media" } },
-      { "key": "sceneStarfield", "label": "", "type": "bool", "default": true, "inline": "Starfield", "showIf": { "key": "source", "not": "media" } },
-      { "key": "sceneLava", "label": "", "type": "bool", "default": true, "inline": "Lava lamp", "showIf": { "key": "source", "not": "media" } },
-      { "key": "sceneFireflies", "label": "", "type": "bool", "default": true, "inline": "Fireflies", "showIf": { "key": "source", "not": "media" } },
-      { "key": "sceneAquarium", "label": "", "type": "bool", "default": true, "inline": "Aquarium", "showIf": { "key": "source", "not": "media" } },
+      { "key": "sceneWaves", "label": "Waves", "type": "bool", "default": true, "editorCustom": true },
+      { "key": "sceneStarfield", "label": "Starfield", "type": "bool", "default": true, "editorCustom": true },
+      { "key": "sceneLava", "label": "Lava lamp", "type": "bool", "default": true, "editorCustom": true },
+      { "key": "sceneFireflies", "label": "Fireflies", "type": "bool", "default": true, "editorCustom": true },
+      { "key": "sceneFlurry", "label": "Flurry", "type": "bool", "default": true, "editorCustom": true },
       { "key": "fillMode", "label": "Media fill", "type": "select", "default": "cover", "choices": [
         ["cover", "Fill the screen (crop)"],
         ["contain", "Fit inside (letterbox)"]

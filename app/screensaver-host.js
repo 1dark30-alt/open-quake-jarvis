@@ -33,7 +33,7 @@ const PANEL_OPTIONS = {
   sceneStarfield: boolOpt,
   sceneLava: boolOpt,
   sceneFireflies: boolOpt,
-  sceneAquarium: boolOpt,
+  sceneFlurry: boolOpt,
   fillMode: v => (v === 'cover' || v === 'contain') ? v : null,
   intervalSec: v => { const n = parseInt(v, 10); return n >= 3 && n <= 86400 ? String(n) : null; },
   shuffle: boolOpt,
