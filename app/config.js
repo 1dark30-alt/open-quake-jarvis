@@ -2268,7 +2268,7 @@
     // The videos row also links the repo's community-wallpapers folder — ready-made 1920×480
     // loops live there (kept out of the installer so the app stays small).
     const community = kind === 'videos'
-      ? `<button type="button" data-ss-community="1" style="margin-left:auto">Get wallpapers ↗</button>` : '';
+      ? `<button type="button" data-ss-community="1">Download wallpapers ↗</button>` : '';
     const row = document.createElement('div');
     row.innerHTML = `<div class="row" style="gap:8px"><label></label>
         <button type="button" data-ss-browse="${key}">Browse…</button>
