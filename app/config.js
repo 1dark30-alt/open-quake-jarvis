@@ -1635,7 +1635,9 @@
           <input id="cvApiUrl" value="${esc(cvVal('apiBaseUrl', 'https://api.openai.com/v1'))}" placeholder="https://api.openai.com/v1" style="flex:1; margin-left:8px"></div>
         <div class="row"><label>API key</label>${secretInput(cvVal('apiKey', ''), 'id="cvApiKey" style="flex:1"')}</div>
         <div class="row"><label>Model</label>
-          <input id="cvApiModel" value="${esc(cvVal('apiModel', ''))}" placeholder="e.g. gpt-4o-mini" style="width:230px"></div>
+          <input id="cvApiModel" list="cvApiModelList" value="${esc(cvVal('apiModel', ''))}" placeholder="e.g. gpt-4o-mini" style="width:320px" autocomplete="off">
+          <datalist id="cvApiModelList"></datalist>
+          <span class="hint" id="cvApiModelHint" style="margin:0 0 0 8px"></span></div>
         <p class="hint">Any OpenAI-compatible chat endpoint. Plain conversation — no tools, no file access. The key is stored encrypted and never reaches the panel page.</p>` : `
         <div class="row"><label>Default folder</label>
           <input id="cvProjectPath" value="${esc(cvVal('projectDir', ''))}" style="flex:1">
@@ -1885,6 +1887,24 @@
         cvApiUrl.oninput = e => setOpt('apiBaseUrl', e.target.value.trim());
         document.getElementById('cvApiKey').onchange = e => setOpt('apiKey', e.target.value);
         document.getElementById('cvApiModel').oninput = e => setOpt('apiModel', e.target.value.trim());
+        // Fill the Model combo from the endpoint's standard /models (typing always works too;
+        // a failed fetch just leaves the hint naming why). Re-fetched when URL or key change.
+        const cvFillModels = () => {
+          const hint = document.getElementById('cvApiModelHint'), dl = document.getElementById('cvApiModelList');
+          const url = cvApiUrl.value.trim(), key = document.getElementById('cvApiKey').value;
+          if (!url || !key) { if (hint) hint.textContent = ''; return; }
+          if (hint) hint.textContent = 'loading models…';
+          configApi.probeApiModels(url, key).then(r => {
+            if (!hint || !dl) return;
+            if (r && r.ok && r.models && r.models.length) {
+              dl.innerHTML = r.models.map(m => `<option value="${esc(m)}">`).join('');
+              hint.textContent = r.models.length + ' models — click the box to pick';
+            } else hint.textContent = r && r.error ? 'model list unavailable: ' + r.error : 'model list unavailable';
+          }).catch(() => { if (hint) hint.textContent = 'model list unavailable'; });
+        };
+        cvFillModels();
+        cvApiUrl.onchange = cvFillModels;
+        document.getElementById('cvApiKey').addEventListener('change', cvFillModels);
       }
       // Warn at add-time if the backend's CLI isn't installed (or, for owui, if no connection is
       // configured) -- otherwise the user only finds out when the panel page errors on first use.

@@ -2837,6 +2837,21 @@ app.whenReady().then(async () => {
       return { ok: false, error: (err && err.message) || 'connection failed' };
     }
   });
+  // Model list for the AI Voice API backend's editor dropdown: hit the endpoint's standard
+  // OpenAI-compatible /models with the page's own URL + key (probeOwui's pattern, minus the
+  // OWUI-specific URL normalization — the base here is entered verbatim).
+  ipcMain.handle('probeApiModels', async (e, url, apiKey) => {
+    if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
+    const base = String(url || '').trim().replace(/\/+$/, '');
+    if (!base) return { ok: false, error: 'no base URL' };
+    try {
+      const models = await owuiClient.listModels(base + '/models', String(apiKey || ''));
+      return { ok: true, models };
+    } catch (err) {
+      if (err && (err.statusCode === 401 || err.statusCode === 403)) return { ok: false, error: 'the endpoint rejected the key (HTTP ' + err.statusCode + ')' };
+      return { ok: false, error: (err && err.message) || 'connection failed' };
+    }
+  });
   // "Edit prompt file" in the Claude Code page options: seed the template if needed, then open the
   // file in whatever the user's default .md editor is.
   ipcMain.handle('editClaudeVoicePrompt', (e) => {
