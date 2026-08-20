@@ -15,7 +15,7 @@ don't — update it when either side changes.
 
 | DK-Suite advertises | open-quake |
 |---|---|
-| AI Chat (credit-metered, 100 credits/mo free) | **Four AI apps, no credits**: real **Claude Code / Codex / Copilot agent sessions** (tools, approvals, your existing plan) + **Open WebUI** chat against your own models. *(In flight: one consolidated "AI Voice" app adding any OpenAI-compatible API by key.)* |
+| AI Chat (credit-metered, 100 credits/mo free) | One **AI Voice** app, five backends, **no credits**: real **Claude Code / Codex / Copilot agent sessions** (tools, approvals, your existing plan), **Open WebUI** chat against your own models, or **any OpenAI-compatible API by key** (OpenAI, DeepSeek, OpenRouter, LiteLLM/Ollama). |
 | Voice commands (press-and-speak) | Knob **hold-to-talk** everywhere + tap-to-toggle conversations; your own local Whisper STT (tts-sst), no cloud dependency. |
 | AI Meeting Assistant (record → transcribe → summarize) | Meeting app: stereo-split recording, auto start/stop, **speaker-diarized transcripts** (self-hosted), attendee-guided speaker ID via Outlook calendar, AI notes (summary/decisions/actions), per-meeting filing, **Joplin export**. Materially deeper than the advertised feature. |
 | Translation (Silver+ paid tiers) | **Live Translate**: word-by-word streaming captions (Soniox, ~$0.18/hr) or bring-your-own AI key (DeepSeek ≈ $0.10/hr, OpenAI, OpenRouter, LiteLLM/Ollama) with cross-sentence context, save-to-file, global hotkey. Not tier-gated. |
@@ -27,13 +27,12 @@ don't — update it when either side changes.
 | LED ring status for recording/translation/AI states | RGB ring is theme-driven and state-driven (listening/thinking/speaking/approval), fully configurable. |
 | Knob + touchscreen + gestures | Full knob support (rotate/click/double/hold), touch, page selector. |
 | Credit packs / subscriptions | Nothing metered. Costs are only what your own keys/servers cost. |
-| 9 Smart Profiles (knob-switchable "modes") | Teardown: their 9 "profiles" are **page layouts** (Discord/MeetAI/SysView/AI Chat/Music/Clock/…) — already open-quake **pages** with the knob selector and per-page hotkeys. The genuinely new piece inside their AI Chat is below, in development. |
+| 9 Smart Profiles (knob-switchable "modes") | Teardown: their 9 "profiles" are **page layouts** (Discord/MeetAI/SysView/AI Chat/Music/Clock/…) — already open-quake **pages** with the knob selector and per-page hotkeys. The real feature inside their AI Chat — named prompt modes (theirs: 6, Chinese-only) — **shipped as AI Profiles** (PR #23): 9 editable English instruction presets on all five AI Voice backends, switchable from the panel's Profile button / knob twist / per page, plus next/previous-page tile actions. |
 
 ## 🔨 In development
 
 | Feature | Status |
 |---|---|
-| **AI prompt profiles** (the real feature inside their "Smart Profiles": named system-prompt modes in AI chat — theirs: 6, Chinese-only) | Approved and in progress on branch `smart-profiles`: a global library of 9 editable English profiles applying to **all five AI Voice backends**, switchable from the panel / by knob twist / per page, plus next/previous-page tile actions (their `nextProfile` parity). Rides on the AI Voice consolidation (branch `ai-voice`), which also adds the any-OpenAI-compatible-API chat backend. |
 | **Screensaver page — wallpapers incl. AI-generated** (teardown: their wallpaper feature, the "Vivid" profile, is a manual crossfading image/video page — no idle detection) | In progress on branch `screensaver`: a media slideshow page (drop images/videos in a folder — your own ComfyUI/AI renders go straight in, no credits) plus built-in animated scenes (color waves, starfield, code rain, big clock), and it **auto-starts when the panel sits idle and wakes back to where you were** — which theirs can't do. |
 
 ## ❌ Missing (the actual todo)
