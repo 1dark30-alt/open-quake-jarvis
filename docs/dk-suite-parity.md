@@ -22,6 +22,9 @@ don't — update it when either side changes.
 | Instant answers | Any of the AI apps; hold the knob and ask. |
 | Drag-and-drop customization / preset app shortcuts | The PC-side editor: tile grids, merged tiles, per-page apps/dashboards, drag-and-drop, hotkeys. |
 | Music player | Music controller: now-playing, transport, app grid, lyrics. |
+| OpenClaw integration ("run your favorite OpenClaw tasks with one tap" — via the OpenAI API server-side) | open-quake runs **real agent sessions natively** — Claude Code, Codex, Copilot — with tools, touch approvals, your own plan; no intermediary service. (Their one-tap *saved routines* idea is a genuine gap — see Missing.) |
+| System monitor (real-time CPU/memory/network) | The **System Monitor** app: live CPU, GPU, RAM, disk, network, battery. |
+| Global mic mute (system-level, one tap) | Knob single-click defaults to **mute**; the Meeting app adds per-call mute/video for Zoom and Teams. |
 | Smart home hub (use-case example) | First-class **Home Assistant integration**: entity tiles, real dashboards, MDI icons. |
 | Stock dashboard / expense automation / 3D-printer control (use-case examples) | Web-dashboard pages + shell/macro tiles + HA cover the same ground generically. |
 | LED ring status for recording/translation/AI states | RGB ring is theme-driven and state-driven (listening/thinking/speaking/approval), fully configurable. |
@@ -41,13 +44,16 @@ don't — update it when either side changes.
 | Feature | What they advertise | Lift for open-quake |
 |---|---|---|
 | **macOS / Linux support** | Multi-OS: Windows, macOS, Linux | **Large.** The launcher/editor are Electron (portable), but launch/volume/media/loopback-audio/reserved-display code is Windows-specific (README already flags this). Realistic only as a scoped "panel + apps, minus Windows-only extras" port. |
+| **Saved AI routines as tiles** | OpenClaw pitch: capture a spoken task, save it, re-run with one tap | **Small — worth doing.** OQ has agent sessions and tiles, but no tile type that sends a saved prompt to an AI Voice backend. Adding one out-does theirs (routines run on a real agent with tools). |
+| **Mid-meeting [Mark] highlights** | Tap Mark during a meeting; the summary extracts the flagged moments | **Small.** OQ records + summarizes but has no highlight-this-moment button feeding the notes. A timestamp list handed to the analysis prompt covers it. |
+| **Custom emoji generation** | Speak to generate custom emoji for chat apps (their OpenAI-API feature) | **Gimmick.** No equivalent; listed for completeness. |
 | **Game voice control** | Mentioned in their showcase | **Unclear scope.** Nearest OQ equivalents: global hotkeys, macros, LucidType. Needs a real definition of what theirs does before it's worth chasing. |
 
 ## 🔮 Their "coming soon" list
 
 | They promise | open-quake today |
 |---|---|
-| Discord Game Controls | Workable now with a manual page: key tiles firing Discord's global hotkeys (mute/deafen/overlay). No packaged Discord page yet — easy candidate if demand shows up. |
+| Discord Game Controls (a Discord panel already exists in DK-Suite's page wheel per teardown; the Kickstarter pitches an always-on overlay) | Workable now with a manual page: key tiles firing Discord's global hotkeys (mute/deafen/overlay). No packaged Discord page yet — easy candidate if demand shows up. |
 | OBS Studio Controls | Same today via OBS global hotkeys on key tiles. The real version would be a page speaking **obs-websocket** (scene switching, stream/record status on the panel) — moderate lift, natural fit. |
 | Themes | **Already shipped**: light/dark/system + savable accent presets driving the panel, apps, and the knob ring — they're promising what open-quake has. |
 | "And more" | Nothing named yet — new items land here as they announce them. |
@@ -55,7 +61,8 @@ don't — update it when either side changes.
 ## Notes
 
 - Their "no cloud subscription required / open-source engine" claim still routes AI through their
-  credit system; open-quake's equivalent stance is stronger in practice (your CLIs, your servers,
-  your keys).
+  credit system — and their Kickstarter AI disclosure names the backend: everything is the OpenAI
+  ChatGPT API, called server-side. open-quake's stance is stronger in practice (your CLIs, your
+  servers, your keys).
 - Hardware-only items (chassis, stand, transparent window, HDMI/USB wiring) are out of scope — both
   sides run the same device.
