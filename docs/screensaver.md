@@ -37,6 +37,11 @@ point at any other folder instead; leaving a folder blank goes back to the app's
 Both folders can also be changed from the panel itself: tap the screensaver, tap **⚙**, then
 **Browse** next to Photos folder or Videos folder.
 
+Ready-made looping wallpaper videos live in the repo's
+[community-wallpapers](../community-wallpapers) folder (they're not bundled into the installer,
+so the app stays small) — the **Get wallpapers ↗** button next to the videos folder opens it;
+download a file and drop it into your videos folder.
+
 ## Idle auto-start
 
 One setting controls it: **Auto-start after idle minutes** (default **10**, **0 = never**).

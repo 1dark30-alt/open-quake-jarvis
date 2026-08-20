@@ -2265,10 +2265,14 @@
     if (!inp) return;
     const word = kind === 'videos' ? 'videos' : 'photos';
     const exts = kind === 'videos' ? 'mp4/webm/mov' : 'jpg/png/gif/webp';
+    // The videos row also links the repo's community-wallpapers folder — ready-made 1920×480
+    // loops live there (kept out of the installer so the app stays small).
+    const community = kind === 'videos'
+      ? `<button type="button" data-ss-community="1" style="margin-left:auto">Get wallpapers ↗</button>` : '';
     const row = document.createElement('div');
-    row.innerHTML = `<div class="row"><label></label>
+    row.innerHTML = `<div class="row" style="gap:8px"><label></label>
         <button type="button" data-ss-browse="${key}">Browse…</button>
-        <button type="button" data-ss-open="${key}">Open ${word} folder</button></div>
+        <button type="button" data-ss-open="${key}">Open ${word} folder</button>${community}</div>
       <p class="hint" style="margin:-2px 0 10px 78px">Drop ${exts} files in and the screensaver plays them.
       Blank = the app's own screensaver-media\\${word} folder — Open shows whichever folder is in effect.</p>`;
     inp.closest('.row').insertAdjacentElement('afterend', row);
@@ -2279,6 +2283,8 @@
       inp.value = p;
     };
     row.querySelector(`[data-ss-open="${key}"]`).onclick = () => configApi.openScreensaverMedia(optVal(g, key, ''), kind);
+    const cb = row.querySelector('[data-ss-community="1"]');
+    if (cb) cb.onclick = () => configApi.openExternal('https://github.com/TeeJS/open-quake/tree/main/community-wallpapers');
   }
 
   function deleteCurrentPage() {
