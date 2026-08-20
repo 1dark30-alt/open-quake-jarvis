@@ -376,7 +376,7 @@
     // prints seek the gaps instead of clustering mid-screen.
     function placePrint(w, h, rot) {
       var best = null, bestScore = -1;
-      for (var c = 0; c < 8; c++) {
+      for (var c = 0; c < 16; c++) {
         var cand = { w: w, h: h, rot: rot, x: -40 + Math.random() * (W + 80), y: -20 + Math.random() * (H + 40) };
         var score = freshCellsCovered(cand);
         if (score > bestScore) { bestScore = score; best = cand; }
@@ -398,8 +398,13 @@
       img.onload = function () {
         loading = false;
         if (!run) return;
-        var h = 200 + Math.random() * 140;
-        var w = Math.min(640, h * (img.naturalWidth / Math.max(1, img.naturalHeight)));
+        // Deck-aware sizing: scale prints so the WHOLE deck can cover the board about 1.7x over —
+        // a small library gets big prints instead of a sea of black. Clamped, with ±12% jitter.
+        var aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
+        var targetArea = (W * H * 1.7) / Math.max(1, order.length);
+        var h = Math.sqrt(targetArea / Math.max(0.3, aspect));
+        h = Math.max(230, Math.min(450, h)) * (0.88 + Math.random() * 0.24);
+        var w = Math.min(640, aspect * h);
         var rot = (Math.random() - 0.5) * 1.047;   // ±30° (±0.524 rad)
         var rec = placePrint(w, h, rot);
         rec.img = img;
