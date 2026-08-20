@@ -91,6 +91,29 @@ test('transcribe without an STT endpoint reports the settings path, not a crash'
   assert.match(r.error, /TTS\/STT/);
 });
 
+test('aiReady reports each blocking problem as a human sentence', async () => {
+  // Not the AI provider -> always ready (soniox handles its own errors).
+  assert.deepEqual(await makeHost({}).handlers.aiReady(), { ok: true });
+  // AI provider, endpoint unconfigured.
+  const r1 = await makeHost({ provider: 'ai' }).handlers.aiReady();
+  assert.equal(r1.ok, false); assert.match(r1.error, /AI endpoint not configured/);
+  // Configured but no STT endpoint set.
+  const r2 = await makeHost({ provider: 'ai', aiBaseUrl: 'http://x', aiApiKey: 'k', aiModel: 'm' }, {}).handlers.aiReady();
+  assert.equal(r2.ok, false); assert.match(r2.error, /STT not configured/);
+  // STT set but nothing listening on the port -> the "start tts-sst" message.
+  const dead = await makeHost({ provider: 'ai', aiBaseUrl: 'http://x', aiApiKey: 'k', aiModel: 'm' },
+    { sttHost: '127.0.0.1', sttPort: '1' }).handlers.aiReady();
+  assert.equal(dead.ok, false); assert.match(dead.error, /not reachable at 127\.0\.0\.1:1/);
+  // Something actually listening -> ready.
+  const srv = http.createServer(() => {});
+  await new Promise(res => srv.listen(0, '127.0.0.1', res));
+  try {
+    const live = await makeHost({ provider: 'ai', aiBaseUrl: 'http://x', aiApiKey: 'k', aiModel: 'm' },
+      { sttHost: '127.0.0.1', sttPort: String(srv.address().port) }).handlers.aiReady();
+    assert.deepEqual(live, { ok: true });
+  } finally { srv.close(); }
+});
+
 test('getState reports provider + aiConfigured + sttConfigured', () => {
   const host = makeHost(
     { provider: 'ai', aiBaseUrl: 'https://api.deepseek.com', aiApiKey: 'k', aiModel: 'deepseek-v4-flash', targetLanguage: 'de' },

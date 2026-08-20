@@ -585,6 +585,13 @@ async function handler(req, res) {
       let out; try { out = await h.sonioxToken(); } catch (e) { out = { ok: false, error: e.message }; }
       return json(res, out || { ok: false });
     }
+    // Live Translate (AI provider): pre-flight before the mic starts — is the endpoint configured
+    // and the local STT actually listening? Returns the first blocking problem as a human sentence.
+    if (voicePath === '/ai-ready') {
+      if (!h.aiReady) return json(res, { ok: true });
+      let out; try { out = await h.aiReady(); } catch (e) { out = { ok: false, error: e.message }; }
+      return json(res, out || { ok: true });
+    }
     // Live Translate: persist the streamed translation to the save file (posted on stop).
     if (voicePath === '/append-line' && req.method === 'POST') {
       let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }

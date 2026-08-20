@@ -15,6 +15,7 @@
 //   activeGrid()   saveConfig()   getDocumentsPath()
 const fs = require('fs');
 const path = require('path');
+const net = require('net');
 const http = require('http');
 const https = require('https');                         // Soniox temp-key mint + AI chat endpoint
 const wyoming = require('./claudevoice-wyoming');       // pure Wyoming STT protocol client
@@ -158,6 +159,22 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
     return out;
   }
 
+  // Quick TCP probe: is anything actually LISTENING at the configured STT endpoint? Configured and
+  // reachable are different failures, and the user needs to know which one they have.
+  function probePort(host, port, timeoutMs) {
+    return new Promise(resolve => {
+      const s = net.connect({ host, port: parseInt(port, 10) });
+      const done = ok => { try { s.destroy(); } catch (e) {} resolve(ok); };
+      s.setTimeout(timeoutMs || 800, () => done(false));
+      s.on('connect', () => done(true));
+      s.on('error', () => done(false));
+    });
+  }
+
+  function sttDownMessage(host, port) {
+    return 'STT server not reachable at ' + host + ':' + port + ' — start the tts-sst tray app (with a multilingual model, e.g. Parakeet v3), or fix the endpoint in Settings → TTS/STT.';
+  }
+
   // AI provider's /audio flow: one VAD-trimmed utterance -> Whisper STT (source language) -> AI
   // translation -> caption text (saved when Save-to-file is on).
   async function transcribe(pcmBuffer) {
@@ -170,13 +187,30 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
       if (isSttNoisePhrase(text)) { say('STT dropped a known noise-hallucination phrase: ' + JSON.stringify(text)); return { ok: true, text: '' }; }
       const clean = String(text || '').trim();
       if (!clean) return { ok: true, text: '' };
+      say('heard: ' + JSON.stringify(clean));   // the STT diagnostic — bad captions? read what it heard
       const translated = await aiTranslate(clean);
       if (translated) maybeSave(translated);
       return { ok: true, text: translated, original: clean };
     } catch (e) {
       say('AI translate error: ' + e.message);
-      return { ok: false, error: e.message };
+      // Raw socket errors are useless on the panel — translate the common one into the actual fix.
+      const msg = /ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ETIMEDOUT|timed out/i.test(e.message) && !/AI endpoint/i.test(e.message)
+        ? sttDownMessage(host, port) : e.message;
+      return { ok: false, error: msg };
     }
+  }
+
+  // Pre-flight for the page's mic tap (AI provider): is everything in place to translate? Returns
+  // the FIRST blocking problem as a human sentence, so the user is told before speaking, not after.
+  async function aiReady() {
+    const o = pageOptions() || {};
+    if ((o.provider === 'ai' ? 'ai' : 'soniox') !== 'ai') return { ok: true };
+    const cfg = aiConfig();
+    if (!cfg.baseUrl || !cfg.apiKey || !cfg.model) return { ok: false, error: 'AI endpoint not configured — set the endpoint, key, and model in this page’s settings (config editor).' };
+    const { sttHost: host, sttPort: port } = deps.voiceEndpoints();
+    if (!host || !port) return { ok: false, error: 'STT not configured — set the Wyoming/Whisper endpoint in Settings → TTS/STT.' };
+    if (!(await probePort(host, port))) return { ok: false, error: sttDownMessage(host, port) };
+    return { ok: true };
   }
 
   // Snapshot for the page's on-load /state fetch: provider, configured?, target language, save state.
@@ -217,7 +251,7 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
 
   return {
     appId,
-    handlers: { getState, setOption, sonioxToken, appendLine, transcribe },
+    handlers: { getState, setOption, sonioxToken, appendLine, transcribe, aiReady },
     _aiTranslate: aiTranslate,   // exposed for unit tests
     shutdown() {},   // nothing long-lived to tear down
   };

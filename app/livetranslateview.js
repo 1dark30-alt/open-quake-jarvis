@@ -139,14 +139,23 @@ function toggleAi() {
     listening = false; vad.stop(); clearPending(); renderLines(); setStatus('idle'); syncMicUI();
   } else {
     listening = true; setStatus('listening'); syncMicUI();
-    ensureDeviceIds().then(function () {
-      if (!listening) return;
-      vad.setInputDevice(micDeviceId);
-      return vad.start(onSpeechStart, onSpeechEnd, onLevel);
-    }).catch(function (e) {
-      listening = false; syncMicUI();
-      setStatus('error', 'Microphone access failed: ' + (e && e.message ? e.message : e));
-    });
+    // Pre-flight: endpoint configured + STT actually listening — told NOW, not after the first
+    // utterance dies with a socket error.
+    fetch(BASE + '/ai-ready', { cache: 'no-store' }).then(function (r) { return r.json(); })
+      .then(function (chk) {
+        if (!listening) return;
+        if (chk && chk.ok === false) { var err = new Error(chk.error || 'not ready'); err.isPreflight = true; throw err; }
+        return ensureDeviceIds().then(function () {
+          if (!listening) return;
+          vad.setInputDevice(micDeviceId);
+          return vad.start(onSpeechStart, onSpeechEnd, onLevel);
+        });
+      })
+      .catch(function (e) {
+        listening = false; syncMicUI();
+        var msg = e && e.message ? e.message : String(e);
+        setStatus('error', e && e.isPreflight ? msg : 'Microphone access failed: ' + msg);
+      });
   }
 }
 
