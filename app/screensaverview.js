@@ -347,8 +347,12 @@
     }
     function cellSpan(rec) {
       var b = 14;   // border + a little shadow spread
-      var x0 = Math.max(0, rec.x - rec.w / 2 - b), x1 = Math.min(W - 1, rec.x + rec.w / 2 + b);
-      var y0 = Math.max(0, rec.y - rec.h / 2 - b), y1 = Math.min(H - 1, rec.y + rec.h / 2 + b);
+      // Rotation-aware bounding box — at ±30° the axis-aligned footprint grows noticeably.
+      var cr = Math.abs(Math.cos(rec.rot || 0)), sr = Math.abs(Math.sin(rec.rot || 0));
+      var hw = (rec.w / 2) * cr + (rec.h / 2) * sr + b;
+      var hh = (rec.w / 2) * sr + (rec.h / 2) * cr + b;
+      var x0 = Math.max(0, rec.x - hw), x1 = Math.min(W - 1, rec.x + hw);
+      var y0 = Math.max(0, rec.y - hh), y1 = Math.min(H - 1, rec.y + hh);
       if (x0 > x1 || y0 > y1) return null;
       return {
         c0: Math.floor(x0 / (W / COLLAGE_COLS)), c1: Math.min(COLLAGE_COLS - 1, Math.floor(x1 / (W / COLLAGE_COLS))),
@@ -367,13 +371,13 @@
       for (var r = s.r0; r <= s.r1; r++) for (var c = s.c0; c <= s.c1; c++) if (!cells[r * COLLAGE_COLS + c]) n++;
       return n;
     }
-    // Spread the pile: audition a handful of random spots (centers may overhang the screen edges,
-    // scrapbook-style) and keep the one that covers the most still-empty board — prints seek the
-    // gaps instead of clustering mid-screen.
-    function placePrint(w, h) {
+    // Spread the pile: audition a handful of random spots (centers may lean a little past the
+    // screen edges, scrapbook-style) and keep the one that covers the most still-empty board —
+    // prints seek the gaps instead of clustering mid-screen.
+    function placePrint(w, h, rot) {
       var best = null, bestScore = -1;
       for (var c = 0; c < 8; c++) {
-        var cand = { w: w, h: h, x: -80 + Math.random() * (W + 160), y: -40 + Math.random() * (H + 80) };
+        var cand = { w: w, h: h, rot: rot, x: -40 + Math.random() * (W + 80), y: -20 + Math.random() * (H + 40) };
         var score = freshCellsCovered(cand);
         if (score > bestScore) { bestScore = score; best = cand; }
       }
@@ -396,9 +400,10 @@
         if (!run) return;
         var h = 200 + Math.random() * 140;
         var w = Math.min(640, h * (img.naturalWidth / Math.max(1, img.naturalHeight)));
-        var rec = placePrint(w, h);
+        var rot = (Math.random() - 0.5) * 1.047;   // ±30° (±0.524 rad)
+        var rec = placePrint(w, h, rot);
         rec.img = img;
-        rec.rot = (Math.random() - 0.5) * 0.5;
+        rec.rot = rot;
         drawStamp(ctx, rec);
         markCells(rec);
         stamps++;
