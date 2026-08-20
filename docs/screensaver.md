@@ -11,8 +11,10 @@ immediately, nothing to download or configure.
 ## What it shows
 
 - **Built-in scenes** (default) — animations drawn live by the page (no media files, nothing
-  visibly loops): **Waves** (drifting color ribbons) and **Starfield**. Show both in a cycle or
-  pin one.
+  visibly loops): **Waves** (drifting color ribbons), **Starfield**, **Lava lamp** (gooey
+  molten blobs), **Fireflies** (glowing wanderers over a meadow), and **Aquarium** (fish,
+  bubbles, swaying seaweed). Each scene is its own on/off toggle — the cycle plays whatever
+  mix you leave on.
 - **My media folder** — a crossfading slideshow of your own images (jpg/png/gif/webp) and videos
   (mp4/webm/mov). Images change on the interval you pick; videos always play through to the end,
   muted. Fill the screen (crop) or fit inside (letterbox); shuffle optional.
@@ -54,7 +56,7 @@ the ⚙ settings button).
 | Option | Meaning |
 |---|---|
 | Show | Built-in scenes / My media folder / Both |
-| Scene | All scenes (cycle) or one of Waves, Starfield (hidden for media-only pages) |
+| Scenes | Independent toggles for Waves, Starfield, Lava lamp, Fireflies, Aquarium — any mix (hidden for media-only pages) |
 | Media fill | Fill the screen (crop) or fit inside (letterbox) — media sources only |
 | Change every (s) | Seconds per image/scene (videos always play through) |
 | Shuffle | Randomize the playlist order |

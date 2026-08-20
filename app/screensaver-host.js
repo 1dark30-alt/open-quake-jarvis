@@ -24,13 +24,19 @@ function truthy(v) { return v === true || v === '1' || v === 'true'; }
 
 // Panel-editable options, validated + normalized to the string form stored in g.options
 // (livetranslate pattern: strings survive restarts and match the query-string delivery).
+const boolOpt = v => (v === true || v === '1' || v === false || v === '0' || v === 'true' || v === 'false')
+  ? (truthy(v) ? '1' : '0') : null;
 const PANEL_OPTIONS = {
   source: v => (v === 'scenes' || v === 'media' || v === 'both') ? v : null,
-  scene: v => (v === 'all' || v === 'waves' || v === 'starfield') ? v : null,
+  // Scene picks are independent toggles (any mix); all five off is a legitimate "nothing" state.
+  sceneWaves: boolOpt,
+  sceneStarfield: boolOpt,
+  sceneLava: boolOpt,
+  sceneFireflies: boolOpt,
+  sceneAquarium: boolOpt,
   fillMode: v => (v === 'cover' || v === 'contain') ? v : null,
   intervalSec: v => { const n = parseInt(v, 10); return n >= 3 && n <= 86400 ? String(n) : null; },
-  shuffle: v => (v === true || v === '1' || v === false || v === '0' || v === 'true' || v === 'false')
-    ? (truthy(v) ? '1' : '0') : null,
+  shuffle: boolOpt,
   idleMinutes: v => { const n = parseInt(v, 10); return n >= 0 && n <= 720 ? String(n) : null; },
   mediaDir: v => (typeof v === 'string' && v.length <= 500) ? v.trim() : null,   // '' = default folder
 };

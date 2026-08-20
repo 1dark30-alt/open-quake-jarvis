@@ -25,15 +25,16 @@
   // ---- options (query-string delivery; panel edits POST /option and update this copy) ----
   var opts = {
     source: Q.get('source') || 'scenes',           // scenes | media | both
-    scene: Q.get('scene') || 'all',                // all | waves | starfield
     fillMode: Q.get('fillMode') || 'cover',        // cover | contain (media only)
     intervalSec: parseInt(Q.get('intervalSec'), 10) || 10,
     shuffle: Q.get('shuffle') === '1',
     idleMinutes: Q.get('idleMinutes') || '10',
+    sceneOn: {},                                   // per-scene include toggles (any mix)
   };
-  var SCENES = ['waves', 'starfield'];
-  // Old saved picks (removed/renamed scenes) heal to the full cycle rather than a black stage.
-  if (opts.scene !== 'all' && SCENES.indexOf(opts.scene) < 0) opts.scene = 'all';
+  var SCENES = ['waves', 'starfield', 'lava', 'fireflies', 'aquarium'];
+  var SCENE_LABELS = { waves: 'Waves', starfield: 'Starfield', lava: 'Lava lamp', fireflies: 'Fireflies', aquarium: 'Aquarium' };
+  function sceneKey(id) { return 'scene' + id.charAt(0).toUpperCase() + id.slice(1); }
+  SCENES.forEach(function (id) { opts.sceneOn[id] = Q.get(sceneKey(id)) !== '0'; });   // absent = on
   var files = [];              // [{name, kind:'image'|'video'}] from /state
   var mediaDirLabel = '';      // shown in settings
   var usingDefault = true;
@@ -100,7 +101,189 @@
     return function () { run = false; };
   }
 
-  var SCENE_FNS = { waves: sceneWaves, starfield: sceneStarfield };
+  function sceneLava(cv) {
+    var ctx = cv.getContext('2d'), run = true, t = 0;
+    // Metaball goo: blobs drawn small + heavily blurred, then a contrast step merges the fields
+    // into gooey shapes. Rendered at 1/4 res offscreen and upscaled — the blur stays cheap.
+    var os = document.createElement('canvas'); os.width = 480; os.height = 120;
+    var octx = os.getContext('2d');
+    var hasFilter = typeof octx.filter === 'string';
+    var blobs = [];
+    for (var i = 0; i < 8; i++) {
+      blobs.push({
+        // Even horizontal bands (+ jitter) so the goo never clumps into one corner for good.
+        x: (i + 0.5) * (480 / 8) + (Math.random() - 0.5) * 40,
+        y: 20 + Math.random() * 80,
+        r: 14 + Math.random() * 18, vy: (Math.random() * 0.16 + 0.05) * (i % 2 ? 1 : -1),
+        wob: Math.random() * 6.28, hot: i % 3 === 0,   // a few brighter "hot" blobs
+      });
+    }
+    (function frame() {
+      if (!run) return;
+      t++;
+      octx.setTransform(1, 0, 0, 1, 0, 0);
+      octx.filter = 'none';
+      octx.fillStyle = '#000'; octx.fillRect(0, 0, 480, 120);
+      if (hasFilter) octx.filter = 'blur(8px) contrast(12)';   // softer threshold keeps orange fade at merge edges
+      for (var i = 0; i < blobs.length; i++) {
+        var b = blobs[i];
+        b.y += b.vy;
+        var breathe = 1 + Math.sin(t * 0.01 + b.wob) * 0.18;
+        // A blob that drifts off the top sinks back from the bottom (and vice versa) at a new size.
+        if (b.y < -b.r * 2) { b.y = 120 + b.r; b.vy = -(Math.random() * 0.16 + 0.05); b.r = 14 + Math.random() * 18; }
+        if (b.y > 120 + b.r * 2) { b.y = -b.r; b.vy = Math.random() * 0.16 + 0.05; b.r = 14 + Math.random() * 18; }
+        var x = b.x + Math.sin(t * 0.004 + b.wob) * 14;
+        // Slow molten wobble; hot cores keep a tight red-orange hue — above ~hue 20 at this
+        // lightness the contrast step tips them lime-green.
+        var hue = b.hot ? 10 + Math.sin(t * 0.002 + b.wob) * 4 : 18 + Math.sin(t * 0.002 + b.wob) * 10;
+        octx.fillStyle = 'hsl(' + hue + ',95%,' + (b.hot ? 57 : 46) + '%)';
+        octx.beginPath(); octx.arc(x, b.y, b.r * breathe, 0, 6.2832); octx.fill();
+      }
+      ctx.imageSmoothingEnabled = true;
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+      ctx.drawImage(os, 0, 0, W, H);
+      requestAnimationFrame(frame);
+    })();
+    return function () { run = false; };
+  }
+
+  function sceneFireflies(cv) {
+    var ctx = cv.getContext('2d'), run = true, t = 0;
+    // Grass silhouette pre-rendered once; the flies wander with smooth headings and pulse
+    // individually, with the occasional brighter flash.
+    var grass = document.createElement('canvas'); grass.width = W; grass.height = H;
+    var gctx = grass.getContext('2d');
+    for (var layer = 0; layer < 3; layer++) {
+      gctx.fillStyle = 'rgba(6,16,8,' + (0.5 + layer * 0.25) + ')';
+      gctx.beginPath(); gctx.moveTo(0, H);
+      var base = H - 14 - layer * 16;
+      for (var x = 0; x <= W; x += 7) {
+        gctx.lineTo(x, base - Math.abs(Math.sin(x * 0.05 + layer * 9)) * (16 + layer * 10) * (0.4 + Math.abs(Math.sin(x * 0.011 + layer))));
+      }
+      gctx.lineTo(W, H); gctx.closePath(); gctx.fill();
+    }
+    var N = 46, flies = [];
+    for (var i = 0; i < N; i++) {
+      flies.push({
+        x: Math.random() * W, y: 40 + Math.random() * (H - 110),
+        a: Math.random() * 6.2832, speed: 0.25 + Math.random() * 0.5,
+        phase: Math.random() * 6.2832, rate: 0.015 + Math.random() * 0.02,
+        flash: 0,
+      });
+    }
+    (function frame() {
+      if (!run) return;
+      t++;
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+      ctx.drawImage(grass, 0, 0);
+      ctx.globalCompositeOperation = 'lighter';
+      for (var i = 0; i < N; i++) {
+        var f = flies[i];
+        f.a += (Math.random() - 0.5) * 0.25;                  // smooth-ish random wander
+        f.x += Math.cos(f.a) * f.speed; f.y += Math.sin(f.a) * f.speed * 0.6;
+        if (f.x < -20) f.x = W + 20; if (f.x > W + 20) f.x = -20;
+        if (f.y < 30) { f.y = 30; f.a = -f.a; }
+        if (f.y > H - 40) { f.y = H - 40; f.a = -f.a; }
+        if (!f.flash && Math.random() < 0.0012) f.flash = 60;  // occasional bright flare
+        var glow = Math.max(0, Math.sin(t * f.rate + f.phase)); glow = glow * glow;
+        if (f.flash) { glow = Math.min(1, glow + f.flash / 60); f.flash--; }
+        if (glow < 0.03) continue;
+        var r = 6 + glow * 11;
+        var grad = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
+        grad.addColorStop(0, 'rgba(222,255,150,' + Math.min(1, glow * 1.1).toFixed(3) + ')');
+        grad.addColorStop(0.35, 'rgba(190,240,90,' + (0.45 * glow).toFixed(3) + ')');
+        grad.addColorStop(1, 'rgba(190,240,90,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, 6.2832); ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      requestAnimationFrame(frame);
+    })();
+    return function () { run = false; };
+  }
+
+  function sceneAquarium(cv) {
+    var ctx = cv.getContext('2d'), run = true, t = 0;
+    function makeFish() {
+      var dir = Math.random() < 0.5 ? 1 : -1;
+      var size = 16 + Math.random() * 44;
+      return {
+        x: dir > 0 ? -size * 3 : W + size * 3,
+        y: 50 + Math.random() * (H - 150),
+        size: size, dir: dir,
+        speed: (0.35 + Math.random() * 0.8) * (46 / (size + 30)),   // small fish dart, big fish cruise
+        bob: Math.random() * 6.2832, wig: Math.random() * 6.2832,
+        tint: 'hsl(' + (195 + Math.random() * 40) + ',45%,' + (14 + Math.random() * 10) + '%)',
+      };
+    }
+    var fish = []; for (var i = 0; i < 9; i++) { var f0 = makeFish(); f0.x = Math.random() * W; fish.push(f0); }
+    var bubbles = []; for (var i = 0; i < 26; i++) bubbles.push({ x: Math.random() * W, y: Math.random() * H, r: 1.5 + Math.random() * 3.5, v: 0.4 + Math.random() * 0.9, wob: Math.random() * 6.2832 });
+    var weeds = []; for (var i = 0; i < 5; i++) weeds.push({ x: 120 + Math.random() * (W - 240), h: 70 + Math.random() * 90, phase: Math.random() * 6.2832 });
+    function drawFish(f) {
+      var s = f.size;
+      ctx.save();
+      ctx.translate(f.x, f.y + Math.sin(t * 0.02 + f.bob) * 6);
+      ctx.scale(f.dir, 1);
+      ctx.fillStyle = f.tint;
+      ctx.beginPath(); ctx.ellipse(0, 0, s, s * 0.42, 0, 0, 6.2832); ctx.fill();       // body
+      var tail = Math.sin(t * 0.18 + f.wig) * s * 0.22;                                 // tail wiggle
+      ctx.beginPath(); ctx.moveTo(-s * 0.85, 0);
+      ctx.lineTo(-s * 1.45, -s * 0.38 + tail); ctx.lineTo(-s * 1.45, s * 0.38 + tail);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-s * 0.1, -s * 0.35);                                 // dorsal fin
+      ctx.lineTo(s * 0.25, -s * 0.72); ctx.lineTo(s * 0.4, -s * 0.3); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(190,230,255,0.5)';                                          // eye glint
+      ctx.beginPath(); ctx.arc(s * 0.62, -s * 0.08, Math.max(1.2, s * 0.05), 0, 6.2832); ctx.fill();
+      ctx.restore();
+    }
+    (function frame() {
+      if (!run) return;
+      t++;
+      var water = ctx.createLinearGradient(0, 0, 0, H);
+      water.addColorStop(0, '#04293e'); water.addColorStop(1, '#020f18');
+      ctx.fillStyle = water; ctx.fillRect(0, 0, W, H);
+      for (var i = 0; i < 4; i++) {                                                     // swaying light rays
+        var rx = W * (0.12 + i * 0.24) + Math.sin(t * 0.004 + i * 2.1) * 60;
+        var ray = ctx.createLinearGradient(rx, 0, rx + 140, H);
+        ray.addColorStop(0, 'rgba(170,220,255,0.05)'); ray.addColorStop(1, 'rgba(170,220,255,0)');
+        ctx.fillStyle = ray;
+        ctx.beginPath(); ctx.moveTo(rx, 0); ctx.lineTo(rx + 90, 0); ctx.lineTo(rx + 260, H); ctx.lineTo(rx + 60, H); ctx.closePath(); ctx.fill();
+      }
+      ctx.fillStyle = '#0a1a14';                                                        // sandy bottom
+      ctx.beginPath(); ctx.moveTo(0, H);
+      for (var x = 0; x <= W; x += 60) ctx.lineTo(x, H - 16 - Math.sin(x * 0.01) * 8);
+      ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+      for (var i = 0; i < weeds.length; i++) {                                          // swaying seaweed
+        var wd = weeds[i];
+        ctx.strokeStyle = 'rgba(20,70,50,0.85)'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+        for (var blade = -1; blade <= 1; blade++) {
+          ctx.beginPath(); ctx.moveTo(wd.x + blade * 10, H - 12);
+          for (var seg = 1; seg <= 5; seg++) {
+            var sway = Math.sin(t * 0.012 + wd.phase + seg * 0.7 + blade) * 6 * seg;
+            ctx.lineTo(wd.x + blade * 10 + sway, H - 12 - (wd.h / 5) * seg);
+          }
+          ctx.stroke();
+        }
+      }
+      for (var i = 0; i < bubbles.length; i++) {
+        var b = bubbles[i];
+        b.y -= b.v; b.x += Math.sin(t * 0.03 + b.wob) * 0.4;
+        if (b.y < -6) { b.y = H + 6; b.x = Math.random() * W; }
+        ctx.strokeStyle = 'rgba(190,230,255,0.35)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.2832); ctx.stroke();
+      }
+      for (var i = 0; i < fish.length; i++) {
+        var f = fish[i];
+        f.x += f.speed * f.dir;
+        if ((f.dir > 0 && f.x > W + f.size * 3) || (f.dir < 0 && f.x < -f.size * 3)) fish[i] = makeFish();
+        else drawFish(f);
+      }
+      requestAnimationFrame(frame);
+    })();
+    return function () { run = false; };
+  }
+
+  var SCENE_FNS = { waves: sceneWaves, starfield: sceneStarfield, lava: sceneLava, fireflies: sceneFireflies, aquarium: sceneAquarium };
 
   // =====================================================================================
   // Playlist + dual-layer player
@@ -116,7 +299,7 @@
     var wantScenes = opts.source === 'scenes' || opts.source === 'both';
     var wantMedia = opts.source === 'media' || opts.source === 'both';
     if (wantScenes) {
-      (opts.scene === 'all' ? SCENES : [opts.scene]).forEach(function (n) { items.push({ kind: 'scene', name: n }); });
+      SCENES.filter(function (n) { return opts.sceneOn[n]; }).forEach(function (n) { items.push({ kind: 'scene', name: n }); });
     }
     if (wantMedia) files.forEach(function (f) { items.push({ kind: f.kind, name: f.name }); });
     playlist = items;
@@ -256,9 +439,22 @@
     renderSeg($('segSource'), [['scenes', 'Built-in scenes'], ['media', 'My media'], ['both', 'Both']], opts.source, function (v) {
       opts.source = v; postOption('source', v); syncSettingsUI(); restart();
     });
-    renderSeg($('segScene'), [['all', 'All'], ['waves', 'Waves'], ['starfield', 'Starfield']], opts.scene, function (v) {
-      opts.scene = v; postOption('scene', v); syncSettingsUI(); restart();
-    });
+    // Scenes are independent toggles — tap any mix on/off (all off = the honest empty state).
+    (function () {
+      var el = $('segScene');
+      el.innerHTML = '';
+      SCENES.forEach(function (id) {
+        var b = document.createElement('button');
+        b.textContent = SCENE_LABELS[id];
+        if (opts.sceneOn[id]) b.classList.add('on');
+        b.addEventListener('click', function () {
+          opts.sceneOn[id] = !opts.sceneOn[id];
+          postOption(sceneKey(id), opts.sceneOn[id] ? '1' : '0');
+          syncSettingsUI(); restart();
+        });
+        el.appendChild(b);
+      });
+    })();
     renderSeg($('segFill'), [['cover', 'Fill screen'], ['contain', 'Fit inside']], opts.fillMode, function (v) {
       opts.fillMode = v; postOption('fillMode', v); syncSettingsUI(); restart();
     });

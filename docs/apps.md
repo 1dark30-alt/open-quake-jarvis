@@ -46,8 +46,9 @@ Included apps:
   HA server in a dropdown, no hand-typed URLs. Requires **Use Home Assistant** in
   **Settings → Auth**; hidden from the App picker otherwise. Uses your global HA token
   so login persists. (See the full HA guide for entity tiles + icons.)
-- **[Screensaver](screensaver.md)** — built-in animated scenes (Waves, Starfield — drawn
-  live, no media files) or a crossfading slideshow of your own images/videos. Optional idle
+- **[Screensaver](screensaver.md)** — built-in animated scenes (Waves, Starfield, Lava lamp,
+  Fireflies, Aquarium — drawn live, no media files) or a crossfading slideshow of your own
+  images/videos. Optional idle
   auto-start: after N quiet minutes the panel switches to it by itself, and any touch or knob
   input returns you to exactly the page you left.
 - **Keyboard Shortcuts** — a live cheat-sheet, three columns: **System** (the auto-rotation
