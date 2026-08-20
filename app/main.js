@@ -2063,9 +2063,15 @@ function applyKnobSettings() {
   const lig = (config.settings && config.settings.lighting) || {};
   let hue = L.hue, sat = L.sat;
   if (!lig.accentOverride) { const hs = hexToHsv255(themeGlobal().accent); if (hs) { hue = hs.hue; sat = hs.sat; } }   // ring follows the accent unless its color is overridden
-  try { dev.setKnobLed(true); } catch (e) {}              // keep the ring from idle-sleeping (effect 0 = visually off)
-  try { dev.setLedEffect(L.effect & 0xFF); } catch (e) {}
-  try { dev.setLedBrightness(L.brightness & 0xFF); } catch (e) {}
+  try { dev.setKnobLed(true); } catch (e) {}              // keep the ring from idle-sleeping
+  // "All Off" (settings effect 0) is sent to the DEVICE as the last live effect at brightness 0,
+  // not as matrix effect 0: with effect 0 the firmware blacks out the whole LED subsystem
+  // INCLUDING the mic indicator, so the mic LED stopped following mic toggles (confirmed on
+  // hardware — the screenOn+setMic re-assert did not revive it). The ring stays visually dark
+  // either way; the stored setting remains 0 so the on/off toggle logic is unchanged.
+  const allOff = (L.effect & 0xFF) === 0;
+  try { dev.setLedEffect((allOff ? (lastRingEffect || 1) : L.effect) & 0xFF); } catch (e) {}
+  try { dev.setLedBrightness((allOff ? 0 : L.brightness) & 0xFF); } catch (e) {}
   try { dev.setLedSpeed(L.speed & 0xFF); } catch (e) {}
   try { dev.setLedColor(hue & 0xFF, sat & 0xFF); } catch (e) {}
   if (L.effect) lastRingEffect = L.effect;
