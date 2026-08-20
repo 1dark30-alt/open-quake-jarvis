@@ -62,7 +62,7 @@ the ⚙ settings button).
 
 | Option | Meaning |
 |---|---|
-| Show | One multiselect dropdown — any mix of Built-in scenes, My photos, My videos |
+| Show | Three side-by-side checkboxes — any mix of Built-in scenes, My photos, My videos |
 | Scenes | A second multiselect — Waves, Starfield, Lava lamp, Fireflies, Flurry, any mix (shown while scenes are on) |
 | Photo style | Slideshow (one at a time) or Collage (scrapbook pile) — videos always play full-screen |
 | Photos | Crop to fill the screen, or don't crop (letterbox) — slideshow photos only; videos never crop |

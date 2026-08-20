@@ -2185,11 +2185,11 @@
       enforceMusicCap(g);   // re-apply the 2-of-3 panel cap (grid/art/lyrics)
     });
     if (def.id === 'screensaver') {
-      // Two collapsed multiselects at the top: Show (scenes/photos/videos — any mix) and, when
-      // scenes are on, the Scenes picker. Dropdowns so the checkboxes don't eat the box.
-      const showRow = appendScreensaverMultiRow(el, g, def, 'Show', ['showScenes', 'showPhotos', 'showVideos'], null, true);
+      // Show: only ever three options, so all three sit as permanent side-by-side checkboxes in
+      // one row. Scenes (five options) stays a collapsed multiselect dropdown under it.
+      const showRow = appendScreensaverShowRow(el, g, def);
       const scenesOn = (g.options && 'showScenes' in g.options) ? !!g.options.showScenes : true;
-      if (scenesOn) appendScreensaverMultiRow(el, g, def, 'Scenes', ['sceneWaves', 'sceneStarfield', 'sceneLava', 'sceneFireflies', 'sceneFlurry'], showRow, false);
+      if (scenesOn) appendScreensaverMultiRow(el, g, def, 'Scenes', ['sceneWaves', 'sceneStarfield', 'sceneLava', 'sceneFireflies', 'sceneFlurry'], showRow);
       // Browse/Open buttons under each folder text field — always present; hiding folder rows by
       // mode just hides configuration people are looking for.
       appendScreensaverFolderButtons(el, g, 'photosDir', 'photos');
@@ -2197,12 +2197,30 @@
     }
     enforceMusicCap(g);
   }
-  // Screensaver: the group picks (Show, Scenes) live behind collapsed multiselect dropdowns —
-  // always-visible checkbox rows ate the whole box. The manifest keeps every pick as an ordinary
-  // bool option (query delivery, seeding, panel — all unchanged); `editorCustom` only skips the
-  // generic per-row rendering here. `rerender` re-runs renderAppOpts on change for groups whose
-  // toggles gate OTHER rows (the Show group).
-  function appendScreensaverMultiRow(el, g, def, rowLabel, keys, afterEl, rerender) {
+  // Screensaver: the Show group is three permanent side-by-side checkboxes on one row (only ever
+  // three options — no dropdown to hunt through). Toggling re-renders the box because these gate
+  // the style/crop/Scenes rows. The manifest keeps every pick as an ordinary bool option (query
+  // delivery, seeding, panel — all unchanged); `editorCustom` only skips generic rendering here.
+  function appendScreensaverShowRow(el, g, def) {
+    const opts = (def.options || []).filter(o => ['showScenes', 'showPhotos', 'showVideos'].includes(o.key));
+    const on = o => { const go = g.options || {}; return (o.key in go) ? !!go[o.key] : !!o.default; };
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<label>Show</label>` + opts.map(o =>
+      `<label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" data-sk="${esc(o.key)}" ${on(o) ? 'checked' : ''}> ${esc(o.label)}</label>`
+    ).join('');
+    el.insertAdjacentElement('afterbegin', row);
+    row.querySelectorAll('input[data-sk]').forEach(cb => cb.onchange = () => {
+      if (!g.options) g.options = {};
+      g.options[cb.dataset.sk] = cb.checked;
+      markDirty();
+      renderAppOpts(g, def);   // these toggles gate the style/crop/Scenes rows
+    });
+    return row;
+  }
+  // Scenes (five options) stays behind ONE collapsed multiselect dropdown — five always-visible
+  // checkbox rows ate the whole box. Stays open across picks; closes on a click anywhere outside.
+  function appendScreensaverMultiRow(el, g, def, rowLabel, keys, afterEl) {
     const opts = (def.options || []).filter(o => keys.includes(o.key));
     if (!opts.length) return null;
     const on = o => { const go = g.options || {}; return (o.key in go) ? !!go[o.key] : !!o.default; };
@@ -2235,7 +2253,6 @@
       g.options[cb.dataset.sk] = cb.checked;
       markDirty();
       setLabel();
-      if (rerender) renderAppOpts(g, def);   // Show toggles gate the style/crop/Scenes rows
     });
     return row;
   }
