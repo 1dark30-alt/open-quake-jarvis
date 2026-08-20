@@ -5,7 +5,7 @@ What the commercial package advertises versus what open-quake ships. Comparison 
 plus their [Kickstarter](https://www.kickstarter.com/projects/decokee/decokee-quake-the-ultimate-desktop-ai-copilot)
 and [AI-copilot](https://www.decokee.com/pages/quake-ai-copilot) pages (as advertised 2026-08),
 cross-checked against a teardown of the installed DK-Suite (v0.4.69, unpacked Electron); the
-open-quake side is current `main` (v0.5.7). This is the running list of what they have that we
+open-quake side is current `main` (v0.5.9). This is the running list of what they have that we
 don't — update it when either side changes.
 
 > open-quake is an independent community project, not affiliated with DECOKEE — see the
@@ -30,13 +30,27 @@ don't — update it when either side changes.
 | 9 Smart Profiles (knob-switchable "modes") | Teardown: their 9 "profiles" are **page layouts** (Discord/MeetAI/SysView/AI Chat/Music/Clock/…) — already open-quake **pages** with the knob selector and per-page hotkeys. The real feature inside their AI Chat — named prompt modes (theirs: 6, Chinese-only) — **shipped as AI Profiles** (PR #23): 9 editable English instruction presets on all five AI Voice backends, switchable from the panel's full-screen Profile picker, remembered per page. |
 | Wallpapers / screensaver ("Vivid" — teardown: a manually-selected crossfading image/video page, **no idle detection**) | **[Screensaver](screensaver.md)** (PR #24): five built-in live-drawn scenes (Waves, Starfield, Lava lamp, Fireflies, Flurry), your own photos (slideshow or scrapbook **collage**) and videos in separate folders, downloadable loops in [community-wallpapers](../community-wallpapers), and — theirs can't — **idle auto-start** (default 30 min) that wakes back to exactly the page you left. |
 
+## 🔨 In development
+
+| Feature | Status |
+|---|---|
+| **AI-generated shortcut panels** (their pitch: hold the knob, say "create a shortcut set for Photoshop masking" — the AI generates a custom control set, no manual macro programming) | **In progress.** Builds on the two halves open-quake already has: AI routing (CLI agents / OWUI / any endpoint, no credits) and pages-as-JSON tile grids with `key`-type shortcut tiles — a "Generate panel with AI" flow: prompt → validated tile JSON → a new page for review. |
+
 ## ❌ Missing (the actual todo)
 
 | Feature | What they advertise | Lift for open-quake |
 |---|---|---|
 | **macOS / Linux support** | Multi-OS: Windows, macOS, Linux | **Large.** The launcher/editor are Electron (portable), but launch/volume/media/loopback-audio/reserved-display code is Windows-specific (README already flags this). Realistic only as a scoped "panel + apps, minus Windows-only extras" port. |
-| **AI-generated shortcut panels** | Hold the knob and say e.g. "create a shortcut set for Photoshop masking" — the AI generates a custom control set for that application, no manual macro programming (Kickstarter/copilot pages) | **Medium — and a natural fit.** OQ already has the two halves: AI routing (CLI agents / OWUI / any endpoint, no credits) and pages-as-JSON tile grids with `key`-type shortcut tiles. The missing piece is a "Generate panel with AI" flow in the editor (and/or by voice on the panel): prompt → validated tile JSON → new page for review. Probably the highest-value item on this list. |
 | **Game voice control** | Mentioned in their showcase | **Unclear scope.** Nearest OQ equivalents: global hotkeys, macros, LucidType. Needs a real definition of what theirs does before it's worth chasing. |
+
+## 🔮 Their "coming soon" list
+
+| They promise | open-quake today |
+|---|---|
+| Discord Game Controls | Workable now with a manual page: key tiles firing Discord's global hotkeys (mute/deafen/overlay). No packaged Discord page yet — easy candidate if demand shows up. |
+| OBS Studio Controls | Same today via OBS global hotkeys on key tiles. The real version would be a page speaking **obs-websocket** (scene switching, stream/record status on the panel) — moderate lift, natural fit. |
+| Themes | **Already shipped**: light/dark/system + savable accent presets driving the panel, apps, and the knob ring — they're promising what open-quake has. |
+| "And more" | Unspecified; this doc tracks claims concrete enough to compare. |
 
 ## Notes
 
