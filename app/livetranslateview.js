@@ -18,6 +18,9 @@ var BASE = '/' + (location.pathname.split('/')[1] || 'livetranslate');
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 
+// Provider: 'soniox' (cloud streaming, word-by-word) or 'ai' (local Whisper STT per utterance ->
+// the user's own OpenAI-compatible endpoint, per-utterance captions with cross-line context).
+var provider = Q.get('provider') === 'ai' ? 'ai' : 'soniox';
 var targetLanguage = (Q.get('targetLanguage') || 'en').trim();
 var sourceHint = (Q.get('sourceHint') || '').trim();
 $('targetLang').textContent = Q.get('targetLangLabel') || targetLanguage.toUpperCase();
@@ -38,6 +41,14 @@ function renderLines() {
   if (livePending) html += '<div class="line live">' + esc(livePendingText) + '</div>';
   list.innerHTML = html;
   $('card').scrollTop = $('card').scrollHeight;
+}
+function showPending() { livePending = true; renderLines(); }
+function clearPending() { livePending = false; }
+function addLine(text) {
+  lines.push(text);
+  if (lines.length > MAX_LINES) lines = lines.slice(-MAX_LINES);
+  clearPending();
+  renderLines();
 }
 
 var RING_SIGNAL_STATES = { listening: 1 };
@@ -90,7 +101,12 @@ function pickMic(label) {
   postOption('micDevice', label);
   matchDevices();
   syncMicPickVal();
-  // The new device applies on the next start (avoids tearing a live cloud session).
+  if (listening && provider === 'ai' && vad) {   // AI (VAD) path: reopen the mic on the new device now
+    vad.stop();
+    vad.setInputDevice(micDeviceId);
+    vad.start(onSpeechStart, onSpeechEnd, onLevel).catch(function (e) { setStatus('error', 'Microphone switch failed: ' + (e && e.message ? e.message : e)); });
+  }
+  // Soniox: the new device applies on the next start (avoids tearing a live cloud session).
 }
 $('micPickBtn').onclick = function () {
   $('devOverlay').classList.remove('hidden');
@@ -101,6 +117,39 @@ $('devCancel').onclick = function () { $('devOverlay').classList.add('hidden'); 
 
 // ---- tap-to-toggle listening ----
 var listening = false;
+
+// AI provider: VAD-chunked utterances (same engine as the voice pages) -> POST /audio -> the host
+// transcribes (local Whisper) + translates (the configured AI endpoint) -> caption line.
+var vadHangoverMs = parseInt(Q.get('vadHangoverMs'), 10) || 800;
+var vad = (provider === 'ai' && window.createClaudeVoiceVAD) ? window.createClaudeVoiceVAD({ hangoverMs: vadHangoverMs }) : null;
+function onSpeechStart() { showPending(); setStatus('listening'); }
+function onSpeechEnd(pcm16) {
+  showPending();
+  fetch(BASE + '/audio', { method: 'POST', cache: 'no-store', body: pcm16.buffer })
+    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      if (r && r.ok && r.text && r.text.trim()) addLine(r.text.trim());
+      else { clearPending(); renderLines(); setStatus(listening ? 'listening' : 'idle', r && r.error ? r.error : ''); }
+    })
+    .catch(function () { clearPending(); renderLines(); setStatus('error', 'Translation request failed.'); });
+}
+function toggleAi() {
+  if (!vad) { setStatus('error', 'Microphone engine failed to load.'); return; }
+  if (listening) {
+    listening = false; vad.stop(); clearPending(); renderLines(); setStatus('idle'); syncMicUI();
+  } else {
+    listening = true; setStatus('listening'); syncMicUI();
+    ensureDeviceIds().then(function () {
+      if (!listening) return;
+      vad.setInputDevice(micDeviceId);
+      return vad.start(onSpeechStart, onSpeechEnd, onLevel);
+    }).catch(function (e) {
+      listening = false; syncMicUI();
+      setStatus('error', 'Microphone access failed: ' + (e && e.message ? e.message : e));
+    });
+  }
+}
+
 var lastRippleAt = 0;
 function onLevel(level) {
   if (!listening) return;
@@ -126,6 +175,7 @@ function renderSoniox() {
   renderLines();
 }
 function toggleListening() {
+  if (provider === 'ai') { toggleAi(); return; }
   if (listening) { stopSoniox(); return; }
   listening = true; setStatus('listening'); syncMicUI();
   fetch(BASE + '/soniox-token', { cache: 'no-store' }).then(function (r) { return r.json(); })
@@ -208,7 +258,15 @@ var saveOn = Q.get('saveToFile') === '1' || Q.get('saveToFile') === 'true';
 function syncSaveUI() { $('saveBtn').classList.toggle('on', saveOn); $('saveState').textContent = saveOn ? 'ON' : 'OFF'; }
 $('saveBtn').onclick = function () { saveOn = !saveOn; syncSaveUI(); postOption('saveToFile', saveOn ? '1' : '0'); };
 
-// ---- settings: microphone pick ----
+// ---- settings: microphone pick + (AI provider) pause tolerance ----
+function applyPause() {
+  vadHangoverMs = Math.max(400, Math.min(2500, vadHangoverMs));
+  if (vad && vad.setHangoverMs) vad.setHangoverMs(vadHangoverMs);
+  $('pauseVal').textContent = (vadHangoverMs / 1000).toFixed(1) + ' s';
+}
+$('pauseMinus').onclick = function () { vadHangoverMs -= 100; applyPause(); postOption('vadHangoverMs', vadHangoverMs); };
+$('pausePlus').onclick = function () { vadHangoverMs += 100; applyPause(); postOption('vadHangoverMs', vadHangoverMs); };
+if (provider !== 'ai') { $('pauseRow').style.display = 'none'; $('pauseHint').style.display = 'none'; }
 $('settingsBtn').onclick = function () { syncMicPickVal(); $('settingsOverlay').classList.remove('hidden'); };
 $('settingsClose').onclick = function () { $('settingsOverlay').classList.add('hidden'); };
 
@@ -235,10 +293,17 @@ fetch(BASE + '/state', { cache: 'no-store' }).then(function (r) { return r.json(
     if (s.targetLangLabel) $('targetLang').textContent = s.targetLangLabel;
     else if (s.targetLanguage) $('targetLang').textContent = s.targetLanguage.toUpperCase();
     saveOn = !!s.saveToFile; syncSaveUI();
-    $('srcPill').textContent = s.sonioxConfigured ? ('Soniox → ' + (s.targetLanguage || targetLanguage).toUpperCase()) : 'Soniox API key not set';
-    if (!s.sonioxConfigured) setStatus('idle', 'Add your Soniox API key in this page’s settings (config editor).');
+    if (s.provider === 'ai') {
+      if (!s.aiConfigured) { $('srcPill').textContent = 'AI endpoint not set'; setStatus('idle', 'Set the AI endpoint, key, and model in this page’s settings (config editor).'); }
+      else if (!s.sttConfigured) { $('srcPill').textContent = 'STT not configured'; setStatus('idle', 'Set the Wyoming/Whisper STT endpoint in Settings → TTS/STT (a multilingual Whisper model).'); }
+      else $('srcPill').textContent = 'AI translate → ' + (s.targetLanguage || targetLanguage).toUpperCase();
+    } else {
+      $('srcPill').textContent = s.sonioxConfigured ? ('Soniox → ' + (s.targetLanguage || targetLanguage).toUpperCase()) : 'Soniox API key not set';
+      if (!s.sonioxConfigured) setStatus('idle', 'Add your Soniox API key in this page’s settings (config editor).');
+    }
   }).catch(function () {});
 
+applyPause();
 syncMicUI();
 syncSaveUI();
 renderLines();

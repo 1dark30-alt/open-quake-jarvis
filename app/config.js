@@ -1696,14 +1696,34 @@
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
+    const xlProvider = optVal(g, 'provider', 'soniox') === 'ai' ? 'ai' : 'soniox';
     const liveTranslateBox = `<div style="margin-top:10px">
+        <div class="row"><label>Provider</label>
+          <select id="xlProvider" style="flex:1">
+            <option value="soniox" ${xlProvider === 'soniox' ? 'selected' : ''}>Soniox — cloud real-time translation (recommended)</option>
+            <option value="ai" ${xlProvider === 'ai' ? 'selected' : ''}>AI translate — your own API key (DeepSeek, OpenAI, …)</option>
+          </select></div>
+        ${xlProvider === 'soniox' ? `
         <div class="row"><label>Soniox API key</label>${secretInput(optVal(g, 'sonioxApiKey', ''), 'id="xlSoniKey" style="flex:1"')}</div>
         <p class="hint">From <b>soniox.com</b>. Stored encrypted; the panel uses a short-lived temp key so the real key never leaves this machine. ~$0.18/hr while actively translating.</p>
         <div class="row" style="margin-top:10px"><label>Target language</label>
           <input id="xlTargetLang" value="${esc(optVal(g, 'targetLanguage', 'en'))}" placeholder="en" style="width:120px"></div>
         <div class="row"><label>Source hint</label>
           <input id="xlSourceHint" value="${esc(optVal(g, 'sourceHint', ''))}" placeholder="blank = auto-detect (e.g. de)" style="width:230px"></div>
-        <p class="hint">Language codes (en, es, de, …) — <a href="#" id="xlLangLink">browse all Soniox languages ↗</a>. Source hint is optional; Soniox auto-detects otherwise (setting it removes the startup delay).</p>
+        <p class="hint">Language codes (en, es, de, …) — <a href="#" id="xlLangLink">browse all Soniox languages ↗</a>. Source hint is optional; Soniox auto-detects otherwise (setting it removes the startup delay).</p>` : `
+        <div class="row"><label>Endpoint</label>
+          <select id="xlAiPreset" style="width:230px">
+            <option value="deepseek">DeepSeek</option>
+            <option value="openai">OpenAI</option>
+            <option value="custom">Custom / Open WebUI…</option>
+          </select>
+          <input id="xlAiUrl" value="${esc(optVal(g, 'aiBaseUrl', 'https://api.deepseek.com'))}" placeholder="https://api.deepseek.com" style="flex:1; margin-left:8px"></div>
+        <div class="row"><label>API key</label>${secretInput(optVal(g, 'aiApiKey', ''), 'id="xlAiKey" style="flex:1"')}</div>
+        <div class="row"><label>Model</label>
+          <input id="xlAiModel" value="${esc(optVal(g, 'aiModel', 'deepseek-v4-flash'))}" placeholder="deepseek-v4-flash" style="width:230px"></div>
+        <div class="row" style="margin-top:10px"><label>Target language</label>
+          <input id="xlTargetLang" value="${esc(optVal(g, 'targetLanguage', 'en'))}" placeholder="en (or any language name)" style="width:230px"></div>
+        <p class="hint">Any OpenAI-compatible chat endpoint (DeepSeek ≈ $0.10/hr, OpenAI, a local Open WebUI/Ollama…). Utterances are transcribed by your <b>Settings → TTS/STT</b> Whisper server (needs a <b>multilingual Whisper model</b> — the English-only Parakeet won't work), then translated with recent-line context, so captions arrive per phrase — a beat behind speech, not word-by-word like Soniox. Key stored encrypted, used only from the main process.</p>`}
         <p class="sectitle" style="margin-top:14px">Microphone</p>
         <div class="row"><label>Capture device</label>
           <select id="xlMic" style="flex:1"><option value="">System default</option></select></div>
@@ -1902,12 +1922,25 @@
       document.getElementById('ltRewriteCustom').oninput = e => setOpt('rewriteCustomPrompt', e.target.value);
     } else if (isLiveTranslate) {
       const setOpt = (key, val) => { if (!g.options) g.options = {}; g.options[key] = val; markDirty(); };
-      document.getElementById('xlSoniKey').onchange = e => setOpt('sonioxApiKey', e.target.value);
+      document.getElementById('xlProvider').onchange = e => { setOpt('provider', e.target.value); render(); };   // re-render to swap provider-specific fields
+      const soniKey = document.getElementById('xlSoniKey'); if (soniKey) soniKey.onchange = e => setOpt('sonioxApiKey', e.target.value);
+      const sh = document.getElementById('xlSourceHint'); if (sh) sh.oninput = e => setOpt('sourceHint', e.target.value.trim());
+      const xlLangLink = document.getElementById('xlLangLink'); if (xlLangLink) xlLangLink.onclick = e => { e.preventDefault(); configApi.openExternal('https://soniox.com/docs/stt/concepts/supported-languages'); };
       document.getElementById('xlTargetLang').oninput = e => setOpt('targetLanguage', e.target.value.trim());
-      document.getElementById('xlSourceHint').oninput = e => setOpt('sourceHint', e.target.value.trim());
       document.getElementById('xlSave').onchange = e => setOpt('saveToFile', e.target.checked);
-      document.getElementById('xlLangLink').onclick = e => { e.preventDefault(); configApi.openExternal('https://soniox.com/docs/stt/concepts/supported-languages'); };
       document.getElementById('xlSaveFolderBrowse').onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('xlSaveFolder').value = p; setOpt('saveFolder', p); } };
+      // AI provider fields. The endpoint preset is a convenience that fills URL + model; the stored
+      // truth is always aiBaseUrl/aiModel, so "Custom" covers Open WebUI, Ollama, or anything else.
+      const AI_PRESETS = { deepseek: { url: 'https://api.deepseek.com', model: 'deepseek-v4-flash' }, openai: { url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' } };
+      const xlAiUrl = document.getElementById('xlAiUrl'), xlAiPreset = document.getElementById('xlAiPreset');
+      if (xlAiUrl) {
+        const cur = xlAiUrl.value.trim();
+        xlAiPreset.value = cur === AI_PRESETS.deepseek.url ? 'deepseek' : cur === AI_PRESETS.openai.url ? 'openai' : 'custom';
+        xlAiPreset.onchange = e => { const p = AI_PRESETS[e.target.value]; if (p) { xlAiUrl.value = p.url; setOpt('aiBaseUrl', p.url); document.getElementById('xlAiModel').value = p.model; setOpt('aiModel', p.model); } };
+        xlAiUrl.oninput = e => { setOpt('aiBaseUrl', e.target.value.trim()); };
+        document.getElementById('xlAiKey').onchange = e => setOpt('aiApiKey', e.target.value);
+        document.getElementById('xlAiModel').oninput = e => setOpt('aiModel', e.target.value.trim());
+      }
       const xlHotkey = document.getElementById('xlHotkey'); if (xlHotkey) { xlHotkey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { xlHotkey.value = acc; setOpt('micHotkey', acc); } }; document.getElementById('xlHotkeyClear').onclick = () => { xlHotkey.value = ''; setOpt('micHotkey', ''); }; }
       // Microphone dropdown — the app's default capture device (same pattern as LucidType/Meeting).
       // enumerateDevices exposes labels only after a getUserMedia grant, so grab-then-release once.

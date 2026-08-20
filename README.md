@@ -72,7 +72,9 @@ It gives you:
 - **Live Translate** — real-time speech **translation captions on the panel**: point the mic at a
   conversation, film, or meeting and watch it translated into your language, live, word by word (not
   after a pause). Powered by **[Soniox](https://soniox.com)** (cloud, ~$0.18/hr while translating) —
-  paste an API key, pick a target language, done. Optional save-to-file and a global **toggle hotkey**.
+  paste an API key, pick a target language, done — or bring your own AI key (**DeepSeek, OpenAI, or
+  any OpenAI-compatible endpoint**) paired with your local Whisper STT for per-phrase captions with
+  cross-sentence context. Optional save-to-file and a global **toggle hotkey**.
   → [Live Translate](docs/live-translate.md)
 - **Theming** — a global **light / dark / system** mode and an **accent color** (with savable
   presets) that drives the panel, the bundled apps, and the knob's RGB ring; web dashboards
