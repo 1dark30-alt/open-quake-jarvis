@@ -61,7 +61,35 @@ test('migration keeps a divergent second page as an explicit override', () => {
 
 test('migration is idempotent and a no-op without legacy keys', () => {
   const cfg = { settings: { voice: { sttHost: 'keep', sttPort: '10300', ttsHost: 'keep', ttsPort: '10200' } },
-    grids: [{ app: 'claude-voice', options: { projectDir: 'C:/x' } }] };
+    grids: [{ app: 'ai-voice', options: { backend: 'claude', projectDir: 'C:/x' } }] };
+  const before = JSON.stringify(cfg);
+  migrateVoiceConfig(cfg);
+  assert.equal(JSON.stringify(cfg), before);
+});
+
+// ---- app-id consolidation (the four voice apps -> ai-voice + per-page backend) ----
+
+test('old voice app ids migrate to ai-voice with the matching backend', () => {
+  const cfg = { grids: [
+    { kind: 'app', app: 'claude-voice', options: { projectDir: 'C:/x', permissionMode: 'manual' } },
+    { kind: 'app', app: 'codex-voice', options: {} },
+    { kind: 'app', app: 'copilot-voice' },
+    { kind: 'app', app: 'owui-voice', options: { modelPick: 'llama3' } },
+    { kind: 'app', app: 'music', options: {} },
+  ] };
+  migrateVoiceConfig(cfg);
+  assert.deepEqual(cfg.grids.map(g => g.app), ['ai-voice', 'ai-voice', 'ai-voice', 'ai-voice', 'music']);
+  assert.deepEqual(cfg.grids.slice(0, 4).map(g => g.options.backend), ['claude', 'codex', 'copilot', 'owui']);
+  assert.equal(cfg.grids[0].options.projectDir, 'C:/x');       // everything else carries over
+  assert.equal(cfg.grids[0].options.permissionMode, 'manual');
+  assert.equal(cfg.grids[3].options.modelPick, 'llama3');
+});
+
+test('id migration never overwrites an existing backend and is idempotent', () => {
+  const cfg = { grids: [{ kind: 'app', app: 'claude-voice', options: { backend: 'codex' } }] };
+  migrateVoiceConfig(cfg);
+  assert.equal(cfg.grids[0].app, 'ai-voice');
+  assert.equal(cfg.grids[0].options.backend, 'codex');   // pre-set backend wins
   const before = JSON.stringify(cfg);
   migrateVoiceConfig(cfg);
   assert.equal(JSON.stringify(cfg), before);

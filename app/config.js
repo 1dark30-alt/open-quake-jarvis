@@ -1,5 +1,5 @@
   const configApi = window.openQuakeConfig;
-  const VOICE_APPS = ['claude-voice', 'codex-voice', 'copilot-voice', 'owui-voice'];   // apps with STT/TTS voice
+  const VOICE_APPS = ['ai-voice'];   // apps with STT/TTS voice (one app, five backends)
   // Mirrors DEFAULT_CLEANUP_PROMPT + REWRITE_PRESETS in lucidtypeAI.js — pre-filled in the editable prompt boxes.
   const LT_DEFAULT_CLEANUP_PROMPT = "Fix the grammar, spelling, and punctuation in the user's text. Preserve the author's original wording, tone, and voice as much as possible. Remove filler words (uh, er, ah, um, mm, like when unnecessary), combine fragmented or run-on sentences into clear ones, and drop false starts and repeated words, while keeping the original meaning and voice. Output only the corrected text, with no preamble, quotes, or explanation.";
   const LT_REWRITE_PRESETS = {
@@ -1541,11 +1541,32 @@
     const isMusic = g.app === 'music';
     const isHaDash = g.app === 'ha-dashboard';
     const isKeyShortcuts = g.app === 'keyshortcuts';
-    const isClaudeVoice = g.app === 'claude-voice';
-    const isCodexVoice = g.app === 'codex-voice';
-    const isCopilotVoice = g.app === 'copilot-voice';
-    const isOwuiVoice = g.app === 'owui-voice';
-    const isVoiceApp = isClaudeVoice || isCodexVoice || isCopilotVoice || isOwuiVoice;   // all four share the hand-rendered options box below (owui omits the folder/mode rows)
+    const isVoiceApp = g.app === 'ai-voice';   // one app; the hand-rendered box below branches on the page's backend
+    const CV_BACKENDS = ['claude', 'codex', 'copilot', 'owui', 'api'];
+    const cvBackend = CV_BACKENDS.includes(optVal(g, 'backend', 'claude')) ? optVal(g, 'backend', 'claude') : 'claude';
+    const isCliBackend = cvBackend === 'claude' || cvBackend === 'codex' || cvBackend === 'copilot';
+    // Permission-mode choice sets differ per CLI backend (they map to each CLI's own flags), so they
+    // live here rather than in the single ai-voice apps.json entry.
+    const CV_MODES = {
+      claude: { default: 'manual', choices: [
+        ['manual', 'Manual — ask before every action (touch approval on the panel)'],
+        ['acceptEdits', 'Accept edits — auto-approve file changes'],
+        ['plan', "Plan — describe, don't act, until approved"],
+        ['bypassPermissions', 'Full auto — no prompts (use with care)'],
+      ] },
+      codex: { default: 'ask-for-approval', choices: [
+        ['read-only', 'Read Only — Codex can read files in the workspace; approval required to edit files or access the internet'],
+        ['ask-for-approval', 'Ask for approval — Codex can read, edit, and run commands in the workspace; approval required for the internet or other files'],
+        ['approve-for-me', 'Approve for me — only ask for actions detected as potentially unsafe'],
+        ['full-access', 'Full Access — Codex can edit files outside the workspace and use the internet without asking (use with caution)'],
+      ] },
+      copilot: { default: 'manual', choices: [
+        ['manual', 'Manual — ask before every action (touch approval on the panel)'],
+        ['plan', "Plan — describe, don't act, until approved"],
+        ['auto', 'Approve for me — file changes and commands run automatically'],
+        ['autopilot', 'Full auto — runs until the task is done, no prompts at all'],
+      ] },
+    };
     const isOffice = g.app === 'office';
     const isLucidType = g.app === 'lucidtype';
     const isLiveTranslate = g.app === 'livetranslate';
@@ -1587,12 +1608,35 @@
     // own picker + flags rather than delegating to the generic renderAppOpts(). See docs/claude-voice.md
     // and the plan file for why projectDir specifically needs this (D:\Github\* isn't known at
     // apps.json-authoring time).
-    const cvOptDef = key => (def && def.options || []).find(o => o.key === key) || {};
     const cvVal = (key, dflt) => optVal(g, key, dflt);
-    const cvPermChoices = (cvOptDef('permissionMode').choices || []);
+    const cvModes = CV_MODES[cvBackend] || null;
+    const cvMode = (() => {   // stored mode, healed to the backend's default when it isn't one of its choices
+      const v = cvVal('permissionMode', '');
+      return cvModes && cvModes.choices.some(c => c[0] === v) ? v : (cvModes ? cvModes.default : '');
+    })();
     const claudeVoiceBox = `<div id="cvBox" style="margin-top:10px">
-        <p id="cvCliWarn" class="hint" style="display:none;color:#ff8a8a;font-weight:600"></p>` + (isOwuiVoice ? `
-        <p class="hint">Chats against the Open WebUI connection configured on <b>Settings → Auth</b> (URL, API key, default model). No working folder and no permission modes — the chat API can't touch files or run commands.</p>` : `
+        <div class="row"><label>Backend</label>
+          <select id="cvBackend" style="flex:1">
+            <option value="claude" ${cvBackend === 'claude' ? 'selected' : ''}>Claude Code — CLI agent with tools</option>
+            <option value="codex" ${cvBackend === 'codex' ? 'selected' : ''}>Codex — CLI agent with tools</option>
+            <option value="copilot" ${cvBackend === 'copilot' ? 'selected' : ''}>Copilot — CLI agent with tools</option>
+            <option value="owui" ${cvBackend === 'owui' ? 'selected' : ''}>Open WebUI — your server (Auth tab connection)</option>
+            <option value="api" ${cvBackend === 'api' ? 'selected' : ''}>API endpoint — your own key (OpenAI, DeepSeek, OpenRouter, …)</option>
+          </select></div>
+        <p id="cvCliWarn" class="hint" style="display:none;color:#ff8a8a;font-weight:600"></p>` + (cvBackend === 'owui' ? `
+        <p class="hint">Chats against the Open WebUI connection configured on <b>Settings → Auth</b> (URL, API key, default model). No working folder and no permission modes — the chat API can't touch files or run commands.</p>` : cvBackend === 'api' ? `
+        <div class="row"><label>Endpoint</label>
+          <select id="cvApiPreset" style="width:230px">
+            <option value="openai">OpenAI</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="custom">Custom / LiteLLM / Ollama…</option>
+          </select>
+          <input id="cvApiUrl" value="${esc(cvVal('apiBaseUrl', 'https://api.openai.com/v1'))}" placeholder="https://api.openai.com/v1" style="flex:1; margin-left:8px"></div>
+        <div class="row"><label>API key</label>${secretInput(cvVal('apiKey', ''), 'id="cvApiKey" style="flex:1"')}</div>
+        <div class="row"><label>Model</label>
+          <input id="cvApiModel" value="${esc(cvVal('apiModel', ''))}" placeholder="e.g. gpt-4o-mini" style="width:230px"></div>
+        <p class="hint">Any OpenAI-compatible chat endpoint. Plain conversation — no tools, no file access. The key is stored encrypted and never reaches the panel page.</p>` : `
         <div class="row"><label>Default folder</label>
           <input id="cvProjectPath" value="${esc(cvVal('projectDir', ''))}" style="flex:1">
           <button id="cvProjectPathBrowse" type="button">Browse…</button></div>
@@ -1601,9 +1645,9 @@
           <input id="cvProjectsRoot" value="${esc(cvVal('projectsRoot', ''))}" style="flex:1">
           <button id="cvProjectsRootBrowse" type="button">Browse…</button></div>
         <p class="hint">The folder the panel's Change folder list scans.</p>`) + `
-        <p class="hint">Voice STT/TTS servers are set globally under <b>Settings → TTS/STT</b>. Override them for just this page in <b>Advanced settings</b> below.</p>` + (isOwuiVoice ? '' : `
+        <p class="hint">Voice STT/TTS servers are set globally under <b>Settings → TTS/STT</b>. Override them for just this page in <b>Advanced settings</b> below.</p>` + (!cvModes ? '' : `
         <div class="row" style="margin-top:10px"><label>Permission mode</label>
-          <select id="cvPermMode" style="flex:1">${cvPermChoices.map(c => `<option value="${esc(c[0])}" ${cvVal('permissionMode', cvOptDef('permissionMode').default || '') === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>`) + (isClaudeVoice ? `
+          <select id="cvPermMode" style="flex:1">${cvModes.choices.map(c => `<option value="${esc(c[0])}" ${cvMode === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>`) + (cvBackend === 'claude' ? `
         <div class="row"><label>Touch approval</label>
           <label class="iconopt" style="width:auto"><input type="checkbox" id="cvApprovals" ${cvVal('approvalsEnabled', false) ? 'checked' : ''}> when in Manual mode</label></div>
         <div class="row" style="margin-top:10px"><label>Panel prompt</label>
@@ -1803,9 +1847,19 @@
       wireShortcutRows();
     } else if (isVoiceApp) {
       const setOpt = (key, val) => { if (!g.options) g.options = {}; g.options[key] = val; markDirty(); };
+      // Backend switch re-renders the box so the backend-specific rows swap in (Live Translate's
+      // provider-select pattern). Heal the stored mode to the new backend's default so a stale
+      // claude mode never reaches the codex CLI (and vice versa).
+      document.getElementById('cvBackend').onchange = e => {
+        setOpt('backend', e.target.value);
+        const m = CV_MODES[e.target.value];
+        setOpt('permissionMode', m ? m.default : '');
+        render();
+      };
+      if (cvModes && cvVal('permissionMode', '') !== cvMode) setOpt('permissionMode', cvMode);   // persist the healed mode
       // Default folder is a plain text box -- actual folder switching happens on the panel
       // (Change folder), which writes its pick back into this same option. The folder and
-      // permission-mode rows don't exist for owui-voice, hence the existence guards.
+      // permission-mode rows only exist for CLI backends, hence the existence guards.
       const cvProjectPath = document.getElementById('cvProjectPath');
       if (cvProjectPath) cvProjectPath.oninput = e => setOpt('projectDir', e.target.value.trim());
       const cvProjectsRoot = document.getElementById('cvProjectsRoot');
@@ -1820,17 +1874,27 @@
       if (cvApprovals) cvApprovals.onchange = e => setOpt('approvalsEnabled', e.target.checked);
       const cvEditPrompt = document.getElementById('cvEditPrompt');
       if (cvEditPrompt) cvEditPrompt.onclick = () => configApi.editClaudeVoicePrompt();
-      // Warn at add-time if the agent CLI this page drives isn't installed (or, for owui-voice,
-      // if no connection is configured) -- otherwise the user only finds out when the panel page
-      // errors on first use.
-      configApi.probeVoiceCli(g.app).then(p => {
+      // API backend rows: preset fills URL+model (stored truth is always apiBaseUrl/apiModel).
+      const CV_API_PRESETS = { openai: { url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' }, deepseek: { url: 'https://api.deepseek.com', model: 'deepseek-v4-flash' }, openrouter: { url: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o-mini' } };
+      const cvApiUrl = document.getElementById('cvApiUrl');
+      if (cvApiUrl) {
+        const preset = document.getElementById('cvApiPreset');
+        const cur = cvApiUrl.value.trim();
+        preset.value = cur === CV_API_PRESETS.openai.url ? 'openai' : cur === CV_API_PRESETS.deepseek.url ? 'deepseek' : cur === CV_API_PRESETS.openrouter.url ? 'openrouter' : 'custom';
+        preset.onchange = e => { const p = CV_API_PRESETS[e.target.value]; if (p) { cvApiUrl.value = p.url; setOpt('apiBaseUrl', p.url); document.getElementById('cvApiModel').value = p.model; setOpt('apiModel', p.model); } };
+        cvApiUrl.oninput = e => setOpt('apiBaseUrl', e.target.value.trim());
+        document.getElementById('cvApiKey').onchange = e => setOpt('apiKey', e.target.value);
+        document.getElementById('cvApiModel').oninput = e => setOpt('apiModel', e.target.value.trim());
+      }
+      // Warn at add-time if the backend's CLI isn't installed (or, for owui, if no connection is
+      // configured) -- otherwise the user only finds out when the panel page errors on first use.
+      if (cvBackend !== 'api') configApi.probeVoiceCli(cvBackend).then(p => {
         const warn = document.getElementById('cvCliWarn');
         if (warn && !p) {
-          if (isOwuiVoice) {
+          if (cvBackend === 'owui') {
             warn.textContent = '⚠ Open WebUI connection not configured — set the URL on Settings → Auth or this page won\'t work.';
           } else {
-            const cliName = isCodexVoice ? 'codex' : isCopilotVoice ? 'copilot' : 'claude';
-            warn.textContent = '⚠ The ' + cliName + ' CLI was not found on PATH — this page won\'t work until it is installed.';
+            warn.textContent = '⚠ The ' + cvBackend + ' CLI was not found on PATH — this page won\'t work until it is installed.';
           }
           warn.style.display = '';
         }

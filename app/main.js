@@ -64,6 +64,7 @@ const { createCodexVoiceAdapter, findCodexExe } = require('./codexvoice-session'
 const { createCopilotVoiceAdapter, findCopilotExe } = require('./copilotvoice-session'); // GitHub Copilot CLI session adapter (ACP JSON-RPC over stdio)
 const { findClaudeExe } = require('./claudevoice-session'); // CLI presence probe for the editor's voice-app warning
 const { createOwuiVoiceAdapter } = require('./owuivoice-session'); // Open WebUI chat adapter (HTTP/SSE, no CLI)
+const { createApiVoiceAdapter } = require('./apivoice-session'); // OpenAI-compatible API chat adapter (bring your own key, no CLI)
 const { createLiveTranslateHost } = require('./livetranslate-host'); // Live Translate app host (Soniox token mint + save-to-file, no LLM)
 const owuiClient = require('./owuiClient'); // shared OWUI URL normalization + model-list probe
 const { resolveRunMode, reservedDisplayEnabled } = require('./runMode'); // pure run-mode helpers (panel/software/monitor)
@@ -119,13 +120,15 @@ const reservedDisplay = createReservedDisplay({
   getDisplayState: reservedDisplayState,
   log: message => console.log('[reserved-display] ' + message),
 });
-// The Claude Code voice app = the generic voice-panel host (state/transcript/SSE/speech/STT-TTS,
-// see voicepanel-host.js) driven by the Claude session adapter (CLI spawn, stream-json events,
-// approval hook lifecycle -- see claudevoice-adapter.js). A second agent app (codex-voice) is a
-// second host instance with its own adapter; the deps are shared closures over main.js state.
-const claudeVoiceLog = message => console.log('[claude-voice] ' + message);
+// The AI Voice app = ONE app id ('ai-voice') with a per-page backend option, served by one generic
+// voice-panel host instance PER BACKEND (state/transcript/SSE/speech/STT-TTS, see
+// voicepanel-host.js), each driven by its own session adapter. Requests route to the backend host
+// via the /ai-voice/<backend>/* sub-prefix (sysserver.js), and every host's deps only "own" grids
+// whose options.backend matches — so a backgrounded backend never reads the active page's endpoints
+// or repaints the ring (same isolation the four separate apps had before consolidation).
+const claudeVoiceLog = message => console.log('[ai-voice:claude] ' + message);
 const claudeVoiceHost = createVoicePanelHost({
-  appId: 'claude-voice',
+  appId: 'ai-voice',
   storageKey: 'claudeVoice',
   log: claudeVoiceLog,
   branding: {
@@ -138,11 +141,11 @@ const claudeVoiceHost = createVoicePanelHost({
     getUserDataPath: () => app.getPath('userData'),
     log: claudeVoiceLog,
   }),
-  deps: voicePanelDeps('claude-voice'),
+  deps: voiceBackendDeps('claude'),
 });
-const codexVoiceLog = message => console.log('[codex-voice] ' + message);
+const codexVoiceLog = message => console.log('[ai-voice:codex] ' + message);
 const codexVoiceHost = createVoicePanelHost({
-  appId: 'codex-voice',
+  appId: 'ai-voice',
   storageKey: 'codexVoice',
   log: codexVoiceLog,
   branding: {
@@ -151,11 +154,11 @@ const codexVoiceHost = createVoicePanelHost({
     turnFailedText: 'Turn failed to send — no folder set, or codex CLI not found.',
   },
   adapter: createCodexVoiceAdapter({ log: codexVoiceLog }),
-  deps: voicePanelDeps('codex-voice'),
+  deps: voiceBackendDeps('codex'),
 });
-const copilotVoiceLog = message => console.log('[copilot-voice] ' + message);
+const copilotVoiceLog = message => console.log('[ai-voice:copilot] ' + message);
 const copilotVoiceHost = createVoicePanelHost({
-  appId: 'copilot-voice',
+  appId: 'ai-voice',
   storageKey: 'copilotVoice',
   log: copilotVoiceLog,
   branding: {
@@ -164,23 +167,48 @@ const copilotVoiceHost = createVoicePanelHost({
     turnFailedText: 'Turn failed to send — no folder set, or copilot CLI not found.',
   },
   adapter: createCopilotVoiceAdapter({ log: copilotVoiceLog }),
-  deps: voicePanelDeps('copilot-voice'),
+  deps: voiceBackendDeps('copilot'),
 });
-// Fourth agent app: Open WebUI over its OpenAI-compatible HTTP API — no CLI child, the adapter
-// streams chat completions against the shared Auth-tab connection (settings.owui).
-const owuiVoiceLog = message => console.log('[owui-voice] ' + message);
+// Open WebUI over its OpenAI-compatible HTTP API — no CLI child, the adapter streams chat
+// completions against the shared Auth-tab connection (settings.owui).
+const owuiVoiceLog = message => console.log('[ai-voice:owui] ' + message);
 const owuiVoiceHost = createVoicePanelHost({
-  appId: 'owui-voice',
+  appId: 'ai-voice',
   storageKey: 'owuiVoice',
   log: owuiVoiceLog,
   branding: {
     title: 'Open WebUI',
     approvalTitle: '⚠ Open WebUI wants to do something',   // never shown — the adapter emits no approvals
     turnFailedText: "Turn failed to send — Open WebUI connection not configured (editor's Auth tab).",
+    hasProject: false,
   },
   adapter: createOwuiVoiceAdapter({ resolveOwui: () => owuiSettings(), log: owuiVoiceLog }),
-  deps: voicePanelDeps('owui-voice'),
+  deps: voiceBackendDeps('owui'),
 });
+// API endpoint — bring your own OpenAI-compatible endpoint + key (per-page options; the key stays
+// in the main process, encrypted at rest).
+const apiVoiceLog = message => console.log('[ai-voice:api] ' + message);
+const apiVoiceHost = createVoicePanelHost({
+  appId: 'ai-voice',
+  storageKey: 'apiVoice',
+  log: apiVoiceLog,
+  branding: {
+    title: 'AI Chat',
+    approvalTitle: '⚠ The model wants to do something',    // never shown — the adapter emits no approvals
+    turnFailedText: 'Turn failed to send — API endpoint not configured (this page’s settings).',
+    hasProject: false,
+  },
+  adapter: createApiVoiceAdapter({ resolveApi: () => apiVoiceSettings(), log: apiVoiceLog }),
+  deps: voiceBackendDeps('api'),
+});
+// The api backend's live connection config: the ACTIVE ai-voice page's options when its backend is
+// 'api' (activeServedAppConfig fills manifest defaults and carries decrypted secrets).
+function apiVoiceSettings() {
+  const c = activeServedAppConfig('ai-voice');
+  const o = c && c.options;
+  if (!o || (o.backend || 'claude') !== 'api') return {};
+  return { apiBaseUrl: o.apiBaseUrl, apiKey: o.apiKey, apiModel: o.apiModel };
+}
 // Live Translate (Tier 1): a captions page, NOT an agent -- a lightweight host with no LLM adapter,
 // just Wyoming STT -> text + optional file save. Reuses the voice-panel deps for STT endpoint
 // resolution (global settings.voice, or this page's Advanced override) and config persistence.
@@ -209,6 +237,27 @@ function voicePanelDeps(appId) {
     setRingState: state => { const g = activeGrid(); if (g && g.kind === 'app' && g.app === appId) setRingState(state); },
     clearRingOverride: () => { const g = activeGrid(); if (g && g.kind === 'app' && g.app === appId) clearRingOverride(); },
     getDocumentsPath: () => app.getPath('documents'),
+  };
+}
+// Backend-scoped deps for the AI Voice hosts: each backend host only "owns" ai-voice grids whose
+// options.backend matches, so config resolution, endpoint dialing, and ring overrides stay isolated
+// per backend exactly as they were per app before the consolidation.
+function aiVoiceOwnsGrid(backend) {
+  return g => !!(g && g.kind === 'app' && g.app === 'ai-voice' && ((g.options && g.options.backend) || 'claude') === backend);
+}
+function voiceBackendDeps(backend) {
+  const owns = aiVoiceOwnsGrid(backend);
+  return {
+    activeServedAppConfig: () => (owns(activeGrid()) ? activeServedAppConfig('ai-voice') : null),
+    voiceEndpoints: () => voiceConfig.resolveVoiceEndpoints(config.settings,
+      owns(activeGrid()) ? ((activeServedAppConfig('ai-voice') || {}).options || null) : null),
+    activeGrid: () => activeGrid(),
+    getConfig: () => config,
+    saveConfig: () => saveConfig(),
+    setRingState: state => { if (aiVoiceOwnsGrid(backend)(activeGrid())) setRingState(state); },
+    clearRingOverride: () => { if (aiVoiceOwnsGrid(backend)(activeGrid())) clearRingOverride(); },
+    getDocumentsPath: () => app.getPath('documents'),
+    ownsGrid: owns,
   };
 }
 function appSettings() { return Object.assign({}, DEFAULT_SETTINGS, config.settings || {}); }
@@ -2464,27 +2513,19 @@ app.whenReady().then(async () => {
       // Voice-panel app registry: each entry gets the full /<appId>/* route surface (see
       // sysserver.js). voiceToken gates the claude approval hook's /approval-request long-poll.
       voiceApps: {
-        'claude-voice': {
+        // AI Voice: ONE app id, one page, five backends. The page serves at /ai-voice; every other
+        // route carries the backend as a sub-prefix (/ai-voice/<backend>/turn, …) so requests bind
+        // to the right host with no dependence on which page is active. Only the claude backend has
+        // a voiceToken (its approvals arrive from an external hook; the others are in-band or none).
+        'ai-voice': {
           htmlFile: 'claudevoiceview.html',
-          handlers: claudeVoiceHost.handlers,
-          voiceToken: claudeVoiceHost.adapter.hookToken(),
-        },
-        // Same page, same route surface, codex adapter behind it. No voiceToken: codex approvals
-        // are in-band protocol requests, so the external-hook route doesn't exist for it.
-        'codex-voice': {
-          htmlFile: 'claudevoiceview.html',
-          handlers: codexVoiceHost.handlers,
-        },
-        // Same page again, copilot's ACP adapter behind it. No voiceToken: same in-band posture as codex.
-        'copilot-voice': {
-          htmlFile: 'claudevoiceview.html',
-          handlers: copilotVoiceHost.handlers,
-        },
-        // Same page a fourth time, the Open WebUI HTTP adapter behind it. No voiceToken: it
-        // never emits approvals at all.
-        'owui-voice': {
-          htmlFile: 'claudevoiceview.html',
-          handlers: owuiVoiceHost.handlers,
+          backends: {
+            claude: { handlers: claudeVoiceHost.handlers, voiceToken: claudeVoiceHost.adapter.hookToken() },
+            codex: { handlers: codexVoiceHost.handlers },
+            copilot: { handlers: copilotVoiceHost.handlers },
+            owui: { handlers: owuiVoiceHost.handlers },
+            api: { handlers: apiVoiceHost.handlers },
+          },
         },
         // Live Translate: a captions page, not an agent. Only transcribe/getState/setOption are
         // implemented; no voiceToken and none of the LLM turn/SSE/speech routes are used.
@@ -2766,17 +2807,18 @@ app.whenReady().then(async () => {
   ipcMain.handle('refreshHaCache', (e) => isFrom(e, configWin) ? refreshHaCache() : null);
   // Editor voice-app options: is the page's CLI actually installed? Lets the editor warn at
   // add-time instead of the user discovering a dead page on the panel later.
-  ipcMain.handle('probeVoiceCli', (e, appId) => {
+  ipcMain.handle('probeVoiceCli', (e, backend) => {
     if (!isFrom(e, configWin)) return null;
     try {
-      if (appId === 'claude-voice') return findClaudeExe() || null;
-      if (appId === 'codex-voice') return findCodexExe() || null;
-      if (appId === 'copilot-voice') return findCopilotExe() || null;
-      // owui-voice has no CLI — "found" means a usable URL is configured on the Auth tab.
-      if (appId === 'owui-voice') {
+      if (backend === 'claude') return findClaudeExe() || null;
+      if (backend === 'codex') return findCodexExe() || null;
+      if (backend === 'copilot') return findCopilotExe() || null;
+      // owui has no CLI — "found" means a usable URL is configured on the Auth tab.
+      if (backend === 'owui') {
         const ep = owuiClient.normalizeOwuiUrl(owuiSettings().url);
         return ep ? ep.origin : null;
       }
+      // api: nothing to probe here — the page's own URL/key fields carry the connection.
     } catch (err) {}
     return null;
   });
@@ -3043,6 +3085,7 @@ app.on('before-quit', () => {
   try { codexVoiceHost.shutdown(); } catch (e) {}        // terminate the codex app-server child
   try { copilotVoiceHost.shutdown(); } catch (e) {}      // terminate the copilot app-server child
   try { owuiVoiceHost.shutdown(); } catch (e) {}         // abort any in-flight OWUI stream
+  try { apiVoiceHost.shutdown(); } catch (e) {}          // abort any in-flight API-endpoint stream
   try { claudeVoiceApprovals.ensureHookRemoved(claudeVoiceLog); } catch (e) {}    // belt-and-braces: never leave our entry behind in the user's global Claude settings
   try { dev.stop(); } catch (e) {}                       // close HID devices + clear keep-alive/rescan timers — an open node-hid handle blocks process exit (Cmd+Q would hang -> force-quit)
   try { oauthHandler.stop(); } catch (e) {}              // stop OAuth callback server + background refresh timers

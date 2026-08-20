@@ -40,6 +40,9 @@ function isSttNoisePhrase(text) {
 function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps }) {
   const say = log || (() => {});
   const brand = branding || {};
+  // Which grids belong to THIS host. deps.ownsGrid narrows beyond the app id (the AI Voice app runs
+  // one host per backend under a single id); without it the id alone decides, as it always did.
+  const ownsGrid = deps.ownsGrid || (g => !!(g && g.kind === 'app' && g.app === appId));
 
   // Accumulated view of the current turn, for the /<app>/state snapshot (initial page load and
   // SSE-reconnect recovery -- a fresh subscriber knows the current status immediately, before any
@@ -242,6 +245,8 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       modes: adapter.listModes ? adapter.listModes() : [],
       models: adapter.listModels ? adapter.listModels() : [],
       approvalAlways: !!adapter.supportsAlwaysApproval,   // "Always" = approve + stop asking this session (codex acceptForSession)
+      // Backends without a working directory (owui/api chat) hide the page's folder button.
+      hasProject: brand.hasProject !== false,
     };
   }
 
@@ -280,7 +285,7 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     const v = validate(value);
     if (v == null) return false;
     const g = deps.activeGrid();
-    if (!(g && g.kind === 'app' && g.app === appId)) return false;
+    if (!ownsGrid(g)) return false;
     if (!g.options) g.options = {};
     g.options[key] = v;
     deps.saveConfig();
@@ -306,7 +311,7 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     // feeds the picker overlay's quick row. One combined saveConfig below.
     const g = deps.activeGrid();
     let cfgDirty = false;
-    if (g && g.kind === 'app' && g.app === appId) {
+    if (ownsGrid(g)) {
       if (!g.options) g.options = {};
       if (g.options.projectDir !== projectDir) { g.options.projectDir = projectDir; cfgDirty = true; }
     }
@@ -318,7 +323,9 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     if (cfgDirty) deps.saveConfig();
     adapter.start({
       projectDir,
-      mode: opts.options.permissionMode,
+      // '' (the consolidated manifest's neutral default) must read as "adapter's own default",
+      // not as a real mode string.
+      mode: opts.options.permissionMode || undefined,
       model: opts.options.modelPick,
       approvalsEnabled: !!opts.options.approvalsEnabled,
     });
