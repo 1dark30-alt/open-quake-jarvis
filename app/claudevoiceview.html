@@ -167,6 +167,42 @@
     background: var(--surf2); color: var(--fg); font-size: 24px; font-weight: 700; cursor: pointer;
     padding: 10px 16px; text-align: center; overflow: hidden; }
   .profileOpt:active { background: var(--tile-bd); }
+  /* Panel Builder review: the page the AI proposed, drawn as real tiles at the grid's own aspect so
+     what's on screen is what gets saved. Accept / Try again sit in a bar under it. */
+  #panelOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex;
+    align-items: center; justify-content: center; padding: 12px; z-index: 50; user-select: none; }
+  #panelOverlay.hidden { display: none; }
+  #panelCard { width: min(1860px, 100%); height: 100%; background: var(--surf);
+    border: 1px solid var(--tile-bd); border-radius: 16px; padding: 10px 18px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 6px; }
+  #panelHead { display: flex; align-items: baseline; gap: 14px; }
+  #panelTitle { font-size: 20px; font-weight: 700; white-space: nowrap; }
+  #panelNote { font-size: 14px; color: var(--muted); white-space: nowrap; }
+  /* Advisory text rides in the header rather than its own row — the grid wants that height. */
+  #panelWarn { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The preview keeps the page's real aspect (set per panel in JS) and is sized by the height left
+     over, so the tiles look like the square cells they will actually be on the panel. */
+  #panelPreviewWrap { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  #panelPreview { display: grid; gap: 8px; height: 100%; max-width: 100%; }
+  .pvTile { border: 1px solid var(--tile-bd); border-radius: 10px; background: var(--surf2);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px; overflow: hidden; padding: 2px; }
+  .pvTile.empty { background: transparent; border-style: dashed; opacity: .35; }
+  .pvIcon { font-size: 34px; line-height: 1; }
+  .pvLabel { font-size: 13px; font-weight: 600; text-align: center; line-height: 1.15;
+    max-width: 100%; overflow: hidden; padding: 0 4px; }
+  .pvTile.risk { border-color: #e0a030; outline: 2px solid #e0a030; outline-offset: -2px; }
+  #panelWarn, #panelRisky { font-size: 13px; line-height: 1.35; max-height: 76px; overflow: auto; }
+  #panelWarn { color: var(--muted); }
+  #panelRisky { color: #e0a030; }
+  #panelRisky code { display: block; color: var(--fg); font-size: 12px; word-break: break-all; }
+  #panelWarn.hidden, #panelRisky.hidden { display: none; }
+  #panelBtns { display: flex; gap: 12px; justify-content: flex-end; }
+  #panelBtns button { min-height: 54px; min-width: 150px; border-radius: 12px;
+    border: 1px solid var(--tile-bd); background: var(--surf2); color: var(--fg);
+    font-size: 17px; font-weight: 700; cursor: pointer; }
+  #panelBtns button.primary { background: var(--accent); border-color: var(--accent); color: #06251a; }
+  #panelBtns button:active { opacity: .8; }
   .profileOpt.current { background: var(--accent); color: var(--accent-fg, #04120b); border-color: transparent; }
   #modeCancel { min-height: 48px; min-width: 96px; border-radius: 10px; border: 1px solid var(--tile-bd);
     background: var(--surf2); color: var(--fg); font-size: 15px; font-weight: 600; cursor: pointer; }
@@ -334,6 +370,18 @@
     <div id="profileCard">
       <div id="profileHead"><div id="profileTitle">AI profile</div><button id="profileCancel" type="button">Cancel</button></div>
       <div id="profileGrid"></div>
+    </div>
+  </div>
+  <div id="panelOverlay" class="hidden">
+    <div id="panelCard">
+      <div id="panelHead"><div id="panelTitle">Proposed panel</div><div id="panelNote"></div><div id="panelWarn" class="hidden"></div></div>
+      <div id="panelPreviewWrap"><div id="panelPreview"></div></div>
+      <div id="panelRisky" class="hidden"></div>
+      <div id="panelBtns">
+        <button id="panelCancel" type="button">Cancel</button>
+        <button id="panelRetry" type="button">Try again</button>
+        <button id="panelAccept" class="primary" type="button">Accept</button>
+      </div>
     </div>
   </div>
   <div id="settingsOverlay" class="hidden">

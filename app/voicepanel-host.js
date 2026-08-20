@@ -23,6 +23,7 @@ const path = require('path');
 const speechLib = require('./claudevoice-speech');   // pure: sentence cutter + sanitizer + per-turn WAV pipeline
 const wyoming = require('./claudevoice-wyoming');    // pure: Wyoming STT/TTS protocol client
 const { resolveAiProfile } = require('./voiceConfig'); // pure: AI-profile library lookup (Smart Profiles)
+const { createPanelReview, PANEL_SYSTEM_PROMPT, PANEL_PROFILE } = require('./panelGenerate'); // pure: Panel Builder review
 
 // Whisper hallucinates stock phrases on background noise/near-silence ("thanks for watching" is the
 // classic, from YouTube training data). Exact-phrase blocklist, compared case/punctuation-insensitively --
@@ -112,18 +113,35 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     const turnFinalText = typeof text === 'string' ? text : null;
     if (turnFinalText != null) state.lastAssistantText = turnFinalText;
     state.error = error;
+    // Panel Builder: while that profile is active a JSON reply is a PROPOSED PAGE, not something to
+    // read aloud or print. Detect it before any speech starts, so Piper never narrates raw JSON.
+    // Ordinary conversation on the same profile (e.g. a clarifying question) parses as nothing and
+    // falls through untouched.
+    let panelOffered = false;
+    if (!state.error && turnFinalText && panelProfileActive()) {
+      try { panelOffered = panelReview.offer(turnFinalText); }
+      catch (e) { say('panel review failed: ' + ((e && e.message) || e)); }
+    }
     // A dequeued result-only turn (no deltas ever streamed) still owes its speech: open its stream
     // now so the whole-text finish below lands in it.
     if (queuedSpeakPending) {
       queuedSpeakPending = false;
-      if (!error && text) broadcast({ type: 'turn-speech', speech: speech.beginTurn() });
+      if (!error && text && !panelOffered) broadcast({ type: 'turn-speech', speech: speech.beginTurn() });
     }
     // Speech: flush the pipeline's remainder (or speak the whole result for turns that never
     // streamed deltas, e.g. slash commands); errored turns get their speech cut instead.
     if (state.error) speech.abortActive('turn ended in error');
+    else if (panelOffered) speech.abortActive('panel proposals are shown, not spoken');
     else speech.finish(turnFinalText);
-    if (turnFinalText && !state.error) transcript.push({ role: 'assistant', text: turnFinalText });
-    broadcast({ type: 'turn-complete', text: turnFinalText, error: state.error });
+    if (turnFinalText && !state.error && !panelOffered) transcript.push({ role: 'assistant', text: turnFinalText });
+    if (panelOffered) {
+      const ps = panelReview.state();
+      transcript.push({ role: 'assistant', text: ps.status === 'ready'
+        ? 'Proposed "' + ps.page.name + '" — review it on screen.'
+        : 'That panel could not be used: ' + ps.error });
+      broadcast({ type: 'panel-review', panel: ps });
+    }
+    broadcast({ type: 'turn-complete', text: panelOffered ? null : turnFinalText, error: state.error });
     // CLI semantics: the finished turn hands off to the next queued entry, in order.
     turnActive = false;
     if (turnQueue.length) {
@@ -228,6 +246,26 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     const settings = (deps.getConfig() || {}).settings;
     return resolveAiProfile(settings, (opts && opts.options.profilePick) || '');
   }
+  function panelProfileActive() { return currentProfile().id === PANEL_PROFILE.id; }
+  // The Panel Builder's JSON contract lives in CODE and is appended to whatever the (user-editable)
+  // profile text says, so editing the profile can change its wording but never break generation.
+  function profilePromptFor(prof) {
+    const base = (prof && prof.prompt) || '';
+    if (!prof || prof.id !== PANEL_PROFILE.id) return base;
+    return (base ? base + '\n\n' : '') + PANEL_SYSTEM_PROMPT;
+  }
+
+  // Panel Builder review: holds an AI-authored page until the user Accepts it on the panel.
+  const panelReview = createPanelReview({
+    existingIds: () => ((deps.getConfig() || {}).grids || []).map(g => g && g.id).filter(Boolean),
+    makeId: () => {
+      const used = ((deps.getConfig() || {}).grids || []).map(g => g && g.id);
+      let id;
+      do { id = 'g' + Math.random().toString(36).slice(2, 8); } while (used.indexOf(id) !== -1);
+      return id;
+    },
+    log: say,
+  });
 
   // Panel Profile picker: persist the pick on the page, hand the prompt to the adapter (chat
   // backends apply it on the next request; claude quietly restarts-with-resume; codex/copilot
@@ -240,7 +278,13 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     g.options.profilePick = id;
     deps.saveConfig();
     const prof = currentProfile();
-    if (adapter.setProfilePrompt) adapter.setProfilePrompt(prof.prompt || '');
+    if (adapter.setProfilePrompt) adapter.setProfilePrompt(profilePromptFor(prof));
+    // Leaving Panel Builder drops any panel still awaiting review — it can't be accepted from
+    // another mode, and a stale proposal reappearing later would be baffling.
+    if (prof.id !== PANEL_PROFILE.id && panelReview.isActive()) {
+      panelReview.cancel();
+      broadcast({ type: 'panel-review', panel: panelReview.state() });
+    }
     broadcast({ type: 'profile', id: prof.id, name: prof.name });
     return true;
   }
@@ -257,6 +301,8 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       projectDir: adapter.projectDir() || (opts && opts.options.projectDir) || '',
       transcript,
       meta: buildMeta(),
+      // A page reloaded mid-review (rotation, relaunch) repaints the pending panel from here.
+      panel: panelReview.state(),
     });
   }
   // Agent-specific page strings + pick lists; the shared page applies these over its claude-shaped
@@ -320,6 +366,28 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     return true;
   }
 
+  // Commit the panel the user just approved: append it to the page list and persist. This is the
+  // only path from model output into config.grids, and it runs only after an explicit Accept (plus a
+  // second confirmation when the panel contains anything executable).
+  function panelAccept(confirmRisky) {
+    const r = panelReview.accept(!!confirmRisky);
+    if (!r.ok) return r;
+    const config = deps.getConfig();
+    if (!Array.isArray(config.grids)) return { ok: false, error: 'no page list to add to' };
+    config.grids.push(r.page);
+    deps.saveConfig();
+    say('panel accepted: "' + r.page.name + '" added as page ' + r.page.id);
+    broadcast({ type: 'panel-review', panel: panelReview.state() });
+    broadcast({ type: 'panel-accepted', id: r.page.id, name: r.page.name });
+    if (deps.gotoGrid) { try { deps.gotoGrid(r.page.id); } catch (e) {} }   // land on what was just built
+    return { ok: true, id: r.page.id, name: r.page.name };
+  }
+  function panelCancel() {
+    panelReview.cancel();
+    broadcast({ type: 'panel-review', panel: panelReview.state() });
+    return { ok: true };
+  }
+
   function setPermissionMode(mode) {
     const ok = adapter.setMode(mode);
     if (ok) broadcast({ type: 'permission-mode', mode });
@@ -356,7 +424,7 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       mode: opts.options.permissionMode || undefined,
       model: opts.options.modelPick,
       approvalsEnabled: !!opts.options.approvalsEnabled,
-      profilePrompt: currentProfile().prompt || '',
+      profilePrompt: profilePromptFor(currentProfile()),
     });
     state = { running: true, status: 'idle', lastUserText: '', lastAssistantText: '', error: null };
     turnActive = false;
@@ -453,6 +521,8 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       setOption,
       setPermissionMode,
       setProfile,
+      panelAccept,
+      panelCancel,
       setModel: model => adapter.setModel(model),
       sessionStart: startSession,
       sessionStop: stopSession,

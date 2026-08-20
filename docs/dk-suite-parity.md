@@ -28,6 +28,7 @@ don't — update it when either side changes.
 | Knob + touchscreen + gestures | Full knob support (rotate/click/double/hold), touch, page selector. |
 | Credit packs / subscriptions | Nothing metered. Costs are only what your own keys/servers cost. |
 | 9 Smart Profiles (knob-switchable "modes") | Teardown: their 9 "profiles" are **page layouts** (Discord/MeetAI/SysView/AI Chat/Music/Clock/…) — already open-quake **pages** with the knob selector and per-page hotkeys. The real feature inside their AI Chat — named prompt modes (theirs: 6, Chinese-only) — **shipped as AI Profiles** (PR #23): 9 editable English instruction presets on all five AI Voice backends, switchable from the panel's full-screen Profile picker, remembered per page. |
+| AI-generated shortcut panels ("hold the knob and say *create a shortcut set for Photoshop masking*") | **[AI panels](ai-panels.md)**: a **Panel Builder** AI Profile — pick it on an AI Voice page, say what you want, and the proposed page is drawn as real tiles for **Accept / Try again / Cancel**. Works on all five backends; Claude and Codex can look up an app's real shortcuts. Every generated page is schema-validated before it can be saved, and anything that would run a shell/AutoHotkey command shows the literal command and needs a second explicit yes. |
 | Wallpapers / screensaver ("Vivid" — teardown: a manually-selected crossfading image/video page, **no idle detection**) | **[Screensaver](screensaver.md)** (PR #24): five built-in live-drawn scenes (Waves, Starfield, Lava lamp, Fireflies, Flurry), your own photos (slideshow or scrapbook **collage**) and videos in separate folders, downloadable loops in [community-wallpapers](../community-wallpapers), and — theirs can't — **idle auto-start** (default 30 min) that wakes back to exactly the page you left. |
 
 ## ❌ Missing (the actual todo)
@@ -35,7 +36,6 @@ don't — update it when either side changes.
 | Feature | What they advertise | Lift for open-quake |
 |---|---|---|
 | **macOS / Linux support** | Multi-OS: Windows, macOS, Linux | **Large.** The launcher/editor are Electron (portable), but launch/volume/media/loopback-audio/reserved-display code is Windows-specific (README already flags this). Realistic only as a scoped "panel + apps, minus Windows-only extras" port. |
-| **AI-generated shortcut panels** | Hold the knob and say e.g. "create a shortcut set for Photoshop masking" — the AI generates a custom control set for that application, no manual macro programming (Kickstarter/copilot pages) | **Medium — and a natural fit.** OQ already has the two halves: AI routing (CLI agents / OWUI / any endpoint, no credits) and pages-as-JSON tile grids with `key`-type shortcut tiles. The missing piece is a "Generate panel with AI" flow in the editor (and/or by voice on the panel): prompt → validated tile JSON → new page for review. Probably the highest-value item on this list. |
 | **Game voice control** | Mentioned in their showcase | **Unclear scope.** Nearest OQ equivalents: global hotkeys, macros, LucidType. Needs a real definition of what theirs does before it's worth chasing. |
 
 ## Notes

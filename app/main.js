@@ -276,6 +276,8 @@ function voiceBackendDeps(backend) {
     clearRingOverride: () => { if (aiVoiceOwnsGrid(backend)(activeGrid())) clearRingOverride(); },
     getDocumentsPath: () => app.getPath('documents'),
     ownsGrid: owns,
+    // Panel Builder: after the user accepts a generated page, land on it so they see what they built.
+    gotoGrid: id => gotoGrid(id, true),
   };
 }
 function appSettings() { return Object.assign({}, DEFAULT_SETTINGS, config.settings || {}); }
@@ -367,6 +369,7 @@ function migrateConfig(c) {
   });
   voiceConfig.migrateVoiceConfig(c);   // legacy per-page wyoming* -> global config.settings.voice + per-page override
   voiceConfig.ensureAiProfiles(c);     // seed the Smart Profiles library once (user edits are never touched)
+  voiceConfig.ensurePanelProfile(c);   // add Panel Builder to libraries that predate it (once — deletions stick)
   return c;
 }
 // SystemView (System Monitor) is RETIRED: its metrics layer spawned continuous PowerShell

@@ -464,6 +464,8 @@ const VOICE_POST_SUFFIXES = new Set([
   '/session/stop',
   '/permission-mode',
   '/profile',
+  '/panel-accept',
+  '/panel-cancel',
   '/model',
   '/tts',
   '/option',
@@ -699,6 +701,20 @@ async function handler(req, res) {
       const id = body && typeof body.id === 'string' ? body.id : null;
       if (id == null || !h.setProfile) return done(res, false);
       let ok = false; try { ok = !!h.setProfile(id); } catch (e) {}
+      return done(res, ok);
+    }
+    // Panel Builder: accept the page the AI proposed. `confirm` is the user's informed second yes,
+    // sent only after the panel has shown them the actual commands a risky panel would run.
+    if (voicePath === '/panel-accept' && req.method === 'POST') {
+      let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+      if (!h.panelAccept) return done(res, false);
+      let r = null; try { r = h.panelAccept(!!(body && body.confirm)); } catch (e) {}
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify(r || { ok: false }));
+    }
+    if (voicePath === '/panel-cancel' && req.method === 'POST') {
+      if (!h.panelCancel) return done(res, false);
+      let ok = false; try { ok = !!(h.panelCancel() || {}).ok; } catch (e) {}
       return done(res, ok);
     }
     if (voicePath === '/model' && req.method === 'POST') {

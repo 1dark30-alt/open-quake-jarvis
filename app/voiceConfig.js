@@ -9,6 +9,8 @@
 //     voiceSttHost/voiceSttPort/voiceTtsHost/voiceTtsPort.
 // Both are edited in the config editor (global on the TTS/STT tab, override in the page's Advanced).
 
+const { PANEL_PROFILE } = require('./panelGenerate');   // pure: the Panel Builder profile's user-facing half
+
 const VOICE_APPS = ['ai-voice'];
 // The four pre-consolidation voice app ids, mapped to their AI Voice backend. Pages with these ids
 // are rewritten in migrateVoiceConfig; the ids themselves no longer exist in apps.json.
@@ -107,7 +109,22 @@ const DEFAULT_AI_PROFILES = [
   { id: 'math', name: 'Math', prompt: 'You are a mathematician. Solve what the user asks, show the essential steps compactly, and end with the result on its own line.' },
   { id: 'email', name: 'Email', prompt: "Turn the user's words into a polished, professional email — greeting, body, sign-off. Keep it brief and courteous. Output only the email text." },
   { id: 'explainer', name: 'Explainer', prompt: 'Explain the topic simply, as to a curious beginner — plain words, one good analogy, no jargon. Keep it under 200 words unless asked for depth.' },
+  PANEL_PROFILE,
 ];
+
+// Adds the Panel Builder profile to a library that predates it. Runs once — the flag means a user
+// who deletes the profile keeps it deleted instead of having it grow back every launch.
+function ensurePanelProfile(config) {
+  if (!config) return config;
+  if (!config.settings) config.settings = {};
+  const s = config.settings;
+  if (s.panelProfileSeeded) return config;
+  s.panelProfileSeeded = true;
+  if (!Array.isArray(s.aiProfiles)) return config;                       // ensureAiProfiles seeds it whole
+  if (s.aiProfiles.some(p => p && p.id === PANEL_PROFILE.id)) return config;
+  s.aiProfiles.push(Object.assign({}, PANEL_PROFILE));
+  return config;
+}
 
 // Seed config.settings.aiProfiles exactly once (idempotent — an existing array, even emptied or
 // edited by the user, is never touched). Mutates config, returns it.
@@ -136,4 +153,4 @@ function isSttNoisePhrase(text) {
   return STT_NOISE_PHRASES.includes(norm);
 }
 
-module.exports = { VOICE_APPS, LEGACY_VOICE_APPS, VOICE_DEFAULTS, DEFAULT_AI_PROFILES, ensureAiProfiles, resolveAiProfile, voiceSettings, resolveVoiceEndpoints, resolveLucidEndpoints, migrateVoiceConfig, isSttNoisePhrase };
+module.exports = { VOICE_APPS, LEGACY_VOICE_APPS, VOICE_DEFAULTS, DEFAULT_AI_PROFILES, ensureAiProfiles, ensurePanelProfile, resolveAiProfile, voiceSettings, resolveVoiceEndpoints, resolveLucidEndpoints, migrateVoiceConfig, isSttNoisePhrase };
