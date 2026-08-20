@@ -708,7 +708,7 @@ async function handler(req, res) {
     if (voicePath === '/panel-accept' && req.method === 'POST') {
       let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
       if (!h.panelAccept) return done(res, false);
-      let r = null; try { r = h.panelAccept(!!(body && body.confirm)); } catch (e) {}
+      let r = null; try { r = h.panelAccept(!!(body && body.confirm), !!(body && body.replace)); } catch (e) {}
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       return res.end(JSON.stringify(r || { ok: false }));
     }

@@ -768,11 +768,23 @@ function saveConfig() {
     const serialized = JSON.stringify(secretStore.encryptConfig(persisted), null, 2);
     fs.writeFileSync(temporaryPath, serialized);
     fs.renameSync(temporaryPath, CONFIG_PATH);
+    notifyEditorConfigChanged();
     return true;
   } catch (e) {
     try { fs.rmSync(temporaryPath, { force: true }); } catch (cleanupError) {}
     console.log('config save error: secure persistence failed');
     return false;
+  }
+}
+// The editor holds its own snapshot of config and only writes it back on Save, so anything that
+// changes config from OUTSIDE the editor (an accepted AI panel, a counter tile, a panel option) is
+// invisible to an open editor — and worse, that editor's next Save would write the stale copy back
+// and drop the change. Tell it to re-read. Suppressed while the editor's own save is in flight.
+let editorSaveInFlight = false;
+function notifyEditorConfigChanged() {
+  if (editorSaveInFlight) return;
+  if (configWin && !configWin.isDestroyed()) {
+    try { configWin.webContents.send('configChangedExternally'); } catch (e) {}
   }
 }
 function activeGrid() { return config.grids.find(g => g.id === config.activeGridId) || config.grids[0] || { cols: 8, rows: 2, tiles: [] }; }
@@ -3039,7 +3051,10 @@ app.whenReady().then(async () => {
     config = newCfg;
     if (config.grids.some(g => g.id === active)) config.activeGridId = active;
     else if (!config.grids.some(g => g.id === config.activeGridId)) config.activeGridId = (config.grids[0] || {}).id || null;
-    if (!saveConfig()) { config = previousConfig; return { ok: false, error: 'secure persistence failed' }; }
+    editorSaveInFlight = true;                                   // this save came FROM the editor — don't tell it to re-read
+    const saved = saveConfig();
+    editorSaveInFlight = false;
+    if (!saved) { config = previousConfig; return { ok: false, error: 'secure persistence failed' }; }
     pushToPanel(); applyKnobSettings(); refreshTray(); applyRotationSettings(wasRot); applyFocusFollowSettings(); applyShortcuts(); applyTheme();
     reservedDisplay.setEnabled(reservedDisplayEnabled(appSettings()));   // stays off in software mode
     applyDisplayBlocker();                                               // keep-display-awake: only Panel mode + when enabled

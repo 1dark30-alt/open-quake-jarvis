@@ -861,8 +861,20 @@ function showPanelReview(p) {
   for (var i = 0; i < page.tiles.length; i++) if (page.tiles[i].type) used++;
   $('panelTitle').textContent = page.name;
   $('panelNote').textContent = used + (used === 1 ? ' button' : ' buttons') + ' · ' + page.cols + '×' + page.rows;
+  // After a panel has been accepted, the next proposal in the same conversation is almost always a
+  // FIX of it ("the tab-1 button does nothing"), so Replace leads and Accept becomes "Add as new".
+  var rep = $('panelReplace');
   $('panelAccept').style.display = '';
-  $('panelAccept').textContent = 'Accept';
+  if (p.replaces) {
+    rep.classList.remove('hidden');
+    rep.textContent = 'Replace ' + (p.replaces.name.length > 18 ? p.replaces.name.slice(0, 17) + '…' : p.replaces.name);
+    $('panelAccept').textContent = 'Add as new';
+    $('panelAccept').classList.add('secondary');
+  } else {
+    rep.classList.add('hidden');
+    $('panelAccept').textContent = 'Accept';
+    $('panelAccept').classList.remove('secondary');
+  }
 
   var riskyIdx = {};
   (p.risky || []).forEach(function (r) { riskyIdx[r.index] = true; });
@@ -913,18 +925,21 @@ function showPanelRisky(list) {
   panelRiskyPending = true;
 }
 
-$('panelAccept').onclick = function () {
+function sendPanelAccept(replace) {
   fetch(BASE + '/panel-accept', {
     method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ confirm: panelRiskyPending }),
+    body: JSON.stringify({ confirm: panelRiskyPending, replace: !!replace }),
   }).then(function (r) { return r.json(); })
     .then(function (r) {
       if (r && r.ok) { $('panelOverlay').classList.add('hidden'); panelRiskyPending = false; return; }
-      if (r && r.needsConfirm) return showPanelRisky(r.risky || []);
+      if (r && r.needsConfirm) { panelReplacePending = !!replace; return showPanelRisky(r.risky || []); }
       setStatus(conversationOpen ? 'listening' : 'idle', (r && r.error) || 'That panel could not be added.');
     })
     .catch(function () { setStatus('error', 'Could not reach the panel server.'); });
-};
+}
+var panelReplacePending = false;   // which button opened the consent stage, so the second yes matches it
+$('panelAccept').onclick = function () { sendPanelAccept(panelRiskyPending ? panelReplacePending : false); };
+$('panelReplace').onclick = function () { panelReplacePending = true; sendPanelAccept(true); };
 $('panelRetry').onclick = function () {
   // Refinement is just the next thing you say — the session still has the context, so a new reply
   // supersedes this proposal. Close the overlay and reopen the mic.

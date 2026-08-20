@@ -369,14 +369,21 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
   // Commit the panel the user just approved: append it to the page list and persist. This is the
   // only path from model output into config.grids, and it runs only after an explicit Accept (plus a
   // second confirmation when the panel contains anything executable).
-  function panelAccept(confirmRisky) {
-    const r = panelReview.accept(!!confirmRisky);
-    if (!r.ok) return r;
+  function panelAccept(confirmRisky, replace) {
     const config = deps.getConfig();
     if (!Array.isArray(config.grids)) return { ok: false, error: 'no page list to add to' };
-    config.grids.push(r.page);
+    // The page we'd replace may have been deleted in the editor since; fall back to adding.
+    const target = panelReview.state().replaces;
+    if (replace && (!target || !config.grids.some(g => g && g.id === target.id))) {
+      panelReview.forgetAccepted();
+      replace = false;
+    }
+    const r = panelReview.accept(!!confirmRisky, !!replace);
+    if (!r.ok) return r;
+    const at = r.replaceId ? config.grids.findIndex(g => g && g.id === r.replaceId) : -1;
+    if (at >= 0) config.grids[at] = r.page; else config.grids.push(r.page);
     deps.saveConfig();
-    say('panel accepted: "' + r.page.name + '" added as page ' + r.page.id);
+    say('panel accepted: "' + r.page.name + '" ' + (at >= 0 ? 'replaced page ' : 'added as page ') + r.page.id);
     broadcast({ type: 'panel-review', panel: panelReview.state() });
     broadcast({ type: 'panel-accepted', id: r.page.id, name: r.page.name });
     if (deps.gotoGrid) { try { deps.gotoGrid(r.page.id); } catch (e) {} }   // land on what was just built

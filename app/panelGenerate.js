@@ -45,6 +45,11 @@ const PANEL_SYSTEM_PROMPT = [
   '',
   'Rules:',
   '- Labels must be 24 characters or fewer. One emoji per tile.',
+  '- Icons: pick the emoji that depicts THAT action. Never use the same emoji twice on a panel, and',
+  '  never use a lookalike for a different tool (a paintbrush is a brush, an eraser is 🧽 — not',
+  '  another brush). If nothing depicts it well, use a neutral ▫️ rather than something misleading.',
+  '  Useful ones: 💾 save · ↩️ undo · ↪️ redo · 🗑️ delete · 🔍 find · 📋 copy · ✂️ cut · ➕ new',
+  '  ✖️ close · ⚙️ settings · 🖌️ brush · 🧽 eraser · 🎨 color · 🔒 lock · ▶️ play · ⏸️ pause',
   '- Use the real, correct shortcuts for the application named, on Windows unless told otherwise.',
   '- Prefer keystroke tiles. Only use cmd or ahk steps when the user explicitly asks for one.',
   '- If the request is too vague to build (no application or task named), do NOT return JSON —',
@@ -89,6 +94,10 @@ function createPanelReview(deps) {
   const validate = d.validate || validatePanel;
   const log = d.log || (() => {});
   let review = emptyReview();
+  // The page most recently accepted in this conversation. Saying "the second button doesn't work"
+  // regenerates the whole panel, and the user means FIX that page — not collect a second copy of it —
+  // so the next proposal can replace it in place, keeping its id (and anything pointing at it).
+  let lastAccepted = null;
 
   function state() {
     return {
@@ -98,8 +107,11 @@ function createPanelReview(deps) {
       warnings: review.warnings.slice(),
       risky: review.risky.map(r => Object.assign({}, r)),
       page: review.page ? JSON.parse(JSON.stringify(review.page)) : null,
+      replaces: lastAccepted ? Object.assign({}, lastAccepted) : null,
     };
   }
+  // Called by the host when a page it thought it could replace is gone (deleted in the editor).
+  function forgetAccepted() { lastAccepted = null; }
 
   // Feed a finished assistant turn in. Returns true if it was a panel (and is now pending review),
   // false if it was ordinary conversation that should be shown/spoken as usual.
@@ -122,18 +134,22 @@ function createPanelReview(deps) {
 
   // Accept the pending panel. `confirmRisky` must be true when risky[] is non-empty — the caller
   // shows the actual commands first, so consent is informed rather than a generic warning.
-  function accept(confirmRisky) {
+  // `replace` = overwrite the page accepted earlier in this conversation instead of adding another.
+  function accept(confirmRisky, replace) {
     if (!review.active || review.status !== 'ready' || !review.page) return { ok: false, error: 'no panel to accept' };
     if (review.risky.length && !confirmRisky) return { ok: false, needsConfirm: true, risky: state().risky };
     const page = review.page;
+    const replaceId = (replace && lastAccepted) ? lastAccepted.id : null;
+    if (replaceId) page.id = replaceId;          // keep the id so page-tiles and rotation still point at it
     review = emptyReview();
-    return { ok: true, page };
+    lastAccepted = { id: page.id, name: page.name };
+    return { ok: true, page, replaceId };
   }
 
   function cancel() { review = emptyReview(); return { ok: true }; }
   function isActive() { return review.active; }
 
-  return { offer, accept, cancel, state, isActive };
+  return { offer, accept, cancel, state, isActive, forgetAccepted };
 }
 
 module.exports = { createPanelReview, parsePanelJson, PANEL_SYSTEM_PROMPT, PANEL_PROFILE };

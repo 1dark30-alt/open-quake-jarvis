@@ -202,6 +202,8 @@
     border: 1px solid var(--tile-bd); background: var(--surf2); color: var(--fg);
     font-size: 17px; font-weight: 700; cursor: pointer; }
   #panelBtns button.primary { background: var(--accent); border-color: var(--accent); color: #06251a; }
+  #panelBtns button.hidden { display: none; }
+  #panelBtns button.secondary { background: var(--surf2); border-color: var(--tile-bd); color: var(--fg); }
   #panelBtns button:active { opacity: .8; }
   .profileOpt.current { background: var(--accent); color: var(--accent-fg, #04120b); border-color: transparent; }
   #modeCancel { min-height: 48px; min-width: 96px; border-radius: 10px; border: 1px solid var(--tile-bd);
@@ -380,6 +382,7 @@
       <div id="panelBtns">
         <button id="panelCancel" type="button">Cancel</button>
         <button id="panelRetry" type="button">Try again</button>
+        <button id="panelReplace" class="primary hidden" type="button">Replace</button>
         <button id="panelAccept" class="primary" type="button">Accept</button>
       </div>
     </div>
