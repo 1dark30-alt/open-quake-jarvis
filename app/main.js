@@ -2069,6 +2069,19 @@ function applyKnobSettings() {
   try { dev.setLedSpeed(L.speed & 0xFF); } catch (e) {}
   try { dev.setLedColor(hue & 0xFF, sat & 0xFF); } catch (e) {}
   if (L.effect) lastRingEffect = L.effect;
+  // "All Off" (effect 0) repaints the matrix dark and can drop the firmware's mic indicator with
+  // it (same latch class as the connect-time re-assert below in whenReady). Re-assert the mic
+  // state after the effect settles so a lit mic LED survives switching the ring off.
+  if ((L.effect & 0xFF) === 0) setTimeout(() => reassertMicLed('ring set to All Off'), 400);
+}
+// The firmware occasionally drops the mic LED (never the audio toggle) when the LED subsystem is
+// asleep or mid-repaint — proven at connect time, and reported again with the ring on "All Off"
+// (effect 0). The workaround mirrors the connect path: wake the panel, then re-send the current
+// mic state so the LED latches. Harmless when the LED already agrees.
+function reassertMicLed(why) {
+  try { dev.screenOn(); } catch (e) {}
+  try { dev.setMic(micState); } catch (e) {}
+  console.log('mic LED re-assert (' + why + '):', micState);
 }
 // ---- ring override (Claude Code voice states) ----
 // A served page signals its state via console.log('OQX_RING::<state>') (caught in index.js, funneled
@@ -2105,7 +2118,13 @@ function clearRingOverride() {
   ringOverrideState = null;
   applyKnobSettings();
 }
-function applyMic(on) { try { dev.setMic(on); } catch (e) {} micState = !!on; refreshTray(); }
+function applyMic(on) {
+  try { dev.setMic(on); } catch (e) {}
+  micState = !!on; refreshTray();
+  // With the ring on "All Off" the LED subsystem can be idle and the single setMic above toggles
+  // the audio but the mic LED never follows — wake it and re-assert (see reassertMicLed).
+  if ((lighting().effect & 0xFF) === 0 && !ringOverrideState) setTimeout(() => reassertMicLed('mic toggle at ring All Off'), 350);
+}
 function toggleMic() { applyMic(!micState); }
 function toggleKnobRing() {
   if (!config.settings) config.settings = {};
