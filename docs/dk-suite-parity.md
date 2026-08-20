@@ -50,7 +50,7 @@ don't — update it when either side changes.
 | Discord Game Controls | Workable now with a manual page: key tiles firing Discord's global hotkeys (mute/deafen/overlay). No packaged Discord page yet — easy candidate if demand shows up. |
 | OBS Studio Controls | Same today via OBS global hotkeys on key tiles. The real version would be a page speaking **obs-websocket** (scene switching, stream/record status on the panel) — moderate lift, natural fit. |
 | Themes | **Already shipped**: light/dark/system + savable accent presets driving the panel, apps, and the knob ring — they're promising what open-quake has. |
-| "And more" | Unspecified; this doc tracks claims concrete enough to compare. |
+| "And more" | Nothing named yet — new items land here as they announce them. |
 
 ## Notes
 
