@@ -2187,9 +2187,10 @@
     if (def.id === 'screensaver') {
       // Collapsed scene picker right under "Show" — a dropdown so five checkboxes don't eat the box.
       if (String((g.options || {}).source || 'scenes') !== 'media') appendScreensaverScenesRow(el, g, def);
-      // Browse/Open buttons under the mediaDir text field — only when that field is visible
-      // (scenes-only pages have no media folder to manage).
-      if (el.querySelector('.aopt[data-key="mediaDir"]')) appendScreensaverFolderRow(el, g);
+      // Browse/Open buttons under each folder text field that's visible (photos and videos live in
+      // separate folders; scenes-only pages have neither).
+      appendScreensaverFolderButtons(el, g, 'photosDir', 'photos');
+      appendScreensaverFolderButtons(el, g, 'videosDir', 'videos');
     }
     enforceMusicCap(g);
   }
@@ -2232,25 +2233,29 @@
       setLabel();
     });
   }
-  // Screensaver: the media folder needs a real folder picker and an "open in Explorer" shortcut —
-  // dynamic things apps.json can't express. Appended INSIDE renderAppOpts so the row survives the
-  // re-render that select/bool changes trigger.
-  function appendScreensaverFolderRow(el, g) {
+  // Screensaver: each media folder needs a real folder picker and an "open in Explorer" shortcut —
+  // dynamic things apps.json can't express. Buttons are inserted right under that folder's own
+  // text field (inside renderAppOpts, so they survive the re-render select/bool changes trigger)
+  // and only when the field itself is visible.
+  function appendScreensaverFolderButtons(el, g, key, kind) {
+    const inp = el.querySelector(`.aopt[data-key="${key}"]`);
+    if (!inp) return;
+    const word = kind === 'videos' ? 'videos' : 'photos';
+    const exts = kind === 'videos' ? 'mp4/webm/mov' : 'jpg/png/gif/webp';
     const row = document.createElement('div');
     row.innerHTML = `<div class="row"><label></label>
-        <button id="ssMediaBrowse" type="button">Browse…</button>
-        <button id="ssMediaOpen" type="button">Open media folder</button></div>
-      <p class="hint" style="margin:-2px 0 10px 78px">Drop images or videos into the media folder and the
-      screensaver plays them (jpg/png/gif/webp images, mp4/webm/mov video). Leave the folder blank to use
-      the app's own screensaver-media folder — Open shows whichever folder is in effect in Explorer.</p>`;
-    el.appendChild(row);
-    row.querySelector('#ssMediaBrowse').onclick = async () => {
+        <button type="button" data-ss-browse="${key}">Browse…</button>
+        <button type="button" data-ss-open="${key}">Open ${word} folder</button></div>
+      <p class="hint" style="margin:-2px 0 10px 78px">Drop ${exts} files in and the screensaver plays them.
+      Blank = the app's own screensaver-media\\${word} folder — Open shows whichever folder is in effect.</p>`;
+    inp.closest('.row').insertAdjacentElement('afterend', row);
+    row.querySelector(`[data-ss-browse="${key}"]`).onclick = async () => {
       const p = await configApi.pickFolder();
       if (!p) return;
-      g.options.mediaDir = p; markDirty();
-      const inp = el.querySelector('.aopt[data-key="mediaDir"]'); if (inp) inp.value = p;
+      g.options[key] = p; markDirty();
+      inp.value = p;
     };
-    row.querySelector('#ssMediaOpen').onclick = () => configApi.openScreensaverMedia(optVal(g, 'mediaDir', ''));
+    row.querySelector(`[data-ss-open="${key}"]`).onclick = () => configApi.openScreensaverMedia(optVal(g, key, ''), kind);
   }
 
   function deleteCurrentPage() {

@@ -6300,20 +6300,26 @@
       { "key": "sceneLava", "label": "Lava lamp", "type": "bool", "default": true, "editorCustom": true },
       { "key": "sceneFireflies", "label": "Fireflies", "type": "bool", "default": true, "editorCustom": true },
       { "key": "sceneFlurry", "label": "Flurry", "type": "bool", "default": true, "editorCustom": true },
+      { "key": "mediaKind", "label": "Media", "type": "select", "default": "both", "choices": [
+        ["both", "Photos + videos"],
+        ["photos", "Photos only"],
+        ["videos", "Videos only"]
+      ], "showIf": { "key": "source", "not": "scenes" }, "help": "Photos and videos live in separate folders (below)." },
       { "key": "imageStyle", "label": "Image style", "type": "select", "default": "slide", "choices": [
         ["slide", "Slideshow (one at a time)"],
         ["collage", "Collage (scrapbook pile)"]
-      ], "showIf": { "key": "source", "not": "scenes" }, "help": "Collage drops each image in as a tilted print that piles up over time. Videos only play in Slideshow style." },
-      { "key": "imageFit", "label": "Images", "type": "select", "default": "cover", "choices": [
+      ], "showIf": [{ "key": "source", "not": "scenes" }, { "key": "mediaKind", "not": "videos" }], "help": "Collage fills the screen with tilted prints (a new one every 0.5-1.5s), then holds the finished board for the interval. Videos only play in Slideshow style." },
+      { "key": "imageFit", "label": "Photos", "type": "select", "default": "cover", "choices": [
         ["cover", "Crop to fill the screen"],
         ["contain", "Don't crop (letterbox)"]
-      ], "showIf": [{ "key": "source", "not": "scenes" }, { "key": "imageStyle", "value": "slide" }], "help": "Applies to slideshow images only — videos are never cropped (they letterbox unless they're already 1920×480)." },
-      { "key": "intervalSec", "label": "Change every (s)", "type": "text", "default": "10", "help": "Seconds per image/scene. Videos always play through to the end instead." },
+      ], "showIf": [{ "key": "source", "not": "scenes" }, { "key": "mediaKind", "not": "videos" }, { "key": "imageStyle", "value": "slide" }], "help": "Applies to slideshow photos only — videos are never cropped (they letterbox unless they're already 1920×480)." },
+      { "key": "intervalSec", "label": "Change every (s)", "type": "text", "default": "10", "help": "Seconds per photo/scene. Videos always play through to the end instead; a finished collage board is displayed for this long." },
       { "key": "shuffle", "label": "Shuffle", "type": "bool", "default": false, "inline": "Shuffle the scenes", "showIf": { "key": "source", "value": "scenes" } },
       { "key": "shuffle", "label": "Shuffle", "type": "bool", "default": false, "inline": "Shuffle the media", "showIf": { "key": "source", "value": "media" } },
       { "key": "shuffle", "label": "Shuffle", "type": "bool", "default": false, "inline": "Shuffle the scenes/media", "showIf": { "key": "source", "value": "both" } },
       { "key": "idleMinutes", "label": "Idle auto-start", "type": "text", "default": "10", "help": "Minutes of no input; 0 = never. With no panel touches or knob turns for this long, the panel switches to this page by itself; any input returns to the page you were on. Panel mode only. 0 disables auto-start — the page then only appears manually or in rotation." },
-      { "key": "mediaDir", "label": "Media folder", "type": "text", "default": "", "serverOnly": true, "showIf": { "key": "source", "not": "scenes" } }
+      { "key": "photosDir", "label": "Photos folder", "type": "text", "default": "", "serverOnly": true, "showIf": [{ "key": "source", "not": "scenes" }, { "key": "mediaKind", "not": "videos" }] },
+      { "key": "videosDir", "label": "Videos folder", "type": "text", "default": "", "serverOnly": true, "showIf": [{ "key": "source", "not": "scenes" }, { "key": "mediaKind", "not": "photos" }] }
     ]
   }
 ]

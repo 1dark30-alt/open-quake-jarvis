@@ -79,8 +79,8 @@ It gives you:
   cross-sentence context. Optional save-to-file and a global **toggle hotkey**.
   → [Live Translate](docs/live-translate.md)
 - **Screensaver** — a screensaver page with **built-in animated scenes** (Waves, Starfield,
-  Lava lamp, Fireflies, Flurry — drawn live, no downloads) or a **folder of your own
-  images/videos** played as a crossfading slideshow. Starts **by itself** after a configurable idle time and wakes back to
+  Lava lamp, Fireflies, Flurry — drawn live, no downloads) or **your own photos and videos**
+  (separate folders; photos as a crossfading slideshow or a scrapbook **collage**). Starts **by itself** after a configurable idle time and wakes back to
   exactly the page you left on any touch or knob input; also selectable manually or in the page
   rotation like any other page. → [Screensaver](docs/screensaver.md)
 - **Theming** — a global **light / dark / system** mode and an **accent color** (with savable

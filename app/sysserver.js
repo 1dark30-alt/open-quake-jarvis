@@ -677,12 +677,13 @@ async function handler(req, res) {
       const browsePath = queryValue(full, 'path');
       return json(res, h.getProjects ? h.getProjects(browsePath) : { root: '', parent: null, dirs: [], current: '', recents: [] });
     }
-    // Screensaver media: one validated file from the page's configured folder, streamed with Range
-    // support for <video> seeking/looping. Name -> path containment lives in the host's
-    // resolveMedia; an inactive page (or any rejected name) resolves null and 404s.
+    // Screensaver media: one validated file from the page's configured photos (k=p) or videos
+    // (k=v) folder, streamed with Range support for <video> seeking/looping. Name -> path
+    // containment lives in the host's resolveMedia; an inactive page (or any rejected name)
+    // resolves null and 404s.
     if (voicePath === '/media') {
       let p = null;
-      if (h.resolveMedia) { try { p = h.resolveMedia(queryValue(full, 'f')); } catch (e) {} }
+      if (h.resolveMedia) { try { p = h.resolveMedia(queryValue(full, 'f'), queryValue(full, 'k')); } catch (e) {} }
       return streamFileRange(req, res, p, p ? mimeFor(p) : 'application/octet-stream');
     }
     if (voicePath === '/permission-mode' && req.method === 'POST') {

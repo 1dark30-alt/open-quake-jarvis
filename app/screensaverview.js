@@ -25,6 +25,7 @@
   // ---- options (query-string delivery; panel edits POST /option and update this copy) ----
   var opts = {
     source: Q.get('source') || 'scenes',           // scenes | media | both
+    mediaKind: Q.get('mediaKind') || 'both',       // both | photos | videos — which media folders play
     imageFit: Q.get('imageFit') || 'cover',        // cover | contain — images only; videos never crop
     imageStyle: Q.get('imageStyle') || 'slide',    // slide | collage — how images are shown
     intervalSec: parseInt(Q.get('intervalSec'), 10) || 10,
@@ -36,9 +37,12 @@
   var SCENE_LABELS = { waves: 'Waves', starfield: 'Starfield', lava: 'Lava lamp', fireflies: 'Fireflies', flurry: 'Flurry' };
   function sceneKey(id) { return 'scene' + id.charAt(0).toUpperCase() + id.slice(1); }
   SCENES.forEach(function (id) { opts.sceneOn[id] = Q.get(sceneKey(id)) !== '0'; });   // absent = on
-  var files = [];              // [{name, kind:'image'|'video'}] from /state
-  var mediaDirLabel = '';      // shown in settings
-  var usingDefault = true;
+  var photos = [], videos = [];                  // file NAMES from /state (photos + videos folders)
+  var photosDirLabel = '', videosDirLabel = '', photosDefault = true, videosDefault = true;
+  function mediaUrl(kind, name) { return '/screensaver/media?k=' + (kind === 'video' ? 'v' : 'p') + '&f=' + encodeURIComponent(name); }
+  function wantPhotos() { return opts.mediaKind !== 'videos'; }
+  // Videos never join a collage; in videos-only mode the style is moot and they play as a slideshow.
+  function wantVideos() { return opts.mediaKind !== 'photos' && !(opts.imageStyle === 'collage' && wantPhotos()); }
 
   // =====================================================================================
   // Built-in scenes: tiny animation programs drawing 1920x480 frames. Each returns a stop().
@@ -301,13 +305,14 @@
   var SCENE_FNS = { waves: sceneWaves, starfield: sceneStarfield, lava: sceneLava, fireflies: sceneFireflies, flurry: sceneFlurry };
 
   // =====================================================================================
-  // Collage (scrapbook) image style: photos drop in one per interval as tilted white-bordered
-  // prints and pile up. The pile (stamp records) lives outside the renderer so cycling away to
-  // a scene and back continues the same scrapbook instead of starting over.
+  // Collage (scrapbook) image style: photos drop in quickly (a random 0.5-1.5s between prints)
+  // as tilted white-bordered prints until the board is FULL, then the finished collage holds for
+  // the "Change every" interval — after which the cycle moves on (or, media-only, a fresh board
+  // starts filling). Fullness is tracked geometrically (a coarse cell grid marked by each
+  // print's footprint), so dark photos count as covered just like bright ones.
   // =====================================================================================
-  var collageStamps = [], collageOrder = [], collagePos = -1;
-  var COLLAGE_MAX = 200;          // pile cap — then the board quietly starts fresh
-  var COLLAGE_TURN_STAMPS = 6;    // prints added per cycle turn when scenes share the rotation
+  var COLLAGE_MAX_STAMPS = 60;    // hard cap per board, in case random placement keeps missing cells
+  var COLLAGE_COLS = 24, COLLAGE_ROWS = 6, COLLAGE_FULL_AT = 0.97;
 
   function shuffleArr(a) {
     for (var i = a.length - 1; i > 0; i--) { var j = (Math.random() * (i + 1)) | 0, t = a[i]; a[i] = a[j]; a[j] = t; }
@@ -329,19 +334,35 @@
   }
 
   function runCollage(cv) {
-    var ctx = cv.getContext('2d'), run = true, lastStamp = 0, stampsThisVisit = 0, loading = false;
-    var imgs = files.filter(function (f) { return f.kind === 'image'; }).map(function (f) { return f.name; });
-    if (collageOrder.length !== imgs.length) {   // media list changed -> new deck, same pile
-      collageOrder = imgs.slice(); collagePos = -1;
-      if (opts.shuffle) shuffleArr(collageOrder);
+    var ctx = cv.getContext('2d'), run = true, loading = false;
+    var order = photos.slice();
+    var pos2 = -1;
+    if (opts.shuffle) shuffleArr(order);
+    var cells, stamps, phase, nextAt = 0, holdUntil = 0;   // phase: 'fill' | 'hold'
+    function resetBoard() {
+      cells = new Array(COLLAGE_COLS * COLLAGE_ROWS).fill(false);
+      stamps = 0; phase = 'fill';
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     }
-    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-    for (var i = 0; i < collageStamps.length; i++) drawStamp(ctx, collageStamps[i]);   // continue the pile
+    function markCells(rec) {
+      var b = 14;   // border + a little shadow spread
+      var x0 = Math.max(0, rec.x - rec.w / 2 - b), x1 = Math.min(W, rec.x + rec.w / 2 + b);
+      var y0 = Math.max(0, rec.y - rec.h / 2 - b), y1 = Math.min(H, rec.y + rec.h / 2 + b);
+      var c0 = Math.floor(x0 / (W / COLLAGE_COLS)), c1 = Math.min(COLLAGE_COLS - 1, Math.floor(x1 / (W / COLLAGE_COLS)));
+      var r0 = Math.floor(y0 / (H / COLLAGE_ROWS)), r1 = Math.min(COLLAGE_ROWS - 1, Math.floor(y1 / (H / COLLAGE_ROWS)));
+      for (var r = r0; r <= r1; r++) for (var c = c0; c <= c1; c++) cells[r * COLLAGE_COLS + c] = true;
+    }
+    function boardFull() {
+      if (stamps >= COLLAGE_MAX_STAMPS) return true;
+      var covered = 0;
+      for (var i = 0; i < cells.length; i++) if (cells[i]) covered++;
+      return covered / cells.length >= COLLAGE_FULL_AT;
+    }
     function stampNext() {
-      if (loading || !collageOrder.length) return;
+      if (loading || !order.length) return;
       loading = true;
-      collagePos++;
-      if (collagePos >= collageOrder.length) { collagePos = 0; if (opts.shuffle) shuffleArr(collageOrder); }
+      pos2++;
+      if (pos2 >= order.length) { pos2 = 0; if (opts.shuffle) shuffleArr(order); }
       var img = new Image();
       img.onload = function () {
         loading = false;
@@ -354,22 +375,25 @@
           y: 90 + Math.random() * (H - 180),
           rot: (Math.random() - 0.5) * 0.5,
         };
-        if (collageStamps.length >= COLLAGE_MAX) {   // full board -> fresh start
-          collageStamps = [];
-          ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-        }
-        collageStamps.push(rec);
         drawStamp(ctx, rec);
-        stampsThisVisit++;
-        if (playlist.length > 1 && stampsThisVisit >= COLLAGE_TURN_STAMPS) advance();
+        markCells(rec);
+        stamps++;
+        var now = Date.now();
+        if (boardFull()) { phase = 'hold'; holdUntil = now + intervalMs(); }
+        else nextAt = now + 500 + Math.random() * 1000;   // the requested 0.5-1.5s beat between prints
       };
-      img.onerror = function () { loading = false; };
-      img.src = '/screensaver/media?f=' + encodeURIComponent(collageOrder[collagePos]);
+      img.onerror = function () { loading = false; nextAt = Date.now() + 500; };
+      img.src = mediaUrl('image', order[pos2]);
     }
+    resetBoard();
     (function tick() {
       if (!run) return;
       var now = Date.now();
-      if (now - lastStamp >= intervalMs()) { lastStamp = now; stampNext(); }
+      if (phase === 'fill' && now >= nextAt) stampNext();
+      else if (phase === 'hold' && now >= holdUntil) {
+        if (playlist.length > 1) { advance(); return; }   // cycle moves on; next visit starts fresh
+        resetBoard(); nextAt = now + 500 + Math.random() * 1000;
+      }
       requestAnimationFrame(tick);
     })();
     return function () { run = false; };
@@ -392,13 +416,16 @@
       SCENES.filter(function (n) { return opts.sceneOn[n]; }).forEach(function (n) { items.push({ kind: 'scene', name: n }); });
     }
     if (wantMedia) {
-      if (opts.imageStyle === 'collage') {
-        // Collage consumes the images itself (one pseudo-item that stamps prints on a timer);
-        // videos sit collage mode out — a tilted playing video in the pile is a mess.
-        if (files.some(function (f) { return f.kind === 'image'; })) items.push({ kind: 'collage' });
-      } else {
-        files.forEach(function (f) { items.push({ kind: f.kind, name: f.name }); });
+      if (wantPhotos()) {
+        if (opts.imageStyle === 'collage') {
+          // Collage consumes the photos itself (one pseudo-item that stamps prints on its own
+          // clock); videos sit collage out — a tilted playing video in the pile is a mess.
+          if (photos.length) items.push({ kind: 'collage' });
+        } else {
+          photos.forEach(function (n) { items.push({ kind: 'image', name: n }); });
+        }
       }
+      if (wantVideos()) videos.forEach(function (n) { items.push({ kind: 'video', name: n }); });
     }
     playlist = items;
     reshuffle();
@@ -440,7 +467,7 @@
       var img = document.createElement('img');
       var done = false, fin = function () { if (!done) { done = true; ready(); } };
       img.onload = fin; img.onerror = fin;
-      img.src = '/screensaver/media?f=' + encodeURIComponent(item.name);
+      img.src = mediaUrl('image', item.name);
       layer.appendChild(img);
       setTimeout(fin, 4000);
     } else {
@@ -451,7 +478,7 @@
       var vdone = false, vfin = function () { if (!vdone) { vdone = true; ready(); } };
       v.addEventListener('canplaythrough', vfin);
       v.addEventListener('error', function () { vfin(); });
-      v.src = '/screensaver/media?f=' + encodeURIComponent(item.name);
+      v.src = mediaUrl('video', item.name);
       layer.appendChild(v);
       setTimeout(vfin, 4000);
     }
@@ -487,7 +514,6 @@
     clearTimer();
     swapping = false;
     pos = -1;
-    collageStamps = []; collageOrder = []; collagePos = -1;   // settings changed -> fresh board
     buildPlaylist();
     var empty = !playlist.length;
     $('hint').classList.toggle('show', empty);
@@ -501,12 +527,14 @@
 
   function fetchState(cb) {
     fetch('/screensaver/state').then(function (r) { return r.json(); }).then(function (s) {
-      files = (s && s.files) || [];
-      mediaDirLabel = (s && s.mediaDir) || '';
-      usingDefault = !!(s && s.usingDefault);
+      var p = (s && s.photos) || {}, v = (s && s.videos) || {};
+      photos = p.files || [];
+      videos = v.files || [];
+      photosDirLabel = p.dir || ''; photosDefault = p.usingDefault !== false;
+      videosDirLabel = v.dir || ''; videosDefault = v.usingDefault !== false;
       syncSettingsUI();
       if (cb) cb();
-    }).catch(function () { files = []; if (cb) cb(); });
+    }).catch(function () { photos = []; videos = []; if (cb) cb(); });
   }
 
   // =====================================================================================
@@ -564,6 +592,9 @@
         el.appendChild(b);
       });
     })();
+    renderSeg($('segKind'), [['both', 'Photos + videos'], ['photos', 'Photos'], ['videos', 'Videos']], opts.mediaKind, function (v) {
+      opts.mediaKind = v; postOption('mediaKind', v); syncSettingsUI(); restart();
+    });
     renderSeg($('segStyle'), [['slide', 'Slideshow'], ['collage', 'Collage']], opts.imageStyle, function (v) {
       opts.imageStyle = v; postOption('imageStyle', v); syncSettingsUI(); restart();
     });
@@ -579,10 +610,15 @@
     renderSeg($('segIdle'), [['0', 'Never'], ['1', '1m'], ['5', '5m'], ['10', '10m'], ['30', '30m'], ['60', '1h']], String(opts.idleMinutes), function (v) {
       opts.idleMinutes = v; postOption('idleMinutes', v); syncSettingsUI();
     });
+    var noMedia = opts.source === 'scenes';
     $('rowScene').style.display = opts.source === 'media' ? 'none' : '';
-    $('rowStyle').style.display = opts.source === 'scenes' ? 'none' : '';
-    $('rowFill').style.display = (opts.source === 'scenes' || opts.imageStyle === 'collage') ? 'none' : '';   // crop applies to slideshow images only
-    $('folderVal').textContent = mediaDirLabel ? (mediaDirLabel + (usingDefault ? '  (default)' : '')) : '—';
+    $('rowKind').style.display = noMedia ? 'none' : '';
+    $('rowStyle').style.display = (noMedia || opts.mediaKind === 'videos') ? 'none' : '';
+    $('rowFill').style.display = (noMedia || !wantPhotos() || opts.imageStyle === 'collage') ? 'none' : '';   // crop applies to slideshow photos only
+    $('rowPhotosDir').style.display = (noMedia || !wantPhotos()) ? 'none' : '';
+    $('rowVideosDir').style.display = (noMedia || !wantVideos()) ? 'none' : '';
+    $('photosVal').textContent = photosDirLabel ? (photosDirLabel + (photosDefault ? '  (default)' : '')) : '—';
+    $('videosVal').textContent = videosDirLabel ? (videosDirLabel + (videosDefault ? '  (default)' : '')) : '—';
   }
 
   function openSettings() { syncSettingsUI(); $('settingsOverlay').classList.add('show'); }
@@ -608,17 +644,24 @@
       });
     }).catch(function () {});
   }
-  $('folderBrowse').addEventListener('click', function () { $('folderOverlay').classList.add('show'); fbLoad(''); });
+  var fbTarget = 'photosDir';   // which folder option the browser is picking for
+  function openFolderBrowser(target, startDir) {
+    fbTarget = target;
+    $('folderOverlay').classList.add('show');
+    fbLoad(startDir || '');
+  }
+  $('photosBrowse').addEventListener('click', function () { openFolderBrowser('photosDir', photosDirLabel); });
+  $('videosBrowse').addEventListener('click', function () { openFolderBrowser('videosDir', videosDirLabel); });
   $('fbClose').addEventListener('click', function () { $('folderOverlay').classList.remove('show'); });
   $('fbUse').addEventListener('click', function () {
     if (!fbRoot) return;
-    postOption('mediaDir', fbRoot, function () {
+    postOption(fbTarget, fbRoot, function () {
       $('folderOverlay').classList.remove('show');
       fetchState(function () { restart(); });
     });
   });
   $('fbDefault').addEventListener('click', function () {
-    postOption('mediaDir', '', function () {
+    postOption(fbTarget, '', function () {
       $('folderOverlay').classList.remove('show');
       fetchState(function () { restart(); });
     });

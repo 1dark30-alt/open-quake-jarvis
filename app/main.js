@@ -225,13 +225,15 @@ const liveTranslateHost = createLiveTranslateHost({
   log: message => console.log('[livetranslate] ' + message),
   deps: voicePanelDeps('livetranslate'),
 });
-// Screensaver: media list + name->path resolution for /screensaver/media (sysserver streams the
-// bytes). The default media folder ships empty and is auto-created on first use.
+// Screensaver: media lists + name->path resolution for /screensaver/media (sysserver streams the
+// bytes). Photos and videos live in separate folders; the defaults ship empty and are
+// auto-created on first use.
 const screensaverHost = createScreensaverHost({
   appId: 'screensaver',
   log: message => console.log('[screensaver] ' + message),
   deps: voicePanelDeps('screensaver'),
-  defaultMediaDir: path.join(app.getPath('userData'), 'screensaver-media'),
+  defaultPhotosDir: path.join(app.getPath('userData'), 'screensaver-media', 'photos'),
+  defaultVideosDir: path.join(app.getPath('userData'), 'screensaver-media', 'videos'),
 });
 // Shared main.js plumbing for a voice-panel host. The ring guards are the two-app arbitration:
 // only the ON-SCREEN voice app may drive (or clear) the ring override -- a background app's
@@ -3037,11 +3039,13 @@ app.whenReady().then(async () => {
     const r = await dialog.showOpenDialog(configWin, { properties: ['openDirectory'] });
     return (r.canceled || !r.filePaths.length) ? null : r.filePaths[0];
   });
-  // Screensaver "Open media folder": resolve the effective folder (custom or the app's own default),
-  // create it if needed, and show it in Explorer. Directory-only — never opens (= executes) a file.
-  ipcMain.handle('openScreensaverMedia', (e, dir) => {
+  // Screensaver "Open photos/videos folder": resolve the effective folder (custom or the app's
+  // own default for that kind), create it if needed, and show it in Explorer. Directory-only —
+  // never opens (= executes) a file.
+  ipcMain.handle('openScreensaverMedia', (e, dir, kind) => {
     if (!isFrom(e, configWin)) return { ok: false };
-    const target = String(dir || '').trim() || path.join(app.getPath('userData'), 'screensaver-media');
+    const dflt = path.join(app.getPath('userData'), 'screensaver-media', kind === 'videos' ? 'videos' : 'photos');
+    const target = String(dir || '').trim() || dflt;
     try {
       fs.mkdirSync(target, { recursive: true });
       if (!fs.statSync(target).isDirectory()) return { ok: false };
