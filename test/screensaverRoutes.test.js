@@ -148,12 +148,13 @@ test('/option validates and persists panel-tunable keys', async () => {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key, value }),
   });
   const before = saves;
-  assert.equal((await post('fillMode', 'contain')).status, 200);
-  assert.equal(grid.options.fillMode, 'contain');
-  assert.equal((await (await post('fillMode', 'stretch')).json()).ok, false);   // rejected value
+  assert.equal((await (await post('imageFit', 'contain')).json()).ok, true);
+  assert.equal(grid.options.imageFit, 'contain');
+  assert.equal((await (await post('imageFit', 'stretch')).json()).ok, false);   // rejected value
+  assert.equal((await (await post('fillMode', 'contain')).json()).ok, false);   // retired key
   assert.equal((await (await post('nope', 'x')).json()).ok, false);             // unknown key
   assert.equal((await post('idleMinutes', '0')).status, 200);                   // 0 = never is storable
   assert.equal(grid.options.idleMinutes, '0');
   assert.ok(saves > before);
-  grid.options.idleMinutes = '10'; grid.options.fillMode = 'cover';
+  grid.options.idleMinutes = '10'; grid.options.imageFit = 'cover';
 });
