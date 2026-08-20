@@ -26,6 +26,7 @@
   var opts = {
     source: Q.get('source') || 'scenes',           // scenes | media | both
     imageFit: Q.get('imageFit') || 'cover',        // cover | contain — images only; videos never crop
+    imageStyle: Q.get('imageStyle') || 'slide',    // slide | collage — how images are shown
     intervalSec: parseInt(Q.get('intervalSec'), 10) || 10,
     shuffle: Q.get('shuffle') === '1',
     idleMinutes: Q.get('idleMinutes') || '10',
@@ -300,6 +301,81 @@
   var SCENE_FNS = { waves: sceneWaves, starfield: sceneStarfield, lava: sceneLava, fireflies: sceneFireflies, flurry: sceneFlurry };
 
   // =====================================================================================
+  // Collage (scrapbook) image style: photos drop in one per interval as tilted white-bordered
+  // prints and pile up. The pile (stamp records) lives outside the renderer so cycling away to
+  // a scene and back continues the same scrapbook instead of starting over.
+  // =====================================================================================
+  var collageStamps = [], collageOrder = [], collagePos = -1;
+  var COLLAGE_MAX = 200;          // pile cap — then the board quietly starts fresh
+  var COLLAGE_TURN_STAMPS = 6;    // prints added per cycle turn when scenes share the rotation
+
+  function shuffleArr(a) {
+    for (var i = a.length - 1; i > 0; i--) { var j = (Math.random() * (i + 1)) | 0, t = a[i]; a[i] = a[j]; a[j] = t; }
+  }
+
+  function drawStamp(ctx, rec) {
+    var b = 10;   // white border
+    ctx.save();
+    ctx.translate(rec.x, rec.y);
+    ctx.rotate(rec.rot);
+    ctx.shadowColor = 'rgba(0,0,0,0.55)';
+    ctx.shadowBlur = 22;
+    ctx.shadowOffsetX = 5; ctx.shadowOffsetY = 7;
+    ctx.fillStyle = '#f4f2ec';
+    ctx.fillRect(-rec.w / 2 - b, -rec.h / 2 - b, rec.w + b * 2, rec.h + b * 2);
+    ctx.shadowColor = 'transparent';
+    ctx.drawImage(rec.img, -rec.w / 2, -rec.h / 2, rec.w, rec.h);
+    ctx.restore();
+  }
+
+  function runCollage(cv) {
+    var ctx = cv.getContext('2d'), run = true, lastStamp = 0, stampsThisVisit = 0, loading = false;
+    var imgs = files.filter(function (f) { return f.kind === 'image'; }).map(function (f) { return f.name; });
+    if (collageOrder.length !== imgs.length) {   // media list changed -> new deck, same pile
+      collageOrder = imgs.slice(); collagePos = -1;
+      if (opts.shuffle) shuffleArr(collageOrder);
+    }
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    for (var i = 0; i < collageStamps.length; i++) drawStamp(ctx, collageStamps[i]);   // continue the pile
+    function stampNext() {
+      if (loading || !collageOrder.length) return;
+      loading = true;
+      collagePos++;
+      if (collagePos >= collageOrder.length) { collagePos = 0; if (opts.shuffle) shuffleArr(collageOrder); }
+      var img = new Image();
+      img.onload = function () {
+        loading = false;
+        if (!run) return;
+        var h = 200 + Math.random() * 140;
+        var w = Math.min(640, h * (img.naturalWidth / Math.max(1, img.naturalHeight)));
+        var rec = {
+          img: img, w: w, h: h,
+          x: 120 + Math.random() * (W - 240),
+          y: 90 + Math.random() * (H - 180),
+          rot: (Math.random() - 0.5) * 0.5,
+        };
+        if (collageStamps.length >= COLLAGE_MAX) {   // full board -> fresh start
+          collageStamps = [];
+          ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+        }
+        collageStamps.push(rec);
+        drawStamp(ctx, rec);
+        stampsThisVisit++;
+        if (playlist.length > 1 && stampsThisVisit >= COLLAGE_TURN_STAMPS) advance();
+      };
+      img.onerror = function () { loading = false; };
+      img.src = '/screensaver/media?f=' + encodeURIComponent(collageOrder[collagePos]);
+    }
+    (function tick() {
+      if (!run) return;
+      var now = Date.now();
+      if (now - lastStamp >= intervalMs()) { lastStamp = now; stampNext(); }
+      requestAnimationFrame(tick);
+    })();
+    return function () { run = false; };
+  }
+
+  // =====================================================================================
   // Playlist + dual-layer player
   // =====================================================================================
   var layers = [$('layerA'), $('layerB')];
@@ -315,7 +391,15 @@
     if (wantScenes) {
       SCENES.filter(function (n) { return opts.sceneOn[n]; }).forEach(function (n) { items.push({ kind: 'scene', name: n }); });
     }
-    if (wantMedia) files.forEach(function (f) { items.push({ kind: f.kind, name: f.name }); });
+    if (wantMedia) {
+      if (opts.imageStyle === 'collage') {
+        // Collage consumes the images itself (one pseudo-item that stamps prints on a timer);
+        // videos sit collage mode out — a tilted playing video in the pile is a mess.
+        if (files.some(function (f) { return f.kind === 'image'; })) items.push({ kind: 'collage' });
+      } else {
+        files.forEach(function (f) { items.push({ kind: f.kind, name: f.name }); });
+      }
+    }
     playlist = items;
     reshuffle();
   }
@@ -345,6 +429,12 @@
       cv.width = W; cv.height = H;
       layer.appendChild(cv);
       stopScene[layerIdx] = SCENE_FNS[item.name] ? SCENE_FNS[item.name](cv) : null;
+      ready();
+    } else if (item.kind === 'collage') {
+      var ccv = document.createElement('canvas');
+      ccv.width = W; ccv.height = H;
+      layer.appendChild(ccv);
+      stopScene[layerIdx] = runCollage(ccv);
       ready();
     } else if (item.kind === 'image') {
       var img = document.createElement('img');
@@ -387,8 +477,9 @@
         swapping = false;
       }, 900);
       // Images and scenes advance on the interval; videos advance on 'ended' (their own runtime
-      // wins over the interval — DK does the same). Single-item playlists just sit there.
-      if (playlist.length > 1 && item.kind !== 'video') armTimer(intervalMs());
+      // wins over the interval — DK does the same); the collage paces itself (a print per
+      // interval, several prints per cycle turn). Single-item playlists just sit there.
+      if (playlist.length > 1 && item.kind !== 'video' && item.kind !== 'collage') armTimer(intervalMs());
     });
   }
 
@@ -396,6 +487,7 @@
     clearTimer();
     swapping = false;
     pos = -1;
+    collageStamps = []; collageOrder = []; collagePos = -1;   // settings changed -> fresh board
     buildPlaylist();
     var empty = !playlist.length;
     $('hint').classList.toggle('show', empty);
@@ -472,6 +564,9 @@
         el.appendChild(b);
       });
     })();
+    renderSeg($('segStyle'), [['slide', 'Slideshow'], ['collage', 'Collage']], opts.imageStyle, function (v) {
+      opts.imageStyle = v; postOption('imageStyle', v); syncSettingsUI(); restart();
+    });
     renderSeg($('segFill'), [['cover', 'Crop to fill'], ['contain', "Don't crop"]], opts.imageFit, function (v) {
       opts.imageFit = v; postOption('imageFit', v); syncSettingsUI(); restart();
     });
@@ -485,7 +580,8 @@
       opts.idleMinutes = v; postOption('idleMinutes', v); syncSettingsUI();
     });
     $('rowScene').style.display = opts.source === 'media' ? 'none' : '';
-    $('rowFill').style.display = opts.source === 'scenes' ? 'none' : '';
+    $('rowStyle').style.display = opts.source === 'scenes' ? 'none' : '';
+    $('rowFill').style.display = (opts.source === 'scenes' || opts.imageStyle === 'collage') ? 'none' : '';   // crop applies to slideshow images only
     $('folderVal').textContent = mediaDirLabel ? (mediaDirLabel + (usingDefault ? '  (default)' : '')) : '—';
   }
 

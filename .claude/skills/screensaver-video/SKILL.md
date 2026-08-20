@@ -49,6 +49,7 @@ Sampler settings in the loop template are load-bearing — two-stage `KSamplerAd
 - Anchor the subject: "car parked completely still", "landscape stays still", or Wan will move it.
 - Negative prompt: `blurry, jerky motion, camera shake, zoom, pan, low quality, watermark, text overlay` (+ scene-specific, e.g. "car moving").
 - Matching a reference video: probe it (`ffprobe`) and pull frames (`ffmpeg -vf "select='eq(n\,0)+eq(n\,90)'"`), look at them, and write the still prompt from what you see. Reference wallpapers on the panel are 1920×480 60fps ~5s.
+- **Camera moves need forceful language.** Wan strongly prefers to anchor the scene: "the camera flies forward down the street" produced a static camera with only subject motion. What works: name the shot type ("FPV drone footage", "first-person view", "strong forward dolly"), describe the parallax ("buildings rushing toward the camera and sweeping past out of the frame edges", "road streaming underneath"), and put "static camera, stationary, frozen, no camera movement" in the negative. Orbits respond well to "the camera orbits around X, circling to reveal the rear" — that worked first try.
 
 ## Verify the loop, then trim
 

@@ -2150,13 +2150,13 @@
     if (!def) { el.innerHTML = ''; return; }
     if (!g.options) g.options = {};
     const valOf = key => (key in g.options) ? g.options[key] : ((def.options || []).find(x => x.key === key) || {}).default;
-    // Conditional option: equality (city slots only in Cities mode) or exclusion ("not": hide the
-    // scene pick when the source is media-only).
-    const visible = o => {
-      if (!o.showIf) return true;
-      const cur = String(valOf(o.showIf.key));
-      return ('not' in o.showIf) ? cur !== String(o.showIf.not) : cur === String(o.showIf.value);
+    // Conditional option: equality (city slots only in Cities mode), exclusion ("not": hide the
+    // scene pick when the source is media-only), or an array of either form (AND).
+    const showIfOk = c => {
+      const cur = String(valOf(c.key));
+      return ('not' in c) ? cur !== String(c.not) : cur === String(c.value);
     };
+    const visible = o => !o.showIf || (Array.isArray(o.showIf) ? o.showIf.every(showIfOk) : showIfOk(o.showIf));
     el.innerHTML = (def.options || []).filter(o => !o.editorCustom).filter(visible).map(o => {
       let v = (o.key in g.options) ? g.options[o.key] : o.default;
       let field;

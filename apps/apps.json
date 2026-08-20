@@ -6300,10 +6300,14 @@
       { "key": "sceneLava", "label": "Lava lamp", "type": "bool", "default": true, "editorCustom": true },
       { "key": "sceneFireflies", "label": "Fireflies", "type": "bool", "default": true, "editorCustom": true },
       { "key": "sceneFlurry", "label": "Flurry", "type": "bool", "default": true, "editorCustom": true },
+      { "key": "imageStyle", "label": "Image style", "type": "select", "default": "slide", "choices": [
+        ["slide", "Slideshow (one at a time)"],
+        ["collage", "Collage (scrapbook pile)"]
+      ], "showIf": { "key": "source", "not": "scenes" }, "help": "Collage drops each image in as a tilted print that piles up over time. Videos only play in Slideshow style." },
       { "key": "imageFit", "label": "Images", "type": "select", "default": "cover", "choices": [
         ["cover", "Crop to fill the screen"],
         ["contain", "Don't crop (letterbox)"]
-      ], "showIf": { "key": "source", "not": "scenes" }, "help": "Applies to images only — videos are never cropped (they letterbox unless they're already 1920×480)." },
+      ], "showIf": [{ "key": "source", "not": "scenes" }, { "key": "imageStyle", "value": "slide" }], "help": "Applies to slideshow images only — videos are never cropped (they letterbox unless they're already 1920×480)." },
       { "key": "intervalSec", "label": "Change every (s)", "type": "text", "default": "10", "help": "Seconds per image/scene. Videos always play through to the end instead." },
       { "key": "shuffle", "label": "Shuffle", "type": "bool", "default": false, "inline": "Shuffle the scenes", "showIf": { "key": "source", "value": "scenes" } },
       { "key": "shuffle", "label": "Shuffle", "type": "bool", "default": false, "inline": "Shuffle the media", "showIf": { "key": "source", "value": "media" } },

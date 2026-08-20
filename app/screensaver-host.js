@@ -35,6 +35,7 @@ const PANEL_OPTIONS = {
   sceneFireflies: boolOpt,
   sceneFlurry: boolOpt,
   imageFit: v => (v === 'cover' || v === 'contain') ? v : null,   // images only; videos never crop
+  imageStyle: v => (v === 'slide' || v === 'collage') ? v : null, // full-screen slideshow vs scrapbook pile
   intervalSec: v => { const n = parseInt(v, 10); return n >= 3 && n <= 86400 ? String(n) : null; },
   shuffle: boolOpt,
   idleMinutes: v => { const n = parseInt(v, 10); return n >= 0 && n <= 720 ? String(n) : null; },
