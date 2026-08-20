@@ -53,12 +53,12 @@ the ⚙ settings button).
 
 | Option | Meaning |
 |---|---|
-| What to show | Built-in scenes / My media folder / Both |
-| Built-in scene | All scenes (cycle) or one of Waves, Starfield |
-| Media fill | Fill the screen (crop) or fit inside (letterbox) |
-| Seconds per image/scene | Slideshow interval (videos always play through) |
-| Shuffle order | Randomize the playlist |
-| Auto-start after idle minutes | 0 = never; otherwise the idle time before auto-start |
-| Media folder | Blank = the app's own folder; Browse…/Open media folder buttons below |
+| Show | Built-in scenes / My media folder / Both |
+| Scene | All scenes (cycle) or one of Waves, Starfield (hidden for media-only pages) |
+| Media fill | Fill the screen (crop) or fit inside (letterbox) — media sources only |
+| Change every (s) | Seconds per image/scene (videos always play through) |
+| Shuffle | Randomize the playlist order |
+| Idle auto-start | Minutes of no input before auto-start; 0 = never |
+| Media folder | Blank = the app's own folder; Browse…/Open media folder buttons below (media sources only) |
 
 Everything except the folder path can also be changed on the panel: tap → **⚙**.

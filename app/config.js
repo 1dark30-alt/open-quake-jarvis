@@ -2150,12 +2150,28 @@
     if (!def) { el.innerHTML = ''; return; }
     if (!g.options) g.options = {};
     const valOf = key => (key in g.options) ? g.options[key] : ((def.options || []).find(x => x.key === key) || {}).default;
-    const visible = o => !o.showIf || String(valOf(o.showIf.key)) === String(o.showIf.value);   // conditional option (e.g. city slots only in Cities mode)
+    // Conditional option: equality (city slots only in Cities mode) or exclusion ("not": hide the
+    // scene pick when the source is media-only).
+    const visible = o => {
+      if (!o.showIf) return true;
+      const cur = String(valOf(o.showIf.key));
+      return ('not' in o.showIf) ? cur !== String(o.showIf.not) : cur === String(o.showIf.value);
+    };
     el.innerHTML = (def.options || []).filter(visible).map(o => {
-      const v = (o.key in g.options) ? g.options[o.key] : o.default;
+      let v = (o.key in g.options) ? g.options[o.key] : o.default;
       let field;
-      if (o.type === 'select') field = `<select class="aopt" data-key="${esc(o.key)}">${o.choices.map(ch => { const val = Array.isArray(ch) ? ch[0] : ch, lab = Array.isArray(ch) ? ch[1] : ch; return `<option value="${esc(val)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(lab)}</option>`; }).join('')}</select>`;
-      else if (o.type === 'bool') field = `<input type="checkbox" class="aopt" data-key="${esc(o.key)}" ${v ? 'checked' : ''} style="width:auto">`;
+      if (o.type === 'select') {
+        // Heal a stored value that no longer matches any choice (e.g. a removed screensaver scene)
+        // to the manifest default — otherwise the select silently displays something else entirely.
+        if (!o.choices.some(ch => String(Array.isArray(ch) ? ch[0] : ch) === String(v))) {
+          v = o.default;
+          if (o.key in g.options && g.options[o.key] !== o.default) { g.options[o.key] = o.default; markDirty(); }
+        }
+        field = `<select class="aopt" data-key="${esc(o.key)}">${o.choices.map(ch => { const val = Array.isArray(ch) ? ch[0] : ch, lab = Array.isArray(ch) ? ch[1] : ch; return `<option value="${esc(val)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(lab)}</option>`; }).join('')}</select>`;
+      }
+      else if (o.type === 'bool') field = o.inline
+        ? `<label class="iconopt" style="width:auto"><input type="checkbox" class="aopt" data-key="${esc(o.key)}" ${v ? 'checked' : ''} style="width:auto"> ${esc(o.inline)}</label>`
+        : `<input type="checkbox" class="aopt" data-key="${esc(o.key)}" ${v ? 'checked' : ''} style="width:auto">`;
       else if (o.type === 'secret') field = secretInput(v, `class="aopt" data-key="${esc(o.key)}"`);
       else field = `<input class="aopt" data-key="${esc(o.key)}" value="${esc(v)}">`;
       const help = o.help ? `<p class="hint" style="margin:-2px 0 10px 78px">${esc(o.help)}</p>` : '';
@@ -2168,7 +2184,9 @@
       if (o && (o.type === 'select' || o.type === 'bool')) renderAppOpts(g, def);   // re-evaluate conditional (showIf) options
       enforceMusicCap(g);   // re-apply the 2-of-3 panel cap (grid/art/lyrics)
     });
-    if (def.id === 'screensaver') appendScreensaverFolderRow(el, g);   // Browse/Open buttons under the mediaDir text field
+    // Browse/Open buttons under the mediaDir text field — only when that field is visible
+    // (scenes-only pages have no media folder to manage).
+    if (def.id === 'screensaver' && el.querySelector('.aopt[data-key="mediaDir"]')) appendScreensaverFolderRow(el, g);
     enforceMusicCap(g);
   }
   // Screensaver: the media folder needs a real folder picker and an "open in Explorer" shortcut —
