@@ -6,7 +6,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validatePanel, validCombo } = require('../app/panelSchema');
+const { validatePanel, validCombo, normalizeCombo } = require('../app/panelSchema');
 
 const CTX = { id: 'gaipnl1', existingIds: ['default', 'media'] };
 const keyTile = (label, value) => ({ label, icon: '⌨', type: 'key', value });
@@ -68,6 +68,30 @@ test('validCombo accepts the combos the runtime can actually tap', () => {
   for (const bad of ['', 'shift', 'control+alt', 'f0', 'f13', 'ctrl+banana']) {
     assert.equal(validCombo(bad), false, JSON.stringify(bad));
   }
+});
+
+test('spelled-out punctuation keys are rewritten to the character the device can tap', () => {
+  // Models write "control+alt+comma" (OBS Settings). robotjs taps characters, so passing the word
+  // through would give a tile that looks right and silently does nothing.
+  assert.equal(normalizeCombo('control+alt+comma'), 'control+alt+,');
+  assert.equal(normalizeCombo('control+period'), 'control+.');
+  assert.equal(normalizeCombo('control+bracketright'), 'control+]');
+  assert.equal(normalizeCombo('ctrl+minus'), 'ctrl+-');
+  assert.equal(normalizeCombo('control+equals'), 'control+=');
+  assert.equal(normalizeCombo('control+slash'), 'control+/');
+  assert.equal(normalizeCombo('control+backtick'), 'control+`');
+});
+
+test('a generated tile stores the normalized combo, not the model wording', () => {
+  const r = ok({ cols: 1, rows: 1, tiles: [{ label: 'Settings', icon: '⚙️', type: 'key', value: 'Control+Alt+Comma' }] });
+  assert.equal(r.page.tiles[0].value, 'control+alt+,');
+});
+
+test('macro keystroke steps are normalized the same way', () => {
+  const r = ok({ cols: 1, rows: 1, tiles: [{ label: 'M', type: 'macro', steps: [
+    { kind: 'key', value: 'CONTROL+COMMA' },
+  ] }] });
+  assert.equal(r.page.tiles[0].steps[0].value, 'control+,');
 });
 
 test('only http/https URLs survive', () => {

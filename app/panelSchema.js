@@ -30,6 +30,16 @@ const NAMED_KEYS = {
   audio_play: 1, audio_pause: 1, audio_stop: 1, audio_next: 1, audio_prev: 1,
   audio_mute: 1, audio_vol_up: 1, audio_vol_down: 1,
 };
+// Models write punctuation keys by name ("control+alt+comma"). robotjs taps CHARACTERS, so a
+// spelled-out name reaches the device as an unknown key and the tile silently does nothing — the
+// worst failure mode here, since the panel looks perfect. Normalize them to the character instead.
+const PUNCT_NAMES = {
+  comma: ',', period: '.', dot: '.', fullstop: '.', slash: '/', forwardslash: '/',
+  backslash: '\\', semicolon: ';', colon: ';', apostrophe: "'", quote: "'", singlequote: "'",
+  grave: '`', backtick: '`', tilde: '`', minus: '-', dash: '-', hyphen: '-',
+  equals: '=', equal: '=', bracketleft: '[', leftbracket: '[', openbracket: '[',
+  bracketright: ']', rightbracket: ']', closebracket: ']',
+};
 const TILE_TYPES = ['', 'app', 'url', 'page', 'cmd', 'open', 'system', 'counter', 'paste_text', 'key', 'macro', 'ha'];
 const STEP_KINDS = ['key', 'text', 'delay', 'app', 'open', 'url', 'cmd', 'page', 'system', 'ahk'];
 const SYSTEM_VALUES = ['lock', 'mic', 'monitor', 'config'];
@@ -52,25 +62,24 @@ function clampInt(v, lo, hi, dflt) {
   return Math.max(lo, Math.min(hi, n));
 }
 
-// A combo is valid if tapCombo() would find a key in it: at least one non-modifier token that
-// looks like something robotjs can tap. Mirrors mediaKeys.js:51-59.
-function validCombo(value) {
+// Rewrite a combo into what the runtime can actually tap, or null if there's no usable key in it.
+// Mirrors tapCombo's parse (mediaKeys.js:51-59): modifiers in any order, last non-modifier is the key.
+function normalizeCombo(value) {
   const toks = str(value).split('+').map(s => s.trim().toLowerCase()).filter(Boolean);
-  if (!toks.length) return false;
+  if (!toks.length) return null;
+  const mods = [];
   let key = null;
   for (const t of toks) {
-    if (MOD_ALIAS[t]) continue;
+    if (MOD_ALIAS[t]) { if (mods.indexOf(t) === -1) mods.push(t); continue; }
     key = t;                                  // last non-modifier wins, same as the runtime
   }
-  if (!key) return false;
-  if (NAMED_KEYS[key]) return true;
-  if (/^f([1-9]|1[0-2])$/.test(key)) return true;
-  // Any single character: robotjs taps characters directly, so punctuation keys are as valid as
-  // letters. Photoshop's [ and ] (brush size) and ; , . / etc. all land here — rejecting them would
-  // silently gut generated panels for real applications.
-  if (Array.from(key).length === 1) return true;
-  return false;
+  if (!key) return null;
+  if (PUNCT_NAMES[key]) key = PUNCT_NAMES[key];
+  const usable = NAMED_KEYS[key] || /^f([1-9]|1[0-2])$/.test(key) || Array.from(key).length === 1;
+  if (!usable) return null;
+  return mods.concat([key]).join('+');
 }
+function validCombo(value) { return normalizeCombo(value) !== null; }
 
 function validUrl(value) {
   const s = str(value).trim();
@@ -89,8 +98,9 @@ function normStep(raw, ctx, warn) {
   let value = str(raw.value);
   if (kind === 'delay') value = String(clampInt(value, 0, MAX_DELAY, 0));
   else if (kind === 'key') {
-    if (!validCombo(value)) { warn('dropped a macro keystroke step with an unusable combo "' + value + '"'); return null; }
-    value = value.trim().toLowerCase();
+    const combo = normalizeCombo(value);
+    if (!combo) { warn('dropped a macro keystroke step with an unusable combo "' + value + '"'); return null; }
+    value = combo;
   } else if (kind === 'url') {
     const u = validUrl(value);
     if (!u) { warn('dropped a macro website step with a non-http URL'); return null; }
@@ -125,8 +135,9 @@ function normTile(raw, index, ctx, warn, addRisky) {
 
   let value = str(raw.value);
   if (type === 'key') {
-    if (!validCombo(value)) { warn('replaced the "' + (t.label || 'unnamed') + '" tile — "' + value + '" is not a usable key combo'); return blankTile(); }
-    value = value.trim().toLowerCase();
+    const combo = normalizeCombo(value);
+    if (!combo) { warn('replaced the "' + (t.label || 'unnamed') + '" tile — "' + value + '" is not a usable key combo'); return blankTile(); }
+    value = combo;
   } else if (type === 'url') {
     const u = validUrl(value);
     if (!u) { warn('replaced the "' + (t.label || 'unnamed') + '" tile — only http/https links are allowed'); return blankTile(); }
@@ -205,4 +216,4 @@ function validatePanel(raw, ctx) {
   return { ok: true, page: { id, name, kind: 'grid', cols, rows, tiles }, warnings, risky };
 }
 
-module.exports = { validatePanel, validCombo, blankTile, TILE_TYPES, STEP_KINDS, SYSTEM_VALUES, MAX_COLS, MAX_ROWS };
+module.exports = { validatePanel, validCombo, normalizeCombo, blankTile, TILE_TYPES, STEP_KINDS, SYSTEM_VALUES, MAX_COLS, MAX_ROWS };
