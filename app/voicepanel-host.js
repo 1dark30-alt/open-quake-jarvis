@@ -87,11 +87,20 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
   adapter.on('model', ({ model }) => broadcast({ type: 'model', model }));
   adapter.on('models-changed', () => broadcast({ type: 'meta', meta: buildMeta() }));
   adapter.on('notice', ({ text }) => broadcast({ type: 'notice', text }));   // plain-language user guidance on the status line
+  // Panel Builder turns stream JSON. It is buffered here rather than shown, and doubles as the
+  // turn's text for backends whose turn-complete carries none (codex streams deltas and finishes
+  // with no final text — without this buffer its panels were never detected at all).
+  let panelTurnText = '';
   adapter.on('assistant-start', () => {
     state.status = 'thinking';
+    panelTurnText = '';
     broadcast({ type: 'assistant-start' });
+    if (panelProfileActive()) broadcast({ type: 'notice', text: 'Building your panel…' });
   });
   adapter.on('assistant-delta', ({ text }) => {
+    // Never stream a panel's JSON into the chat: the user should see a panel appear, not a wall of
+    // braces. A prose reply on this profile (a clarifying question) still renders at turn-complete.
+    if (panelProfileActive()) { panelTurnText += (text || ''); return; }
     // A dequeued turn's speech starts on its FIRST delta, not at dispatch -- so the previous
     // reply's spoken tail gets to finish (CLI semantics: complete the current task, then answer).
     if (queuedSpeakPending) {
@@ -110,7 +119,9 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     // THIS turn's text only: a turn that died without producing anything must broadcast null, not
     // echo the previous reply out of lastAssistantText (which made every errored turn "answer"
     // with the prior response, hardware-observed as the agent repeating itself).
-    const turnFinalText = typeof text === 'string' ? text : null;
+    let turnFinalText = typeof text === 'string' ? text : null;
+    // A Panel Builder turn whose backend reports no final text still has the deltas we buffered.
+    if (!turnFinalText && panelTurnText) turnFinalText = panelTurnText;
     if (turnFinalText != null) state.lastAssistantText = turnFinalText;
     state.error = error;
     // Panel Builder: while that profile is active a JSON reply is a PROPOSED PAGE, not something to
@@ -122,6 +133,17 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       try { panelOffered = panelReview.offer(turnFinalText); }
       catch (e) { say('panel review failed: ' + ((e && e.message) || e)); }
     }
+    // A JSON-shaped reply on this profile that we could NOT turn into a panel (truncated, wrong
+    // shape) must not be pasted at the user as braces — that is the "gibberish" case. Say something
+    // human instead, and speak that rather than the JSON.
+    let shownText = turnFinalText;
+    if (!panelOffered && turnFinalText && panelProfileActive()) {
+      const t = turnFinalText.trim();
+      if (t.charAt(0) === '{' || t.slice(0, 3) === '```') {
+        shownText = "I couldn't build that panel. Try saying it again, or describe it a bit differently.";
+        say('panel reply was JSON-shaped but unusable; showed a plain message instead');
+      }
+    }
     // A dequeued result-only turn (no deltas ever streamed) still owes its speech: open its stream
     // now so the whole-text finish below lands in it.
     if (queuedSpeakPending) {
@@ -132,8 +154,8 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     // streamed deltas, e.g. slash commands); errored turns get their speech cut instead.
     if (state.error) speech.abortActive('turn ended in error');
     else if (panelOffered) speech.abortActive('panel proposals are shown, not spoken');
-    else speech.finish(turnFinalText);
-    if (turnFinalText && !state.error && !panelOffered) transcript.push({ role: 'assistant', text: turnFinalText });
+    else speech.finish(shownText);
+    if (shownText && !state.error && !panelOffered) transcript.push({ role: 'assistant', text: shownText });
     if (panelOffered) {
       const ps = panelReview.state();
       transcript.push({ role: 'assistant', text: ps.status === 'ready'
@@ -141,7 +163,8 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
         : 'That panel could not be used: ' + ps.error });
       broadcast({ type: 'panel-review', panel: ps });
     }
-    broadcast({ type: 'turn-complete', text: panelOffered ? null : turnFinalText, error: state.error });
+    panelTurnText = '';
+    broadcast({ type: 'turn-complete', text: panelOffered ? null : shownText, error: state.error });
     // CLI semantics: the finished turn hands off to the next queued entry, in order.
     turnActive = false;
     if (turnQueue.length) {
