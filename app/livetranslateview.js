@@ -121,7 +121,9 @@ var listening = false;
 // AI provider: VAD-chunked utterances (same engine as the voice pages) -> POST /audio -> the host
 // transcribes (local Whisper) + translates (the configured AI endpoint) -> caption line.
 var vadHangoverMs = parseInt(Q.get('vadHangoverMs'), 10) || 800;
-var vad = (provider === 'ai' && window.createClaudeVoiceVAD) ? window.createClaudeVoiceVAD({ hangoverMs: vadHangoverMs }) : null;
+// maxUtteranceMs: force-cut nonstop speakers every 7s so captions keep flowing (a pause-waiting
+// VAD alone stalls forever on continuous speech — the original whisper-translate failure mode).
+var vad = (provider === 'ai' && window.createClaudeVoiceVAD) ? window.createClaudeVoiceVAD({ hangoverMs: vadHangoverMs, maxUtteranceMs: 7000 }) : null;
 function onSpeechStart() { showPending(); setStatus('listening'); }
 function onSpeechEnd(pcm16) {
   showPending();
