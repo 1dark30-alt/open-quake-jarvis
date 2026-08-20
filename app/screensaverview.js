@@ -345,13 +345,39 @@
       if (opts.shuffle) shuffleArr(order);
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     }
-    function markCells(rec) {
+    function cellSpan(rec) {
       var b = 14;   // border + a little shadow spread
-      var x0 = Math.max(0, rec.x - rec.w / 2 - b), x1 = Math.min(W, rec.x + rec.w / 2 + b);
-      var y0 = Math.max(0, rec.y - rec.h / 2 - b), y1 = Math.min(H, rec.y + rec.h / 2 + b);
-      var c0 = Math.floor(x0 / (W / COLLAGE_COLS)), c1 = Math.min(COLLAGE_COLS - 1, Math.floor(x1 / (W / COLLAGE_COLS)));
-      var r0 = Math.floor(y0 / (H / COLLAGE_ROWS)), r1 = Math.min(COLLAGE_ROWS - 1, Math.floor(y1 / (H / COLLAGE_ROWS)));
-      for (var r = r0; r <= r1; r++) for (var c = c0; c <= c1; c++) cells[r * COLLAGE_COLS + c] = true;
+      var x0 = Math.max(0, rec.x - rec.w / 2 - b), x1 = Math.min(W - 1, rec.x + rec.w / 2 + b);
+      var y0 = Math.max(0, rec.y - rec.h / 2 - b), y1 = Math.min(H - 1, rec.y + rec.h / 2 + b);
+      if (x0 > x1 || y0 > y1) return null;
+      return {
+        c0: Math.floor(x0 / (W / COLLAGE_COLS)), c1: Math.min(COLLAGE_COLS - 1, Math.floor(x1 / (W / COLLAGE_COLS))),
+        r0: Math.floor(y0 / (H / COLLAGE_ROWS)), r1: Math.min(COLLAGE_ROWS - 1, Math.floor(y1 / (H / COLLAGE_ROWS))),
+      };
+    }
+    function markCells(rec) {
+      var s = cellSpan(rec);
+      if (!s) return;
+      for (var r = s.r0; r <= s.r1; r++) for (var c = s.c0; c <= s.c1; c++) cells[r * COLLAGE_COLS + c] = true;
+    }
+    function freshCellsCovered(rec) {
+      var s = cellSpan(rec);
+      if (!s) return 0;
+      var n = 0;
+      for (var r = s.r0; r <= s.r1; r++) for (var c = s.c0; c <= s.c1; c++) if (!cells[r * COLLAGE_COLS + c]) n++;
+      return n;
+    }
+    // Spread the pile: audition a handful of random spots (centers may overhang the screen edges,
+    // scrapbook-style) and keep the one that covers the most still-empty board — prints seek the
+    // gaps instead of clustering mid-screen.
+    function placePrint(w, h) {
+      var best = null, bestScore = -1;
+      for (var c = 0; c < 8; c++) {
+        var cand = { w: w, h: h, x: -80 + Math.random() * (W + 160), y: -40 + Math.random() * (H + 80) };
+        var score = freshCellsCovered(cand);
+        if (score > bestScore) { bestScore = score; best = cand; }
+      }
+      return best;
     }
     function boardFull() {
       if (stamps >= COLLAGE_MAX_STAMPS) return true;
@@ -370,12 +396,9 @@
         if (!run) return;
         var h = 200 + Math.random() * 140;
         var w = Math.min(640, h * (img.naturalWidth / Math.max(1, img.naturalHeight)));
-        var rec = {
-          img: img, w: w, h: h,
-          x: 120 + Math.random() * (W - 240),
-          y: 90 + Math.random() * (H - 180),
-          rot: (Math.random() - 0.5) * 0.5,
-        };
+        var rec = placePrint(w, h);
+        rec.img = img;
+        rec.rot = (Math.random() - 0.5) * 0.5;
         drawStamp(ctx, rec);
         markCells(rec);
         stamps++;

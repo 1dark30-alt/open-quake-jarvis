@@ -85,6 +85,16 @@ Two 121f segments ≈ 15s total. For even longer arcs, insert more unpinned midd
 
 ComfyUI queues prompts and runs them serially — POST all jobs at once (capture each `prompt_id`), then watch with one Monitor task polling `/history/<id>` every ~20s, emitting `<name> DONE` / `<name> ERROR` per job. Process each video (download → verify → trim → deliver) as its notification arrives. Don't foreground-wait on renders; a single Bash call will time out before a render finishes.
 
+## Alternative: crop existing footage to panel size
+
+When you have real source video (a 4K wallpaper clip, stock footage), **cropping it to 1920×480 beats AI generation** — especially for anything with rigid 3D structure the i2v model mangles (a car walkaround is the clear case: real footage has true geometry and never morphs). Always prefer this when a good source exists.
+
+Geometry: the panel is 4:1, most source is 16:9. Going to 1920×480 means **cropping off top and bottom** (a horizontal band), never the sides — 4:1 is wider than 16:9, so horizontal fill is never needed. The max-vertical-content crop at full width is `crop=3840:960:0:<y>` then `scale=1920:480`; `y` is the only free parameter and it sets what's kept vertically. A tall subject (a front-on car ≈ 950px of the 960 band) leaves almost no headroom — you can center it *or* give it sky, not both; pick the offset that reads best.
+
+- Find the offset by subject: sample frames across the whole clip (subjects move), try a few `y` values, and look — don't guess. For the DK-Suite car platform clip, `y=820` centered the car across all rotation angles; `y=600` sat it low, `y=1020` clipped the roof.
+- The blurred-side-fill trick (fit whole frame, blur the pillars) exists but wastes ~two-thirds of a 4:1 strip on blur — only worth it if losing top/bottom content is unacceptable.
+- Encode `-crf 21 -preset slow` to stay visually clean and under the 30 MB delivery limit for a ~40s clip; strip audio (`-an`). Real footage rarely loops — that's fine, the panel plays through and moves on; only force a loop if asked.
+
 ## Gotchas
 
 - In Bash-tool loops on Windows, use **forward slashes** for absolute paths (`"C:/Program Files/..."`); backslash + `$var` in double quotes mangles the path.
