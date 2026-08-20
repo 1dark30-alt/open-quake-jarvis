@@ -364,10 +364,12 @@
   });
 
   // Pause the show while the page isn't visible (native grid shown over the webview); the media
-  // pages unload on real page switches, but grid pages only hide us.
+  // pages unload on real page switches, but grid pages only hide us. Videos advance on their own
+  // 'ended', so only the image/scene timer needs re-arming.
   document.addEventListener('visibilitychange', function () {
-    if (document.hidden) clearTimer();
-    else if (playlist.length > 1) armTimer(intervalMs());
+    if (document.hidden) { clearTimer(); return; }
+    var cur = playlist.length ? playlist[order[Math.max(0, pos)]] : null;
+    if (playlist.length > 1 && cur && cur.kind !== 'video') armTimer(intervalMs());
   });
 
   // ---- boot ----
