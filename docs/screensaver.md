@@ -59,7 +59,7 @@ the ⚙ settings button).
 | Scenes | One collapsed dropdown of independent toggles — Waves, Starfield, Lava lamp, Fireflies, Flurry, any mix (hidden for media-only pages) |
 | Media fill | Fill the screen (crop) or fit inside (letterbox) — media sources only |
 | Change every (s) | Seconds per image/scene (videos always play through) |
-| Shuffle | Randomize the order — the checkbox text names what it shuffles (scenes, videos, or both) per the Show setting |
+| Shuffle | Randomize the order — the checkbox text names what it shuffles (scenes, media, or both) per the Show setting |
 | Idle auto-start | Minutes of no input before auto-start; 0 = never |
 | Media folder | Blank = the app's own folder; Browse…/Open media folder buttons below (media sources only) |
 
