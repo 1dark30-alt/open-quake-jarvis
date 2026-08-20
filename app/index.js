@@ -448,7 +448,7 @@
       // the Claude Code app, which defaults its own click to 'enter' (tap-to-talk) so voice works
       // with zero setup rather than requiring the same manual per-page "Knob Override" that Music's
       // play/pause needs. An explicit per-page override (Advanced -> Knob) still wins either way.
-      const defaultClick = (cfg && (cfg.app === 'claude-voice' || cfg.app === 'codex-voice')) ? 'enter' : 'rotation';
+      const defaultClick = (cfg && (cfg.app === 'claude-voice' || cfg.app === 'codex-voice' || cfg.app === 'livetranslate')) ? 'enter' : 'rotation';
       const action = (k.index === 2)
         ? ((cfg._knob && cfg._knob.dblclick) || 'selector')
         : ((cfg._knob && cfg._knob.click) || defaultClick);
@@ -494,7 +494,7 @@
       return;
     }
     if (cfg && cfg.app === 'music') { panelApi.media('playpause'); return; }   // music: play/pause
-    if (cfg && (cfg.app === 'claude-voice' || cfg.app === 'codex-voice')) {   // voice apps: tap toggles the conversation on/off
+    if (cfg && (cfg.app === 'claude-voice' || cfg.app === 'codex-voice' || cfg.app === 'livetranslate')) {   // voice apps + live translate: tap toggles on/off
       if (webMode && webReady) web.executeJavaScript('window.oqxToggleConversation && window.oqxToggleConversation()').catch(function () {});
       return;
     }
