@@ -1743,6 +1743,7 @@ function startMicMonitor() {
     micMonitorProc = spawn(MIC_MONITOR_EXE, [allow], { stdio: ['ignore', 'pipe', 'ignore'] });
   } catch (e) { console.log('[meeting] mic monitor spawn failed:', e.message); micMonitorProc = null; return; }
   let buf = '';
+  let firstLine = true;   // a freshly spawned monitor announces its initial state before polling
   micMonitorProc.stdout.on('data', d => {
     buf += d.toString();
     let nl;
@@ -1750,7 +1751,12 @@ function startMicMonitor() {
       const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
       if (!line) continue;
       let msg; try { msg = JSON.parse(line); } catch (e) { continue; }
+      const wasFirst = firstLine; firstLine = false;
       if (!meetingRecorder) continue;
+      // That opening announcement is a baseline, not a transition. Treating an idle baseline as
+      // "the call ended" stopped recordings mid-meeting and split them into a second file every
+      // time the monitor was respawned. Only a later idle is a real call-ended.
+      if (wasFirst && !msg.active) continue;
       if (msg.active) meetingRecorder.autoStart(msg.app || null);
       else meetingRecorder.autoStop('call-ended');
     }
@@ -3021,6 +3027,7 @@ app.whenReady().then(async () => {
     const active = config.activeGridId;                          // the knob owns the live page — editor edits never change it
     const wasRot = rotationCfg().enabled;                        // detect a fresh off->on to auto-start (else keep the runtime pause)
     const prevMode = runMode();                                  // detect a run-mode change to rebuild the window live
+    const prevMeeting = meetingSettings();                       // recorder-affecting fields, read before config is swapped
     const oauth = config.settings && config.settings.oauth;
     if (oauth) {
       if (!newCfg.settings) newCfg.settings = {};
@@ -3034,8 +3041,14 @@ app.whenReady().then(async () => {
     reservedDisplay.setEnabled(reservedDisplayEnabled(appSettings()));   // stays off in software mode
     applyDisplayBlocker();                                               // keep-display-awake: only Panel mode + when enabled
     configureHaSchedule();                                          // pick up any haAuth edits without a restart
-    startMicMonitor();                                              // re-arm with any edited app allowlist
-    if (meetingRecorder) meetingRecorder.setMic(meetingSettings().micDevice);   // push an edited mic to the recorder
+    // Both of these disturb a live recording — respawning the monitor makes it re-announce its
+    // state, and setMic tears down and re-acquires the capture. Saving unrelated settings (slide
+    // capture, theme, anything) must not do either, so they fire only on a real change.
+    const nextMeeting = meetingSettings();
+    if (nextMeeting.recordApps !== prevMeeting.recordApps) startMicMonitor();   // re-arm with an edited app allowlist
+    if (meetingRecorder && nextMeeting.micDevice !== prevMeeting.micDevice) {
+      meetingRecorder.setMic(nextMeeting.micDevice);                            // push an edited mic to the recorder
+    }
     if (runMode() !== prevMode) applyRunModeLive();                 // run mode changed on the Software tab -> rebuild the window in-place
     return { ok: true };
   });
