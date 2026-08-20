@@ -34,13 +34,13 @@ don't — update it when either side changes.
 | Feature | Status |
 |---|---|
 | **AI prompt profiles** (the real feature inside their "Smart Profiles": named system-prompt modes in AI chat — theirs: 6, Chinese-only) | Approved and in progress on branch `smart-profiles`: a global library of 9 editable English profiles applying to **all five AI Voice backends**, switchable from the panel / by knob twist / per page, plus next/previous-page tile actions (their `nextProfile` parity). Rides on the AI Voice consolidation (branch `ai-voice`), which also adds the any-OpenAI-compatible-API chat backend. |
+| **Screensaver page — wallpapers incl. AI-generated** (teardown: their wallpaper feature, the "Vivid" profile, is a manual crossfading image/video page — no idle detection) | In progress on branch `screensaver`: a media slideshow page (drop images/videos in a folder — your own ComfyUI/AI renders go straight in, no credits) plus built-in animated scenes (color waves, starfield, code rain, big clock), and it **auto-starts when the panel sits idle and wakes back to where you were** — which theirs can't do. |
 
 ## ❌ Missing (the actual todo)
 
 | Feature | What they advertise | Lift for open-quake |
 |---|---|---|
 | **macOS / Linux support** | Multi-OS: Windows, macOS, Linux | **Large.** The launcher/editor are Electron (portable), but launch/volume/media/loopback-audio/reserved-display code is Windows-specific (README already flags this). Realistic only as a scoped "panel + apps, minus Windows-only extras" port. |
-| **AI-generated wallpapers** | "Wallpaper Generation by AI" + random wallpaper rotation | **Medium.** OQ has no wallpaper concept — pages are functional. Would be a new "ambient page" type + an image-gen backend (user's own key, same BYO pattern). Questionable value; the panel is usually showing something useful. |
 | **AI-generated shortcut panels** | Hold the knob and say e.g. "create a shortcut set for Photoshop masking" — the AI generates a custom control set for that application, no manual macro programming (Kickstarter/copilot pages) | **Medium — and a natural fit.** OQ already has the two halves: AI routing (CLI agents / OWUI / any endpoint, no credits) and pages-as-JSON tile grids with `key`-type shortcut tiles. The missing piece is a "Generate panel with AI" flow in the editor (and/or by voice on the panel): prompt → validated tile JSON → new page for review. Probably the highest-value item on this list. |
 | **Game voice control** | Mentioned in their showcase | **Unclear scope.** Nearest OQ equivalents: global hotkeys, macros, LucidType. Needs a real definition of what theirs does before it's worth chasing. |
 
