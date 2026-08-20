@@ -2202,10 +2202,9 @@
     const srcSel = el.querySelector('.aopt[data-key="source"]');
     if (!srcSel) return;
     const on = o => { const opts = g.options || {}; return (o.key in opts) ? !!opts[o.key] : !!o.default; };
-    const summary = () => {
-      const names = scenes.filter(on).map(o => o.label);
-      return names.length === scenes.length ? 'All scenes' : (names.length ? names.join(', ') : 'None selected — nothing will show');
-    };
+    // Collapsed label deliberately does NOT echo the picked scenes — a value there reads like a
+    // single-choice select. Only the all-off footgun still surfaces.
+    const summary = () => scenes.some(on) ? 'Click to select scenes' : 'None selected — nothing will show';
     const row = document.createElement('div');
     row.className = 'row';
     row.style.position = 'relative';
