@@ -138,6 +138,41 @@ test('stop clears the session', () => {
   assert.equal(adapter.sendTurn('x'), false);
 });
 
+test('AI profile rides as a system message; switching applies to the next request', () => {
+  const client = makeClient();
+  const { adapter } = makeAdapter(GOOD, client);
+  adapter.start({ profilePrompt: 'You are a translator.' });
+  adapter.sendTurn('Hallo');
+  assert.deepEqual(client.calls[0].payload.messages[0], { role: 'system', content: 'You are a translator.' });
+  assert.deepEqual(client.calls[0].payload.messages[1], { role: 'user', content: 'Hallo' });
+  client.finishWith(cbs => { cbs.onDelta('Hello'); cbs.onDone({ finishReason: 'stop' }); });
+  // Live switch: next request carries the NEW instruction, still exactly one system message.
+  adapter.setProfilePrompt('You are a poet.');
+  adapter.sendTurn('again');
+  const msgs = client.calls[1].payload.messages;
+  assert.deepEqual(msgs[0], { role: 'system', content: 'You are a poet.' });
+  assert.equal(msgs.filter(m => m.role === 'system').length, 1);
+  // Clearing it removes the system message entirely.
+  adapter.setProfilePrompt('');
+  client.finishWith(cbs => cbs.onDone({ finishReason: 'stop' }));
+  adapter.sendTurn('third');
+  assert.equal(client.calls[2].payload.messages.some(m => m.role === 'system'), false);
+});
+
+test('the profile system message survives the history cap', () => {
+  const client = makeClient();
+  const { adapter } = makeAdapter(GOOD, client);
+  adapter.start({ profilePrompt: 'Stay terse.' });
+  for (let i = 0; i < 30; i++) {
+    adapter.sendTurn('turn ' + i);
+    client.finishWith(cbs => { cbs.onDelta('r' + i); cbs.onDone({ finishReason: 'stop' }); });
+  }
+  adapter.sendTurn('last');
+  const msgs = client.calls[client.calls.length - 1].payload.messages;
+  assert.deepEqual(msgs[0], { role: 'system', content: 'Stay terse.' });   // never evicted
+  assert.ok(msgs.length <= 41, 'got ' + msgs.length);                      // 40 history + 1 system
+});
+
 test('deepseek models get thinking disabled; others send no thinking field', () => {
   const client = makeClient();
   const { adapter } = makeAdapter({ apiBaseUrl: 'https://x/v1', apiKey: 'k', apiModel: 'deepseek-v4-flash' }, client);

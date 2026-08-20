@@ -147,6 +147,24 @@
     font-weight: 600; cursor: pointer; text-align: left; padding: 10px 16px; }
   .modeOpt small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); margin-top: 2px; }
   .modeOpt.current { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: -2px; }
+  /* AI profile picker (Smart Profiles): full-screen grid of big touch cards — all nine visible at
+     1920x480 with no scrolling; the current profile is a filled accent card. */
+  #profileOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex;
+    align-items: center; justify-content: center; padding: 24px; z-index: 45; user-select: none; }
+  #profileOverlay.hidden { display: none; }
+  #profileCard { width: min(1600px, 100%); background: var(--surf); border: 1px solid var(--tile-bd);
+    border-radius: 16px; padding: 20px 24px; box-shadow: 0 12px 40px rgba(0,0,0,.4); }
+  #profileHead { display: flex; align-items: center; margin-bottom: 14px; }
+  #profileTitle { font-size: 18px; font-weight: 700; }
+  #profileCancel { margin-left: auto; min-height: 48px; min-width: 110px; border-radius: 10px;
+    border: 1px solid var(--tile-bd); background: var(--surf2); color: var(--fg); font-size: 15px;
+    font-weight: 600; cursor: pointer; }
+  #profileGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .profileOpt { min-height: 88px; border-radius: 14px; border: 1px solid var(--tile-bd);
+    background: var(--surf2); color: var(--fg); font-size: 24px; font-weight: 700; cursor: pointer;
+    padding: 10px 16px; text-align: center; overflow: hidden; }
+  .profileOpt:active { background: var(--tile-bd); }
+  .profileOpt.current { background: var(--accent); color: var(--accent-fg, #04120b); border-color: transparent; }
   #modeCancel { min-height: 48px; min-width: 96px; border-radius: 10px; border: 1px solid var(--tile-bd);
     background: var(--surf2); color: var(--fg); font-size: 15px; font-weight: 600; cursor: pointer; }
 
@@ -243,6 +261,7 @@
      keeps the accent so the primary action stays unmistakable. */
   #approvalAlways { background: var(--surf2); color: var(--fg); border: 1px solid var(--tile-bd); }
   #approvalAlways.hidden { display: none; }
+  .vpBtn.hidden { display: none; }   /* meta-driven hiding of rail buttons (Project/Mode/Profile) */
   #approvalApprove { background: var(--accent); color: var(--accent-fg, #04120b); }
 </style>
 </head>
@@ -270,6 +289,7 @@
         </button>
       </div>
       <button id="vpProject" class="vpBtn" type="button">Change folder</button>
+      <button id="vpProfile" class="vpBtn" type="button">Profile</button>
       <button id="vpSettings" class="vpBtn" type="button">Settings</button>
       <button id="vpMode" class="vpBtn" type="button">Mode</button>
       <div id="project"></div>
@@ -305,6 +325,12 @@
         <button class="modeOpt" data-mode="bypassPermissions" type="button">Full auto<small>No prompts at all — use with care</small></button>
       </div>
       <div style="display:flex;justify-content:flex-end"><button id="modeCancel" type="button">Cancel</button></div>
+    </div>
+  </div>
+  <div id="profileOverlay" class="hidden">
+    <div id="profileCard">
+      <div id="profileHead"><div id="profileTitle">AI profile</div><button id="profileCancel" type="button">Cancel</button></div>
+      <div id="profileGrid"></div>
     </div>
   </div>
   <div id="settingsOverlay" class="hidden">

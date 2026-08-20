@@ -93,6 +93,41 @@ function resolveLucidEndpoints(settings, grids) {
   return resolveVoiceEndpoints(settings, (g && g.options) || {});
 }
 
+// ---- AI Profiles (Smart Profiles) ----
+// A global library of named system-prompt presets for the AI Voice app. Seeded once; the user
+// edits them on the Settings -> AI Profiles tab. "General Chat" ships with an EMPTY prompt so the
+// default behavior is exactly the pre-feature behavior on every backend.
+const DEFAULT_AI_PROFILES = [
+  { id: 'chat', name: 'General Chat', prompt: '' },
+  { id: 'writer', name: 'Writer', prompt: "You are a skilled writer. Improve, draft, or continue whatever text the user gives you — clear, engaging, and in the user's tone unless asked otherwise. Output only the writing itself, no preamble or explanations." },
+  { id: 'translator', name: 'Translator', prompt: 'You are a professional translator. Translate everything the user says into natural, fluent English (or the target language they name), preserving tone and meaning. Output only the translation.' },
+  { id: 'summarizer', name: 'Summarizer', prompt: 'Summarize whatever the user provides. Lead with the key point, then up to five short bullets. Be faithful to the source; no opinions, no filler.' },
+  { id: 'coder', name: 'Coder', prompt: 'You are an expert programmer. Answer with working code and brief, precise explanations. Prefer minimal, idiomatic solutions; state assumptions in one line.' },
+  { id: 'researcher', name: 'Researcher', prompt: 'You are a research assistant. Answer with verifiable facts, note uncertainty explicitly, and structure longer answers with short headings. Be concise and neutral.' },
+  { id: 'math', name: 'Math', prompt: 'You are a mathematician. Solve what the user asks, show the essential steps compactly, and end with the result on its own line.' },
+  { id: 'email', name: 'Email', prompt: "Turn the user's words into a polished, professional email — greeting, body, sign-off. Keep it brief and courteous. Output only the email text." },
+  { id: 'explainer', name: 'Explainer', prompt: 'Explain the topic simply, as to a curious beginner — plain words, one good analogy, no jargon. Keep it under 200 words unless asked for depth.' },
+];
+
+// Seed config.settings.aiProfiles exactly once (idempotent — an existing array, even emptied or
+// edited by the user, is never touched). Mutates config, returns it.
+function ensureAiProfiles(config) {
+  if (!config) return config;
+  if (!config.settings) config.settings = {};
+  if (!Array.isArray(config.settings.aiProfiles)) {
+    config.settings.aiProfiles = DEFAULT_AI_PROFILES.map(p => Object.assign({}, p));
+  }
+  return config;
+}
+
+// Resolve a profile id against the library. '' / unknown ids fall back to the FIRST profile
+// (General Chat by default), so a deleted profile never breaks a page.
+function resolveAiProfile(settings, id) {
+  const list = (settings && Array.isArray(settings.aiProfiles)) ? settings.aiProfiles : DEFAULT_AI_PROFILES;
+  if (!list.length) return { id: '', name: 'General Chat', prompt: '' };
+  return list.find(p => p && p.id === id) || list[0];
+}
+
 // Whisper near-silence hallucinations to drop (exact whole-utterance match after normalization, so a
 // real sentence that merely contains these words still passes). Mirrors voicepanel-host.js.
 const STT_NOISE_PHRASES = ['thanks for watching'];
@@ -101,4 +136,4 @@ function isSttNoisePhrase(text) {
   return STT_NOISE_PHRASES.includes(norm);
 }
 
-module.exports = { VOICE_APPS, LEGACY_VOICE_APPS, VOICE_DEFAULTS, voiceSettings, resolveVoiceEndpoints, resolveLucidEndpoints, migrateVoiceConfig, isSttNoisePhrase };
+module.exports = { VOICE_APPS, LEGACY_VOICE_APPS, VOICE_DEFAULTS, DEFAULT_AI_PROFILES, ensureAiProfiles, resolveAiProfile, voiceSettings, resolveVoiceEndpoints, resolveLucidEndpoints, migrateVoiceConfig, isSttNoisePhrase };

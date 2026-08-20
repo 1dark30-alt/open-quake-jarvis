@@ -432,6 +432,7 @@ const VOICE_POST_SUFFIXES = new Set([
   '/session/start',
   '/session/stop',
   '/permission-mode',
+  '/profile',
   '/model',
   '/tts',
   '/option',
@@ -650,6 +651,14 @@ async function handler(req, res) {
       const mode = body && typeof body.mode === 'string' ? body.mode : '';
       if (!mode || !h.setPermissionMode) return done(res, false);
       let ok = false; try { ok = !!h.setPermissionMode(mode); } catch (e) {}
+      return done(res, ok);
+    }
+    // AI profile switch (Smart Profiles): the page's picker posts the chosen profile id.
+    if (voicePath === '/profile' && req.method === 'POST') {
+      let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+      const id = body && typeof body.id === 'string' ? body.id : null;
+      if (id == null || !h.setProfile) return done(res, false);
+      let ok = false; try { ok = !!h.setProfile(id); } catch (e) {}
       return done(res, ok);
     }
     if (voicePath === '/model' && req.method === 'POST') {

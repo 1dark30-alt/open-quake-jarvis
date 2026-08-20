@@ -164,6 +164,9 @@ function connectEvents() {
       showApprovalOverlay(msg.requestId, msg.toolName, msg.toolInput);
     } else if (msg.type === 'approval-decision' || msg.type === 'approval-timeout') {
       if (msg.requestId === pendingApprovalRequestId) hideApprovalOverlay();
+    } else if (msg.type === 'profile') {
+      currentProfileId = msg.id || '';
+      syncProfileUI();
     } else if (msg.type === 'permission-mode') {
       currentMode = msg.mode || currentMode;
       syncModeUI();
@@ -291,6 +294,11 @@ function applyMeta(meta) {
   if (meta.models && meta.models.length) {
     MODEL_PICKS = meta.models.map(function (m) { return [m.id, m.label]; });
     syncPickButtons();
+  }
+  if (meta.profiles) {
+    PROFILES = meta.profiles;
+    if (typeof meta.profile === 'string') currentProfileId = meta.profile;
+    syncProfileUI();
   }
 }
 fetch(BASE + '/state', { cache: 'no-store' }).then(function (r) { return r.json(); })
@@ -774,6 +782,44 @@ applyPause();
 // Switching restarts the claude process with --resume + the new --permission-mode (mode is a
 // launch-only CLI flag; the mid-session control message is undocumented/unsupported). The
 // conversation itself carries over -- expect a ~2s pause before the next turn responds.
+// ---- AI profile (Smart Profiles): big-card grid picker, list delivered via meta ----
+var PROFILES = [];            // [{id, name}] from meta.profiles
+var currentProfileId = '';
+function syncProfileUI() {
+  var cur = null;
+  for (var i = 0; i < PROFILES.length; i++) if (PROFILES[i].id === currentProfileId) cur = PROFILES[i];
+  $('vpProfile').textContent = cur ? 'Profile: ' + cur.name : 'Profile';
+  $('vpProfile').classList.toggle('hidden', !PROFILES.length);
+  document.querySelectorAll('.profileOpt').forEach(function (b) {
+    b.classList.toggle('current', b.getAttribute('data-profile') === currentProfileId);
+  });
+}
+function renderProfileGrid() {
+  var grid = $('profileGrid');
+  grid.innerHTML = '';
+  PROFILES.forEach(function (p) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'profileOpt';
+    b.setAttribute('data-profile', p.id);
+    b.textContent = p.name;
+    b.onclick = function () {
+      $('profileOverlay').classList.add('hidden');
+      if (p.id === currentProfileId) return;
+      fetch(BASE + '/profile', {
+        method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: p.id }),
+      }).then(function (r) { return r.json(); })
+        .then(function (r) { if (!r || !r.ok) setStatus(conversationOpen ? 'listening' : 'idle', 'Profile switch failed.'); })
+        .catch(function () { setStatus('error', 'Could not reach the panel server.'); });
+    };
+    grid.appendChild(b);
+  });
+  syncProfileUI();
+}
+$('vpProfile').onclick = function () { renderProfileGrid(); $('profileOverlay').classList.remove('hidden'); };
+$('profileCancel').onclick = function () { $('profileOverlay').classList.add('hidden'); };
+
 var MODE_LABELS = { manual: 'Manual', acceptEdits: 'Accept edits', plan: 'Plan', bypassPermissions: 'Full auto' };
 var currentMode = '';
 function syncModeUI() {

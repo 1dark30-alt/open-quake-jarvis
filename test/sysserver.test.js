@@ -49,6 +49,7 @@ function makeHandlers(sink) {
     sessionStart: dir => { sink.push(['session-start', dir]); return true; },
     sessionStop: () => { sink.push(['session-stop']); return true; },
     setPermissionMode: mode => { sink.push(['mode', mode]); return true; },
+    setProfile: id => { sink.push(['profile', id]); return true; },
     setModel: model => { sink.push(['model', model]); return true; },
     setOption: (key, value) => { sink.push(['option', key, value]); return true; },
     getProjects: () => ({ root: 'r', parent: null, dirs: [], current: '', recents: [] }),
@@ -310,6 +311,15 @@ test('approval tokens do not cross backends', async () => {
   });
   assert.equal(ok.status, 200);
   assert.deepEqual(alphaCalls, [['approval-request', 'Bash']]);
+});
+
+test('profile switch route dispatches per backend', async () => {
+  const r = await postJson('/ai-test/alpha/profile', { id: 'translator' });
+  assert.equal(r.status, 200);
+  assert.deepEqual(alphaCalls, [['profile', 'translator']]);
+  assert.deepEqual(betaCalls, []);
+  const bad = await postJson('/ai-test/alpha/profile', {});
+  assert.deepEqual(await bad.json(), { ok: false });
 });
 
 test('side-effecting backend routes fail closed without same-origin evidence', async () => {
