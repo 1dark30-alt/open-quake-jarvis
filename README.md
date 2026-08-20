@@ -78,6 +78,11 @@ It gives you:
   any OpenAI-compatible endpoint**) paired with your local Whisper STT for per-phrase captions with
   cross-sentence context. Optional save-to-file and a global **toggle hotkey**.
   → [Live Translate](docs/live-translate.md)
+- **Screensaver** — a screensaver page with **built-in animated scenes** (Waves, Starfield,
+  Lava lamp, Fireflies, Flurry — drawn live, no downloads) or **your own photos and videos**
+  (separate folders; photos as a crossfading slideshow or a scrapbook **collage**). Starts **by itself** after a configurable idle time and wakes back to
+  exactly the page you left on any touch or knob input; also selectable manually or in the page
+  rotation like any other page. → [Screensaver](docs/screensaver.md)
 - **Theming** — a global **light / dark / system** mode and an **accent color** (with savable
   presets) that drives the panel, the bundled apps, and the knob's RGB ring; web dashboards
   follow the light/dark mode, and any page can override the theme in its Advanced settings.
@@ -98,7 +103,7 @@ It gives you:
 
 > **Status:** early but capable. Touch, knob (incl. RGB ring + hold-to-talk), grids, merged
 > buttons, web dashboards, the bundled apps (clock / world clock / music / meeting / system
-> monitor / AI chat / Microsoft 365 / AI Voice (Claude Code · Codex · Copilot · Open WebUI · API) / LucidType / Live Translate),
+> monitor / AI chat / Microsoft 365 / AI Voice (Claude Code · Codex · Copilot · Open WebUI · API) / LucidType / Live Translate / Screensaver),
 > the three run modes (panel / software / monitor), light/dark + accent theming, the
 > on-board mic, and the editor are working and validated against real hardware. The panel is
 > driven as a normal external monitor (Windows sees a 480×1920 / 1920×480 display); pushing
@@ -109,7 +114,7 @@ It gives you:
 Detailed guides live in **[docs/](docs/README.md)**:
 
 - [The editor](docs/editor.md) · [Web dashboards](docs/dashboards.md) · [Bundled apps](docs/apps.md)
-- [Music controller](docs/music.md) · [System monitor](docs/system-monitor.md) · [Open WebUI chat + voice](docs/ai-chat.md) · [AI Voice](docs/ai-voice.md) · [Live Translate](docs/live-translate.md)
+- [Music controller](docs/music.md) · [System monitor](docs/system-monitor.md) · [Open WebUI chat + voice](docs/ai-chat.md) · [AI Voice](docs/ai-voice.md) · [Live Translate](docs/live-translate.md) · [Screensaver](docs/screensaver.md)
 - [Home Assistant integration](docs/home-assistant.md) · [Settings & knob lighting](docs/settings.md) · [Reserved Display](docs/reserved-display.md) · [Building & how it works](docs/building.md) · [Device protocol](docs/DEVICE_PROTOCOL.md)
 
 ## Companion project

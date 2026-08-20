@@ -2150,12 +2150,28 @@
     if (!def) { el.innerHTML = ''; return; }
     if (!g.options) g.options = {};
     const valOf = key => (key in g.options) ? g.options[key] : ((def.options || []).find(x => x.key === key) || {}).default;
-    const visible = o => !o.showIf || String(valOf(o.showIf.key)) === String(o.showIf.value);   // conditional option (e.g. city slots only in Cities mode)
-    el.innerHTML = (def.options || []).filter(visible).map(o => {
-      const v = (o.key in g.options) ? g.options[o.key] : o.default;
+    // Conditional option: equality (city slots only in Cities mode), exclusion ("not": hide the
+    // scene pick when the source is media-only), or an array of either form (AND).
+    const showIfOk = c => {
+      const cur = String(valOf(c.key));
+      return ('not' in c) ? cur !== String(c.not) : cur === String(c.value);
+    };
+    const visible = o => !o.showIf || (Array.isArray(o.showIf) ? o.showIf.every(showIfOk) : showIfOk(o.showIf));
+    el.innerHTML = (def.options || []).filter(o => !o.editorCustom).filter(visible).map(o => {
+      let v = (o.key in g.options) ? g.options[o.key] : o.default;
       let field;
-      if (o.type === 'select') field = `<select class="aopt" data-key="${esc(o.key)}">${o.choices.map(ch => { const val = Array.isArray(ch) ? ch[0] : ch, lab = Array.isArray(ch) ? ch[1] : ch; return `<option value="${esc(val)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(lab)}</option>`; }).join('')}</select>`;
-      else if (o.type === 'bool') field = `<input type="checkbox" class="aopt" data-key="${esc(o.key)}" ${v ? 'checked' : ''} style="width:auto">`;
+      if (o.type === 'select') {
+        // Heal a stored value that no longer matches any choice (e.g. a removed screensaver scene)
+        // to the manifest default — otherwise the select silently displays something else entirely.
+        if (!o.choices.some(ch => String(Array.isArray(ch) ? ch[0] : ch) === String(v))) {
+          v = o.default;
+          if (o.key in g.options && g.options[o.key] !== o.default) { g.options[o.key] = o.default; markDirty(); }
+        }
+        field = `<select class="aopt" data-key="${esc(o.key)}">${o.choices.map(ch => { const val = Array.isArray(ch) ? ch[0] : ch, lab = Array.isArray(ch) ? ch[1] : ch; return `<option value="${esc(val)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(lab)}</option>`; }).join('')}</select>`;
+      }
+      else if (o.type === 'bool') field = o.inline
+        ? `<label class="iconopt" style="width:auto"><input type="checkbox" class="aopt" data-key="${esc(o.key)}" ${v ? 'checked' : ''} style="width:auto"> ${esc(o.inline)}</label>`
+        : `<input type="checkbox" class="aopt" data-key="${esc(o.key)}" ${v ? 'checked' : ''} style="width:auto">`;
       else if (o.type === 'secret') field = secretInput(v, `class="aopt" data-key="${esc(o.key)}"`);
       else field = `<input class="aopt" data-key="${esc(o.key)}" value="${esc(v)}">`;
       const help = o.help ? `<p class="hint" style="margin:-2px 0 10px 78px">${esc(o.help)}</p>` : '';
@@ -2168,7 +2184,107 @@
       if (o && (o.type === 'select' || o.type === 'bool')) renderAppOpts(g, def);   // re-evaluate conditional (showIf) options
       enforceMusicCap(g);   // re-apply the 2-of-3 panel cap (grid/art/lyrics)
     });
+    if (def.id === 'screensaver') {
+      // Show: only ever three options, so all three sit as permanent side-by-side checkboxes in
+      // one row. Scenes (five options) stays a collapsed multiselect dropdown under it.
+      const showRow = appendScreensaverShowRow(el, g, def);
+      const scenesOn = (g.options && 'showScenes' in g.options) ? !!g.options.showScenes : true;
+      if (scenesOn) appendScreensaverMultiRow(el, g, def, 'Scenes', ['sceneWaves', 'sceneStarfield', 'sceneLava', 'sceneFireflies', 'sceneFlurry'], showRow);
+      // Browse/Open buttons under each folder text field — always present; hiding folder rows by
+      // mode just hides configuration people are looking for.
+      appendScreensaverFolderButtons(el, g, 'photosDir', 'photos');
+      appendScreensaverFolderButtons(el, g, 'videosDir', 'videos');
+    }
     enforceMusicCap(g);
+  }
+  // Screensaver: the Show group is three permanent side-by-side checkboxes on one row (only ever
+  // three options — no dropdown to hunt through). Toggling re-renders the box because these gate
+  // the style/crop/Scenes rows. The manifest keeps every pick as an ordinary bool option (query
+  // delivery, seeding, panel — all unchanged); `editorCustom` only skips generic rendering here.
+  function appendScreensaverShowRow(el, g, def) {
+    const opts = (def.options || []).filter(o => ['showScenes', 'showPhotos', 'showVideos'].includes(o.key));
+    const on = o => { const go = g.options || {}; return (o.key in go) ? !!go[o.key] : !!o.default; };
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<label>Show</label>` + opts.map(o =>
+      `<label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" data-sk="${esc(o.key)}" ${on(o) ? 'checked' : ''}> ${esc(o.label)}</label>`
+    ).join('');
+    el.insertAdjacentElement('afterbegin', row);
+    row.querySelectorAll('input[data-sk]').forEach(cb => cb.onchange = () => {
+      if (!g.options) g.options = {};
+      g.options[cb.dataset.sk] = cb.checked;
+      markDirty();
+      renderAppOpts(g, def);   // these toggles gate the style/crop/Scenes rows
+    });
+    return row;
+  }
+  // Scenes (five options) stays behind ONE collapsed multiselect dropdown — five always-visible
+  // checkbox rows ate the whole box. Stays open across picks; closes on a click anywhere outside.
+  function appendScreensaverMultiRow(el, g, def, rowLabel, keys, afterEl) {
+    const opts = (def.options || []).filter(o => keys.includes(o.key));
+    if (!opts.length) return null;
+    const on = o => { const go = g.options || {}; return (o.key in go) ? !!go[o.key] : !!o.default; };
+    // Collapsed label deliberately does NOT echo the picks — a value there reads like a
+    // single-choice select. Only the all-off footgun still surfaces.
+    const summary = () => opts.some(on) ? `Click to select` : 'None selected — nothing will show';
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.position = 'relative';
+    row.innerHTML = `<label>${esc(rowLabel)}</label>
+      <button type="button" data-ms-btn style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></button>
+      <div data-ms-menu style="display:none;position:absolute;left:78px;right:0;top:100%;z-index:30;background:#121a24;border:1px solid #2a3a4e;border-radius:8px;padding:8px 12px">
+        ${opts.map(o => `<label class="iconopt" style="display:block;width:auto;margin:4px 0"><input type="checkbox" data-sk="${esc(o.key)}" ${on(o) ? 'checked' : ''}> ${esc(o.label)}</label>`).join('')}
+      </div>`;
+    if (afterEl) afterEl.insertAdjacentElement('afterend', row);
+    else el.insertAdjacentElement('afterbegin', row);
+    const btn = row.querySelector('[data-ms-btn]'), menu = row.querySelector('[data-ms-menu]');
+    const setLabel = () => { btn.textContent = '▾ ' + summary(); };
+    setLabel();
+    btn.onclick = e => {
+      e.stopPropagation();
+      const opening = menu.style.display === 'none';
+      menu.style.display = opening ? '' : 'none';
+      // Close on the next click anywhere outside; clicks inside the menu don't bubble this far.
+      if (opening) setTimeout(() => document.addEventListener('click', () => { menu.style.display = 'none'; }, { once: true }), 0);
+    };
+    menu.onclick = e => e.stopPropagation();
+    menu.querySelectorAll('input[data-sk]').forEach(cb => cb.onchange = () => {
+      if (!g.options) g.options = {};
+      g.options[cb.dataset.sk] = cb.checked;
+      markDirty();
+      setLabel();
+    });
+    return row;
+  }
+  // Screensaver: each media folder needs a real folder picker and an "open in Explorer" shortcut —
+  // dynamic things apps.json can't express. Buttons are inserted right under that folder's own
+  // text field (inside renderAppOpts, so they survive the re-render select/bool changes trigger)
+  // and only when the field itself is visible.
+  function appendScreensaverFolderButtons(el, g, key, kind) {
+    const inp = el.querySelector(`.aopt[data-key="${key}"]`);
+    if (!inp) return;
+    const word = kind === 'videos' ? 'videos' : 'photos';
+    const exts = kind === 'videos' ? 'mp4/webm/mov' : 'jpg/png/gif/webp';
+    // The videos row also links the repo's community-wallpapers folder — ready-made 1920×480
+    // loops live there (kept out of the installer so the app stays small).
+    const community = kind === 'videos'
+      ? `<button type="button" data-ss-community="1">Download wallpapers ↗</button>` : '';
+    const row = document.createElement('div');
+    row.innerHTML = `<div class="row" style="gap:8px"><label></label>
+        <button type="button" data-ss-browse="${key}">Browse…</button>
+        <button type="button" data-ss-open="${key}">Open ${word} folder</button>${community}</div>
+      <p class="hint" style="margin:-2px 0 10px 78px">Drop ${exts} files in and the screensaver plays them.
+      Blank = the app's own screensaver-media\\${word} folder — Open shows whichever folder is in effect.</p>`;
+    inp.closest('.row').insertAdjacentElement('afterend', row);
+    row.querySelector(`[data-ss-browse="${key}"]`).onclick = async () => {
+      const p = await configApi.pickFolder();
+      if (!p) return;
+      g.options[key] = p; markDirty();
+      inp.value = p;
+    };
+    row.querySelector(`[data-ss-open="${key}"]`).onclick = () => configApi.openScreensaverMedia(optVal(g, key, ''), kind);
+    const cb = row.querySelector('[data-ss-community="1"]');
+    if (cb) cb.onclick = () => configApi.openExternal('https://github.com/TeeJS/open-quake/tree/main/community-wallpapers');
   }
 
   function deleteCurrentPage() {

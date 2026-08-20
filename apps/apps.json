@@ -6283,5 +6283,34 @@
       { "key": "micDevice", "label": "Microphone (set from the panel Settings)", "type": "text", "default": "" },
       { "key": "micHotkey", "label": "Toggle-translation hotkey (global)", "type": "text", "default": "" }
     ]
+  },
+  {
+    "id": "screensaver",
+    "name": "Screensaver",
+    "file": "screensaverview.html",
+    "served": true,
+    "options": [
+      { "key": "showScenes", "label": "Built-in scenes", "type": "bool", "default": true, "editorCustom": true },
+      { "key": "showPhotos", "label": "My photos", "type": "bool", "default": true, "editorCustom": true },
+      { "key": "showVideos", "label": "My videos", "type": "bool", "default": true, "editorCustom": true },
+      { "key": "sceneWaves", "label": "Waves", "type": "bool", "default": true, "editorCustom": true },
+      { "key": "sceneStarfield", "label": "Starfield", "type": "bool", "default": true, "editorCustom": true },
+      { "key": "sceneLava", "label": "Lava lamp", "type": "bool", "default": true, "editorCustom": true },
+      { "key": "sceneFireflies", "label": "Fireflies", "type": "bool", "default": true, "editorCustom": true },
+      { "key": "sceneFlurry", "label": "Flurry", "type": "bool", "default": true, "editorCustom": true },
+      { "key": "imageStyle", "label": "Photo style", "type": "select", "default": "slide", "choices": [
+        ["slide", "Slideshow (one at a time)"],
+        ["collage", "Collage (scrapbook pile)"]
+      ], "showIf": { "key": "showPhotos", "value": true }, "help": "Collage fills the screen with tilted prints (a new one every 0.5-1.5s), then holds the finished board for the interval. Videos always play full-screen." },
+      { "key": "imageFit", "label": "Photos", "type": "select", "default": "cover", "choices": [
+        ["cover", "Crop to fill the screen"],
+        ["contain", "Don't crop (letterbox)"]
+      ], "showIf": [{ "key": "showPhotos", "value": true }, { "key": "imageStyle", "value": "slide" }], "help": "Applies to slideshow photos only — videos are never cropped (they letterbox unless they're already 1920×480)." },
+      { "key": "intervalSec", "label": "Change every (s)", "type": "text", "default": "10", "help": "Seconds per photo/scene. Videos always play through to the end instead; a finished collage board is displayed for this long." },
+      { "key": "shuffle", "label": "Shuffle", "type": "bool", "default": false, "inline": "Shuffle the order" },
+      { "key": "idleMinutes", "label": "Idle auto-start", "type": "text", "default": "30", "help": "Minutes of no input; 0 = never. With no panel touches or knob turns for this long, the panel switches to this page by itself; any input returns to the page you were on. Panel mode only. 0 disables auto-start — the page then only appears manually or in rotation." },
+      { "key": "photosDir", "label": "Photos folder", "type": "text", "default": "", "serverOnly": true },
+      { "key": "videosDir", "label": "Videos folder", "type": "text", "default": "", "serverOnly": true }
+    ]
   }
 ]
