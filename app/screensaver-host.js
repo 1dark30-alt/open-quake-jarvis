@@ -34,7 +34,7 @@ const PANEL_OPTIONS = {
   sceneLava: boolOpt,
   sceneFireflies: boolOpt,
   sceneFlurry: boolOpt,
-  fillMode: v => (v === 'cover' || v === 'contain') ? v : null,
+  imageFit: v => (v === 'cover' || v === 'contain') ? v : null,   // images only; videos never crop
   intervalSec: v => { const n = parseInt(v, 10); return n >= 3 && n <= 86400 ? String(n) : null; },
   shuffle: boolOpt,
   idleMinutes: v => { const n = parseInt(v, 10); return n >= 0 && n <= 720 ? String(n) : null; },

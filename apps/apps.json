@@ -6300,10 +6300,10 @@
       { "key": "sceneLava", "label": "Lava lamp", "type": "bool", "default": true, "editorCustom": true },
       { "key": "sceneFireflies", "label": "Fireflies", "type": "bool", "default": true, "editorCustom": true },
       { "key": "sceneFlurry", "label": "Flurry", "type": "bool", "default": true, "editorCustom": true },
-      { "key": "fillMode", "label": "Media fill", "type": "select", "default": "cover", "choices": [
-        ["cover", "Fill the screen (crop)"],
-        ["contain", "Fit inside (letterbox)"]
-      ], "showIf": { "key": "source", "not": "scenes" } },
+      { "key": "imageFit", "label": "Images", "type": "select", "default": "cover", "choices": [
+        ["cover", "Crop to fill the screen"],
+        ["contain", "Don't crop (letterbox)"]
+      ], "showIf": { "key": "source", "not": "scenes" }, "help": "Applies to images only — videos are never cropped (they letterbox unless they're already 1920×480)." },
       { "key": "intervalSec", "label": "Change every (s)", "type": "text", "default": "10", "help": "Seconds per image/scene. Videos always play through to the end instead." },
       { "key": "shuffle", "label": "Shuffle", "type": "bool", "default": false, "inline": "Shuffle the scenes", "showIf": { "key": "source", "value": "scenes" } },
       { "key": "shuffle", "label": "Shuffle", "type": "bool", "default": false, "inline": "Shuffle the media", "showIf": { "key": "source", "value": "media" } },

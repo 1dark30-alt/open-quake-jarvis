@@ -16,8 +16,9 @@ immediately, nothing to download or configure.
   smoke comets with cycling colors). Each scene is its own on/off toggle — the cycle plays
   whatever mix you leave on (the editor keeps the toggles behind one Scenes dropdown).
 - **My media folder** — a crossfading slideshow of your own images (jpg/png/gif/webp) and videos
-  (mp4/webm/mov). Images change on the interval you pick; videos always play through to the end,
-  muted. Fill the screen (crop) or fit inside (letterbox); shuffle optional.
+  (mp4/webm/mov). Images change on the interval you pick and can crop to fill the screen or show
+  uncropped (letterboxed); videos always play through to the end, muted, and are never cropped.
+  Shuffle optional.
 - **Both** — scenes and media mixed into one playlist.
 
 ### The media folder
@@ -57,7 +58,7 @@ the ⚙ settings button).
 |---|---|
 | Show | Built-in scenes / My media folder / Both |
 | Scenes | One collapsed dropdown of independent toggles — Waves, Starfield, Lava lamp, Fireflies, Flurry, any mix (hidden for media-only pages) |
-| Media fill | Fill the screen (crop) or fit inside (letterbox) — media sources only |
+| Images | Crop to fill the screen, or don't crop (letterbox) — images only; videos never crop |
 | Change every (s) | Seconds per image/scene (videos always play through) |
 | Shuffle | Randomize the order — the checkbox text names what it shuffles (scenes, media, or both) per the Show setting |
 | Idle auto-start | Minutes of no input before auto-start; 0 = never |

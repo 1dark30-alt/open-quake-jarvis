@@ -25,7 +25,7 @@
   // ---- options (query-string delivery; panel edits POST /option and update this copy) ----
   var opts = {
     source: Q.get('source') || 'scenes',           // scenes | media | both
-    fillMode: Q.get('fillMode') || 'cover',        // cover | contain (media only)
+    imageFit: Q.get('imageFit') || 'cover',        // cover | contain — images only; videos never crop
     intervalSec: parseInt(Q.get('intervalSec'), 10) || 10,
     shuffle: Q.get('shuffle') === '1',
     idleMinutes: Q.get('idleMinutes') || '10',
@@ -335,8 +335,11 @@
     var layer = layers[layerIdx];
     if (stopScene[layerIdx]) { stopScene[layerIdx](); stopScene[layerIdx] = null; }
     layer.innerHTML = '';
-    layer.classList.toggle('fit-cover', opts.fillMode !== 'contain');
-    layer.classList.toggle('fit-contain', opts.fillMode === 'contain');
+    // Crop choice applies to images only — videos always letterbox (a non-native aspect gets
+    // bars, a 1920x480 render fills exactly either way). Scenes draw at the native size.
+    var fitContain = item.kind === 'video' || opts.imageFit === 'contain';
+    layer.classList.toggle('fit-cover', !fitContain);
+    layer.classList.toggle('fit-contain', fitContain);
     if (item.kind === 'scene') {
       var cv = document.createElement('canvas');
       cv.width = W; cv.height = H;
@@ -469,8 +472,8 @@
         el.appendChild(b);
       });
     })();
-    renderSeg($('segFill'), [['cover', 'Fill screen'], ['contain', 'Fit inside']], opts.fillMode, function (v) {
-      opts.fillMode = v; postOption('fillMode', v); syncSettingsUI(); restart();
+    renderSeg($('segFill'), [['cover', 'Crop to fill'], ['contain', "Don't crop"]], opts.imageFit, function (v) {
+      opts.imageFit = v; postOption('imageFit', v); syncSettingsUI(); restart();
     });
     renderSeg($('segShuffle'), [['0', 'Off'], ['1', 'On']], opts.shuffle ? '1' : '0', function (v) {
       opts.shuffle = v === '1'; postOption('shuffle', v); syncSettingsUI(); restart();
