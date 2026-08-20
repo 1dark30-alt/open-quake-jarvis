@@ -581,7 +581,7 @@ $('devCancel').onclick = function () { $('devOverlay').classList.add('hidden'); 
 // start/end on its own, no holding anything down), a second tap closes it. See the plan's hard
 // constraint #4 -- push-to-talk was explicitly rejected.
 var conversationOpen = false;
-var vadHangoverMs = parseInt(Q.get('vadHangoverMs'), 10) || 800;
+var vadHangoverMs = parseInt(Q.get('vadHangoverMs'), 10) || 400;   // 0.4s default — snappier out of the box (matches LucidType)
 var vad = window.createClaudeVoiceVAD ? window.createClaudeVoiceVAD({ hangoverMs: vadHangoverMs }) : null;
 function onVADSpeechStart() {
   if (suppressVAD) return;
