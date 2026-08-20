@@ -38,3 +38,6 @@ app/native/open_quake_dpapi.node
 
 # personal analysis prompt (bundled meeting-analysis-prompt.md stays stock)
 /my-meeting-analysis-prompt.md
+
+# Local ComfyUI screensaver-video skill (contains personal LAN endpoints - keep untracked)
+.claude/skills/screensaver-video/
