@@ -1715,6 +1715,7 @@
           <select id="xlAiPreset" style="width:230px">
             <option value="deepseek">DeepSeek</option>
             <option value="openai">OpenAI</option>
+            <option value="openrouter">OpenRouter</option>
             <option value="custom">Custom / Open WebUI…</option>
           </select>
           <input id="xlAiUrl" value="${esc(optVal(g, 'aiBaseUrl', 'https://api.deepseek.com'))}" placeholder="https://api.deepseek.com" style="flex:1; margin-left:8px"></div>
@@ -1931,11 +1932,11 @@
       document.getElementById('xlSaveFolderBrowse').onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('xlSaveFolder').value = p; setOpt('saveFolder', p); } };
       // AI provider fields. The endpoint preset is a convenience that fills URL + model; the stored
       // truth is always aiBaseUrl/aiModel, so "Custom" covers Open WebUI, Ollama, or anything else.
-      const AI_PRESETS = { deepseek: { url: 'https://api.deepseek.com', model: 'deepseek-v4-flash' }, openai: { url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' } };
+      const AI_PRESETS = { deepseek: { url: 'https://api.deepseek.com', model: 'deepseek-v4-flash' }, openai: { url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' }, openrouter: { url: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o-mini' } };
       const xlAiUrl = document.getElementById('xlAiUrl'), xlAiPreset = document.getElementById('xlAiPreset');
       if (xlAiUrl) {
         const cur = xlAiUrl.value.trim();
-        xlAiPreset.value = cur === AI_PRESETS.deepseek.url ? 'deepseek' : cur === AI_PRESETS.openai.url ? 'openai' : 'custom';
+        xlAiPreset.value = cur === AI_PRESETS.deepseek.url ? 'deepseek' : cur === AI_PRESETS.openai.url ? 'openai' : cur === AI_PRESETS.openrouter.url ? 'openrouter' : 'custom';
         xlAiPreset.onchange = e => { const p = AI_PRESETS[e.target.value]; if (p) { xlAiUrl.value = p.url; setOpt('aiBaseUrl', p.url); document.getElementById('xlAiModel').value = p.model; setOpt('aiModel', p.model); } };
         xlAiUrl.oninput = e => { setOpt('aiBaseUrl', e.target.value.trim()); };
         document.getElementById('xlAiKey').onchange = e => setOpt('aiApiKey', e.target.value);
