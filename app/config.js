@@ -1635,8 +1635,7 @@
           <input id="cvApiUrl" value="${esc(cvVal('apiBaseUrl', 'https://api.openai.com/v1'))}" placeholder="https://api.openai.com/v1" style="flex:1; margin-left:8px"></div>
         <div class="row"><label>API key</label>${secretInput(cvVal('apiKey', ''), 'id="cvApiKey" style="flex:1"')}</div>
         <div class="row"><label>Model</label>
-          <input id="cvApiModel" list="cvApiModelList" value="${esc(cvVal('apiModel', ''))}" placeholder="e.g. gpt-4o-mini" style="width:320px" autocomplete="off">
-          <datalist id="cvApiModelList"></datalist>
+          <input id="cvApiModel" value="${esc(cvVal('apiModel', ''))}" placeholder="e.g. gpt-4o-mini" style="width:320px" autocomplete="off">
           <span class="hint" id="cvApiModelHint" style="margin:0 0 0 8px"></span></div>
         <p class="hint">Any OpenAI-compatible chat endpoint. Plain conversation — no tools, no file access. The key is stored encrypted and never reaches the panel page.</p>` : `
         <div class="row"><label>Default folder</label>
@@ -1887,19 +1886,45 @@
         cvApiUrl.oninput = e => setOpt('apiBaseUrl', e.target.value.trim());
         document.getElementById('cvApiKey').onchange = e => setOpt('apiKey', e.target.value);
         document.getElementById('cvApiModel').oninput = e => setOpt('apiModel', e.target.value.trim());
-        // Fill the Model combo from the endpoint's standard /models (typing always works too;
-        // a failed fetch just leaves the hint naming why). Re-fetched when URL or key change.
+        // Fill the Model picker from the endpoint's standard /models. On success the text input is
+        // swapped for a real <select> (a datalist filters by the box's current text, so with any
+        // value present it looks broken); "Type a model name…" swaps back for unlisted models.
+        // Typing always works pre-fetch and on failure. Re-fetched when URL or key change.
         const cvFillModels = () => {
-          const hint = document.getElementById('cvApiModelHint'), dl = document.getElementById('cvApiModelList');
+          const hint = document.getElementById('cvApiModelHint');
+          const inp = document.getElementById('cvApiModel');
           const url = cvApiUrl.value.trim(), key = document.getElementById('cvApiKey').value;
-          if (!url || !key) { if (hint) hint.textContent = ''; return; }
+          if (!url || !key || !inp) { if (hint) hint.textContent = ''; return; }
           if (hint) hint.textContent = 'loading models…';
           configApi.probeApiModels(url, key).then(r => {
-            if (!hint || !dl) return;
-            if (r && r.ok && r.models && r.models.length) {
-              dl.innerHTML = r.models.map(m => `<option value="${esc(m)}">`).join('');
-              hint.textContent = r.models.length + ' models — click the box to pick';
-            } else hint.textContent = r && r.error ? 'model list unavailable: ' + r.error : 'model list unavailable';
+            if (!hint || !inp) return;
+            if (!(r && r.ok && r.models && r.models.length)) {
+              hint.textContent = r && r.error ? 'model list unavailable: ' + r.error : 'model list unavailable';
+              return;
+            }
+            let sel = document.getElementById('cvApiModelSel');
+            if (!sel) {
+              sel = document.createElement('select');
+              sel.id = 'cvApiModelSel';
+              sel.style.width = '320px';
+              inp.parentElement.insertBefore(sel, inp);
+            }
+            const cur = inp.value.trim();
+            sel.innerHTML = '';
+            const add = (v, label) => { const o = document.createElement('option'); o.value = v; o.textContent = label || v; sel.appendChild(o); };
+            if (cur && !r.models.includes(cur)) add(cur, cur + ' (not in the list)');
+            r.models.forEach(m => add(m));
+            add('__custom__', 'Type a model name…');
+            sel.value = cur && !r.models.includes(cur) ? cur : (r.models.includes(cur) ? cur : r.models[0]);
+            inp.style.display = 'none';
+            sel.onchange = e => {
+              if (e.target.value === '__custom__') { sel.remove(); inp.style.display = ''; inp.focus(); inp.select(); return; }
+              inp.value = e.target.value;
+              setOpt('apiModel', e.target.value);
+            };
+            // The select landing on the first model (empty box case) is a real pick — persist it.
+            if (!cur && sel.value) { inp.value = sel.value; setOpt('apiModel', sel.value); }
+            hint.textContent = r.models.length + ' models';
           }).catch(() => { if (hint) hint.textContent = 'model list unavailable'; });
         };
         cvFillModels();
