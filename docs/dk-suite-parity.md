@@ -1,9 +1,11 @@
 # DK-Suite feature parity
 
-What the commercial package advertises versus what open-quake ships. The comparison source is the
+What the commercial package advertises versus what open-quake ships. Comparison sources: the
 [DECOKEE Quake product page](https://www.decokee.com/products/decokee-quake-desktop-ai-assistant)
-(as advertised 2026-08); the open-quake side is current `main` (v0.5.7). This is the running list of
-what they have that we don't — update it when either side changes.
+plus their [Kickstarter](https://www.kickstarter.com/projects/decokee/decokee-quake-the-ultimate-desktop-ai-copilot)
+and [AI-copilot](https://www.decokee.com/pages/quake-ai-copilot) pages (as advertised 2026-08); the
+open-quake side is current `main` (v0.5.7). This is the running list of what they have that we
+don't — update it when either side changes.
 
 > open-quake is an independent community project, not affiliated with DECOKEE — see the
 > [README disclaimer](../README.md). Feature names in the "theirs" column are their marketing terms.
@@ -32,6 +34,7 @@ what they have that we don't — update it when either side changes.
 | **macOS / Linux support** | Multi-OS: Windows, macOS, Linux | **Large.** The launcher/editor are Electron (portable), but launch/volume/media/loopback-audio/reserved-display code is Windows-specific (README already flags this). Realistic only as a scoped "panel + apps, minus Windows-only extras" port. |
 | **AI-generated wallpapers** | "Wallpaper Generation by AI" + random wallpaper rotation | **Medium.** OQ has no wallpaper concept — pages are functional. Would be a new "ambient page" type + an image-gen backend (user's own key, same BYO pattern). Questionable value; the panel is usually showing something useful. |
 | **Smart Profiles (9 modes via knob)** | Knob-switchable AI modes (writing, coding, translation, research…) | **Small, mostly framing.** Multiple AI pages with per-page backend/model/prompt + page hotkeys already do this; what's missing is a packaged "profile" concept (per-page system prompt + a polished quick-switch). A per-page system-prompt option would close most of it. |
+| **AI-generated shortcut panels** | Hold the knob and say e.g. "create a shortcut set for Photoshop masking" — the AI generates a custom control set for that application, no manual macro programming (Kickstarter/copilot pages) | **Medium — and a natural fit.** OQ already has the two halves: AI routing (CLI agents / OWUI / any endpoint, no credits) and pages-as-JSON tile grids with `key`-type shortcut tiles. The missing piece is a "Generate panel with AI" flow in the editor (and/or by voice on the panel): prompt → validated tile JSON → new page for review. Probably the highest-value item on this list. |
 | **Game voice control** | Mentioned in their showcase | **Unclear scope.** Nearest OQ equivalents: global hotkeys, macros, LucidType. Needs a real definition of what theirs does before it's worth chasing. |
 
 ## Notes
