@@ -33,7 +33,7 @@
     imageStyle: Q.get('imageStyle') || 'slide',    // slide | collage — how photos are shown
     intervalSec: parseInt(Q.get('intervalSec'), 10) || 10,
     shuffle: Q.get('shuffle') === '1',
-    idleMinutes: Q.get('idleMinutes') || '10',
+    idleMinutes: Q.get('idleMinutes') || '30',
     sceneOn: {},                                   // per-scene include toggles (any mix)
   };
   var SCENES = ['waves', 'starfield', 'lava', 'fireflies', 'flurry'];

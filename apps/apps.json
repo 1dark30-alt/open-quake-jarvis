@@ -6308,7 +6308,7 @@
       ], "showIf": [{ "key": "showPhotos", "value": true }, { "key": "imageStyle", "value": "slide" }], "help": "Applies to slideshow photos only — videos are never cropped (they letterbox unless they're already 1920×480)." },
       { "key": "intervalSec", "label": "Change every (s)", "type": "text", "default": "10", "help": "Seconds per photo/scene. Videos always play through to the end instead; a finished collage board is displayed for this long." },
       { "key": "shuffle", "label": "Shuffle", "type": "bool", "default": false, "inline": "Shuffle the order" },
-      { "key": "idleMinutes", "label": "Idle auto-start", "type": "text", "default": "10", "help": "Minutes of no input; 0 = never. With no panel touches or knob turns for this long, the panel switches to this page by itself; any input returns to the page you were on. Panel mode only. 0 disables auto-start — the page then only appears manually or in rotation." },
+      { "key": "idleMinutes", "label": "Idle auto-start", "type": "text", "default": "30", "help": "Minutes of no input; 0 = never. With no panel touches or knob turns for this long, the panel switches to this page by itself; any input returns to the page you were on. Panel mode only. 0 disables auto-start — the page then only appears manually or in rotation." },
       { "key": "photosDir", "label": "Photos folder", "type": "text", "default": "", "serverOnly": true },
       { "key": "videosDir", "label": "Videos folder", "type": "text", "default": "", "serverOnly": true }
     ]

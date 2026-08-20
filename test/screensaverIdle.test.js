@@ -17,9 +17,9 @@ test('saverSettings clamps and defaults idleMinutes', () => {
   assert.equal(saverSettings(saver('s', { idleMinutes: '0' })).idleMinutes, 0);
   assert.equal(saverSettings(saver('s', { idleMinutes: '99999' })).idleMinutes, 720);
   assert.equal(saverSettings(saver('s', { idleMinutes: '-5' })).idleMinutes, 0);
-  assert.equal(saverSettings(saver('s', { idleMinutes: 'garbage' })).idleMinutes, 10);
-  assert.equal(saverSettings(saver('s', {})).idleMinutes, 10);
-  assert.equal(saverSettings(null).idleMinutes, 10);
+  assert.equal(saverSettings(saver('s', { idleMinutes: 'garbage' })).idleMinutes, 30);
+  assert.equal(saverSettings(saver('s', {})).idleMinutes, 30);
+  assert.equal(saverSettings(null).idleMinutes, 30);
 });
 
 test('findSaverGrid: first auto-start-enabled screensaver page wins; 0-minutes pages are skipped', () => {

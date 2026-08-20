@@ -44,7 +44,7 @@ download a file and drop it into your videos folder.
 
 ## Idle auto-start
 
-One setting controls it: **Auto-start after idle minutes** (default **10**, **0 = never**).
+One setting controls it: **Auto-start after idle minutes** (default **30**, **0 = never**).
 After that long with no panel touches and no knob turns, the panel switches to the screensaver
 by itself. Any touch or knob input wakes it — you land back on exactly the page you left, with
 nothing reloaded, and the waking gesture is swallowed so it can't press anything on that page

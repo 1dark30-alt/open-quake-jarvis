@@ -13,11 +13,11 @@ function isScreensaverGrid(g) {
 }
 
 // Per-page auto-start setting. idleMinutes: 0 = never auto-start; clamped to at most 12 hours.
-// A missing/garbage value falls back to the shipped default (10 minutes).
+// A missing/garbage value falls back to the shipped default (30 minutes).
 function saverSettings(grid) {
   const o = (grid && grid.options) || {};
   let m = parseInt(o.idleMinutes, 10);
-  if (!Number.isFinite(m)) m = 10;
+  if (!Number.isFinite(m)) m = 30;
   m = Math.max(0, Math.min(720, m));
   return { idleMinutes: m };
 }
