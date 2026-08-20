@@ -27,13 +27,8 @@ don't — update it when either side changes.
 | LED ring status for recording/translation/AI states | RGB ring is theme-driven and state-driven (listening/thinking/speaking/approval), fully configurable. |
 | Knob + touchscreen + gestures | Full knob support (rotate/click/double/hold), touch, page selector. |
 | Credit packs / subscriptions | Nothing metered. Costs are only what your own keys/servers cost. |
-| 9 Smart Profiles (knob-switchable "modes") | Teardown: their 9 "profiles" are **page layouts** (Discord/MeetAI/SysView/AI Chat/Music/Clock/…) — already open-quake **pages** with the knob selector and per-page hotkeys. The real feature inside their AI Chat — named prompt modes (theirs: 6, Chinese-only) — **shipped as AI Profiles** (PR #23): 9 editable English instruction presets on all five AI Voice backends, switchable from the panel's Profile button / knob twist / per page, plus next/previous-page tile actions. |
-
-## 🔨 In development
-
-| Feature | Status |
-|---|---|
-| **Screensaver page — wallpapers incl. AI-generated** (teardown: their wallpaper feature, the "Vivid" profile, is a manual crossfading image/video page — no idle detection) | In progress on branch `screensaver`: a media slideshow page (drop images/videos in a folder — your own ComfyUI/AI renders go straight in, no credits) plus built-in animated scenes (color waves, starfield, code rain, big clock), and it **auto-starts when the panel sits idle and wakes back to where you were** — which theirs can't do. |
+| 9 Smart Profiles (knob-switchable "modes") | Teardown: their 9 "profiles" are **page layouts** (Discord/MeetAI/SysView/AI Chat/Music/Clock/…) — already open-quake **pages** with the knob selector and per-page hotkeys. The real feature inside their AI Chat — named prompt modes (theirs: 6, Chinese-only) — **shipped as AI Profiles** (PR #23): 9 editable English instruction presets on all five AI Voice backends, switchable from the panel's full-screen Profile picker, remembered per page. |
+| Wallpapers / screensaver ("Vivid" — teardown: a manually-selected crossfading image/video page, **no idle detection**) | **[Screensaver](screensaver.md)** (PR #24): five built-in live-drawn scenes (Waves, Starfield, Lava lamp, Fireflies, Flurry), your own photos (slideshow or scrapbook **collage**) and videos in separate folders, downloadable loops in [community-wallpapers](../community-wallpapers), and — theirs can't — **idle auto-start** (default 30 min) that wakes back to exactly the page you left. |
 
 ## ❌ Missing (the actual todo)
 
