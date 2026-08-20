@@ -26,7 +26,7 @@ var BASE = '/' + (location.pathname.split('/')[1] || 'ai-voice') + '/' + BACKEND
 })();
 
 var projectDir = Q.get('projectDir') || '';
-$('project').textContent = projectDir ? projectDir.split(/[\\/]/).filter(Boolean).pop() : '(no project set)';
+setProjectHeader(projectDir);   // rail label + the Settings overlay's Folder row value
 
 function esc(s) {
   var d = document.createElement('div');
@@ -268,7 +268,10 @@ function applyMeta(meta) {
   $('approvalAlways').classList.toggle('hidden', !meta.approvalAlways);   // only agents whose protocol supports session-wide approval
   // Chat-only backends (owui/api) have no working directory and no permission modes -- hide the
   // buttons instead of leaving dead claude-shaped controls on screen.
-  $('vpProject').classList.toggle('hidden', meta.hasProject === false);
+  // Chat backends (owui/api) have no working directory: hide the rail's folder-name line and the
+  // Settings overlay's Folder row.
+  $('project').classList.toggle('hidden', meta.hasProject === false);
+  $('folderPickBtn').style.display = meta.hasProject === false ? 'none' : '';
   $('vpMode').classList.toggle('hidden', !(meta.modes && meta.modes.length));
   if (meta.modes && meta.modes.length) {
     MODE_LABELS = {};
@@ -661,7 +664,10 @@ function onVADLevel(level) {
 // first (accent border), then everything under the root alphabetically; the current folder is the
 // single solid accent-filled pill.
 function baseName(p) { return String(p || '').split(/[\\/]/).filter(Boolean).pop() || p; }
-function setProjectHeader(dir) { $('project').textContent = dir ? baseName(dir) : '(no folder set)'; }
+function setProjectHeader(dir) {
+  $('project').textContent = dir ? baseName(dir) : '(no folder set)';
+  $('folderPickVal').textContent = dir ? baseName(dir) : 'not set';
+}
 var projRoot = '';
 function pickProject(dir) {
   $('projectOverlay').classList.add('hidden');
@@ -737,7 +743,8 @@ function wireScrollButtons(listId, upId, downId) {
 }
 wireScrollButtons('projList', 'projScrollUp', 'projScrollDown');
 wireScrollButtons('devList', 'devScrollUp', 'devScrollDown');
-$('vpProject').onclick = function () { openProjectOverlay(); };
+// Folder lives in Settings (rarely changed) — the row closes Settings and opens the folder picker.
+$('folderPickBtn').onclick = function () { $('settingsOverlay').classList.add('hidden'); openProjectOverlay(); };
 $('projCancel').onclick = function () { $('projectOverlay').classList.add('hidden'); };
 $('projCreate').onclick = function () {
   var name = $('projNewName').value.trim();

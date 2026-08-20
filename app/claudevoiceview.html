@@ -18,6 +18,9 @@
      Settings. Icon buttons follow the Music page's transport aesthetic exactly: circular, 2px
      border, soft gradient fill, currentColor SVG glyphs, scale-down on press. All chrome, so
      user-select:none. */
+  /* Height budget: title + icon row + THREE vpBtns (Profile/Settings/Mode) + folder name fit 480px.
+     Change folder lives in the Settings overlay (rarely used), which is what freed the Profile
+     button's slot without shrinking anything. */
   #voicePanel { flex: 0 0 284px; display: flex; flex-direction: column; gap: 14px; align-items: center;
     justify-content: space-between; user-select: none; }
   #vizRow { display: flex; gap: 16px; justify-content: center; }
@@ -262,6 +265,7 @@
   #approvalAlways { background: var(--surf2); color: var(--fg); border: 1px solid var(--tile-bd); }
   #approvalAlways.hidden { display: none; }
   .vpBtn.hidden { display: none; }   /* meta-driven hiding of rail buttons (Project/Mode/Profile) */
+  #project.hidden { display: none; } /* chat backends: no folders, so no "(no project set)" line */
   #approvalApprove { background: var(--accent); color: var(--accent-fg, #04120b); }
 </style>
 </head>
@@ -288,7 +292,6 @@
           <svg class="ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.6"/><line x1="4.6" y1="4.6" x2="19.4" y2="19.4"/></svg>
         </button>
       </div>
-      <button id="vpProject" class="vpBtn" type="button">Change folder</button>
       <button id="vpProfile" class="vpBtn" type="button">Profile</button>
       <button id="vpSettings" class="vpBtn" type="button">Settings</button>
       <button id="vpMode" class="vpBtn" type="button">Mode</button>
@@ -349,6 +352,9 @@
           <p class="hint" style="margin:0">Pause tolerance = how long you can go quiet mid-sentence before the utterance is sent. Raise it if swallowing or thinking pauses cut you off.</p>
         </div>
         <div class="scol">
+          <button id="folderPickBtn" class="pickRow" type="button">
+            <span class="pickName">Folder</span><span id="folderPickVal" class="pickVal"></span><span class="pickChevron">›</span>
+          </button>
           <button id="micPickBtn" class="pickRow" type="button">
             <span class="pickName">Microphone</span><span id="micPickVal" class="pickVal"></span><span class="pickChevron">›</span>
           </button>
