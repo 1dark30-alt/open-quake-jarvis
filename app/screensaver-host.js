@@ -26,7 +26,7 @@ function truthy(v) { return v === true || v === '1' || v === 'true'; }
 // (livetranslate pattern: strings survive restarts and match the query-string delivery).
 const PANEL_OPTIONS = {
   source: v => (v === 'scenes' || v === 'media' || v === 'both') ? v : null,
-  scene: v => (v === 'all' || v === 'aurora' || v === 'starfield' || v === 'coderain' || v === 'clock') ? v : null,
+  scene: v => (v === 'all' || v === 'waves' || v === 'starfield') ? v : null,
   fillMode: v => (v === 'cover' || v === 'contain') ? v : null,
   intervalSec: v => { const n = parseInt(v, 10); return n >= 3 && n <= 86400 ? String(n) : null; },
   shuffle: v => (v === true || v === '1' || v === false || v === '0' || v === 'true' || v === 'false')

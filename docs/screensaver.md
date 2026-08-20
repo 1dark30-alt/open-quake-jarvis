@@ -10,9 +10,9 @@ immediately, nothing to download or configure.
 
 ## What it shows
 
-- **Built-in scenes** (default) — four animations drawn live by the page (no media files, nothing
-  visibly loops): **Aurora** (drifting color ribbons), **Starfield**, **Code Rain**, and a big
-  **Clock**. Show all four in a cycle or pin one.
+- **Built-in scenes** (default) — animations drawn live by the page (no media files, nothing
+  visibly loops): **Waves** (drifting color ribbons) and **Starfield**. Show both in a cycle or
+  pin one.
 - **My media folder** — a crossfading slideshow of your own images (jpg/png/gif/webp) and videos
   (mp4/webm/mov). Images change on the interval you pick; videos always play through to the end,
   muted. Fill the screen (crop) or fit inside (letterbox); shuffle optional.
@@ -54,7 +54,7 @@ the ⚙ settings button).
 | Option | Meaning |
 |---|---|
 | What to show | Built-in scenes / My media folder / Both |
-| Built-in scene | All scenes (cycle) or one of Aurora, Starfield, Code rain, Clock |
+| Built-in scene | All scenes (cycle) or one of Waves, Starfield |
 | Media fill | Fill the screen (crop) or fit inside (letterbox) |
 | Seconds per image/scene | Slideshow interval (videos always play through) |
 | Shuffle order | Randomize the playlist |

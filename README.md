@@ -78,8 +78,8 @@ It gives you:
   any OpenAI-compatible endpoint**) paired with your local Whisper STT for per-phrase captions with
   cross-sentence context. Optional save-to-file and a global **toggle hotkey**.
   → [Live Translate](docs/live-translate.md)
-- **Screensaver** — a screensaver page with four **built-in animated scenes** (Aurora, Starfield,
-  Code Rain, Clock — drawn live, no downloads) or a **folder of your own images/videos** played as a
+- **Screensaver** — a screensaver page with **built-in animated scenes** (Waves, Starfield —
+  drawn live, no downloads) or a **folder of your own images/videos** played as a
   crossfading slideshow. Starts **by itself** after a configurable idle time and wakes back to
   exactly the page you left on any touch or knob input; also selectable manually or in the page
   rotation like any other page. → [Screensaver](docs/screensaver.md)

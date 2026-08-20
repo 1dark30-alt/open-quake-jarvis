@@ -1,5 +1,5 @@
 'use strict';
-// Screensaver page: four built-in canvas scenes (drawn live, no assets) + a dual-layer crossfade
+// Screensaver page: built-in canvas scenes (drawn live, no assets) + a dual-layer crossfade
 // player for the user's own images/videos (DK-Vivid's proven pattern: preload into the idle layer,
 // fade opacity, never reflow). Media files are addressed by NAME through /screensaver/media (the
 // folder path itself is server-side only). Manual visits: a tap advances and reveals ⚙; when the
@@ -25,13 +25,15 @@
   // ---- options (query-string delivery; panel edits POST /option and update this copy) ----
   var opts = {
     source: Q.get('source') || 'scenes',           // scenes | media | both
-    scene: Q.get('scene') || 'all',                // all | aurora | starfield | coderain | clock
+    scene: Q.get('scene') || 'all',                // all | waves | starfield
     fillMode: Q.get('fillMode') || 'cover',        // cover | contain (media only)
     intervalSec: parseInt(Q.get('intervalSec'), 10) || 10,
     shuffle: Q.get('shuffle') === '1',
     idleMinutes: Q.get('idleMinutes') || '10',
   };
-  var SCENES = ['aurora', 'starfield', 'coderain', 'clock'];
+  var SCENES = ['waves', 'starfield'];
+  // Old saved picks (removed/renamed scenes) heal to the full cycle rather than a black stage.
+  if (opts.scene !== 'all' && SCENES.indexOf(opts.scene) < 0) opts.scene = 'all';
   var files = [];              // [{name, kind:'image'|'video'}] from /state
   var mediaDirLabel = '';      // shown in settings
   var usingDefault = true;
@@ -41,7 +43,7 @@
   // =====================================================================================
   var W = 1920, H = 480;
 
-  function sceneAurora(cv) {
+  function sceneWaves(cv) {
     var ctx = cv.getContext('2d'), t = 0, run = true;
     var ribbons = [
       { amp: 90, f: 0.0032, speed: 0.012, hue: 150, width: 150, phase: 0 },
@@ -98,57 +100,7 @@
     return function () { run = false; };
   }
 
-  function sceneCodeRain(cv) {
-    var ctx = cv.getContext('2d'), run = true;
-    var size = 22, cols = Math.ceil(W / size), drops = [];
-    var glyphs = 'アイウエオカキクケコサシスセソタチツテトナニヌネノ0123456789ABCDEFXYZ<>[]{}#$+*';
-    for (var i = 0; i < cols; i++) drops.push({ y: -(Math.random() * H), speed: 4 + Math.random() * 8 });
-    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-    (function frame() {
-      if (!run) return;
-      ctx.fillStyle = 'rgba(0,0,0,0.08)'; ctx.fillRect(0, 0, W, H);   // trail fade
-      ctx.font = 'bold ' + size + 'px monospace';
-      for (var i = 0; i < cols; i++) {
-        var d = drops[i];
-        d.y += d.speed;
-        ctx.fillStyle = 'rgba(190,255,190,0.95)';                     // bright head
-        ctx.fillText(glyphs[(Math.random() * glyphs.length) | 0], i * size, d.y);
-        ctx.fillStyle = 'rgba(60,220,90,0.7)';                        // fresh tail glyph
-        ctx.fillText(glyphs[(Math.random() * glyphs.length) | 0], i * size, d.y - size);
-        if (d.y > H + size * 4) { d.y = -(Math.random() * 200); d.speed = 4 + Math.random() * 8; }
-      }
-      requestAnimationFrame(frame);
-    })();
-    return function () { run = false; };
-  }
-
-  function sceneClock(cv) {
-    var ctx = cv.getContext('2d'), run = true, last = '';
-    function draw() {
-      var d = new Date();
-      var hh = String(d.getHours()).padStart(2, '0'), mm = String(d.getMinutes()).padStart(2, '0'), ss = String(d.getSeconds()).padStart(2, '0');
-      var key = hh + mm + ss;
-      if (key !== last) {
-        last = key;
-        ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-        ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-        ctx.fillStyle = '#e8eef4';
-        ctx.font = '600 240px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText(hh + ':' + mm, W / 2 - 90, 300);
-        ctx.fillStyle = 'rgba(160,190,220,0.85)';
-        ctx.font = '600 84px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText(ss, W / 2 + 330, 300);
-        ctx.fillStyle = 'rgba(140,160,185,0.9)';
-        ctx.font = '400 44px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText(d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }), W / 2, 400);
-      }
-      if (run) requestAnimationFrame(draw);
-    }
-    draw();
-    return function () { run = false; };
-  }
-
-  var SCENE_FNS = { aurora: sceneAurora, starfield: sceneStarfield, coderain: sceneCodeRain, clock: sceneClock };
+  var SCENE_FNS = { waves: sceneWaves, starfield: sceneStarfield };
 
   // =====================================================================================
   // Playlist + dual-layer player
@@ -304,7 +256,7 @@
     renderSeg($('segSource'), [['scenes', 'Built-in scenes'], ['media', 'My media'], ['both', 'Both']], opts.source, function (v) {
       opts.source = v; postOption('source', v); syncSettingsUI(); restart();
     });
-    renderSeg($('segScene'), [['all', 'All'], ['aurora', 'Aurora'], ['starfield', 'Starfield'], ['coderain', 'Code rain'], ['clock', 'Clock']], opts.scene, function (v) {
+    renderSeg($('segScene'), [['all', 'All'], ['waves', 'Waves'], ['starfield', 'Starfield']], opts.scene, function (v) {
       opts.scene = v; postOption('scene', v); syncSettingsUI(); restart();
     });
     renderSeg($('segFill'), [['cover', 'Fill screen'], ['contain', 'Fit inside']], opts.fillMode, function (v) {

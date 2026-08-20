@@ -6297,10 +6297,8 @@
       ] },
       { "key": "scene", "label": "Built-in scene", "type": "select", "default": "all", "choices": [
         ["all", "All scenes (cycle)"],
-        ["aurora", "Aurora"],
-        ["starfield", "Starfield"],
-        ["coderain", "Code rain"],
-        ["clock", "Clock"]
+        ["waves", "Waves"],
+        ["starfield", "Starfield"]
       ] },
       { "key": "fillMode", "label": "Media fill", "type": "select", "default": "cover", "choices": [
         ["cover", "Fill the screen (crop)"],
