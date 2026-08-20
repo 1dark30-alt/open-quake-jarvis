@@ -337,11 +337,12 @@
     var ctx = cv.getContext('2d'), run = true, loading = false;
     var order = photos.slice();
     var pos2 = -1;
-    if (opts.shuffle) shuffleArr(order);
     var cells, stamps, phase, nextAt = 0, holdUntil = 0;   // phase: 'fill' | 'hold'
     function resetBoard() {
       cells = new Array(COLLAGE_COLS * COLLAGE_ROWS).fill(false);
       stamps = 0; phase = 'fill';
+      pos2 = -1;                                 // fresh deck: each photo appears at most ONCE per board
+      if (opts.shuffle) shuffleArr(order);
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     }
     function markCells(rec) {
@@ -362,7 +363,7 @@
       if (loading || !order.length) return;
       loading = true;
       pos2++;
-      if (pos2 >= order.length) { pos2 = 0; if (opts.shuffle) shuffleArr(order); }
+      if (pos2 >= order.length) { loading = false; phase = 'hold'; holdUntil = Date.now() + intervalMs(); return; }   // deck spent — the board is done
       var img = new Image();
       img.onload = function () {
         loading = false;
@@ -379,7 +380,8 @@
         markCells(rec);
         stamps++;
         var now = Date.now();
-        if (boardFull()) { phase = 'hold'; holdUntil = now + intervalMs(); }
+        // A board finishes when it's covered OR when every photo has appeared once — no repeats.
+        if (boardFull() || pos2 >= order.length - 1) { phase = 'hold'; holdUntil = now + intervalMs(); }
         else nextAt = now + 500 + Math.random() * 1000;   // the requested 0.5-1.5s beat between prints
       };
       img.onerror = function () { loading = false; nextAt = Date.now() + 500; };
