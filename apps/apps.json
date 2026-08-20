@@ -6283,5 +6283,33 @@
       { "key": "micDevice", "label": "Microphone (set from the panel Settings)", "type": "text", "default": "" },
       { "key": "micHotkey", "label": "Toggle-translation hotkey (global)", "type": "text", "default": "" }
     ]
+  },
+  {
+    "id": "screensaver",
+    "name": "Screensaver",
+    "file": "screensaverview.html",
+    "served": true,
+    "options": [
+      { "key": "source", "label": "What to show", "type": "select", "default": "scenes", "choices": [
+        ["scenes", "Built-in scenes (drawn live)"],
+        ["media", "My media folder (images/videos)"],
+        ["both", "Scenes + my media"]
+      ] },
+      { "key": "scene", "label": "Built-in scene", "type": "select", "default": "all", "choices": [
+        ["all", "All scenes (cycle)"],
+        ["aurora", "Aurora"],
+        ["starfield", "Starfield"],
+        ["coderain", "Code rain"],
+        ["clock", "Clock"]
+      ] },
+      { "key": "fillMode", "label": "Media fill", "type": "select", "default": "cover", "choices": [
+        ["cover", "Fill the screen (crop)"],
+        ["contain", "Fit inside (letterbox)"]
+      ] },
+      { "key": "intervalSec", "label": "Seconds per image/scene", "type": "text", "default": "10", "help": "Videos always play through to the end instead." },
+      { "key": "shuffle", "label": "Shuffle order", "type": "bool", "default": false },
+      { "key": "idleMinutes", "label": "Auto-start after idle minutes (0 = never)", "type": "text", "default": "10", "help": "With no panel touches or knob turns for this long, the panel switches to this page by itself; any input returns to the page you were on. Panel mode only. 0 disables auto-start — the page then only appears manually or in rotation." },
+      { "key": "mediaDir", "label": "Media folder (blank = the app's own screensaver-media folder)", "type": "text", "default": "", "serverOnly": true }
+    ]
   }
 ]

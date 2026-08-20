@@ -2168,7 +2168,28 @@
       if (o && (o.type === 'select' || o.type === 'bool')) renderAppOpts(g, def);   // re-evaluate conditional (showIf) options
       enforceMusicCap(g);   // re-apply the 2-of-3 panel cap (grid/art/lyrics)
     });
+    if (def.id === 'screensaver') appendScreensaverFolderRow(el, g);   // Browse/Open buttons under the mediaDir text field
     enforceMusicCap(g);
+  }
+  // Screensaver: the media folder needs a real folder picker and an "open in Explorer" shortcut —
+  // dynamic things apps.json can't express. Appended INSIDE renderAppOpts so the row survives the
+  // re-render that select/bool changes trigger.
+  function appendScreensaverFolderRow(el, g) {
+    const row = document.createElement('div');
+    row.innerHTML = `<div class="row"><label></label>
+        <button id="ssMediaBrowse" type="button">Browse…</button>
+        <button id="ssMediaOpen" type="button">Open media folder</button></div>
+      <p class="hint" style="margin:-2px 0 10px 78px">Drop images or videos into the media folder and the
+      screensaver plays them (jpg/png/gif/webp images, mp4/webm/mov video). Leave the folder blank to use
+      the app's own screensaver-media folder — Open shows whichever folder is in effect in Explorer.</p>`;
+    el.appendChild(row);
+    row.querySelector('#ssMediaBrowse').onclick = async () => {
+      const p = await configApi.pickFolder();
+      if (!p) return;
+      g.options.mediaDir = p; markDirty();
+      const inp = el.querySelector('.aopt[data-key="mediaDir"]'); if (inp) inp.value = p;
+    };
+    row.querySelector('#ssMediaOpen').onclick = () => configApi.openScreensaverMedia(optVal(g, 'mediaDir', ''));
   }
 
   function deleteCurrentPage() {

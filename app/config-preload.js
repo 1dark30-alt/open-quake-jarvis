@@ -51,6 +51,8 @@ contextBridge.exposeInMainWorld('openQuakeConfig', {
   // Auth tab: test the saved Open WebUI connection (normalize URL + list models with the key).
   probeOwui(url, apiKey) { return ipcRenderer.invoke('probeOwui', url, apiKey); },
   probeApiModels(url, apiKey) { return ipcRenderer.invoke('probeApiModels', url, apiKey); },
+  // Screensaver: open the effective media folder in Explorer (auto-creating it first).
+  openScreensaverMedia(dir) { return ipcRenderer.invoke('openScreensaverMedia', dir); },
   pathToFileURL(filePath) {
     try { return pathToFileURL(filePath).href; }
     catch (e) { return ''; }

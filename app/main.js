@@ -66,6 +66,8 @@ const { findClaudeExe } = require('./claudevoice-session'); // CLI presence prob
 const { createOwuiVoiceAdapter } = require('./owuivoice-session'); // Open WebUI chat adapter (HTTP/SSE, no CLI)
 const { createApiVoiceAdapter } = require('./apivoice-session'); // OpenAI-compatible API chat adapter (bring your own key, no CLI)
 const { createLiveTranslateHost } = require('./livetranslate-host'); // Live Translate app host (Soniox token mint + save-to-file, no LLM)
+const { createScreensaverHost } = require('./screensaver-host'); // Screensaver app host (media list + name->path resolution, no LLM)
+const saverIdle = require('./screensaver-idle'); // pure screensaver auto-start/wake/swallow decisions
 const owuiClient = require('./owuiClient'); // shared OWUI URL normalization + model-list probe
 const { resolveRunMode, reservedDisplayEnabled } = require('./runMode'); // pure run-mode helpers (panel/software/monitor)
 const voiceConfig = require('./voiceConfig'); // global TTS/STT endpoints + per-page override resolution + legacy migration
@@ -102,6 +104,12 @@ let lastRingEffect = LED_DEFAULT.effect; // remembered so the tray on/off toggle
 let rotateRunning = false;               // screen-rotation runtime on/off (starts per settings on launch)
 let rotationSuspended = false;           // temporarily held off by desktop-focus (a mapped app currently has focus)
 let rotTimer = null;
+// Screensaver auto-start state. saverActive is ONLY ever set by the idle auto-start path — manual
+// visits and rotation stops on the screensaver page never set it, so input is never swallowed there.
+let saverActive = false, saverPrevGridId = null;   // auto-entered screensaver: swallow input + where wake returns
+let saverSwallowUntil = 0, saverTouchHeld = false; // wake-gesture swallow state (grace window + finger-up tracking)
+let saverTimer = null;                             // the 10s idle-check interval
+let lastPanelInputAt = Date.now();                 // boot counts as input, so the saver waits one full idle period
 let monitorMode = false;                 // monitor mode: panel UI hidden so the device shows the Windows desktop
 // Global HA cache — registries + dashboards in memory, per-entity states populated on demand.
 // `ok=false, ts=0` is the "never loaded" initial state. Refreshed on whenReady (if useHa) and on
@@ -216,6 +224,14 @@ const liveTranslateHost = createLiveTranslateHost({
   appId: 'livetranslate',
   log: message => console.log('[livetranslate] ' + message),
   deps: voicePanelDeps('livetranslate'),
+});
+// Screensaver: media list + name->path resolution for /screensaver/media (sysserver streams the
+// bytes). The default media folder ships empty and is auto-created on first use.
+const screensaverHost = createScreensaverHost({
+  appId: 'screensaver',
+  log: message => console.log('[screensaver] ' + message),
+  deps: voicePanelDeps('screensaver'),
+  defaultMediaDir: path.join(app.getPath('userData'), 'screensaver-media'),
 });
 // Shared main.js plumbing for a voice-panel host. The ring guards are the two-app arbitration:
 // only the ON-SCREEN voice app may drive (or clear) the ring override -- a background app's
@@ -737,7 +753,14 @@ function activeServedAppConfig(appId) {
 function saveConfig() {
   const temporaryPath = CONFIG_PATH + '.tmp';
   try {
-    const serialized = JSON.stringify(secretStore.encryptConfig(config), null, 2);
+    // While the screensaver AUTO-started itself, the live activeGridId is the screensaver page —
+    // persist the page the user was actually on instead, so a save (option write, editor save)
+    // followed by a crash/relaunch never boots the panel into the screensaver. encryptConfig
+    // clones, so the overlay object never touches the in-memory config.
+    const persisted = (saverActive && saverIdle.isScreensaverGrid(activeGrid()))
+      ? Object.assign({}, config, { activeGridId: saverIdle.saverRestoreTarget(config, saverPrevGridId) || config.activeGridId })
+      : config;
+    const serialized = JSON.stringify(secretStore.encryptConfig(persisted), null, 2);
     fs.writeFileSync(temporaryPath, serialized);
     fs.renameSync(temporaryPath, CONFIG_PATH);
     return true;
@@ -2104,6 +2127,10 @@ function pageCategory(g) { return g.kind === 'web' ? 'dashboards' : g.kind === '
 function rotationList() { const c = rotationCfg(); return config.grids.filter(g => g.rotate && c.cats[pageCategory(g)] && !g.hidden); }
 function gotoGrid(id, persist) {
   if (!config.grids.some(g => g.id === id)) return;
+  // Any OTHER navigation while the screensaver auto-started itself (page hotkey, focus-follow,
+  // a tile action) simply ends the saver — no restore, the navigation wins. The saver's own
+  // enter/wake calls never trip this: enter sets saverActive after this call, wake clears it before.
+  if (saverActive && id !== config.activeGridId) dissolveSaver();
   clearRingOverride();   // leaving whatever page set the override (if any) — always restore the normal ring
   config.activeGridId = id; if (persist) saveConfig(); pushToPanel();
 }
@@ -2260,7 +2287,9 @@ function rotateTick() {
 }
 function scheduleRotation() {
   if (rotTimer) { clearTimeout(rotTimer); rotTimer = null; }
-  if (!rotateRunning || rotationSuspended) return;
+  // saverActive: auto-rotation holds off while the screensaver auto-started itself (wake re-arms).
+  // rotationSuspended stays exclusively owned by focus-follow, which re-derives it.
+  if (!rotateRunning || rotationSuspended || saverActive) return;
   rotTimer = setTimeout(() => { rotateTick(); scheduleRotation(); }, rotationCfg().interval * 1000);
 }
 function pushRotationState() {
@@ -2275,6 +2304,66 @@ function applyRotationSettings(wasEnabled) {
   if (!enabled) rotateRunning = false;
   else if (!wasEnabled) rotateRunning = true;
   scheduleRotation(); refreshTray(); pushRotationState();
+}
+
+// ---- screensaver auto-start (idle -> screensaver page, any input -> back where you were) ----
+// All DECISIONS live in screensaver-idle.js (pure, unit-tested); this is the thin stateful shell.
+// The 10s interval re-reads live config every tick, so editor changes need no re-arm dance.
+function voiceSessionBusy() {
+  // The active page mid listening/thinking/speaking/approval drives the ring override (all five
+  // ai-voice backends AND Live Translate's captioning set it) — the one main-side signal that a
+  // conversation is actually in flight. Backgrounded agent sessions still THINKING are caught via
+  // host status; an idle background session deliberately does not block the screensaver.
+  if (ringOverrideState) return true;
+  return [claudeVoiceHost, codexVoiceHost, copilotVoiceHost, owuiVoiceHost, apiVoiceHost]
+    .some(h => {
+      try { const s = h.handlers.getState().status; return s === 'thinking' || s === 'approval'; }
+      catch (e) { return false; }
+    });
+}
+function saverTick() {
+  // Self-heal: an editor save can swap the active page without gotoGrid — never keep swallowing.
+  if (saverActive && !saverIdle.isScreensaverGrid(activeGrid())) dissolveSaver();
+  const d = saverIdle.evaluateSaverTick({
+    runMode: runMode(), monitorMode, saverActive,
+    activeGridId: config.activeGridId, grids: config.grids || [],
+    now: Date.now(), lastInputAt: lastPanelInputAt,
+    voiceBusy: voiceSessionBusy(),
+    meetingRecording: !!(meetingRecorder && meetingRecorder.getState().recording),
+  });
+  if (d.enter) enterSaver(d.enter);
+}
+function enterSaver(id) {
+  saverPrevGridId = config.activeGridId;
+  gotoGrid(id, false);            // before setting saverActive, so gotoGrid's dissolve guard stays quiet
+  saverActive = true;
+  scheduleRotation();             // rotation holds off via the saverActive guard
+}
+function dissolveSaver() {
+  saverActive = false; saverPrevGridId = null; saverSwallowUntil = 0; saverTouchHeld = false;
+  scheduleRotation();
+}
+function wakeFromSaver() {
+  saverActive = false;            // before gotoGrid, so the dissolve guard doesn't fire
+  const target = saverIdle.saverRestoreTarget(config, saverPrevGridId);
+  saverPrevGridId = null;
+  if (target) gotoGrid(target, false);   // explicit fallback chain — gotoGrid silently no-ops on a dead id
+  scheduleRotation();
+}
+// Runs on every hardware touch/knob event (after monitor-mode handling). Returns true when the
+// event must NOT reach the panel renderer: the wake input and its whole gesture get eaten so they
+// can't toggle a mic, move the selector, or flip pages on the page being restored.
+function saverConsumesInput(kind, evt) {
+  if (!saverActive && !saverTouchHeld && !saverSwallowUntil) return false;   // fast path
+  const d = saverIdle.swallowDecision({
+    saverActive, activeIsSaver: saverIdle.isScreensaverGrid(activeGrid()),
+    touchHeld: saverTouchHeld, swallowUntil: saverSwallowUntil,
+  }, kind, evt, Date.now());
+  saverTouchHeld = d.touchHeld;
+  saverSwallowUntil = d.swallowUntil;
+  if (d.dissolve) dissolveSaver();
+  if (d.wake) wakeFromSaver();
+  return d.swallow;
 }
 
 // ---- keyboard shortcuts (System/Pages/Custom cheat-sheet app) ----
@@ -2533,6 +2622,12 @@ app.whenReady().then(async () => {
         'livetranslate': {
           htmlFile: 'livetranslateview.html',
           handlers: liveTranslateHost.handlers,
+        },
+        // Screensaver: scenes render in the page; the host only lists/streams the media folder
+        // (getState/setOption/resolveMedia/getProjects) — no voiceToken, no LLM routes.
+        'screensaver': {
+          htmlFile: 'screensaverview.html',
+          handlers: screensaverHost.handlers,
         },
       },
     });
@@ -2942,6 +3037,18 @@ app.whenReady().then(async () => {
     const r = await dialog.showOpenDialog(configWin, { properties: ['openDirectory'] });
     return (r.canceled || !r.filePaths.length) ? null : r.filePaths[0];
   });
+  // Screensaver "Open media folder": resolve the effective folder (custom or the app's own default),
+  // create it if needed, and show it in Explorer. Directory-only — never opens (= executes) a file.
+  ipcMain.handle('openScreensaverMedia', (e, dir) => {
+    if (!isFrom(e, configWin)) return { ok: false };
+    const target = String(dir || '').trim() || path.join(app.getPath('userData'), 'screensaver-media');
+    try {
+      fs.mkdirSync(target, { recursive: true });
+      if (!fs.statSync(target).isDirectory()) return { ok: false };
+      shell.openPath(target);
+      return { ok: true, dir: target };
+    } catch (err) { return { ok: false }; }
+  });
   // Drop-in app manager (Settings → Drop-In Apps)
   ipcMain.handle('listDropInApps', (e) => isFrom(e, configWin) ? listDropInApps() : []);
   ipcMain.handle('pickZip', async (e) => {
@@ -3051,12 +3158,20 @@ app.whenReady().then(async () => {
   if (firstRun) createWelcomeWindow();
   else applyRunModeAndLaunch();
 
+  // Screensaver idle check: one always-running interval; every tick re-reads live config, so page
+  // adds/removes and setting edits apply with no re-arm. All gates live in screensaver-idle.js.
+  saverTimer = setInterval(saverTick, 10000);
+
   dev.on('touch', pts => {
+    lastPanelInputAt = Date.now();                                             // presence stamp (all modes) — feeds the screensaver idle timer
     if (monitorMode) { const p = pts.find(q => q.action === 1) || pts[0]; if (p) injectTouch(p); return; }   // monitor mode: touch drives the Windows cursor
+    if (saverConsumesInput('touch', pts)) return;                              // waking the screensaver eats the whole gesture
     if (panelWin && !panelWin.isDestroyed()) panelWin.webContents.send('touch', pts);
   });
   dev.on('knob', k => {
+    lastPanelInputAt = Date.now();
     if (monitorMode) return monitorKnob(k);                                    // monitor mode: knob does the configured action (exit is tray-only)
+    if (saverConsumesInput('knob', k)) return;                                 // waking the screensaver eats the flick's tail detents too
     if (panelWin && !panelWin.isDestroyed()) panelWin.webContents.send('knob', k);   // panel owns knob logic
   });
   dev.on('connect', async i => {
@@ -3096,6 +3211,7 @@ app.whenReady().then(async () => {
 }
 app.on('window-all-closed', () => {});
 app.on('before-quit', () => {
+  try { clearInterval(saverTimer); } catch (e) {}             // stop the screensaver idle check
   try { reservedDisplay.stop(); } catch (e) {}                // release WinEvent hooks and terminate the native helper
   try { claudeVoiceHost.shutdown(); } catch (e) {}       // terminate the claude CLI child, release held approvals, remove the global hook
   try { codexVoiceHost.shutdown(); } catch (e) {}        // terminate the codex app-server child

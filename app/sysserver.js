@@ -76,6 +76,7 @@ const STATIC_FILES = {
   '/keyshortcutsview.js': 'application/javascript; charset=utf-8',
   '/claudevoiceview.js': 'application/javascript; charset=utf-8',
   '/livetranslateview.js': 'application/javascript; charset=utf-8',
+  '/screensaverview.js': 'application/javascript; charset=utf-8',
   '/claudevoice-vad.js': 'application/javascript; charset=utf-8',
   '/recorderview.js': 'application/javascript; charset=utf-8',
   '/system-audio-capture.js': 'application/javascript; charset=utf-8',
@@ -175,6 +176,9 @@ const MIME = {
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
   '.otf': 'font/otf',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',   // plays only when the codecs are H.264/AAC (Electron's ffmpeg)
 };
 function mimeFor(file) { return MIME[path.extname(file).toLowerCase()] || 'application/octet-stream'; }
 function serveDropInApp(url, res) {
@@ -198,6 +202,33 @@ function serveDropInApp(url, res) {
     res.end(body);
   });
   return true;
+}
+
+// Shared Range-capable file streamer (meeting audio, screensaver media). Chromium <audio>/<video>
+// seek with single-range requests, so honor bytes=a-b with a 206; anything else gets the whole
+// file. A null path, missing file, or non-file 404s.
+function streamFileRange(req, res, filePath, contentType) {
+  let st = null;
+  if (filePath) { try { st = fs.statSync(filePath); } catch (e) {} }
+  if (!st || !st.isFile()) { res.writeHead(404); res.end(); return; }
+  const h = headers(contentType);
+  h['Accept-Ranges'] = 'bytes';
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (m && (m[1] || m[2])) {
+    let first = m[1] ? parseInt(m[1], 10) : st.size - parseInt(m[2], 10);
+    let last = (m[1] && m[2]) ? parseInt(m[2], 10) : st.size - 1;
+    if (!Number.isFinite(first) || first < 0) first = 0;
+    if (!Number.isFinite(last) || last >= st.size) last = st.size - 1;
+    if (first > last || first >= st.size) { res.writeHead(416, { 'Content-Range': 'bytes */' + st.size }); res.end(); return; }
+    h['Content-Range'] = 'bytes ' + first + '-' + last + '/' + st.size;
+    h['Content-Length'] = last - first + 1;
+    res.writeHead(206, h);
+    fs.createReadStream(filePath, { start: first, end: last }).pipe(res);
+  } else {
+    h['Content-Length'] = st.size;
+    res.writeHead(200, h);
+    fs.createReadStream(filePath).pipe(res);
+  }
 }
 
 function requestingAppId(req) {
@@ -646,6 +677,14 @@ async function handler(req, res) {
       const browsePath = queryValue(full, 'path');
       return json(res, h.getProjects ? h.getProjects(browsePath) : { root: '', parent: null, dirs: [], current: '', recents: [] });
     }
+    // Screensaver media: one validated file from the page's configured folder, streamed with Range
+    // support for <video> seeking/looping. Name -> path containment lives in the host's
+    // resolveMedia; an inactive page (or any rejected name) resolves null and 404s.
+    if (voicePath === '/media') {
+      let p = null;
+      if (h.resolveMedia) { try { p = h.resolveMedia(queryValue(full, 'f')); } catch (e) {} }
+      return streamFileRange(req, res, p, p ? mimeFor(p) : 'application/octet-stream');
+    }
     if (voicePath === '/permission-mode' && req.method === 'POST') {
       let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
       const mode = body && typeof body.mode === 'string' ? body.mode : '';
@@ -823,28 +862,7 @@ async function handler(req, res) {
   if (url === '/meeting-audio') {
     const q = new URL(full, 'http://local').searchParams;
     const p = typeof resolveMeetingAudio === 'function' ? resolveMeetingAudio(q.get('kind') || '', q.get('name') || '') : null;
-    let st = null;
-    if (p) { try { st = fs.statSync(p); } catch (e) {} }
-    if (!st || !st.isFile()) { res.writeHead(404); res.end(); return; }
-    const h = headers('audio/wav');
-    h['Accept-Ranges'] = 'bytes';
-    const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
-    if (m && (m[1] || m[2])) {
-      let first = m[1] ? parseInt(m[1], 10) : st.size - parseInt(m[2], 10);
-      let last = (m[1] && m[2]) ? parseInt(m[2], 10) : st.size - 1;
-      if (!Number.isFinite(first) || first < 0) first = 0;
-      if (!Number.isFinite(last) || last >= st.size) last = st.size - 1;
-      if (first > last || first >= st.size) { res.writeHead(416, { 'Content-Range': 'bytes */' + st.size }); res.end(); return; }
-      h['Content-Range'] = 'bytes ' + first + '-' + last + '/' + st.size;
-      h['Content-Length'] = last - first + 1;
-      res.writeHead(206, h);
-      fs.createReadStream(p, { start: first, end: last }).pipe(res);
-    } else {
-      h['Content-Length'] = st.size;
-      res.writeHead(200, h);
-      fs.createReadStream(p).pipe(res);
-    }
-    return;
+    return streamFileRange(req, res, p, 'audio/wav');
   }
   if (url.indexOf('/api/office/action/') === 0) {
     const match = /^\/api\/office\/action\/(app)\/([0-3])$/.exec(url)
