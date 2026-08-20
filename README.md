@@ -41,11 +41,11 @@ It gives you:
   CPU/GPU/RAM/disk/network/battery), an **[Open WebUI chat](docs/ai-chat.md)** you can
   **talk to by holding the knob**, a **[Microsoft 365](docs/apps.md)** panel (sign in with
   your Microsoft account for live profile, presence, and upcoming-calendar view, plus up to
-  eight configurable app shortcuts and one-tap **Join meeting**), and four agent apps that put
-  a real session on the panel — **[Claude Code](docs/claude-voice.md)**,
-  **[Codex](docs/codex-voice.md)**, **[Copilot](docs/copilot-voice.md)**, and
-  **[Open WebUI Voice](docs/owui-voice.md)** (your own local models over HTTP, no CLI) — tap the
-  knob to start/stop a hands-free conversation, with touch approvals and a full text transcript. → [Apps](docs/apps.md)
+  eight configurable app shortcuts and one-tap **Join meeting**), and **[AI Voice](docs/ai-voice.md)**
+  — one app, five backends: a real **Claude Code**, **Codex**, or **Copilot** agent session on the
+  panel, or plain chat against your **Open WebUI** server or **any OpenAI-compatible API**
+  (OpenAI, DeepSeek, OpenRouter, LiteLLM/Ollama — your own key) — tap the knob to start/stop a
+  hands-free conversation, with touch approvals and a full text transcript. → [Apps](docs/apps.md)
 - **Meeting recording → transcript → meeting notes** — the Meeting app **records your
   calls** (your mic on the left channel, everyone else on the right; can auto-start with
   Zoom/Teams calls and auto-stop on silence), then — right from the panel — sends
@@ -96,7 +96,7 @@ It gives you:
 
 > **Status:** early but capable. Touch, knob (incl. RGB ring + hold-to-talk), grids, merged
 > buttons, web dashboards, the bundled apps (clock / world clock / music / meeting / system
-> monitor / AI chat / Microsoft 365 / Claude Code / Codex / Copilot / Open WebUI Voice / LucidType / Live Translate),
+> monitor / AI chat / Microsoft 365 / AI Voice (Claude Code · Codex · Copilot · Open WebUI · API) / LucidType / Live Translate),
 > the three run modes (panel / software / monitor), light/dark + accent theming, the
 > on-board mic, and the editor are working and validated against real hardware. The panel is
 > driven as a normal external monitor (Windows sees a 480×1920 / 1920×480 display); pushing
@@ -107,7 +107,7 @@ It gives you:
 Detailed guides live in **[docs/](docs/README.md)**:
 
 - [The editor](docs/editor.md) · [Web dashboards](docs/dashboards.md) · [Bundled apps](docs/apps.md)
-- [Music controller](docs/music.md) · [System monitor](docs/system-monitor.md) · [Open WebUI chat + voice](docs/ai-chat.md) · [Claude Code voice + text](docs/claude-voice.md) · [Codex voice + text](docs/codex-voice.md) · [Copilot voice + text](docs/copilot-voice.md) · [Open WebUI Voice](docs/owui-voice.md) · [Live Translate](docs/live-translate.md)
+- [Music controller](docs/music.md) · [System monitor](docs/system-monitor.md) · [Open WebUI chat + voice](docs/ai-chat.md) · [AI Voice](docs/ai-voice.md) · [Live Translate](docs/live-translate.md)
 - [Home Assistant integration](docs/home-assistant.md) · [Settings & knob lighting](docs/settings.md) · [Reserved Display](docs/reserved-display.md) · [Building & how it works](docs/building.md) · [Device protocol](docs/DEVICE_PROTOCOL.md)
 
 ## Companion project

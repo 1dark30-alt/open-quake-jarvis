@@ -13,8 +13,11 @@ const sysserver = require('../app/sysserver');
 let port;
 const calls = [];
 const otherCalls = [];   // second registered voice app -- proves per-app isolation
+const alphaCalls = [];   // multi-backend app (AI Voice form): backend "alpha"
+const betaCalls = [];    // ... and backend "beta" -- proves per-BACKEND isolation under one prefix
 const TOKEN = 'test-voice-token';
 const OTHER_TOKEN = 'other-voice-token';
+const ALPHA_TOKEN = 'alpha-backend-token';
 
 // Handlers follow the voicepanel-host.js `handlers` contract (the registry form).
 function makeHandlers(sink) {
@@ -57,11 +60,19 @@ test.before(async () => {
     voiceApps: {
       'claude-voice': { htmlFile: 'claudevoiceview.html', handlers: makeHandlers(calls), voiceToken: TOKEN },
       'other-voice': { htmlFile: 'claudevoiceview.html', handlers: makeHandlers(otherCalls), voiceToken: OTHER_TOKEN },
+      // The AI Voice registry form: one page at /<id>, per-backend routes at /<id>/<backend>/*.
+      'ai-test': {
+        htmlFile: 'claudevoiceview.html',
+        backends: {
+          alpha: { handlers: makeHandlers(alphaCalls), voiceToken: ALPHA_TOKEN },
+          beta: { handlers: makeHandlers(betaCalls) },
+        },
+      },
     },
   });
 });
 test.after(() => sysserver.stop());
-test.beforeEach(() => { calls.length = 0; otherCalls.length = 0; });
+test.beforeEach(() => { calls.length = 0; otherCalls.length = 0; alphaCalls.length = 0; betaCalls.length = 0; });
 
 const base = () => 'http://127.0.0.1:' + port;
 // Browser-shaped request: our served pages always send Sec-Fetch-Site: same-origin.
@@ -253,4 +264,58 @@ test('both apps serve the page at their own prefix', async () => {
     assert.equal(r.status, 200);
     assert.match(r.headers.get('content-type'), /text\/html/);
   }
+});
+
+// ---- multi-backend registry (AI Voice): one page, per-backend sub-prefix routes ----
+
+test('multi-backend app serves its page at the bare prefix', async () => {
+  const r = await pageFetch('/ai-test');
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /text\/html/);
+});
+
+test('backends dispatch to their own handlers only', async () => {
+  await postJson('/ai-test/alpha/turn', { text: 'to alpha', speak: false });
+  await postJson('/ai-test/beta/turn', { text: 'to beta', speak: true });
+  assert.deepEqual(alphaCalls, [['turn', 'to alpha', false]]);
+  assert.deepEqual(betaCalls, [['turn', 'to beta', true]]);
+  const s = await pageFetch('/ai-test/beta/state');
+  assert.equal(s.status, 200);
+  assert.deepEqual(await s.json(), { running: true, status: 'idle' });
+});
+
+test('unknown backend segment gets no routes', async () => {
+  const state = await pageFetch('/ai-test/gamma/state');
+  assert.equal(state.status, 404);
+  const turn = await postJson('/ai-test/gamma/turn', { text: 'x' });
+  assert.equal(turn.status, 405);   // no voice app resolved -> the GET-only wall
+  assert.deepEqual(alphaCalls, []);
+  assert.deepEqual(betaCalls, []);
+});
+
+test('approval tokens do not cross backends', async () => {
+  // beta has no token -> its approval route does not exist, even with alpha's token.
+  const noToken = await fetch(base() + '/ai-test/beta/approval-request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-oqx-voice-token': ALPHA_TOKEN },
+    body: JSON.stringify({ toolName: 'Bash' }),
+  });
+  assert.equal(noToken.status, 403);
+  assert.deepEqual(betaCalls, []);
+  // alpha's token on alpha's route works.
+  const ok = await fetch(base() + '/ai-test/alpha/approval-request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-oqx-voice-token': ALPHA_TOKEN },
+    body: JSON.stringify({ toolName: 'Bash' }),
+  });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(alphaCalls, [['approval-request', 'Bash']]);
+});
+
+test('side-effecting backend routes fail closed without same-origin evidence', async () => {
+  const bare = await fetch(base() + '/ai-test/alpha/turn', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'x' }),
+  });
+  assert.equal(bare.status, 403);
+  assert.deepEqual(alphaCalls, []);
 });

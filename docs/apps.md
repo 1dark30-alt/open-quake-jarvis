@@ -29,18 +29,12 @@ Included apps:
 - **[Music controller](music.md)** — now-playing + transport + a programmable app grid.
 - **[System monitor](system-monitor.md)** — live CPU/GPU/RAM/disk/network/battery gauges.
 - **[Open WebUI chat + voice](ai-chat.md)** — talk to your own LLM, with knob push-to-talk.
-- **[Claude Code](claude-voice.md)** — a real Claude Code session on the panel: type or talk,
-  watch replies stream, approve/deny actions from the touchscreen, tap the knob to start/stop.
-- **[Codex](codex-voice.md)** — the same panel experience driving the OpenAI **Codex** CLI
-  (ChatGPT sign-in, no API key). Shares one page, one voice pipeline, and one design with the
-  Claude Code app — only the agent differs.
-- **[Copilot](copilot-voice.md)** — the same panel experience again, driving the **GitHub
-  Copilot CLI** (GitHub sign-in, no API key) over the open Agent Client Protocol. Shares the same
-  page, voice pipeline, and design as the Claude Code and Codex apps.
-- **[Open WebUI Voice](owui-voice.md)** — the same panel experience chatting with your own
-  **Open WebUI** server over its HTTP API (no CLI): local models, streaming replies, multi-turn
-  memory, and a live model picker. Configured once on **Settings → Auth** and shared with the
-  meeting Analysis AI.
+- **[AI Voice](ai-voice.md)** — one voice+text app with a per-page **Backend** picker: a real
+  **Claude Code**, **Codex**, or **Copilot** agent session on the panel (type or talk, watch
+  replies stream, approve/deny actions from the touchscreen, tap the knob to start/stop), or
+  plain chat against your **Open WebUI** server or **any OpenAI-compatible API** (OpenAI,
+  DeepSeek, OpenRouter, LiteLLM/Ollama — your own key). Add multiple pages with different
+  backends; each keeps its own session and settings.
 - **[Meeting](meeting.md)** — one-tap mute/video/accept/decline/leave for Zoom and Teams,
   no keyboard or mouse.
 - **Microsoft 365** — a read-only Microsoft 365 dashboard: your profile, live presence, and

@@ -469,9 +469,24 @@ async function handler(req, res) {
   const full = req.url || '/';
   const url = full.split('?')[0];
   // Voice-app dispatch: /<appId>/<suffix> where <appId> is a registered voice-panel app. All voice
-  // apps share identical suffixes; everything about the request below is resolved per-app.
-  const voiceApp = voiceApps[url.split('/')[1]] || null;
-  const voicePath = voiceApp ? (url.slice(url.split('/')[1].length + 1) || '/') : null;
+  // apps share identical suffixes; everything about the request below is resolved per-app. A
+  // multi-backend app (AI Voice) adds one segment: /<appId>/<backend>/<suffix> — the page itself
+  // still serves at /<appId>, and an unknown backend segment falls through to 404/405.
+  const seg1 = url.split('/')[1] || '';
+  let voiceApp = voiceApps[seg1] || null;
+  let voicePrefixLen = seg1.length + 1;
+  if (voiceApp && voiceApp.backends) {
+    const seg2 = url.split('/')[2] || '';
+    const backendEntry = voiceApp.backends[seg2] || null;
+    if (backendEntry) {
+      voiceApp = { handlers: backendEntry.handlers, voiceToken: backendEntry.voiceToken, htmlContent: voiceApp.htmlContent };
+      voicePrefixLen += seg2.length + 1;
+    } else if (seg2) {
+      voiceApp = null;   // /ai-voice/<not-a-backend>/... is nobody's route
+    }
+    // seg2 === '' -> the bare /<appId> page request; the parent entry (page HTML, no handlers) serves it.
+  }
+  const voicePath = voiceApp ? (url.slice(voicePrefixLen) || '/') : null;
   const isAllowedPost = (req.method === 'POST' && voiceApp && (VOICE_POST_SUFFIXES.has(voicePath) || voicePath === '/approval-request'))
     || (req.method === 'POST' && (url === '/lucidtype-edit' || url === '/lucidtype-review/apply' || url === '/lucidtype-review/refine'));   // LucidType edit-sync + review apply/refine (same-origin gated below)
   if (req.method !== 'GET' && !isAllowedPost) { res.writeHead(405); res.end(); return; }
@@ -880,6 +895,15 @@ function start(opts) {
       voiceToken: (v && v.voiceToken) || null,
       htmlFile: (v && v.htmlFile) || null,
       htmlContent: FALLBACK,
+      // Multi-backend app (AI Voice): the page serves at /<id>, every other route carries the
+      // backend as a sub-prefix (/<id>/<backend>/turn, …) resolved in the dispatch below. Each
+      // backend brings its own handlers (and optionally its own voiceToken).
+      backends: (v && v.backends)
+        ? Object.fromEntries(Object.entries(v.backends).map(([b, e]) => [b, {
+            handlers: (e && e.handlers) || {},
+            voiceToken: (e && e.voiceToken) || null,
+          }]))
+        : null,
     };
   });
   setAppFolders(opts.appFolders);

@@ -9,7 +9,10 @@
 //     voiceSttHost/voiceSttPort/voiceTtsHost/voiceTtsPort.
 // Both are edited in the config editor (global on the TTS/STT tab, override in the page's Advanced).
 
-const VOICE_APPS = ['claude-voice', 'codex-voice', 'copilot-voice', 'owui-voice'];
+const VOICE_APPS = ['ai-voice'];
+// The four pre-consolidation voice app ids, mapped to their AI Voice backend. Pages with these ids
+// are rewritten in migrateVoiceConfig; the ids themselves no longer exist in apps.json.
+const LEGACY_VOICE_APPS = { 'claude-voice': 'claude', 'codex-voice': 'codex', 'copilot-voice': 'copilot', 'owui-voice': 'owui' };
 // Host blank by default (voice stays off until pointed at a server; the editor placeholder is
 // 127.0.0.1 for the tts-stt-windows helper). Ports are the standard Wyoming faster-whisper / piper.
 const VOICE_DEFAULTS = { sttHost: '', sttPort: '10300', ttsHost: '', ttsPort: '10200' };
@@ -47,6 +50,15 @@ function resolveVoiceEndpoints(settings, pageOptions) {
 // drop the legacy keys. Idempotent — with no legacy keys present it changes nothing. Mutates config.
 function migrateVoiceConfig(config) {
   if (!config || !Array.isArray(config.grids)) return config;
+  // Consolidation (2026-08): the four voice apps became ONE app ('ai-voice') with a per-page
+  // backend option. Rewrite old pages in place — everything else about them (options, hotkeys,
+  // grid placement) carries over untouched. Idempotent: already-migrated pages don't match.
+  for (const g of config.grids) {
+    if (!g || !(g.app in LEGACY_VOICE_APPS)) continue;
+    if (!g.options) g.options = {};
+    if (!g.options.backend) g.options.backend = LEGACY_VOICE_APPS[g.app];
+    g.app = 'ai-voice';
+  }
   let seeded = !!(config.settings && config.settings.voice);
   for (const g of config.grids) {
     if (!g || !VOICE_APPS.includes(g.app) || !g.options) continue;
@@ -89,4 +101,4 @@ function isSttNoisePhrase(text) {
   return STT_NOISE_PHRASES.includes(norm);
 }
 
-module.exports = { VOICE_APPS, VOICE_DEFAULTS, voiceSettings, resolveVoiceEndpoints, resolveLucidEndpoints, migrateVoiceConfig, isSttNoisePhrase };
+module.exports = { VOICE_APPS, LEGACY_VOICE_APPS, VOICE_DEFAULTS, voiceSettings, resolveVoiceEndpoints, resolveLucidEndpoints, migrateVoiceConfig, isSttNoisePhrase };

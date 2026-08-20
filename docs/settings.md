@@ -219,7 +219,7 @@ service catalog, icon resolution, memory footprint — lives in
 ### Open WebUI
 
 One connection shared by the meeting **Analysis AI** (Meeting tab) and the
-**[Open WebUI Voice](owui-voice.md)** panel app:
+**[AI Voice](ai-voice.md)** app's Open WebUI backend:
 
 - **URL** — the server's address (e.g. `http://192.168.1.25:3000`). Any pasted form works —
   bare host:port, trailing slash, or a full path; the app derives `/api/chat/completions` and

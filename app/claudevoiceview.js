@@ -4,11 +4,13 @@ function $(id) { return document.getElementById(id); }
 // hardcoded-dark approach — see docs/claude-voice.md). No options here are secret (confirmed in
 // apps.json), so unlike the OWUI chat app there's no /app-config fetch needed at all for config.
 var Q = new URLSearchParams(location.search);
-// This one page serves EVERY voice-panel app: the served path's first segment is the app id, and
-// every server route lives under it (/claude-voice/*, /codex-voice/*, ...). Agent-specific strings
-// (title, modes, models, approval wording) arrive as `meta` on the /state snapshot -- see
-// applyMeta() -- so nothing agent-specific is hardcoded here beyond the claude-shaped fallbacks.
-var BASE = '/' + (location.pathname.split('/')[1] || 'claude-voice');
+// This one page serves EVERY AI Voice backend: the page itself is served at /ai-voice, and every
+// server route carries the page's backend as a sub-prefix (/ai-voice/<backend>/turn, ...), so
+// requests bind to the right backend host no matter which page is on screen. Backend-specific
+// strings (title, modes, models, approval wording) arrive as `meta` on the /state snapshot -- see
+// applyMeta() -- so nothing backend-specific is hardcoded here beyond the claude-shaped fallbacks.
+var BACKEND = Q.get('backend') || 'claude';
+var BASE = '/' + (location.pathname.split('/')[1] || 'ai-voice') + '/' + BACKEND;
 (function () {
   document.body.classList.toggle('light', Q.get('_dark') === '0');
   var a = Q.get('_accent') || '';
@@ -261,6 +263,10 @@ function applyMeta(meta) {
   if (meta.approvalTitle) $('approvalTitle').textContent = meta.approvalTitle;
   if (meta.turnFailedText) turnFailedText = meta.turnFailedText;
   $('approvalAlways').classList.toggle('hidden', !meta.approvalAlways);   // only agents whose protocol supports session-wide approval
+  // Chat-only backends (owui/api) have no working directory and no permission modes -- hide the
+  // buttons instead of leaving dead claude-shaped controls on screen.
+  $('vpProject').classList.toggle('hidden', meta.hasProject === false);
+  $('vpMode').classList.toggle('hidden', !(meta.modes && meta.modes.length));
   if (meta.modes && meta.modes.length) {
     MODE_LABELS = {};
     var wrap = $('modeOpts');
