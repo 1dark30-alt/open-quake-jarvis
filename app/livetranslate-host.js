@@ -116,7 +116,12 @@ function createLiveTranslateHost({ appId = 'livetranslate', log, deps }) {
 
   // One chat-completion call. Returns the translated string or throws.
   function aiChat(cfg, messages) {
-    const body = JSON.stringify({ model: cfg.model, messages, stream: false, max_tokens: 300 });
+    const payload = { model: cfg.model, messages, stream: false, max_tokens: 300 };
+    // DeepSeek v4 defaults to thinking mode (effort high) — seconds of reasoning overhead per
+    // request and the answer can land in reasoning_content, leaving content empty. Disable it;
+    // only for DeepSeek models, since OpenAI rejects unknown request params.
+    if (/deepseek/i.test(cfg.model)) payload.thinking = { type: 'disabled' };
+    const body = JSON.stringify(payload);
     const u = new URL(cfg.baseUrl + '/chat/completions');
     const mod = u.protocol === 'http:' ? http : https;
     return new Promise((resolve, reject) => {

@@ -35,7 +35,12 @@ const SYSTEM = 'You are a live interpreter. Translate everything the user says i
   'Use the conversation so far to resolve pronouns and context.';
 
 function chat(messages) {
-  const body = JSON.stringify({ model, messages, stream: false, max_tokens: 300 });
+  const payload = { model, messages, stream: false, max_tokens: 300 };
+  // DeepSeek v4 defaults to thinking mode (effort high) — reasoning overhead per request and the
+  // answer can land in reasoning_content, leaving content empty. Disable it; only for DeepSeek
+  // models, since OpenAI rejects unknown request params.
+  if (/deepseek/i.test(model)) payload.thinking = { type: 'disabled' };
+  const body = JSON.stringify(payload);
   const u = new URL(baseUrl + '/chat/completions');
   const mod = u.protocol === 'http:' ? http : https;
   return new Promise((resolve, reject) => {
