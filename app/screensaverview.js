@@ -345,41 +345,46 @@
       if (opts.shuffle) shuffleArr(order);
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     }
-    function cellSpan(rec) {
-      var b = 14;   // border + a little shadow spread
-      // Rotation-aware bounding box — at ±30° the axis-aligned footprint grows noticeably.
-      var cr = Math.abs(Math.cos(rec.rot || 0)), sr = Math.abs(Math.sin(rec.rot || 0));
-      var hw = (rec.w / 2) * cr + (rec.h / 2) * sr + b;
-      var hh = (rec.w / 2) * sr + (rec.h / 2) * cr + b;
-      var x0 = Math.max(0, rec.x - hw), x1 = Math.min(W - 1, rec.x + hw);
-      var y0 = Math.max(0, rec.y - hh), y1 = Math.min(H - 1, rec.y + hh);
-      if (x0 > x1 || y0 > y1) return null;
-      return {
-        c0: Math.floor(x0 / (W / COLLAGE_COLS)), c1: Math.min(COLLAGE_COLS - 1, Math.floor(x1 / (W / COLLAGE_COLS))),
-        r0: Math.floor(y0 / (H / COLLAGE_ROWS)), r1: Math.min(COLLAGE_ROWS - 1, Math.floor(y1 / (H / COLLAGE_ROWS))),
-      };
+    // Exact rotated-rectangle coverage: a cell counts only when its CENTER lies inside the tilted
+    // print (border included). A bounding-box approximation marked corner cells that were still
+    // visually black, so the gap-seeker stopped aiming at them and prints piled up at random.
+    function eachCoveredCell(rec, fn) {
+      var b = 12;   // white border
+      var cos = Math.cos(rec.rot || 0), sin = Math.sin(rec.rot || 0);
+      var hw = rec.w / 2 + b, hh = rec.h / 2 + b;
+      var cw = W / COLLAGE_COLS, ch = H / COLLAGE_ROWS;
+      for (var r = 0; r < COLLAGE_ROWS; r++) {
+        for (var c = 0; c < COLLAGE_COLS; c++) {
+          var dx = (c + 0.5) * cw - rec.x, dy = (r + 0.5) * ch - rec.y;
+          var lx = dx * cos + dy * sin, ly = -dx * sin + dy * cos;   // into print-local coords
+          if (lx >= -hw && lx <= hw && ly >= -hh && ly <= hh) fn(r * COLLAGE_COLS + c);
+        }
+      }
     }
     function markCells(rec) {
-      var s = cellSpan(rec);
-      if (!s) return;
-      for (var r = s.r0; r <= s.r1; r++) for (var c = s.c0; c <= s.c1; c++) cells[r * COLLAGE_COLS + c] = true;
+      eachCoveredCell(rec, function (i) { cells[i] = true; });
     }
     function freshCellsCovered(rec) {
-      var s = cellSpan(rec);
-      if (!s) return 0;
       var n = 0;
-      for (var r = s.r0; r <= s.r1; r++) for (var c = s.c0; c <= s.c1; c++) if (!cells[r * COLLAGE_COLS + c]) n++;
+      eachCoveredCell(rec, function (i) { if (!cells[i]) n++; });
       return n;
     }
-    // Spread the pile: audition a handful of random spots (centers may lean a little past the
-    // screen edges, scrapbook-style) and keep the one that covers the most still-empty board —
-    // prints seek the gaps instead of clustering mid-screen.
+    // Spread the pile: audition EVERY board cell as a candidate center (with jitter so nothing
+    // looks grid-aligned) and take the spot covering the most still-empty board. Deterministic
+    // gap-filling — random auditions kept forming piles with black between them.
     function placePrint(w, h, rot) {
+      var cw = W / COLLAGE_COLS, ch = H / COLLAGE_ROWS;
       var best = null, bestScore = -1;
-      for (var c = 0; c < 16; c++) {
-        var cand = { w: w, h: h, rot: rot, x: -40 + Math.random() * (W + 80), y: -20 + Math.random() * (H + 40) };
-        var score = freshCellsCovered(cand);
-        if (score > bestScore) { bestScore = score; best = cand; }
+      for (var r = 0; r < COLLAGE_ROWS; r++) {
+        for (var c = 0; c < COLLAGE_COLS; c++) {
+          var cand = {
+            w: w, h: h, rot: rot,
+            x: (c + 0.5) * cw + (Math.random() - 0.5) * cw,
+            y: (r + 0.5) * ch + (Math.random() - 0.5) * ch,
+          };
+          var score = freshCellsCovered(cand) + Math.random() * 0.5;   // tiny random tiebreak
+          if (score > bestScore) { bestScore = score; best = cand; }
+        }
       }
       return best;
     }
