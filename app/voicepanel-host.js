@@ -24,6 +24,7 @@ const speechLib = require('./claudevoice-speech');   // pure: sentence cutter + 
 const wyoming = require('./claudevoice-wyoming');    // pure: Wyoming STT/TTS protocol client
 const { resolveAiProfile } = require('./voiceConfig'); // pure: AI-profile library lookup (Smart Profiles)
 const { createPanelReview, PANEL_SYSTEM_PROMPT, PANEL_PROFILE } = require('./panelGenerate'); // pure: Panel Builder review
+const routinesLib = require('./routines');            // pure: saved AI routines (shape + auto-name)
 
 // Whisper hallucinates stock phrases on background noise/near-silence ("thanks for watching" is the
 // classic, from YouTube training data). Exact-phrase blocklist, compared case/punctuation-insensitively --
@@ -241,6 +242,30 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
     if (lazyStart) broadcast({ type: 'user-turn', text });
     return { ok: true, speech: speechId };
   }
+  // "+ Routine" beside Send. Saves `text` (the message field) as a reusable routine, or — when the
+  // field is empty — the last request that was actually sent, so you can speak a task, watch it
+  // work, and keep it. The routine is named from its own opening words: the panel has no on-screen
+  // keyboard, so a "name it" dialog would be a dead end. Rename it on Settings -> Routines.
+  function saveRoutine(text) {
+    const prompt = String(text || '').trim() || String(state.lastUserText || '').trim();
+    if (!prompt) return { ok: false, error: 'Nothing to save yet — type a request, or ask for something first.' };
+    const grid = deps.activeGrid && deps.activeGrid();
+    if (!grid || !grid.id) return { ok: false, error: 'Open an AI Chat page first.' };
+    const config = deps.getConfig();
+    if (!config.settings) config.settings = {};
+    if (!Array.isArray(config.settings.routines)) config.settings.routines = [];
+    const routine = routinesLib.normalizeRoutine({
+      prompt: prompt,
+      appPageId: grid.id,
+      profileId: (grid.options && grid.options.profilePick) || '',   // the profile this page is on right now
+    });
+    if (!routine) return { ok: false, error: 'Nothing to save yet.' };
+    config.settings.routines.push(routine);
+    deps.saveConfig();
+    say('routine saved: "' + routine.name + '"');
+    return { ok: true, name: routine.name };
+  }
+
   // Sends one turn to the adapter. Returns false on send failure, else the speech-stream id (or
   // null). Queued dispatches defer their speech to the first delta (see the assistant-delta
   // handler) so the previous reply's spoken tail is never cut off.
@@ -553,6 +578,7 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       setProfile,
       panelAccept,
       panelCancel,
+      saveRoutine,
       setModel: model => adapter.setModel(model),
       sessionStart: startSession,
       sessionStop: stopSession,

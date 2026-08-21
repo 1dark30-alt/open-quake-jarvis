@@ -275,9 +275,18 @@
   #sendBtn { flex: 0 0 auto; min-width: 88px; min-height: 48px; border-radius: 10px; border: none;
     background: var(--accent); color: var(--accent-fg, #04120b); font-size: 16px; font-weight: 700; cursor: pointer; user-select: none; }
   #sendBtn:disabled { opacity: .5; cursor: default; }
+  /* "+ Routine": saves what you were about to send (or the last thing you asked for) as a reusable
+     routine a tile can re-run. Fixed width, so #textInput's flex:1 gives back exactly this button
+     plus one 10px gap. Outlined, not accent-filled -- Send stays the one primary action here. */
+  #routineBtn { flex: 0 0 auto; width: 120px; min-height: 48px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--tile-bd); background: var(--surf); color: var(--fg);
+    font-size: 16px; font-weight: 600; user-select: none; }
+  #routineBtn:active { background: var(--surf2); }
+  #routineBtn:disabled { opacity: .5; cursor: default; }
   #ttsTestBtn { flex: 0 0 auto; min-width: 48px; min-height: 48px; border-radius: 10px; border: 1px solid var(--tile-bd);
     background: var(--surf2); color: var(--fg); font-size: 14px; cursor: pointer; user-select: none; }
   #err { flex: 1; font-size: 13px; color: var(--danger); user-select: none; }
+  #err.ok { color: var(--accent); }   /* same line, but a confirmation is not an error */
 
   /* Approval overlay (Phase 7) -- the single highest-stakes tap in the app, so both buttons are well
      past the 48px minimum and the full command is always shown, never truncated. */
@@ -315,6 +324,7 @@
       <div id="inputrow">
         <textarea id="textInput" placeholder="Type a message…" rows="1"></textarea>
         <button id="sendBtn">➤ Send</button>
+        <button id="routineBtn" type="button" title="Save this request as a routine you can re-run from a tile">+ Routine</button>
       </div>
     </div>
     <div id="voicePanel">

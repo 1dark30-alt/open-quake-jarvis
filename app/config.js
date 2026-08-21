@@ -37,7 +37,7 @@
   }
   const appIconCache = {};   // app value -> dataURL | false (failed) | null (in-flight)
   const urlIconPreview = {}; // iconCache path -> dataURL of a just-fetched URL icon (editor preview only; dodges file:// browser-cache staleness on Refresh)
-  const TYPES = [['', 'Empty'], ['app', 'App / Program'], ['url', 'Website (URL)'], ['page', 'Go to open-quake page'], ['cmd', 'Shell command'], ['open', 'Open file/folder'], ['system', 'System (lock/config)'], ['counter', 'Counter'], ['paste_text', 'Paste Text'], ['key', 'Send keystroke'], ['macro', 'Macro / Steps'], ['ha', 'HA entity']];
+  const TYPES = [['', 'Empty'], ['app', 'App / Program'], ['url', 'Website (URL)'], ['page', 'Go to open-quake page'], ['cmd', 'Shell command'], ['open', 'Open file/folder'], ['system', 'System (lock/config)'], ['counter', 'Counter'], ['paste_text', 'Paste Text'], ['key', 'Send keystroke'], ['macro', 'Macro / Steps'], ['ha', 'HA entity'], ['routine', 'AI Routine']];
   // Curated per-domain service catalog for HA entity tiles. Lookup falls back to HA_SERVICES_DEFAULT
   // for any domain we don't have a more specific list for. First entry is the default service when
   // the user picks an entity of that domain.
@@ -58,7 +58,7 @@
   };
   const HA_SERVICES_DEFAULT = [['toggle', 'Toggle'], ['turn_on', 'Turn on'], ['turn_off', 'Turn off']];
   // Step kinds inside a Macro tile (value semantics mirror the matching tile types).
-  const STEP_KINDS = [['key', 'Keystroke'], ['text', 'Type text'], ['delay', 'Delay (ms)'], ['app', 'App / Program'], ['open', 'Open file/folder'], ['url', 'Website (URL)'], ['cmd', 'Shell command'], ['page', 'Go to page'], ['system', 'System'], ['ahk', 'AutoHotkey']];
+  const STEP_KINDS = [['key', 'Keystroke'], ['text', 'Type text'], ['delay', 'Delay (ms)'], ['app', 'App / Program'], ['open', 'Open file/folder'], ['url', 'Website (URL)'], ['cmd', 'Shell command'], ['page', 'Go to page'], ['system', 'System'], ['ahk', 'AutoHotkey'], ['routine', 'AI Routine']];
   // Knob behavior options (per page-type, with per-page override). Defaults: turn=Scroll pages, click=Start/stop rotation.
   const KNOB_TURN_OPTS = [['pages', 'Scroll pages'], ['volume', 'System volume'], ['scroll', 'Scroll in window'], ['select', 'Select button']];
   const KNOB_CLICK_OPTS = [
@@ -507,6 +507,57 @@
       list().push({ id: 'p' + Date.now().toString(36), name: '', prompt: '' });
       markDirty(); redraw();
       const inputs = host.querySelectorAll('.apName');
+      if (inputs.length) inputs[inputs.length - 1].focus();
+    };
+  }
+  // ---- Routines rows (Settings -> Routines): name + prompt + which AI Chat page runs it ----
+  // Same live-edit model as the AI Profiles rows above: mutate config.settings.routines in place,
+  // markDirty(), Save persists. Ids are stable (never edited); new rows and panel saves mint one.
+  function aiChatPagesForPicker() {
+    return (config.grids || []).filter(g => g && g.kind === 'app' && g.app === 'ai-voice');
+  }
+  function routineRowsHtml(list) {
+    const rows = Array.isArray(list) ? list : [];
+    const pages = aiChatPagesForPicker();
+    if (!pages.length) return '<p class="hint">No AI Chat page yet — add one (Pages → + App page → AI Voice) and a routine will have somewhere to run.</p>';
+    if (!rows.length) return '<p class="hint">No routines yet — add one below, or save one from the panel with <b>+ Routine</b>.</p>';
+    const profiles = ((config.settings || {}).aiProfiles) || [];
+    return rows.map((r, i) => `<div class="row" data-idx="${i}" style="margin-top:14px;align-items:flex-start">
+        <div style="display:flex;flex-direction:column;gap:6px;width:230px">
+          <input class="rtName" placeholder="Routine name" value="${esc(r.name || '')}">
+          <select class="rtPage" title="Which AI Chat page runs this">${pages.map(g => `<option value="${g.id}" ${g.id === r.appPageId ? 'selected' : ''}>${esc(g.name || '(unnamed page)')}</option>`).join('')}</select>
+          <select class="rtProfile" title="Optional AI profile"><option value="">(page's current profile)</option>${profiles.map(p => `<option value="${esc(p.id)}" ${p.id === r.profileId ? 'selected' : ''}>${esc(p.name || '(unnamed)')}</option>`).join('')}</select>
+        </div>
+        <textarea class="rtPrompt" placeholder="What to ask the AI, e.g. Summarize my unread email and list anything needing a reply" rows="4" style="flex:1;margin-left:8px;font-family:inherit">${esc(r.prompt || '')}</textarea>
+        <button class="rtRemove" type="button" data-rm="${i}" title="Remove" style="margin-left:8px">✕</button>
+      </div>`).join('');
+  }
+  function wireRoutineRows() {
+    const host = document.getElementById('sRoutineRows');
+    if (!host) return;
+    const list = () => { if (!config.settings) config.settings = {}; if (!Array.isArray(config.settings.routines)) config.settings.routines = []; return config.settings.routines; };
+    const redraw = () => { host.innerHTML = routineRowsHtml(list()); wireRows(); };
+    function bind(sel, prop) {
+      host.querySelectorAll(sel).forEach((el, i) => {
+        el.oninput = el.onchange = e => { const l = list(); if (l[i]) { l[i][prop] = e.target.value; markDirty(); } };
+      });
+    }
+    function wireRows() {
+      bind('.rtName', 'name');
+      bind('.rtPrompt', 'prompt');
+      bind('.rtPage', 'appPageId');
+      bind('.rtProfile', 'profileId');
+      host.querySelectorAll('.rtRemove').forEach(btn => {
+        btn.onclick = () => { list().splice(parseInt(btn.getAttribute('data-rm'), 10), 1); markDirty(); redraw(); };
+      });
+    }
+    wireRows();
+    const addBtn = document.getElementById('sRoutineAdd');
+    if (addBtn) addBtn.onclick = () => {
+      const pages = aiChatPagesForPicker();
+      list().push({ id: 'r' + Date.now().toString(36), name: '', prompt: '', appPageId: pages.length ? pages[0].id : '', profileId: '' });
+      markDirty(); redraw();
+      const inputs = host.querySelectorAll('.rtName');
       if (inputs.length) inputs[inputs.length - 1].focus();
     };
   }
@@ -1087,6 +1138,7 @@
     if (t.type === 'macro' && !Array.isArray(t.steps)) t.steps = [];
     let body;
     if (t.type === 'page') body = `<div class="row"><label>Page</label>${pageSelectHtml(t)}</div>`;
+    else if (t.type === 'routine') body = `<div class="row"><label>Routine</label>${routineSelectHtml(t)}</div>`;
     else if (t.type === 'macro') body = `<div class="row"><label>Steps</label></div><div id="macroSteps"></div>`;
     else if (t.type === 'key') body = `<div class="row"><label>Keys</label><input id="tValue" value="${esc(t.value)}" placeholder="${valuePlaceholder('key')}"><button id="tRec" type="button">Record</button></div>`;
     else if (t.type === 'ha') body = haTileBodyHtml(t);
@@ -1106,7 +1158,7 @@
     document.getElementById('tLabel').oninput = e => { t.label = e.target.value; renderTiles(); markDirty(); };
     document.getElementById('tType').onchange = e => {
       const prev = t.type; t.type = e.target.value;
-      if (t.type === 'page' || prev === 'page' || t.type === 'ha' || prev === 'ha') { t.value = ''; t.service = ''; }
+      if (t.type === 'page' || prev === 'page' || t.type === 'ha' || prev === 'ha' || t.type === 'routine' || prev === 'routine') { t.value = ''; t.service = ''; }
       // Default HA entity tiles to the "HA icon" iconType so the resolved icon shows immediately
       // without the user having to flip it manually.
       if (t.type === 'ha' && (!t.iconType || t.iconType === 'emoji')) { t.iconType = 'ha'; t.iconCache = ''; t.iconUrl = ''; }
@@ -1117,6 +1169,8 @@
     if (tv) tv.oninput = e => { t.value = e.target.value; renderTiles(); renderIconPane(); markDirty(); };
     const tp = document.getElementById('tPage');
     if (tp) { if (tp.value && tp.value !== t.value) { t.value = tp.value; markDirty(); } tp.onchange = e => { t.value = e.target.value; renderTiles(); markDirty(); }; }
+    const tr = document.getElementById('tRoutine');
+    if (tr) { if (tr.value && tr.value !== t.value) { t.value = tr.value; markDirty(); } tr.onchange = e => { t.value = e.target.value; renderTiles(); markDirty(); }; }
     document.getElementById('tClear').onclick = () => { flattenAt(g, ti); g.tiles[ti] = blankTile(); render(); markDirty(); };
     const setVal = p => { if (!p) return; t.value = p; if (!t.label) t.label = baseName(p); render(); markDirty(); };
     const br = document.getElementById('tBrowse');
@@ -1143,10 +1197,15 @@
     if (!Array.isArray(t.steps)) t.steps = [];
     const host = document.getElementById('macroSteps'); if (!host) return;
     const others = (config.grids || []).filter(g => g.id !== curGrid().id);
+    const routineList = ((config.settings || {}).routines) || [];
     const rowHtml = (s, i) => {
       const kind = s.kind || 'key';
       const field = kind === 'page'
         ? `<select class="msVal" data-i="${i}" style="flex:1">${others.map(g => `<option value="${esc(g.id)}" ${g.id === s.value ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select>`
+        : kind === 'routine'
+        ? (routineList.length
+            ? `<select class="msVal" data-i="${i}" style="flex:1">${routineList.map(r => `<option value="${esc(r.id)}" ${r.id === s.value ? 'selected' : ''}>${esc(r.name || '(unnamed routine)')}</option>`).join('')}</select>`
+            : `<span class="hint" style="flex:1">No routines saved yet — add one on <b>Settings → Routines</b>.</span>`)
         : `<input class="msVal" data-i="${i}" style="flex:1" value="${esc(s.value || '')}" placeholder="${stepValuePlaceholder(kind)}">`;
       const rec = kind === 'key' ? `<button class="msRec" data-i="${i}" type="button" title="Record a key combo">⌨</button>` : '';
       const brow = (kind === 'app' || kind === 'open' || kind === 'ahk') ? `<button class="msBrowse" data-i="${i}" type="button" title="Browse">…</button>` : '';
@@ -1157,6 +1216,9 @@
     host.innerHTML = (t.steps.length ? t.steps.map(rowHtml).join('') : '<p class="hint">No steps yet — add one below.</p>')
       + `<div class="row"><button id="msAdd" type="button">+ add step</button></div>`;
     host.querySelectorAll('.msKind').forEach(el => el.onchange = e => { const i = +e.target.dataset.i; t.steps[i].kind = e.target.value; t.steps[i].value = ''; renderMacroSteps(t); markDirty(); });
+    // A <select> field (page / routine) shows its first option straight away — commit that as the
+    // step's value so a step the user never touched isn't silently blank.
+    host.querySelectorAll('select.msVal').forEach(el => { const i = +el.dataset.i; if (el.value && t.steps[i] && !t.steps[i].value) { t.steps[i].value = el.value; markDirty(); } });
     host.querySelectorAll('.msVal').forEach(el => { const h = e => { t.steps[+e.target.dataset.i].value = e.target.value; markDirty(); }; el.oninput = h; el.onchange = h; });
     host.querySelectorAll('.msRec').forEach(el => el.onclick = e => { const i = +e.currentTarget.dataset.i; const inp = host.querySelector(`.msVal[data-i="${i}"]`); if (inp) captureCombo(inp, c => { t.steps[i].value = c; inp.value = c; markDirty(); }); });
     host.querySelectorAll('.msBrowse').forEach(el => el.onclick = async e => { const i = +e.currentTarget.dataset.i; const k = t.steps[i].kind; const p = k === 'app' ? await configApi.pickProgram() : await configApi.pickFile(); if (p) { t.steps[i].value = p; renderMacroSteps(t); markDirty(); } });
@@ -1303,10 +1365,16 @@
     if (!others.length) return '<span class="hint">No other pages to link to yet — add one first.</span>';
     return `<select id="tPage">${others.map(g => `<option value="${g.id}" ${g.id === t.value ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select>`;
   }
+  function routineSelectHtml(t) {
+    const list = ((config.settings || {}).routines) || [];
+    if (!list.length) return '<span class="hint">No routines saved yet — add one on <b>Settings → Routines</b>, or from the panel with <b>+ Routine</b>.</span>';
+    return `<select id="tRoutine">${list.map(r => `<option value="${esc(r.id)}" ${r.id === t.value ? 'selected' : ''}>${esc(r.name || '(unnamed routine)')}</option>`).join('')}</select>`;
+  }
   function typeHint(type) {
     if (type === 'app') return 'Program name on PATH (chrome, notepad…) or a full .exe path via Browse.';
     if (type === 'url') return 'Opens in your default browser.';
     if (type === 'page') return 'Tapping (or clicking) this tile switches the panel to the chosen page.';
+    if (type === 'routine') return 'Tapping this tile switches the panel to the AI Chat page the routine names and sends its saved request — the agent answers with its normal tools and approvals. Manage routines on Settings → Routines.';
     if (type === 'cmd') return 'Runs a shell command (advanced; only use commands you fully trust).';
     if (type === 'system') return 'lock = lock screen · config = open this editor · mic = toggle the device mic · monitor = hide the panel and use the device as a normal monitor (return via the tray).';
     if (type === 'counter') return 'Tap the left half of the tile to decrement, the right half to increment. The value persists across sessions.';
@@ -2802,6 +2870,14 @@
       <p class="hint">Named instructions for the <b>AI Voice</b> app — pick one on the panel (the Profile button) and the AI behaves accordingly: translate, summarize, write, and so on. The instruction is sent to the AI as its role for the conversation. An empty instruction (General Chat) means plain, unmodified chat. Every AI Voice page remembers its own current profile. Remember to Save.</p>
       <div id="sAiProfileRows">${aiProfileRowsHtml((config.settings || {}).aiProfiles)}</div>
       <button id="sAiProfileAdd" type="button" style="margin-top:10px">+ Add profile</button>`;
+
+    // Routines: saved prompts an "AI Routine" tile re-runs with one tap. Its own tab rather than a
+    // second list under AI Profiles -- that tab is already full.
+    const rtHtml = `
+      <p class="sectitle">Routines</p>
+      <p class="hint">A routine is a saved request plus which <b>AI Chat</b> page runs it. Put one on a tile (tile type <b>AI Routine</b>) and tapping it switches the panel to that page and sends the request, with the agent's normal tools and approvals. You can also save one straight from the panel: the <b>+ Routine</b> button beside Send on any AI Chat page keeps whatever you just typed or asked for. Remember to Save.</p>
+      <div id="sRoutineRows">${routineRowsHtml((config.settings || {}).routines)}</div>
+      <button id="sRoutineAdd" type="button" style="margin-top:10px">+ Add routine</button>`;
     el.innerHTML = `
       <p class="sectitle">Settings</p>
       <div class="tabbar">
@@ -2812,11 +2888,12 @@
         <button id="tabDi" class="tab${tab === 'dropin' ? ' on' : ''}">Drop-In Apps</button>
         <button id="tabAuth" class="tab${tab === 'auth' ? ' on' : ''}">Auth</button>
         <button id="tabAp" class="tab${tab === 'aiprofiles' ? ' on' : ''}">AI Profiles</button>
+        <button id="tabRt" class="tab${tab === 'routines' ? ' on' : ''}">Routines</button>
         <button id="tabMe" class="tab${tab === 'meeting' ? ' on' : ''}">Meeting</button>
         <button id="tabTts" class="tab${tab === 'ttsstt' ? ' on' : ''}">TTS/STT</button>
         <button id="tabMon" class="tab${tab === 'monitor' ? ' on' : ''}">Monitor</button>
       </div>
-      ${tab === 'software' ? swHtml : tab === 'hardware' ? hwHtml : tab === 'theme' ? thHtml : tab === 'apps' ? appsHtml : tab === 'dropin' ? diHtml : tab === 'auth' ? authHtml : tab === 'aiprofiles' ? apHtml : tab === 'meeting' ? meHtml : tab === 'ttsstt' ? ttsHtml : monHtml}
+      ${tab === 'software' ? swHtml : tab === 'hardware' ? hwHtml : tab === 'theme' ? thHtml : tab === 'apps' ? appsHtml : tab === 'dropin' ? diHtml : tab === 'auth' ? authHtml : tab === 'aiprofiles' ? apHtml : tab === 'routines' ? rtHtml : tab === 'meeting' ? meHtml : tab === 'ttsstt' ? ttsHtml : monHtml}
       <div class="row" style="margin-top:22px"><button id="sBack">← Back to pages</button></div>`;
 
     document.getElementById('tabSw').onclick = () => { settingsTab = 'software'; renderSettings(); };
@@ -2827,6 +2904,8 @@
     document.getElementById('tabAuth').onclick = () => { settingsTab = 'auth'; renderSettings(); };
     document.getElementById('tabAp').onclick = () => { settingsTab = 'aiprofiles'; renderSettings(); };
     wireAiProfileRows();   // no-op unless the AI Profiles tab is showing
+    document.getElementById('tabRt').onclick = () => { settingsTab = 'routines'; renderSettings(); };
+    wireRoutineRows();     // no-op unless the Routines tab is showing
     document.getElementById('tabMe').onclick = () => { settingsTab = 'meeting'; renderSettings(); };
     document.getElementById('tabTts').onclick = () => { settingsTab = 'ttsstt'; renderSettings(); };
     document.getElementById('tabMon').onclick = () => { settingsTab = 'monitor'; renderSettings(); };

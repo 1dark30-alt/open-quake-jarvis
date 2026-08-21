@@ -188,7 +188,10 @@ function connectEvents() {
     } else if (msg.type === 'turn-speech') {
       // A queued turn just started generating: its speech stream id arrives here rather than on
       // the POST /turn response (that turn was parked behind the previous one -- CLI semantics).
-      if (msg.speech) startTurnAudio(msg.speech);
+      // speakEnabled is re-checked HERE, not just at send time: a turn can be dispatched by a
+      // routine tile (from main, which can't see this page's toggle) or queued behind another and
+      // muted in between. The toggle wins in both cases.
+      if (msg.speech && speakEnabled) startTurnAudio(msg.speech);
     } else if (msg.type === 'user-turn') {
       // A lazily-started session's session-started broadcast just wiped this page's transcript,
       // taking the freshly-drawn user bubble with it -- the host echoes the turn text back so the
@@ -328,6 +331,37 @@ function autoGrow() {
   ta.style.height = Math.min(140, ta.scrollHeight) + 'px';
 }
 $('textInput').addEventListener('input', autoGrow);
+
+// Transient line under the transcript. Shares #err with real errors but drops the danger color for
+// a confirmation, and clears itself -- the next setStatus would clear it anyway.
+var routineNoticeT = null;
+function routineNotice(text, ok) {
+  var el = $('err');
+  el.textContent = text;
+  el.classList.toggle('ok', !!ok);
+  clearTimeout(routineNoticeT);
+  routineNoticeT = setTimeout(function () { el.classList.remove('ok'); el.textContent = speechErrText || ''; }, 4000);
+}
+
+// "+ Routine": keep this request for a tile. Sends the message field if there's anything in it,
+// otherwise the host falls back to the last request that was actually sent -- so "speak it, watch
+// it work, keep it" is one tap. Naming happens on the host (no keyboard here); the generated name
+// comes back for the confirmation.
+$('routineBtn').onclick = function () {
+  var btn = $('routineBtn');
+  btn.disabled = true;
+  fetch(BASE + '/routine-save', {
+    method: 'POST', cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: $('textInput').value.trim() }),
+  }).then(function (r) { return r.json(); })
+    .then(function (r) {
+      if (r && r.ok) routineNotice('Saved routine: ' + r.name, true);
+      else routineNotice((r && r.error) || 'Could not save that routine.', false);
+    })
+    .catch(function () { routineNotice('Could not reach the panel server.', false); })
+    .finally(function () { btn.disabled = false; });
+};
 
 var turnInProgress = false;   // a sent turn hasn't seen its turn-complete yet (drives status after audio ends early)
 var turnFailedText = 'Turn failed to send — no project set, or claude CLI not found.';   // meta can override per agent

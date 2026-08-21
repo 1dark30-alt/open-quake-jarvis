@@ -10,6 +10,7 @@
 // Both are edited in the config editor (global on the TTS/STT tab, override in the page's Advanced).
 
 const { PANEL_PROFILE } = require('./panelGenerate');   // pure: the Panel Builder profile's user-facing half
+const routinesLib = require('./routines');              // pure: saved AI routines (shape + list hygiene)
 
 const VOICE_APPS = ['ai-voice'];
 // The four pre-consolidation voice app ids, mapped to their AI Voice backend. Pages with these ids
@@ -137,6 +138,17 @@ function ensureAiProfiles(config) {
   return config;
 }
 
+// Saved AI routines (Settings -> Routines): make sure the list exists and holds only usable
+// entries. A hand-edited or half-saved routine with no prompt is dropped here rather than being
+// offered in the tile editor's picker, where it would produce a tile that looks right and does
+// nothing when tapped.
+function ensureRoutines(config) {
+  if (!config) return config;
+  if (!config.settings) config.settings = {};
+  config.settings.routines = routinesLib.normalizeList(config.settings.routines);
+  return config;
+}
+
 // Resolve a profile id against the library. '' / unknown ids fall back to the FIRST profile
 // (General Chat by default), so a deleted profile never breaks a page.
 function resolveAiProfile(settings, id) {
@@ -153,4 +165,5 @@ function isSttNoisePhrase(text) {
   return STT_NOISE_PHRASES.includes(norm);
 }
 
-module.exports = { VOICE_APPS, LEGACY_VOICE_APPS, VOICE_DEFAULTS, DEFAULT_AI_PROFILES, ensureAiProfiles, ensurePanelProfile, resolveAiProfile, voiceSettings, resolveVoiceEndpoints, resolveLucidEndpoints, migrateVoiceConfig, isSttNoisePhrase };
+module.exports = {
+  VOICE_APPS, LEGACY_VOICE_APPS, VOICE_DEFAULTS, DEFAULT_AI_PROFILES, ensureAiProfiles, ensurePanelProfile, ensureRoutines, resolveAiProfile, voiceSettings, resolveVoiceEndpoints, resolveLucidEndpoints, migrateVoiceConfig, isSttNoisePhrase };

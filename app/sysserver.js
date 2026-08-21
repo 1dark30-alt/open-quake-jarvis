@@ -466,6 +466,7 @@ const VOICE_POST_SUFFIXES = new Set([
   '/permission-mode',
   '/profile',
   '/panel-accept',
+  '/routine-save',
   '/panel-cancel',
   '/model',
   '/tts',
@@ -703,6 +704,16 @@ async function handler(req, res) {
       if (id == null || !h.setProfile) return done(res, false);
       let ok = false; try { ok = !!h.setProfile(id); } catch (e) {}
       return done(res, ok);
+    }
+    // "+ Routine" beside Send: save what's in the message field, or (empty field) the last request
+    // that was sent, as a reusable routine. Returns the auto-generated name for the on-screen
+    // confirmation -- the panel has no keyboard, so naming happens here, not in a dialog.
+    if (voicePath === '/routine-save' && req.method === 'POST') {
+      let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+      if (!h.saveRoutine) return done(res, false);
+      let out = null;
+      try { out = h.saveRoutine(body && typeof body.text === 'string' ? body.text : ''); } catch (e) { out = { ok: false, error: e.message }; }
+      return json(res, out || { ok: false });
     }
     // Panel Builder: accept the page the AI proposed. `confirm` is the user's informed second yes,
     // sent only after the panel has shown them the actual commands a risky panel would run.

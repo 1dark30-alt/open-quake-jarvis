@@ -50,6 +50,7 @@ const touchSetup = require('./touchSetup');   // Bind a touchscreen to its physi
 const meetingControl = require('./meetingControl');   // Zoom/Teams call-control keystrokes (Meeting app page)
 const { createMeetingRecorder } = require('./meetingRecorder'); // hidden-window meeting recorder (mic + system loopback -> WAV)
 const { createMeetingHighlights } = require('./meetingHighlights'); // mid-meeting highlight spans -> the recording's sidecar
+const routines = require('./routines');       // saved AI routines: a prompt + which AI Chat page runs it
 const { createSlideCapture } = require('./slideCapture');       // hidden-window slide capture (getDisplayMedia -> screenshots)
 const { createLucidDictation } = require('./lucidtypeDictation'); // hidden-window LucidType dictation (mic + VAD -> Wyoming STT -> text)
 const lucidWyoming = require('./claudevoice-wyoming');          // Wyoming STT client (transcribe) for dictation
@@ -372,6 +373,7 @@ function migrateConfig(c) {
   voiceConfig.migrateVoiceConfig(c);   // legacy per-page wyoming* -> global config.settings.voice + per-page override
   voiceConfig.ensureAiProfiles(c);     // seed the Smart Profiles library once (user edits are never touched)
   voiceConfig.ensurePanelProfile(c);   // add Panel Builder to libraries that predate it (once — deletions stick)
+  voiceConfig.ensureRoutines(c);       // drop half-saved routines so the tile picker never offers a dud
   return c;
 }
 // SystemView (System Monitor) is RETIRED: its metrics layer spawned continuous PowerShell
@@ -830,6 +832,45 @@ function oauthProviderPayload() {
   });
 }
 
+// Short sentence on the panel's flash overlay. The only main-side way to tell someone standing at
+// the device that a tap did not do what they expected -- a Windows toast is on the wrong screen.
+function panelNotice(text) {
+  if (!text) return;
+  if (panelWin && !panelWin.isDestroyed()) { try { panelWin.webContents.send('notice', String(text)); } catch (e) {} }
+}
+// One of the five AI Voice hosts, by the backend its page is set to.
+function voiceHostForBackend(backend) {
+  return backend === 'codex' ? codexVoiceHost
+    : backend === 'copilot' ? copilotVoiceHost
+    : backend === 'owui' ? owuiVoiceHost
+    : backend === 'api' ? apiVoiceHost
+    : claudeVoiceHost;
+}
+// AI Routine tile (and macro step): switch the panel to the routine's AI Chat page and send its
+// saved prompt as an ordinary turn -- so it answers with that agent's real tools and approvals.
+//
+// Order matters and is not incidental: onTurn refuses unless the target page is ALREADY the active
+// grid (activeServedAppConfig), and gotoGrid sets config.activeGridId synchronously, so the two
+// must run in this order in the same tick. The webview may still be navigating; that is fine,
+// claudevoiceview replays the host-held transcript from /state when it finishes loading.
+function runRoutine(routineId) {
+  const r = routines.resolveRoutine(routineId, {
+    routines: (config.settings || {}).routines,
+    grids: config.grids,
+  });
+  if (!r.ok) { panelNotice(r.error); console.log('[routine] ' + r.error); return; }
+  if (r.warning) panelNotice(r.warning);
+  gotoGrid(r.pageId, true);
+  const page = (config.grids || []).find(g => g.id === r.pageId) || {};
+  const host = voiceHostForBackend((page.options && page.options.backend) || 'claude');
+  if (r.routine.profileId) { try { host.handlers.setProfile(r.routine.profileId); } catch (e) {} }
+  // speak:true -- the page's own speaker toggle decides whether the stream is actually played.
+  let sent = null;
+  try { sent = host.handlers.onTurn(r.routine.prompt, true); } catch (e) { console.log('[routine] ' + e.message); }
+  if (!sent || !sent.ok) panelNotice('Could not start that routine on this page.');
+  else console.log('[routine] ran "' + r.routine.name + '" on page ' + r.pageId);
+}
+
 async function pushToPanel() {
   if (panelWin && !panelWin.isDestroyed()) {
     const g = activeGrid();
@@ -1279,6 +1320,7 @@ async function runStep(step) {
     case 'text': if (!mediaKeys.typeString(value)) pasteText(value); break;   // type literally; fall back to clipboard paste
     case 'delay': await sleep(Math.max(0, Math.min(60000, parseInt(value, 10) || 0))); break;
     case 'ahk': ahk.run(value, { ahkPath: appSettings().ahkPath }); break;   // AutoHotkey script (inline or .ahk path), Windows-only
+    case 'routine': runRoutine(value); break;   // switch to the AI Chat page and send the saved prompt
     case 'counter': break;   // counter changes are saved by the panel directly via saveTileValue IPC
   }
 }

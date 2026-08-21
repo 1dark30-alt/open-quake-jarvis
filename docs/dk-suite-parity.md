@@ -17,6 +17,7 @@ don't — update it when either side changes.
 |---|---|
 | AI Chat (credit-metered, 100 credits/mo free) | One **AI Voice** app, five backends, **no credits**: real **Claude Code / Codex / Copilot agent sessions** (tools, approvals, your existing plan), **Open WebUI** chat against your own models, or **any OpenAI-compatible API by key** (OpenAI, DeepSeek, OpenRouter, LiteLLM/Ollama). |
 | OpenClaw integration ("run your favorite OpenClaw tasks with one tap" — via the OpenAI API server-side) | open-quake runs **real agent sessions natively** — Claude Code, Codex, Copilot — with tools, touch approvals, your own plan; no intermediary service. (Their one-tap *saved routines* idea is a genuine gap — see Missing.) |
+| Saved AI routines as tiles (OpenClaw: capture a spoken task, save it, re-run with one tap) | **AI Routine** tiles. Save a request straight from the panel (`+ Routine` beside Send on any AI Chat page) or type one on Settings → Routines, then put it on a tile — or inside a macro. Theirs re-runs an API call; ours re-runs a **real agent turn**, with tools, touch approvals and spoken replies. |
 | Mid-meeting [Mark] highlights (tap Mark; the summary extracts the flagged moments) | A **Highlight** column on the meeting panel: tap to open a span, tap to close it. Spans are ms offsets on the diarizer's own clock, stored in the recording's sidecar and handed to the analysis AI, which opens the notes with a **Highlights** section. Theirs marks an instant; ours marks a **range**, auto-closed if the call ends mid-span. |
 | Voice commands (press-and-speak) | Knob **hold-to-talk** everywhere + tap-to-toggle conversations; your own local Whisper STT (tts-sst), no cloud dependency. |
 | AI Meeting Assistant (record → transcribe → summarize) | Meeting app: stereo-split recording, auto start/stop, **speaker-diarized transcripts** (self-hosted), attendee-guided speaker ID via Outlook calendar, AI notes (summary/decisions/actions), per-meeting filing, **Joplin export**. Materially deeper than the advertised feature. |
@@ -40,7 +41,6 @@ don't — update it when either side changes.
 | Feature | What they advertise | Lift for open-quake |
 |---|---|---|
 | **macOS / Linux support** | Multi-OS: Windows, macOS, Linux | **Large.** The launcher/editor are Electron (portable), but launch/volume/media/loopback-audio/reserved-display code is Windows-specific (README already flags this). Realistic only as a scoped "panel + apps, minus Windows-only extras" port. |
-| **Saved AI routines as tiles** | OpenClaw pitch: capture a spoken task, save it, re-run with one tap | **Small — worth doing.** OQ has agent sessions and tiles, but no tile type that sends a saved prompt to an AI Voice backend. Adding one out-does theirs (routines run on a real agent with tools). |
 | **Custom emoji generation** | Speak to generate custom emoji for chat apps (their OpenAI-API feature) | **Gimmick.** No equivalent; listed for completeness. |
 | **Game voice control** | Mentioned in their showcase | **Unclear scope.** Nearest OQ equivalents: global hotkeys, macros, LucidType. Needs a real definition of what theirs does before it's worth chasing. |
 

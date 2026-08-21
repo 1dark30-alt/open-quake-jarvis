@@ -513,4 +513,12 @@
     panelApi.saveTileValue(cfg.id, idx, String(count));
   }
 
-  function flashVol(t) { vol.textContent = t; vol.style.opacity = 1; clearTimeout(volT); volT = setTimeout(() => vol.style.opacity = 0, 500); }
+  function flashVol(t) { vol.classList.remove('notice'); vol.textContent = t; vol.style.opacity = 1; clearTimeout(volT); volT = setTimeout(() => vol.style.opacity = 0, 500); }
+  // Short sentence from main (routine couldn't run, ran somewhere else). Shares the flash overlay
+  // but wraps and lingers -- a sentence at 44px for half a second is unreadable.
+  function flashNotice(t) {
+    if (!t) return;
+    vol.classList.add('notice'); vol.textContent = t; vol.style.opacity = 1;
+    clearTimeout(volT); volT = setTimeout(() => { vol.style.opacity = 0; vol.classList.remove('notice'); }, 2800);
+  }
+  panelApi.onNotice(flashNotice);
