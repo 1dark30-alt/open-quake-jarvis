@@ -2439,7 +2439,7 @@ function scheduleRotation() {
 function pushRotationState() {
   if (panelWin && !panelWin.isDestroyed()) panelWin.webContents.send('rotation', { enabled: rotationCfg().enabled, running: rotateRunning });
 }
-function setRotation(on) { rotateRunning = !!on && rotationCfg().enabled; scheduleRotation(); refreshTray(); pushRotationState(); }
+function setRotation(on) { rotateRunning = !!on; scheduleRotation(); refreshTray(); pushRotationState(); }
 function toggleRotation() { setRotation(!rotateRunning); }
 // Re-evaluate after a settings change: a fresh off->on starts it, off stops it, on->on keeps the runtime state
 // (so a manual pause survives an unrelated save). interval/page changes are picked up by the (re)schedule.
@@ -2604,7 +2604,7 @@ function trayMenu() {
     { label: micState ? 'Mic: on — click to disable' : 'Mic: off — click to enable', click: () => toggleMic() },
     { label: ringOn ? 'Knob ring: on — click to turn off' : 'Knob ring: off — click to turn on', click: () => toggleKnobRing() },
   ];
-  if (rotationCfg().enabled) items.push({ label: rotateRunning ? 'Auto-rotate: on — click to pause' : 'Auto-rotate: off — click to start', click: () => toggleRotation() });
+  if (rotationCfg().enabled || rotateRunning) items.push({ label: rotateRunning ? 'Auto-rotate: on — click to pause' : 'Auto-rotate: off — click to start', click: () => toggleRotation() });
   const rm = runMode();
   items.push({
     label: 'Run mode',
