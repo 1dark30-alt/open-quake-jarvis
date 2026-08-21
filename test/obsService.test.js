@@ -139,6 +139,20 @@ test('configure re-dials only when the url/password actually change', async () =
   assert.equal(fakes[1].connectArgs.password, 'pw');
 });
 
+test('configure() before start() replaces a construction-time password, and start() dials the new one', async () => {
+  // Boot reality: main.js constructs obsService with the still-ENCRYPTED password (decryptConfig can't
+  // run until app-ready), then reconfigures with the decrypted value before the first connect. If that
+  // reconfigure is dropped, OBS auth fails every launch until the user re-saves.
+  const fakes = [];
+  const obs = new ObsService({ password: 'oqenc:v2:ENCRYPTED-BLOB', clientFactory: () => { const f = new FakeObs(MODEL); fakes.push(f); return f; } });
+  obs.configure({ password: 'plaintext-pw' });   // still stopped -- updates the stored password without dialing
+  assert.equal(obs.password, 'plaintext-pw');
+  assert.equal(fakes.length, 0);                 // configure-while-stopped must not start a connection
+  obs.start(); await flush();
+  assert.equal(fakes.length, 1);
+  assert.equal(fakes[0].connectArgs.password, 'plaintext-pw');   // NOT the stale construction blob
+});
+
 test('stop() disconnects and clears live state', async () => {
   const fake = new FakeObs(MODEL);
   const obs = new ObsService({ clientFactory: () => fake });

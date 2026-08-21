@@ -2867,6 +2867,10 @@ app.whenReady().then(async () => {
   config = secretStore.decryptConfig(config);
   const storedDiscordTokens = oauthStorage.getTokens('discord');
   if (normalizeDiscordSettings((config.settings || {}).discord).enabled && storedDiscordTokens && storedDiscordTokens.accessToken) discordService.start();
+  // obsService was constructed at module init (above), before decryptConfig could run -- safeStorage
+  // needs app-ready -- so it captured the still-ENCRYPTED password. Re-point it at the now-decrypted
+  // settings before the first connect, or every boot fails OBS auth until the user re-saves the Auth tab.
+  obsService.configure({ url: obsWsUrl(obsSettings()), password: obsSettings().password });
   if (obsSettings().enabled) obsService.start();
   if (secretStore.available()) {
     if (needsMigration) saveConfig();                        // migrate plaintext/legacy config to current at-rest form
