@@ -5,7 +5,7 @@ What the commercial package advertises versus what open-quake ships. Comparison 
 plus their [Kickstarter](https://www.kickstarter.com/projects/decokee/decokee-quake-the-ultimate-desktop-ai-copilot)
 and [AI-copilot](https://www.decokee.com/pages/quake-ai-copilot) pages (as advertised 2026-08),
 cross-checked against a teardown of the installed DK-Suite (v0.4.69, unpacked Electron); the
-open-quake side is current `main` (v0.5.7). This is the running list of what they have that we
+open-quake side is the current release (v0.5.9). This is the running list of what they have that we
 don't — update it when either side changes.
 
 > open-quake is an independent community project, not affiliated with DECOKEE — see the
@@ -16,10 +16,13 @@ don't — update it when either side changes.
 | DK-Suite advertises | open-quake |
 |---|---|
 | AI Chat (credit-metered, 100 credits/mo free) | One **AI Voice** app, five backends, **no credits**: real **Claude Code / Codex / Copilot agent sessions** (tools, approvals, your existing plan), **Open WebUI** chat against your own models, or **any OpenAI-compatible API by key** (OpenAI, DeepSeek, OpenRouter, LiteLLM/Ollama). |
+| OpenClaw integration ("run your favorite OpenClaw tasks with one tap" — via the OpenAI API server-side) | open-quake runs **real agent sessions natively** — Claude Code, Codex, Copilot — with tools, touch approvals, your own plan; no intermediary service. (Their one-tap *saved routines* idea is a genuine gap — see Missing.) |
 | Voice commands (press-and-speak) | Knob **hold-to-talk** everywhere + tap-to-toggle conversations; your own local Whisper STT (tts-sst), no cloud dependency. |
 | AI Meeting Assistant (record → transcribe → summarize) | Meeting app: stereo-split recording, auto start/stop, **speaker-diarized transcripts** (self-hosted), attendee-guided speaker ID via Outlook calendar, AI notes (summary/decisions/actions), per-meeting filing, **Joplin export**. Materially deeper than the advertised feature. |
 | Translation (Silver+ paid tiers) | **Live Translate**: word-by-word streaming captions (Soniox, ~$0.18/hr) or bring-your-own AI key (DeepSeek ≈ $0.10/hr, OpenAI, OpenRouter, LiteLLM/Ollama) with cross-sentence context, save-to-file, global hotkey. Not tier-gated. |
 | Instant answers | Any of the AI apps; hold the knob and ask. |
+| System monitor (real-time CPU/memory/network) | The **System Monitor** app: live CPU, GPU, RAM, disk, network, battery. |
+| Global mic mute (system-level, one tap) | Knob single-click defaults to **mute**; the Meeting app adds per-call mute/video for Zoom and Teams. |
 | Drag-and-drop customization / preset app shortcuts | The PC-side editor: tile grids, merged tiles, per-page apps/dashboards, drag-and-drop, hotkeys. |
 | Music player | Music controller: now-playing, transport, app grid, lyrics. |
 | Smart home hub (use-case example) | First-class **Home Assistant integration**: entity tiles, real dashboards, MDI icons. |
@@ -36,12 +39,25 @@ don't — update it when either side changes.
 | Feature | What they advertise | Lift for open-quake |
 |---|---|---|
 | **macOS / Linux support** | Multi-OS: Windows, macOS, Linux | **Large.** The launcher/editor are Electron (portable), but launch/volume/media/loopback-audio/reserved-display code is Windows-specific (README already flags this). Realistic only as a scoped "panel + apps, minus Windows-only extras" port. |
+| **Saved AI routines as tiles** | OpenClaw pitch: capture a spoken task, save it, re-run with one tap | **Small — worth doing.** OQ has agent sessions and tiles, but no tile type that sends a saved prompt to an AI Voice backend. Adding one out-does theirs (routines run on a real agent with tools). |
+| **Mid-meeting [Mark] highlights** | Tap Mark during a meeting; the summary extracts the flagged moments | **Small.** OQ records + summarizes but has no highlight-this-moment button feeding the notes. A timestamp list handed to the analysis prompt covers it. |
+| **Custom emoji generation** | Speak to generate custom emoji for chat apps (their OpenAI-API feature) | **Gimmick.** No equivalent; listed for completeness. |
 | **Game voice control** | Mentioned in their showcase | **Unclear scope.** Nearest OQ equivalents: global hotkeys, macros, LucidType. Needs a real definition of what theirs does before it's worth chasing. |
+
+## 🔮 Their "coming soon" list
+
+| They promise | open-quake today |
+|---|---|
+| Discord Game Controls (a Discord panel already exists in DK-Suite's page wheel per teardown; the Kickstarter pitches an always-on overlay) | Workable now with a manual page: key tiles firing Discord's global hotkeys (mute/deafen/overlay). No packaged Discord page yet — easy candidate if demand shows up. |
+| OBS Studio Controls | Same today via OBS global hotkeys on key tiles. The real version would be a page speaking **obs-websocket** (scene switching, stream/record status on the panel) — moderate lift, natural fit. |
+| Themes | **Already shipped**: light/dark/system + savable accent presets driving the panel, apps, and the knob ring — they're promising what open-quake has. |
+| "And more" | Nothing named yet — new items land here as they announce them. |
 
 ## Notes
 
 - Their "no cloud subscription required / open-source engine" claim still routes AI through their
-  credit system; open-quake's equivalent stance is stronger in practice (your CLIs, your servers,
-  your keys).
+  credit system — and their Kickstarter AI disclosure names the backend: everything is the OpenAI
+  ChatGPT API, called server-side. open-quake's stance is stronger in practice (your CLIs, your
+  servers, your keys).
 - Hardware-only items (chassis, stand, transparent window, HDMI/USB wiring) are out of scope — both
   sides run the same device.
