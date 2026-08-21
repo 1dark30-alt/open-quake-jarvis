@@ -233,7 +233,14 @@
     ['🥰', 'love hearts adore'], ['😘', 'kiss love'], ['😉', 'wink'], ['😎', 'cool sunglasses'],
     ['🤔', 'think thinking hmm'], ['😐', 'neutral meh blank'], ['😢', 'cry sad tear'],
     ['😭', 'cry sob sad'], ['😡', 'angry mad rage'], ['🤯', 'mind blown shocked'],
-    ['😱', 'scream shock afraid'], ['🥳', 'party celebrate birthday celebration'],
+    ['😱', 'scream shock afraid scared shocked'], ['😨', 'scared afraid fear fearful scary'],
+    ['😰', 'anxious nervous worried scared sweat'], ['😟', 'worried concerned anxious'],
+    ['🙁', 'frown sad disappointed'], ['😞', 'disappointed sad let down'],
+    ['😩', 'weary tired exhausted frustrated'], ['😒', 'unamused annoyed bored meh'],
+    ['🥱', 'yawn tired bored sleepy'], ['🥺', 'pleading puppy eyes please cute'],
+    ['😬', 'grimace awkward nervous cringe'], ['😳', 'flushed embarrassed shy blush surprised'],
+    ['🤨', 'skeptical suspicious eyebrow doubt'], ['😏', 'smirk sly smug'],
+    ['🥳', 'party celebrate birthday celebration'],
     ['🤩', 'star struck excited'], ['😇', 'angel innocent halo'], ['🙄', 'eyeroll annoyed'],
     ['😅', 'sweat nervous relief laugh'], ['🤗', 'hug'], ['🤫', 'shh quiet secret'],
     ['🥴', 'woozy dizzy'], ['🤢', 'sick nausea gross'], ['🤒', 'sick fever ill'],
@@ -1539,15 +1546,8 @@
     const el = document.getElementById('icondetail'); if (!el) return;
     const type = iconTypeOf(t);
     if (type === 'emoji') {
-      el.innerHTML = `<div class="row" style="gap:6px">
-          <input id="tIcon" value="${esc(t.icon)}" placeholder="paste an emoji, e.g. 🌐" style="flex:1">
-          <button id="tIconSearch" type="button" title="Search emoji by word">🔍 Search</button>
-        </div>
-        <div id="emojiPicker" class="emoji-picker" hidden>
-          <input id="emojiQuery" placeholder="search by word — rocket, heart, coffee…" autocomplete="off">
-          <div id="emojiResults" class="emoji-grid"></div>
-        </div>`;
-      document.getElementById('tIcon').oninput = e => { t.icon = e.target.value; renderTiles(); renderIconPreview(t); markDirty(); };
+      el.innerHTML = `<input id="tIcon" value="${esc(t.icon)}" placeholder="paste an emoji, or type a word to search — rocket, heart, coffee…">
+        <div class="emoji-grid" id="emojiResults"></div>`;
       wireEmojiPicker(t);
     } else if (type === 'app') {
       el.innerHTML = `<p class="hint">${t.value ? 'Uses this program’s own icon: <b>' + esc(t.value) + '</b>' : 'Set a program in Value first.'}</p>`;
@@ -1589,30 +1589,25 @@
     }
   }
 
-  // Emoji search picker: click to expand, type a word, click a result to apply it as the tile icon.
+  // One field does both jobs: paste an emoji directly, or type a word and pick a live match below.
   function wireEmojiPicker(t) {
-    const btn = document.getElementById('tIconSearch');
-    const pane = document.getElementById('emojiPicker');
-    const q = document.getElementById('emojiQuery');
+    const inp = document.getElementById('tIcon');
     const results = document.getElementById('emojiResults');
-    if (!btn || !pane || !q || !results) return;
+    if (!inp || !results) return;
     const renderResults = () => {
-      const list = emojiSearch(q.value);
+      const list = emojiSearch(inp.value);
       results.innerHTML = list.length
         ? list.map(em => `<button type="button" class="emoji-btn" title="Use this emoji">${esc(em)}</button>`).join('')
         : '<span class="hint">no matches</span>';
       results.querySelectorAll('.emoji-btn').forEach(b => b.onclick = () => {
         t.icon = b.textContent;
-        document.getElementById('tIcon').value = t.icon;
-        pane.hidden = true;
+        inp.value = t.icon;
+        renderResults();
         renderTiles(); renderIconPreview(t); markDirty();
       });
     };
-    btn.onclick = () => {
-      pane.hidden = !pane.hidden;
-      if (!pane.hidden) { renderResults(); q.focus(); }
-    };
-    q.oninput = renderResults;
+    inp.oninput = () => { t.icon = inp.value; renderTiles(); renderIconPreview(t); markDirty(); renderResults(); };
+    renderResults();
   }
 
   function renderIconPreview(t) {
