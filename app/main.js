@@ -54,6 +54,7 @@ const { createMeetingRecorder } = require('./meetingRecorder'); // hidden-window
 const { createMeetingHighlights } = require('./meetingHighlights'); // mid-meeting highlight spans -> the recording's sidecar
 const routines = require('./routines');       // saved AI routines: a prompt + which AI Chat page runs it
 const deviceDiagnostics = require('./deviceDiagnostics'); // pure: classify the console's Display/Touch/Knob channels
+const { shouldSweepIconFile, iconsOffline } = require('./iconCache'); // pure: launch-sweep keep rule + offline-icons gate
 const { createSlideCapture } = require('./slideCapture');       // hidden-window slide capture (getDisplayMedia -> screenshots)
 const { createLucidDictation } = require('./lucidtypeDictation'); // hidden-window LucidType dictation (mic + VAD -> Wyoming STT -> text)
 const lucidWyoming = require('./claudevoice-wyoming');          // Wyoming STT client (transcribe) for dictation
@@ -1004,6 +1005,7 @@ function fetchIconToCache(url) {
   url = (url || '').trim();
   return new Promise(resolve => {
     if (!/^https?:\/\//i.test(url)) return resolve({ ok: false, error: 'Only http(s) URLs are allowed.' });
+    if (iconsOffline(config.settings)) return resolve({ ok: false, error: 'Offline mode is on — icon downloads are disabled in Settings → Software.' });
     let req;
     try { req = net.request({ url, redirect: 'follow' }); }
     catch (e) { return resolve({ ok: false, error: 'That URL is not valid.' }); }
@@ -1052,7 +1054,9 @@ function sweepIconCache() {
     if (t && (t.iconType === 'url' || t.iconType === 'ha') && t.iconCache) used.add(path.basename(t.iconCache));
   }
   let removed = 0;
-  for (const f of files) { if (!used.has(f)) { try { fs.unlinkSync(path.join(ICON_CACHE_DIR, f)); removed++; } catch (e) {} } }
+  // Delete stale URL-icon downloads, but keep app-managed MDI glyphs (mdi-*.svg) even though no tile
+  // records them -- they're a bounded, downloaded-once set, not per-tile orphans. See iconCache.js.
+  for (const f of files) { if (shouldSweepIconFile(f, used)) { try { fs.unlinkSync(path.join(ICON_CACHE_DIR, f)); removed++; } catch (e) {} } }
   if (removed) console.log('icon cache: removed ' + removed + ' orphaned file(s)');
 }
 // HA's frontend domain-default MDI icons (mirror of FIXED_DOMAIN_ICONS in
@@ -1115,6 +1119,7 @@ function fetchMdiToCache(name) {
   const file = path.join(ICON_CACHE_DIR, 'mdi-' + bare + '.svg');
   try { if (fs.existsSync(file)) return Promise.resolve({ ok: true, cachePath: file, dataUrl: 'data:image/svg+xml;base64,' + fs.readFileSync(file).toString('base64') }); }
   catch (e) {}
+  if (iconsOffline(config.settings)) return Promise.resolve({ ok: false, error: 'offline' });   // no outbound fetch; cached hit above still serves, else emoji fallback
   if (mdiInFlight[bare]) return mdiInFlight[bare];
   const url = MDI_CDN_BASE + bare + '.svg';
   mdiInFlight[bare] = new Promise(resolve => {

@@ -2750,7 +2750,7 @@
   }
 
   // ---- settings page ----
-  const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false, reservedDisplay: false, keepDisplayAwake: false };
+  const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false, reservedDisplay: false, keepDisplayAwake: false, offlineIcons: false };
   function appSettings() { return Object.assign({}, DEFAULT_SETTINGS, config.settings || {}); }
   function renderSettings() {
     ['tilegrid', 'mergebar', 'tileform', 'iconpane'].forEach(id => { const e = document.getElementById(id); if (e) e.innerHTML = ''; });
@@ -2824,6 +2824,11 @@
         <input id="sPagePrevKey" readonly placeholder="click, then press keys" value="${esc(pageStep.prevHotkey || '')}" style="width:200px">
         <button id="sPagePrevKeyClear" style="margin-left:8px">Clear</button></div>
       <p class="hint">Global hotkeys that step the panel <b>forward</b> / <b>back</b> through your visible pages — in the order they're listed here, wrapping around the ends. Hidden pages are skipped. These work anytime, independent of rotation.</p>
+
+      <p class="sectitle" style="margin-top:22px">Icons</p>
+      <div class="row"><label>Work offline</label>
+        <input type="checkbox" id="sOfflineIcons" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">never fetch icons from the internet — use cached icons and emoji only</span></div>
+      <p class="hint">Home Assistant tiles pull their glyphs from a public icon CDN (jsDelivr) the first time each one is shown, then cache them for good. Turn this on for locked-down machines: the panel makes <b>zero</b> outbound icon requests and falls back to the emoji glyph for anything not already cached. Seed the cache first by opening the tiles once on a normal network.</p>
 
       <p class="sectitle" style="margin-top:22px">Desktop focus</p>
       <div class="row"><label>Auto-follow</label>
@@ -3416,6 +3421,8 @@
       if (runSetupBtn) runSetupBtn.onclick = () => { try { configApi.openWelcome(); } catch (e) {} };
       document.getElementById('sLaunch').value = s.launchMode;
       document.getElementById('sLaunch').onchange = e => setS('launchMode', e.target.value);
+      const offIcons = document.getElementById('sOfflineIcons');
+      if (offIcons) { offIcons.checked = !!s.offlineIcons; offIcons.onchange = e => setS('offlineIcons', e.target.checked); }
       const saveRot = r => { if (!config.settings) config.settings = {}; config.settings.rotation = r; markDirty(); };
       const rotKey = document.getElementById('sRotKey'), rotKeyClr = document.getElementById('sRotKeyClear');
       document.getElementById('sRot').checked = !!rot.enabled;
