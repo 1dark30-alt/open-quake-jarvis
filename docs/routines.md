@@ -1,7 +1,7 @@
 # AI Routines
 
 A **routine** is a saved request plus which **AI Chat** page — and, for the agent backends, which
-**folder** — runs it. Put one on a tile and tapping it switches the panel to that page and sends the
+**folder** and **permission mode** — runs it. Put one on a tile and tapping it switches the panel to that page and sends the
 request — answered by the real agent, with its normal tools and approvals, not a canned reply.
 
 ## Saving one
@@ -10,8 +10,8 @@ request — answered by the real agent, with its normal tools and approvals, not
 it keeps whatever is in the message box — or, if that's empty, the last thing you asked for. So the
 usual flow is: say the thing, watch it work, tap `+ Routine`.
 
-It also records the page's **current folder**, so re-running the routine lands in the same repo you
-were working in when you saved it.
+It also records the page's **current folder** and **permission mode**, so re-running the routine
+lands in the same repo, under the same permission level, you had when you saved it.
 
 It names itself from the first few words of the request and confirms under the transcript
 ("Saved routine: Summarize my unread email and…"). There's no naming dialog because the panel has no
@@ -30,6 +30,7 @@ Settings window (tray icon) → **Routines** tab, next to AI Profiles. One row e
 | **AI Chat page** | Which page — and therefore which backend — runs it. |
 | **AI profile** | Optional. Blank means whatever profile that page is currently on. |
 | **Folder** | The working directory the agent runs in. Blank means leave the page wherever it already is. Only shown for the **Claude / Codex / Copilot** backends — Open WebUI and API pages are plain chat with no working directory, and say so instead. |
+| **Mode** | The permission level the routine runs under (e.g. Claude's Manual / Accept edits / Plan / Full auto — each backend has its own set). Blank means leave the page on whatever mode it's set to. Only shown for the backends that have modes (same three). |
 | **Prompt** | The request itself. |
 
 Routines are global, not per page: one routine can sit on as many tiles and pages as you like, and
@@ -49,8 +50,10 @@ run the standup routine".
 2. If the routine names a folder that page isn't already in, the session restarts there first.
    **This ends whatever conversation was on that page** — the same thing switching folders on the
    panel has always done. A routine naming the folder you're already in doesn't restart anything.
-3. Its saved prompt arrives as if you'd just spoken it.
-4. The agent answers normally — streaming reply, tool calls, touch approvals, spoken reply if that
+3. Its saved profile and permission mode are applied (after any folder restart, so the restart
+   can't undo them).
+4. Its saved prompt arrives as if you'd just spoken it.
+5. The agent answers normally — streaming reply, tool calls, touch approvals, spoken reply if that
    page's speaker is on.
 
 Because it's an ordinary turn, everything else still works: you can talk back to it, approve a tool

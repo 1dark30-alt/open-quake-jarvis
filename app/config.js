@@ -9,6 +9,7 @@
   };
   let config = { activeGridId: null, grids: [] };
   let gi = 0, ti = -1, selEnd = -1, dragFrom = -1, dirty = false, appDefs = [], view = 'pages', ledState = null, settingsTab = 'software', dashTab = 'page';
+  let voiceModes = null;   // { claude:[{id,label}], codex:[...], copilot:[...], owui:[], api:[] } — lazy-loaded for the Routines tab's Mode picker
   // Left sidebar tab (Pages vs Groups list) + which group is currently being edited when view='groups'.
   let leftTab = 'pages', groupIndex = -1;
   // Per-page Advanced <details> open state — persisted across re-renders so toggling an override
@@ -516,6 +517,19 @@
   function aiChatPagesForPicker() {
     return (config.grids || []).filter(g => g && g.kind === 'app' && g.app === 'ai-voice');
   }
+  // Mode row: the permission level the routine runs under, sourced live from each backend
+  // (voiceModes). Only shown where the target page's backend actually has modes -- the same
+  // backends that have a folder. Blank option = leave the page on whatever mode it's set to.
+  function backendOfPage(page) { return (page && page.options && page.options.backend) || 'claude'; }
+  function routineModeHtml(r, i, pages) {
+    const page = pages.find(g => g.id === r.appPageId) || pages[0];
+    const list = (voiceModes && voiceModes[backendOfPage(page)]) || [];
+    if (!list.length) return '';   // chat-only backend, or modes not loaded yet -> no picker
+    return `<select class="rtMode" data-i="${i}" title="Permission mode this routine runs under">
+        <option value="">(page's current mode)</option>
+        ${list.map(m => `<option value="${esc(m.id)}" ${m.id === r.mode ? 'selected' : ''}>${esc(m.label || m.id)}</option>`).join('')}
+      </select>`;
+  }
   // Folder row: only the agent backends have a working directory (Open WebUI and API are plain
   // chat, and their AI Chat page hides its own Folder row too). Blank = leave the page wherever it
   // already is; setting one makes the routine switch the page to that folder before it runs.
@@ -538,12 +552,13 @@
     const profiles = ((config.settings || {}).aiProfiles) || [];
     return rows.map((r, i) => `<div class="row" data-idx="${i}" style="margin-top:14px;align-items:flex-start">
         <div style="display:flex;flex-direction:column;gap:6px;width:230px">
-          <input class="rtName" placeholder="Routine name" value="${esc(r.name || '')}">
+          <input class="rtName" data-i="${i}" placeholder="Routine name" value="${esc(r.name || '')}">
           <select class="rtPage" title="Which AI Chat page runs this">${pages.map(g => `<option value="${g.id}" ${g.id === r.appPageId ? 'selected' : ''}>${esc(g.name || '(unnamed page)')}</option>`).join('')}</select>
-          <select class="rtProfile" title="Optional AI profile"><option value="">(page's current profile)</option>${profiles.map(p => `<option value="${esc(p.id)}" ${p.id === r.profileId ? 'selected' : ''}>${esc(p.name || '(unnamed)')}</option>`).join('')}</select>
+          <select class="rtProfile" data-i="${i}" title="Optional AI profile"><option value="">(page's current profile)</option>${profiles.map(p => `<option value="${esc(p.id)}" ${p.id === r.profileId ? 'selected' : ''}>${esc(p.name || '(unnamed)')}</option>`).join('')}</select>
           ${routineFolderHtml(r, i, pages)}
+          ${routineModeHtml(r, i, pages)}
         </div>
-        <textarea class="rtPrompt" placeholder="What to ask the AI, e.g. Summarize my unread email and list anything needing a reply" rows="4" style="flex:1;margin-left:8px;font-family:inherit">${esc(r.prompt || '')}</textarea>
+        <textarea class="rtPrompt" data-i="${i}" placeholder="What to ask the AI, e.g. Summarize my unread email and list anything needing a reply" rows="4" style="flex:1;margin-left:8px;font-family:inherit">${esc(r.prompt || '')}</textarea>
         <button class="rtRemove" type="button" data-rm="${i}" title="Remove" style="margin-left:8px">✕</button>
       </div>`).join('');
   }
@@ -552,16 +567,26 @@
     if (!host) return;
     const list = () => { if (!config.settings) config.settings = {}; if (!Array.isArray(config.settings.routines)) config.settings.routines = []; return config.settings.routines; };
     const redraw = () => { host.innerHTML = routineRowsHtml(list()); wireRows(); };
+    // Bind by the row's own data-i, NOT the match position: the folder and mode fields are absent
+    // on chat-only rows, so a positional index would write a chat-only routine's edits into the
+    // wrong routine whenever one sits above an agent-backed one.
     function bind(sel, prop) {
-      host.querySelectorAll(sel).forEach((el, i) => {
+      host.querySelectorAll(sel).forEach(el => {
+        const i = parseInt(el.getAttribute('data-i'), 10);
         el.oninput = el.onchange = e => { const l = list(); if (l[i]) { l[i][prop] = e.target.value; markDirty(); } };
       });
+    }
+    // The Mode picker needs the per-backend mode lists from main. Fetch once, then redraw so the
+    // pickers appear -- rows render without them on the first paint (chat-only rows never need them).
+    if (!voiceModes && configApi.getVoiceModes) {
+      configApi.getVoiceModes().then(m => { voiceModes = m || {}; if (document.getElementById('sRoutineRows')) redraw(); }).catch(() => { voiceModes = {}; });
     }
     function wireRows() {
       bind('.rtName', 'name');
       bind('.rtPrompt', 'prompt');
       bind('.rtProfile', 'profileId');
       bind('.rtFolder', 'folder');
+      bind('.rtMode', 'mode');
       // Changing the page can change whether a folder applies at all, so this row redraws.
       host.querySelectorAll('.rtPage').forEach((el, i) => {
         el.onchange = e => { const l = list(); if (l[i]) { l[i].appPageId = e.target.value; markDirty(); redraw(); } };
@@ -585,7 +610,7 @@
     const addBtn = document.getElementById('sRoutineAdd');
     if (addBtn) addBtn.onclick = () => {
       const pages = aiChatPagesForPicker();
-      list().push({ id: 'r' + Date.now().toString(36), name: '', prompt: '', appPageId: pages.length ? pages[0].id : '', profileId: '', folder: '' });
+      list().push({ id: 'r' + Date.now().toString(36), name: '', prompt: '', appPageId: pages.length ? pages[0].id : '', profileId: '', folder: '', mode: '' });
       markDirty(); redraw();
       const inputs = host.querySelectorAll('.rtName');
       if (inputs.length) inputs[inputs.length - 1].focus();

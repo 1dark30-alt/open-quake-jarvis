@@ -2,7 +2,7 @@
 // routines.js — saved AI routines (MAIN PROCESS; pure, no electron)
 //
 // A routine is a saved prompt plus where to run it:
-//   { id, name, prompt, appPageId, profileId, folder }
+//   { id, name, prompt, appPageId, profileId, folder, mode }
 // They live in config.settings.routines and are referenced BY ID from a `routine` tile, so one
 // routine can sit on several pages and stay editable in one place (Settings window -> Routines tab).
 //
@@ -56,6 +56,7 @@ function normalizeRoutine(raw, makeId) {
     appPageId: str(raw.appPageId).trim(),
     profileId: str(raw.profileId).trim(),
     folder: str(raw.folder).trim(),
+    mode: str(raw.mode).trim(),        // permission mode; '' = leave the page on whatever it's set to
   };
 }
 

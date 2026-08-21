@@ -38,7 +38,7 @@ test('normalizeRoutine fills a name from the prompt and mints an id', () => {
 
 test('normalizeRoutine keeps a user-given name and existing id', () => {
   const r = normalizeRoutine({ id: 'keepme', name: 'Standup', prompt: 'do the thing', appPageId: 'p1', profileId: 'prof2' }, ids);
-  assert.deepEqual(r, { id: 'keepme', name: 'Standup', prompt: 'do the thing', appPageId: 'p1', profileId: 'prof2', folder: '' });
+  assert.deepEqual(r, { id: 'keepme', name: 'Standup', prompt: 'do the thing', appPageId: 'p1', profileId: 'prof2', folder: '', mode: '' });
 });
 
 test('normalizeRoutine rejects an empty prompt — nothing may be saved that would do nothing', () => {
@@ -162,4 +162,19 @@ test('the fallback page decides folder applicability, not the deleted one', () =
   assert.equal(r.pageId, 'c9');
   assert.equal(r.folder, '');            // landed on a chat-only page — the folder is meaningless there
   assert.match(r.warning, /page is gone/);
+});
+
+// ---- permission mode ----
+// Parallel to folder: a routine records the page's permission mode and re-applies it on run.
+// resolveRoutine just carries the stored mode through; main sets it after any folder restart.
+
+test('normalizeRoutine carries a mode and trims it, blank by default', () => {
+  assert.equal(normalizeRoutine({ prompt: 'go', mode: '  plan  ' }, ids).mode, 'plan');
+  assert.equal(normalizeRoutine({ prompt: 'go' }, ids).mode, '');
+});
+
+test('resolveRoutine passes the stored mode through untouched', () => {
+  const list = [{ id: 'r1', prompt: 'refactor', appPageId: 'c1', mode: 'plan' }];
+  const r = resolveRoutine('r1', { routines: list, grids: [chatB('c1', 'Claude', 'claude', '')] });
+  assert.equal(r.routine.mode, 'plan');
 });

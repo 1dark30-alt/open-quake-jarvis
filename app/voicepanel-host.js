@@ -261,6 +261,10 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       // ...and the folder it's in right now, so re-running lands in the same place. Chat-only
       // backends have no working directory; normalizeRoutine keeps the blank.
       folder: routinesLib.allowsFolder(grid) ? ((grid.options && grid.options.projectDir) || '') : '',
+      // ...and the permission mode the page is running under -- the same truth the Mode button
+      // shows: the live session's mode if one is running, else the page's stored pick. Backends
+      // with no modes report '' and it stays blank.
+      mode: (adapter.isRunning() && adapter.mode ? adapter.mode() : ((grid.options && grid.options.permissionMode) || '')),
     });
     if (!routine) return { ok: false, error: 'Nothing to save yet.' };
     config.settings.routines.push(routine);

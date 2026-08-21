@@ -863,14 +863,16 @@ function runRoutine(routineId) {
   gotoGrid(r.pageId, true);
   const page = (config.grids || []).find(g => g.id === r.pageId) || {};
   const host = voiceHostForBackend((page.options && page.options.backend) || 'claude');
-  if (r.routine.profileId) { try { host.handlers.setProfile(r.routine.profileId); } catch (e) {} }
-  // A routine that names a working directory the page isn't already in: restart the session there
-  // first. resolveRoutine only reports a folder when it actually differs and the backend has one,
-  // so this never churns a session needlessly. It DOES end whatever conversation was on the page --
-  // the same thing switching folders on the panel has always done.
+  // Folder FIRST: a working-directory switch restarts the session, which reloads the page's stored
+  // profile and mode -- so it has to happen before we apply the routine's own profile/mode, or the
+  // restart would wipe them. resolveRoutine only reports a folder when it actually differs and the
+  // backend has one, so this never churns a session needlessly. The restart DOES end whatever
+  // conversation was on the page -- the same thing switching folders on the panel has always done.
   if (r.folder) {
     try { host.handlers.sessionStart(r.folder); } catch (e) { console.log('[routine] folder switch failed: ' + e.message); }
   }
+  if (r.routine.profileId) { try { host.handlers.setProfile(r.routine.profileId); } catch (e) {} }
+  if (r.routine.mode) { try { host.handlers.setPermissionMode(r.routine.mode); } catch (e) {} }   // '' = leave the page's mode alone
   // speak:true -- the page's own speaker toggle decides whether the stream is actually played.
   let sent = null;
   try { sent = host.handlers.onTurn(r.routine.prompt, true); } catch (e) { console.log('[routine] ' + e.message); }
@@ -3284,6 +3286,19 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('saveLightingToDevice', (e) => { if (!isFrom(e, configWin)) return false; try { return dev.saveLighting(); } catch (er) { return false; } });
   ipcMain.handle('listRunningApps', async (e) => isFrom(e, configWin) ? await desktopFocus.listRunningApps() : []);
+  // Per-backend permission modes for the Routines tab's Mode picker. Read straight from each
+  // backend host's adapter (the same list the panel's Mode button shows) so the editor never
+  // duplicates the mode presets. Chat-only backends (owui/api) report [] and get no Mode picker.
+  ipcMain.handle('getVoiceModes', (e) => {
+    if (!isFrom(e, configWin)) return {};
+    const modesFor = host => { try { return (host.handlers.getState().meta.modes) || []; } catch (er) { return []; } };
+    return {
+      claude: modesFor(claudeVoiceHost),
+      codex: modesFor(codexVoiceHost),
+      copilot: modesFor(copilotVoiceHost),
+      owui: [], api: [],
+    };
+  });
 
   // ---- run-mode picker (welcome window) + Settings re-run/relaunch ----
   ipcMain.handle('getWelcomeInfo', (e) => {
