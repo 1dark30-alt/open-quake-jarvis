@@ -229,17 +229,44 @@
   // over IPC — config.js runs sandboxed and can't require() it directly). Fetched once and cached.
   let emojiIndexCache = null;
   async function getEmojiIndex() {
-    if (!emojiIndexCache) emojiIndexCache = (await configApi.getEmojiIndex()) || [];
+    if (!emojiIndexCache) {
+      // Tokenize each entry's keyword blob once (split on space AND underscore, since emojilib uses
+      // compound keys like "grinning_face"). Ranked search below matches whole tokens, not the blob.
+      const raw = (await configApi.getEmojiIndex()) || [];
+      emojiIndexCache = raw.map(([em, kw]) => [em, String(kw).split(/[\s_]+/).filter(Boolean)]);
+    }
     return emojiIndexCache;
   }
-  // AND-match: every space-separated query word must appear somewhere in an entry's keywords.
+  // Rank a candidate's keyword TOKENS against the query words: exact token (3) beats a prefix (2)
+  // beats a mid-word substring (1). Every query word must score, or the candidate is out. Matching
+  // whole tokens — not the joined blob — is what keeps "car" off "s-car-ed" and "cat" off
+  // "intoxi-cat-ed"; the exact-first ranking is what floats 🚗 above 🥕/🎠 for "car".
+  function emojiScore(toks, words) {
+    let total = 0;
+    for (const w of words) {
+      let best = 0;
+      for (const t of toks) {
+        if (t === w) { best = 3; break; }
+        if (t.startsWith(w)) best = best < 2 ? 2 : best;
+        else if (t.indexOf(w) !== -1) best = best < 1 ? 1 : best;
+      }
+      if (!best) return 0;
+      total += best;
+    }
+    return total;
+  }
   // Empty query -> a browsable starter set (emojilib's own order, which is Unicode's canonical
   // order -- smileys/people first).
   function emojiSearchIn(index, query) {
     const q = (query || '').trim().toLowerCase();
     if (!q) return index.slice(0, 40).map(e => e[0]);
     const words = q.split(/\s+/).filter(Boolean);
-    return index.filter(([, kw]) => words.every(w => kw.includes(w))).map(e => e[0]).slice(0, 60);
+    return index
+      .map(e => [e[0], emojiScore(e[1], words)])
+      .filter(x => x[1] > 0)
+      .sort((a, b) => b[1] - a[1])   // stable sort keeps Unicode order within a score tier
+      .map(x => x[0])
+      .slice(0, 60);
   }
 
   // HA's frontend domain-default MDI icons (mirror of FIXED_DOMAIN_ICONS in
