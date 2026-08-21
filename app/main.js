@@ -76,6 +76,10 @@ const saverIdle = require('./screensaver-idle'); // pure screensaver auto-start/
 const owuiClient = require('./owuiClient'); // shared OWUI URL normalization + model-list probe
 const { resolveRunMode, reservedDisplayEnabled } = require('./runMode'); // pure run-mode helpers (panel/software/monitor)
 const voiceConfig = require('./voiceConfig'); // global TTS/STT endpoints + per-page override resolution + legacy migration
+const { DiscordService } = require('./discordService'); // local Discord desktop RPC; protocol stays behind this main-process service
+const { DiscordOAuth, DISCORD_SCOPES } = require('./discordOAuth');
+const { DiscordAppHost } = require('./discordAppHost');
+const { DEFAULT_DISCORD_APPLICATION_ID, discordApplicationId, normalizeDiscordSettings } = require('./discordSettings');
 const claudeVoiceApprovals = require('./claudevoice-approvals'); // required directly ONLY for the boot-time leftover-hook sweep below
 const HA_SCHEDULE_APPS = ['haschedule', 'agenda', 'events'];   // dev apps backed by the shared HA /haschedule-data snapshot
 
@@ -127,6 +131,24 @@ let touchDown = false, touchIdle = null; // monitor-mode touch -> OS mouse butto
 let sysserver = null;                    // SystemView/Music local server (lazy-required in whenReady)
 let serverPort = 0;                      // the local server's ephemeral port (for music-page routing)
 let config = loadConfig();
+const initialDiscordSettings = normalizeDiscordSettings((config.settings || {}).discord);
+const discordOAuth = new DiscordOAuth({
+  getClientId: () => discordApplicationId((config.settings || {}).discord),
+  getTokens: () => oauthStorage.getTokens('discord'), setTokens: value => oauthStorage.setTokens('discord', value), deleteTokens: () => oauthStorage.deleteTokens('discord'),
+  openExternal: url => shell.openExternal(url),
+});
+const discordService = new DiscordService({ clientId: discordApplicationId(initialDiscordSettings), autoReconnect: initialDiscordSettings.autoReconnect, oauth: discordOAuth });
+const discordAppHost = new DiscordAppHost(discordService, {
+  getSettings: () => normalizeDiscordSettings((config.settings || {}).discord),
+  saveSettings: value => {
+    if (!config.settings) config.settings = {};
+    const previous = config.settings.discord;
+    config.settings.discord = normalizeDiscordSettings(value);
+    if (saveConfig()) return true;
+    config.settings.discord = previous;
+    return false;
+  },
+});
 let panelWin = null, configWin = null, tray = null, welcomeWin = null;
 let dashSession = null, cookieFlushT = null;   // dashboard webview session + a debounced cookie-store flush
 const dev = new MultiKnob({ hid: HID });
@@ -358,6 +380,8 @@ function loadConfig() {
 }
 // Normalize dashboard auth: fold the old per-page `haToken` into the typed `auth` object.
 function migrateConfig(c) {
+  if (!c.settings) c.settings = {};
+  c.settings.discord = normalizeDiscordSettings(c.settings.discord);
   (c.grids || []).forEach(g => {
     if (g.kind === 'web') {
       if (!g.auth) g.auth = g.haToken ? { type: 'ha', token: g.haToken } : { type: 'none' };
@@ -830,7 +854,7 @@ function configureHaSchedule() {
 }
 
 function oauthProviderPayload() {
-  return Object.keys(oauthProviders).map(id => {
+  const standard = Object.keys(oauthProviders).map(id => {
     const p = oauthProviders[id];
     const settings = oauthStorage.getProviderSettings(id);
     return Object.assign({}, oauthHandler.status(id), {
@@ -841,6 +865,21 @@ function oauthProviderPayload() {
       enabled: id === 'microsoft',
     });
   });
+  const discordSettings = normalizeDiscordSettings((config.settings || {}).discord);
+  const discordTokens = oauthStorage.getTokens('discord');
+  const discordConnected = !!(discordTokens && discordTokens.refreshToken);
+  const discordGrantedScopes = discordTokens && discordTokens.scope ? String(discordTokens.scope).split(/\s+/).filter(Boolean) : [];
+  const discordReauthorizationRequired = discordConnected && DISCORD_SCOPES.some(scope => !discordGrantedScopes.includes(scope));
+  standard.push({
+    provider: 'discord', name: 'Discord', configured: !!discordApplicationId(discordSettings), connected: discordConnected,
+    expiresAt: discordTokens && discordTokens.expiresAt || null,
+    scopes: discordGrantedScopes.length ? discordGrantedScopes : DISCORD_SCOPES,
+    managedClient: !discordSettings.applicationIdOverride && !!DEFAULT_DISCORD_APPLICATION_ID,
+    enabled: !!discordApplicationId(discordSettings), authState: discordService.getState().authState,
+    reauthorizationRequired: discordReauthorizationRequired,
+    identity: discordService.getState().authState === 'authenticated' ? discordService.getIdentity() : null,
+  });
+  return standard;
 }
 
 // Device Diagnostics served app: a live snapshot of the console's three physical channels
@@ -2775,6 +2814,8 @@ app.whenReady().then(async () => {
   // encryption is available, rewrite it once.
   const needsMigration = secretStore.needsRewrite(config);
   config = secretStore.decryptConfig(config);
+  const storedDiscordTokens = oauthStorage.getTokens('discord');
+  if (normalizeDiscordSettings((config.settings || {}).discord).enabled && storedDiscordTokens && storedDiscordTokens.accessToken) discordService.start();
   if (secretStore.available()) {
     if (needsMigration) saveConfig();                        // migrate plaintext/legacy config to current at-rest form
   } else if (needsMigration) console.log('secret encryption unavailable — refusing to rewrite config secrets');
@@ -2797,6 +2838,7 @@ app.whenReady().then(async () => {
       onLucidCleanup: onLucidCleanupRequest, onLucidRewrite: onLucidRewriteRequest,
       onLucidReview: onLucidReviewRequest, onLucidSetMode: onLucidSetModeRequest,
       getShortcuts: keyboardShortcutsSnapshot,
+      discordApp: discordAppHost,
       // Voice-panel app registry: each entry gets the full /<appId>/* route surface (see
       // sysserver.js). voiceToken gates the claude approval hook's /approval-request long-poll.
       voiceApps: {
@@ -3089,13 +3131,18 @@ app.whenReady().then(async () => {
   ipcMain.handle('listOAuthProviders', (e) => isFrom(e, configWin) ? oauthProviderPayload() : []);
   ipcMain.handle('connectOAuthProvider', async (e, provider, scopes) => {
     if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
-    try { await oauthHandler.connect(provider, scopes); return { ok: true, providers: oauthProviderPayload() }; }
+    try {
+      if (String(provider || '').toLowerCase() === 'discord') await discordService.authorize();
+      else await oauthHandler.connect(provider, scopes);
+      return { ok: true, providers: oauthProviderPayload() };
+    }
     catch (err) { return { ok: false, error: err.message || String(err) }; }
   });
   ipcMain.handle('disconnectOAuthProvider', async (e, provider) => {
     if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
     try {
-      const r = await oauthHandler.revokeToken(provider);
+      const isDiscord = String(provider || '').toLowerCase() === 'discord';
+      const r = isDiscord ? (discordService.disconnectAuthorization(), { ok: true }) : await oauthHandler.revokeToken(provider);
       if (String(provider || '').toLowerCase() === 'microsoft' && sysserver) {
         sysserver.clearOfficeCapability();
         pushToPanel();
@@ -3211,6 +3258,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('saveConfigFromEditor', (e, newCfg) => {
     if (!isFrom(e, configWin) || !newCfg || typeof newCfg !== 'object' || !Array.isArray(newCfg.grids)) return { ok: false, error: 'invalid configuration' };
     const previousConfig = config;
+    const previousDiscordApplicationId = discordApplicationId((config.settings || {}).discord);
     const active = config.activeGridId;                          // the knob owns the live page — editor edits never change it
     const wasRot = rotationCfg().enabled;                        // detect a fresh off->on to auto-start (else keep the runtime pause)
     const prevMode = runMode();                                  // detect a run-mode change to rebuild the window live
@@ -3218,8 +3266,12 @@ app.whenReady().then(async () => {
     const oauth = config.settings && config.settings.oauth;
     if (oauth) {
       if (!newCfg.settings) newCfg.settings = {};
-      newCfg.settings.oauth = oauth;
+      newCfg.settings.oauth = JSON.parse(JSON.stringify(oauth));
     }
+    if (!newCfg.settings) newCfg.settings = {};
+    newCfg.settings.discord = normalizeDiscordSettings(newCfg.settings.discord);
+    if (previousDiscordApplicationId !== discordApplicationId(newCfg.settings.discord)
+      && newCfg.settings.oauth && newCfg.settings.oauth.tokens) delete newCfg.settings.oauth.tokens.discord;
     config = newCfg;
     if (config.grids.some(g => g.id === active)) config.activeGridId = active;
     else if (!config.grids.some(g => g.id === config.activeGridId)) config.activeGridId = (config.grids[0] || {}).id || null;
@@ -3231,6 +3283,16 @@ app.whenReady().then(async () => {
     reservedDisplay.setEnabled(reservedDisplayEnabled(appSettings()));   // stays off in software mode
     applyDisplayBlocker();                                               // keep-display-awake: only Panel mode + when enabled
     configureHaSchedule();                                          // pick up any haAuth edits without a restart
+    const discordSettings = normalizeDiscordSettings((config.settings || {}).discord);
+    discordAppHost.updateSettings(discordSettings);
+    discordService.setAutoReconnect(discordSettings.autoReconnect);
+    const discordTokens = oauthStorage.getTokens('discord');
+    if (!discordSettings.enabled || !(discordTokens && discordTokens.accessToken)) discordService.stop();
+    discordService.configure(discordApplicationId(discordSettings));
+    if (discordSettings.enabled && discordTokens && discordTokens.accessToken) {
+      if (discordService.getState().state === 'disconnected') discordService.start();
+      if (discordAppHost.getSnapshot().capabilities.activity) discordService.setActivity(discordSettings.richPresence ? { details: 'Using open-quake' } : null).catch(() => {});
+    }
     // Both of these disturb a live recording — respawning the monitor makes it re-announce its
     // state, and setMic tears down and re-acquires the capture. Saving unrelated settings (slide
     // capture, theme, anything) must not do either, so they fire only on a real change.
@@ -3470,6 +3532,7 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {});
 app.on('before-quit', () => {
   try { clearInterval(saverTimer); } catch (e) {}             // stop the screensaver idle check
+  try { discordService.stop(); } catch (e) {}                 // close Discord IPC and cancel reconnect timers
   try { reservedDisplay.stop(); } catch (e) {}                // release WinEvent hooks and terminate the native helper
   try { claudeVoiceHost.shutdown(); } catch (e) {}       // terminate the claude CLI child, release held approvals, remove the global hook
   try { codexVoiceHost.shutdown(); } catch (e) {}        // terminate the codex app-server child
