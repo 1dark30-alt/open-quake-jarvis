@@ -62,7 +62,9 @@ body.lay-8x2 .mixer { width: 300px; }
 #app.off .controls, #app.off .mixer { opacity: .4; pointer-events: none; }   /* disconnected: stable layout, dead controls disabled */
 
 /* ============ primary: compact context header ============ */
-.pheader { flex: 0 0 auto; min-height: 96px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 0 8px; }
+/* FIXED height, sized for a two-line Program name -- the grid below must never shift when the
+   Program scene changes mid-show. 448 - 120 - 16 - 32 leaves exactly four 64px scene rows. */
+.pheader { flex: none; height: 120px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 0 8px; overflow: hidden; }
 .conn { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .conn .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--faint); flex: none; }
 .conn.connected .dot { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
@@ -76,27 +78,35 @@ body.lay-8x2 .mixer { width: 300px; }
 .focal .lbl { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; font-weight: 750; margin-bottom: 8px; }
 .focal .prog { min-width: 0; flex: 0 1 auto; }
 .focal .prog .lbl { color: var(--danger); }
-.focal .prog .name { font-size: 36px; font-weight: 800; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.focal .prog .name { font-size: 36px; font-weight: 800; line-height: 1;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .prevgroup { display: flex; align-items: center; gap: 16px; min-width: 0; flex: 0 1 auto; }
 .focal .prev { min-width: 0; flex: 0 1 auto; }
 .focal .prev .lbl { color: var(--ok); }
-.focal .prev .pname { font-size: 22px; font-weight: 700; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.focal .prev .pname { font-size: 22px; font-weight: 700; line-height: 1; color: var(--muted);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .focal .takes { flex: none; display: flex; gap: 8px; }   /* Cut/Auto sit immediately beside Preview */
 .tk { min-width: 72px; height: 56px; display: flex; align-items: center; justify-content: center;
   font-size: 16px; font-weight: 700; color: var(--text); background: var(--panel3); }
 .tk.auto { border-color: var(--line-strong); }
 
 /* ============ primary: scene viewport (fixed tiles, top-left, 3 rows visible) ============ */
+/* padding-bottom 8 (not 16): the card's 1px borders eat 2px, and four 64px rows + gaps need 280 of
+   the 312px card -- 16+8 padding leaves 286, so 24 scenes fit with no phantom scrollbar. */
 .scenes-card { flex: 1; min-height: 0; display: flex; flex-direction: column;
-  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow); padding: 16px; }
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow); padding: 16px 16px 8px; }
 /* 64px rows + 8px vertical gaps -> four complete rows (24 scenes) in the 304px viewport before any
    scrolling. Row snap keeps scrolled rest positions on row boundaries so no label sits half-clipped. */
 .scenes { flex: 1; overflow-y: auto; overscroll-behavior: contain; scroll-snap-type: y proximity;
   display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 64px; gap: 8px 16px; align-content: start; }
 body.lay-8x2 .scenes { grid-template-columns: repeat(4, 1fr); }
+/* Zero vertical padding: a two-line label (36px) + 8 gap + 13px status = 57px, inside the 64px tile.
+   Names wrap to two lines and ellipsize only after the second -- no hover on a touchscreen, so the
+   distinguishing tail of "Gameplay + Webcam"-style names must be visible. Text never shrinks. */
 .scene { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-  padding: 8px 16px; overflow: hidden; scroll-snap-align: start; }
-.scene .lb { font-size: 22px; font-weight: 700; line-height: 1.05; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  padding: 0 16px; overflow: hidden; scroll-snap-align: start; }
+.scene .lb { font-size: 16px; font-weight: 700; line-height: 18px; max-width: 100%; text-align: center;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .scene .sub { font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
 .scene.program { background: var(--danger); border-color: var(--danger); color: #fff; box-shadow: 0 0 0 1px var(--danger); }
 .scene.program .sub { color: #fff; opacity: .92; }
