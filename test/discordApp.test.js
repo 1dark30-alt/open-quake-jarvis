@@ -508,8 +508,8 @@ test('Discord setting defaults and invalid values are normalised without retaini
   assert.equal(normalizeDiscordSettings({ enabled: false, defaultView: 'settings' }).defaultView, 'voice');
   assert.equal(normalizeDiscordSettings({ applicationId: ' legacy-id ' }).applicationIdOverride, 'legacy-id');
   assert.equal(normalizeDiscordSettings({ clientId: ' id<script>\u0000 ' }).applicationIdOverride, 'idscript');
-  assert.equal(discordApplicationId({}), DEFAULT_DISCORD_APPLICATION_ID);
-  assert.equal(DEFAULT_DISCORD_APPLICATION_ID, '1539959318974169088');
+  assert.equal(discordApplicationId({}), '');   // no built-in app -- each user brings their own
+  assert.equal(DEFAULT_DISCORD_APPLICATION_ID, '');
   assert.equal(discordApplicationId({ applicationIdOverride: ' developer-id ' }), 'developer-id');
 });
 

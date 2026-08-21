@@ -5,10 +5,10 @@ const http = require('http');
 
 const DISCORD_AUTHORIZE_URL = 'https://discord.com/oauth2/authorize';
 const DISCORD_TOKEN_URL = 'https://discord.com/api/oauth2/token';
-const DISCORD_REDIRECT_URI = 'http://127.0.0.1/callback';
 const DISCORD_CALLBACK_HOST = '127.0.0.1';
-const DISCORD_CALLBACK_PORT = 80;
+const DISCORD_CALLBACK_PORT = 51120;   // fixed high port; each user registers the matching redirect URI in their own Discord app (Discord matches redirects exactly, so it can't be ephemeral)
 const DISCORD_CALLBACK_PATH = '/callback';
+const DISCORD_REDIRECT_URI = 'http://' + DISCORD_CALLBACK_HOST + ':' + DISCORD_CALLBACK_PORT + DISCORD_CALLBACK_PATH;
 const DISCORD_SCOPES = Object.freeze([
   'rpc', 'identify', 'rpc.voice.read', 'rpc.voice.write', 'messages.read', 'rpc.notifications.read',
 ]);
@@ -124,9 +124,8 @@ class DiscordOAuth {
       });
       const timer = setTimeout(() => finish(Object.assign(new Error('Discord authorization timed out'), { code: 'DISCORD_AUTH_TIMEOUT' })), this.callbackTimeoutMs);
       server.once('error', error => finish(Object.assign(new Error('Discord callback listener could not start'), { code: 'DISCORD_AUTH_CALLBACK', cause: error })));
-      // Discord requires an exact registered redirect URI. The currently registered
-      // http://127.0.0.1/callback URI therefore means port 80; changing to an ephemeral
-      // or high port also requires changing the Developer Portal redirect first.
+      // Discord requires an exact registered redirect URI, so this binds a fixed port; each user
+      // registers http://127.0.0.1:51120/callback in their own Discord app's OAuth2 redirects.
       server.listen(DISCORD_CALLBACK_PORT, DISCORD_CALLBACK_HOST, async () => {
         try { await started(); } catch (error) { finish(Object.assign(new Error('Discord authorization page could not be opened'), { code: 'DISCORD_AUTH_BROWSER', cause: error })); }
       });

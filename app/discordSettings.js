@@ -30,9 +30,10 @@ function normalizeDiscordSettings(value) {
   };
 }
 
-// Public application identifier for the open-quake Discord Developer Portal app.
-// This is deliberately not a secret; OAuth tokens remain in the encrypted store.
-const DEFAULT_DISCORD_APPLICATION_ID = '1539959318974169088';
+// No built-in Discord application. RPC voice scopes are owner-only, so each user registers their own
+// free Discord app and sets it as "Your Discord Application ID" (see docs/discord.md). A blank override
+// therefore resolves to no application -- the connect UI stays disabled until the user sets one.
+const DEFAULT_DISCORD_APPLICATION_ID = '';
 
 function discordApplicationId(settings) {
   const normalized = normalizeDiscordSettings(settings);

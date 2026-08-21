@@ -10,11 +10,11 @@
       "title": "Discord integration",
       "options": [
         { "key": "enabled", "label": "Enable Discord integration", "type": "bool", "default": true },
+        { "key": "applicationIdOverride", "label": "Your Discord Application ID", "type": "text", "default": "", "maxLength": 128, "help": "Discord requires each person to register their own free Discord app for voice control. Create one at discord.com/developers, then paste its Application ID here (see the setup guide below)." },
         { "key": "autoReconnect", "label": "Automatic reconnect", "type": "bool", "default": true },
         { "key": "richPresence", "label": "Rich Presence enabled", "type": "bool", "default": false },
         { "key": "defaultView", "label": "Default Discord view", "type": "select", "default": "voice", "choices": [["voice", "Voice"], ["chat", "Chat"], ["activity", "Activity"]] },
-        { "key": "showUnavailable", "label": "Show/hide unavailable controls", "type": "bool", "default": true },
-        { "key": "applicationIdOverride", "label": "Developer Application ID override", "type": "text", "default": "", "maxLength": 128, "advanced": true, "help": "Development/testing only. Leave blank to use the built-in open-quake Discord application." }
+        { "key": "showUnavailable", "label": "Show/hide unavailable controls", "type": "bool", "default": true }
       ]
     }
   },

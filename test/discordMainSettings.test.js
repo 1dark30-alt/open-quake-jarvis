@@ -14,10 +14,12 @@ test('Discord app descriptor exposes integration settings only for Discord', () 
   const clock = manifest.find(app => app.id === 'clock');
   assert.equal(discord.settings.key, 'discord');
   assert.deepEqual(discord.settings.options.map(option => option.label), [
-    'Enable Discord integration', 'Automatic reconnect', 'Rich Presence enabled',
-    'Default Discord view', 'Show/hide unavailable controls', 'Developer Application ID override',
+    'Enable Discord integration', 'Your Discord Application ID', 'Automatic reconnect',
+    'Rich Presence enabled', 'Default Discord view', 'Show/hide unavailable controls',
   ]);
-  assert.equal(discord.settings.options.find(option => option.key === 'applicationIdOverride').advanced, true);
+  // The Application ID is the primary bring-your-own-app setup field now -- unhidden (not tucked in
+  // the advanced disclosure) and surfaced right after the enable toggle.
+  assert.ok(!discord.settings.options.find(option => option.key === 'applicationIdOverride').advanced);
   assert.equal(discord.settings.options.some(option => option.key === 'clientSecret'), false);
   assert.equal(clock.settings, undefined);
 });

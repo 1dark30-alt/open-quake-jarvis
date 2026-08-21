@@ -48,7 +48,7 @@ test('public-client browser callback validates state and exchanges code with PKC
   const body = String(request.options.body);
   assert.match(body, /client_id=client/);
   assert.match(body, /code_verifier=/);
-  assert.match(body, /redirect_uri=http%3A%2F%2F127\.0\.0\.1%2Fcallback/);
+  assert.match(body, /redirect_uri=http%3A%2F%2F127\.0\.0\.1%3A51120%2Fcallback/);
   assert.doesNotMatch(body, /client_secret|secret/);
   assert.equal(stored.refreshToken, 'refresh');
 });
@@ -67,7 +67,7 @@ test('callback listener accepts only GET on the exact registered path', async ()
   const state = opened.searchParams.get('state');
   assert.equal(server.callback(DISCORD_CALLBACK_PATH + '?code=ok&state=' + encodeURIComponent(state)).status, 200);
   assert.equal(await pending, 'access');
-  assert.equal(DISCORD_REDIRECT_URI, 'http://127.0.0.1/callback');
+  assert.equal(DISCORD_REDIRECT_URI, 'http://127.0.0.1:51120/callback');
 });
 
 test('callback rejects a mismatched OAuth state before token exchange', async () => {
