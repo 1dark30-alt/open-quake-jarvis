@@ -138,7 +138,7 @@
     gCast.appendChild(row2);
     controls.appendChild(gCast);
 
-    controls.appendChild(holdBtn('btn panic', 'Panic', 'Hold', () => post('panic')));
+    controls.appendChild(holdBtn('btn panic', 'Panic', 'Hold for safe scene', () => post('panic')));
     app.appendChild(controls);
 
     // ---- audio mixer (compact channel strip) ----
