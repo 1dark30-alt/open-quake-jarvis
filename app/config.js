@@ -225,120 +225,21 @@
   function haDomainEmoji(domain) { return HA_DOMAIN_EMOJI[domain] || '🏠'; }
 
   // ---- Emoji lookup-by-word (the tile editor's emoji search picker) ----
-  // A curated "most useful for a shortcut panel" set, not a full Unicode dump — every entry unique,
-  // keywords cover common synonyms/senses so one emoji doesn't need to appear twice.
-  const EMOJI_INDEX = [
-    ['😀', 'grin happy smile'], ['😄', 'laugh happy joy'], ['😂', 'laugh cry lol funny'],
-    ['🤣', 'rofl laugh funny'], ['😊', 'smile happy blush'], ['😍', 'love heart eyes crush'],
-    ['🥰', 'love hearts adore'], ['😘', 'kiss love'], ['😉', 'wink'], ['😎', 'cool sunglasses'],
-    ['🤔', 'think thinking hmm'], ['😐', 'neutral meh blank'], ['😢', 'cry sad tear'],
-    ['😭', 'cry sob sad'], ['😡', 'angry mad rage'], ['🤯', 'mind blown shocked'],
-    ['😱', 'scream shock afraid scared shocked'], ['😨', 'scared afraid fear fearful scary'],
-    ['😰', 'anxious nervous worried scared sweat'], ['😟', 'worried concerned anxious'],
-    ['🙁', 'frown sad disappointed'], ['😞', 'disappointed sad let down'],
-    ['😩', 'weary tired exhausted frustrated'], ['😒', 'unamused annoyed bored meh'],
-    ['🥱', 'yawn tired bored sleepy'], ['🥺', 'pleading puppy eyes please cute'],
-    ['😬', 'grimace awkward nervous cringe'], ['😳', 'flushed embarrassed shy blush surprised'],
-    ['🤨', 'skeptical suspicious eyebrow doubt'], ['😏', 'smirk sly smug'],
-    ['🥳', 'party celebrate birthday celebration'],
-    ['🤩', 'star struck excited'], ['😇', 'angel innocent halo'], ['🙄', 'eyeroll annoyed'],
-    ['😅', 'sweat nervous relief laugh'], ['🤗', 'hug'], ['🤫', 'shh quiet secret'],
-    ['🥴', 'woozy dizzy'], ['🤢', 'sick nausea gross'], ['🤒', 'sick fever ill'],
-    ['🤕', 'hurt bandage injured'], ['🥵', 'hot sweat'], ['🥶', 'cold freezing'],
-    ['😷', 'mask sick'], ['🤓', 'nerd glasses'], ['🧐', 'monocle curious'],
-    ['😈', 'devil evil mischief'], ['👻', 'ghost spooky halloween'], ['💀', 'skull dead death'],
-    ['🤖', 'robot bot ai'], ['👽', 'alien ufo'], ['😴', 'sleep tired zzz away'],
-    ['👍', 'thumbs up yes good like approve'], ['👎', 'thumbs down no bad dislike'],
-    ['👏', 'clap applause'], ['🙌', 'hands up celebrate praise'], ['🙏', 'pray please thanks hope'],
-    ['👋', 'wave hello hi bye'], ['✋', 'hand stop high five'], ['🤝', 'handshake deal agreement'],
-    ['✊', 'fist power'], ['👊', 'fist bump punch'], ['✌️', 'peace victory'],
-    ['🤞', 'fingers crossed luck'], ['👌', 'ok okay perfect'], ['🤙', 'call me shaka'],
-    ['💪', 'muscle strong flex'], ['🫶', 'heart hands love'],
-    ['❤️', 'heart love red'], ['🧡', 'heart orange'], ['💛', 'heart yellow'],
-    ['💚', 'heart green'], ['💙', 'heart blue'], ['💜', 'heart purple'],
-    ['🖤', 'heart black'], ['🤍', 'heart white'], ['💔', 'broken heart heartbreak'],
-    ['💕', 'hearts love'], ['💖', 'sparkle heart love'], ['💗', 'growing heart love'],
-    ['🔥', 'fire hot lit trending flame'], ['✨', 'sparkle shine magic new'],
-    ['⭐', 'star favorite night special'], ['💯', 'hundred perfect done'],
-    ['🎉', 'party celebrate confetti'], ['🎊', 'confetti party'], ['🎂', 'birthday cake dessert'],
-    ['✅', 'check done complete yes ok'], ['❌', 'x no wrong cancel'],
-    ['⚠️', 'warning caution alert'], ['🚫', 'forbidden no ban stop'],
-    ['🔴', 'red circle status offline'], ['🟢', 'green circle status online go'],
-    ['🟡', 'yellow circle status warning'], ['⏳', 'hourglass loading wait'],
-    ['⏰', 'alarm clock reminder time'], ['🔔', 'bell notification alert doorbell'],
-    ['🔕', 'bell off mute silent'], ['📌', 'pin important bookmark'],
-    ['📍', 'pin location map'], ['🔒', 'lock secure locked'], ['🔓', 'unlock open unlocked'],
-    ['🔑', 'key password login'], ['🛡️', 'shield security protect'],
-    ['💻', 'laptop computer'], ['🖥️', 'desktop computer monitor'], ['⌨️', 'keyboard type'],
-    ['🖱️', 'mouse click'], ['📱', 'phone mobile cell'], ['☎️', 'phone call telephone'],
-    ['📧', 'email mail'], ['✉️', 'envelope mail message'], ['💬', 'chat message speech bubble'],
-    ['📢', 'announce megaphone loud'], ['🔊', 'speaker volume loud sound'],
-    ['🔇', 'mute silent speaker off'], ['🎧', 'headphones music audio'],
-    ['🎤', 'microphone mic sing record'], ['📷', 'camera photo picture'],
-    ['🎥', 'video camera film movie'], ['🖨️', 'printer print'], ['💾', 'save disk floppy'],
-    ['📁', 'folder files'], ['📂', 'folder open files'], ['📄', 'document file page'],
-    ['📝', 'note write memo pencil'], ['📋', 'clipboard checklist'],
-    ['📊', 'chart graph analytics stats'], ['📈', 'chart up growth trend'],
-    ['📉', 'chart down decline trend'], ['🔍', 'search find magnify'],
-    ['✏️', 'pencil write edit'], ['🖌️', 'paintbrush art design'],
-    ['🗑️', 'trash delete bin garbage'], ['📎', 'paperclip attach'], ['🔗', 'link chain url'],
-    ['⚙️', 'gear settings config'], ['🛠️', 'tools wrench fix repair'],
-    ['🔨', 'hammer tool build fix'], ['🧰', 'toolbox tools repair'],
-    ['💡', 'idea lightbulb bright'], ['🔋', 'battery power charge'],
-    ['🔌', 'plug power outlet charge'], ['☀️', 'sun sunny clear weather'],
-    ['⛅', 'cloud partly sunny weather'], ['☁️', 'cloud cloudy overcast'],
-    ['🌧️', 'rain rainy weather'], ['⛈️', 'thunderstorm lightning storm'],
-    ['❄️', 'snow snowflake cold winter'], ['🌈', 'rainbow color'],
-    ['🌙', 'moon night crescent'], ['🌡️', 'thermometer temperature weather'],
-    ['💧', 'water drop droplet leak'], ['🌊', 'wave ocean water'],
-    ['🌪️', 'tornado storm wind'], ['🌫️', 'fog mist haze'], ['🌸', 'flower blossom spring'],
-    ['🌻', 'sunflower flower'], ['🌵', 'cactus plant desert'], ['🍀', 'clover lucky luck'],
-    ['🌳', 'tree nature'], ['🍂', 'leaf fall autumn'],
-    ['☕', 'coffee cup drink morning'], ['🍵', 'tea drink'], ['🍺', 'beer drink alcohol'],
-    ['🍷', 'wine drink alcohol glass'], ['🍕', 'pizza food'], ['🍔', 'burger food hamburger'],
-    ['🌮', 'taco food mexican'], ['🍟', 'fries food snack'], ['🍩', 'donut doughnut sweet snack'],
-    ['🍪', 'cookie sweet snack'], ['🍎', 'apple fruit'], ['🍌', 'banana fruit'],
-    ['🍿', 'popcorn snack movie'],
-    ['🚗', 'car drive vehicle'], ['🚕', 'taxi car cab'], ['🚀', 'rocket launch space fast'],
-    ['✈️', 'plane flight travel airplane'], ['🚆', 'train travel rail'],
-    ['🚲', 'bike bicycle cycle'], ['🏠', 'house home'], ['🏢', 'building office work'],
-    ['🏦', 'bank money'], ['🛒', 'cart shopping shop'], ['🛍️', 'shopping bag store'],
-    ['💰', 'money bag cash'], ['💵', 'money cash dollar'], ['💳', 'card credit payment'],
-    ['🎮', 'game controller gaming'], ['🎲', 'dice game random'],
-    ['🏆', 'trophy win award champion'], ['🎯', 'target goal dart bullseye'],
-    ['🧩', 'puzzle piece solve'], ['📅', 'calendar date schedule'],
-    ['⏱️', 'stopwatch timer'], ['❓', 'question mark help'],
-    ['❗', 'exclamation mark alert important'], ['♻️', 'recycle recycling green'],
-    ['🔀', 'shuffle random'], ['🔄', 'refresh reload sync'], ['➕', 'plus add new'],
-    ['➖', 'minus remove subtract'], ['🌐', 'globe world web internet'],
-    ['🎵', 'music note song'], ['🎶', 'music notes melody'],
-    ['📺', 'tv television screen'], ['📻', 'radio music'],
-    ['🎬', 'movie clapper film director action'], ['💿', 'cd disc music'],
-    ['🧮', 'calculator abacus math'], ['🔦', 'flashlight torch light'],
-    ['🕯️', 'candle light flame'], ['📡', 'antenna signal satellite wifi'],
-    ['📶', 'signal bars wifi strength'], ['🛰️', 'satellite space'],
-    ['🎈', 'balloon party'], ['🎁', 'gift present box'],
-    ['📚', 'books library reading'], ['📖', 'book open reading'],
-    ['👓', 'glasses eyeglasses vision'], ['☂️', 'umbrella rain'],
-    ['🧳', 'luggage suitcase travel bag'], ['🎫', 'ticket admit'],
-    ['👛', 'wallet purse money'], ['🏅', 'medal award win'],
-    ['🏁', 'checkered flag finish race'], ['📞', 'phone call ringing'],
-    ['✂️', 'scissors cut'], ['📏', 'ruler measure'],
-    ['🧾', 'receipt bill invoice'], ['🧭', 'compass direction navigate'],
-    ['🚦', 'traffic light signal stop go'], ['🛑', 'stop sign'],
-    ['🗺️', 'map travel'], ['🚪', 'door exit enter'],
-    ['🪑', 'chair seat furniture'], ['🛋️', 'couch sofa furniture'],
-    ['🛏️', 'bed sleep furniture'], ['🚿', 'shower bath'],
-    ['😕', 'confused unsure'], ['😵', 'dizzy knocked out confused'],
-    ['🤪', 'crazy silly zany'], ['🙃', 'upside down silly sarcastic'],
-  ];
+  // Backed by the real emojilib dataset (main process loads it from node_modules and serves it
+  // over IPC — config.js runs sandboxed and can't require() it directly). Fetched once and cached.
+  let emojiIndexCache = null;
+  async function getEmojiIndex() {
+    if (!emojiIndexCache) emojiIndexCache = (await configApi.getEmojiIndex()) || [];
+    return emojiIndexCache;
+  }
   // AND-match: every space-separated query word must appear somewhere in an entry's keywords.
-  // Empty query -> a browsable starter set (the list above is front-loaded with common picks).
-  function emojiSearch(query) {
+  // Empty query -> a browsable starter set (emojilib's own order, which is Unicode's canonical
+  // order -- smileys/people first).
+  function emojiSearchIn(index, query) {
     const q = (query || '').trim().toLowerCase();
-    if (!q) return EMOJI_INDEX.slice(0, 40).map(e => e[0]);
+    if (!q) return index.slice(0, 40).map(e => e[0]);
     const words = q.split(/\s+/).filter(Boolean);
-    return EMOJI_INDEX.filter(([, kw]) => words.every(w => kw.includes(w))).map(e => e[0]).slice(0, 60);
+    return index.filter(([, kw]) => words.every(w => kw.includes(w))).map(e => e[0]).slice(0, 60);
   }
 
   // HA's frontend domain-default MDI icons (mirror of FIXED_DOMAIN_ICONS in
@@ -1609,12 +1510,15 @@
   }
 
   // One field does both jobs: paste an emoji directly, or type a word and pick a live match below.
-  function wireEmojiPicker(t) {
+  async function wireEmojiPicker(t) {
     const inp = document.getElementById('tIcon');
     const results = document.getElementById('emojiResults');
     if (!inp || !results) return;
+    results.innerHTML = '<span class="hint">loading…</span>';
+    const index = await getEmojiIndex();
+    if (!document.body.contains(inp)) return;   // the editor moved on to something else while this loaded
     const renderResults = () => {
-      const list = emojiSearch(inp.value);
+      const list = emojiSearchIn(index, inp.value);
       results.innerHTML = list.length
         ? list.map(em => `<button type="button" class="emoji-btn" title="Use this emoji">${esc(em)}</button>`).join('')
         : '<span class="hint">no matches</span>';
@@ -1625,7 +1529,12 @@
         renderTiles(); renderIconPreview(t); markDirty();
       });
     };
-    inp.oninput = () => { t.icon = inp.value; renderTiles(); renderIconPreview(t); markDirty(); renderResults(); };
+    inp.oninput = () => {
+      // Letters/digits in the box mean it's a search word, not a pasted emoji -- don't clobber the
+      // tile's actual icon with that text. Only a real paste (no plain ASCII in it) commits directly.
+      if (!/[a-z0-9]/i.test(inp.value)) { t.icon = inp.value; renderTiles(); renderIconPreview(t); markDirty(); }
+      renderResults();
+    };
     renderResults();
   }
 

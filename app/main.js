@@ -31,6 +31,8 @@ const crypto = require('crypto');
 const { exec, execFile, spawn } = require('child_process');
 const { pathToFileURL } = require('url');
 const HID = require('node-hid');
+const emojilib = require('emojilib');   // emoji -> keyword array (MIT, muan/emojilib) — powers the tile editor's emoji search
+const EMOJI_INDEX = Object.entries(emojilib).map(([em, kws]) => [em, kws.join(' ').toLowerCase()]);
 const MultiKnob = require('./multiKnob');                                           // owns Aris68Connector + BedrockConnector; routes to whichever device is plugged in
 const http = require('http');
 const actionRunner = require('./actionRunner');
@@ -3056,6 +3058,7 @@ app.whenReady().then(async () => {
     } catch (err) { return []; }
   });
   ipcMain.handle('getHaCache', (e) => isFrom(e, configWin) ? haCache : null);
+  ipcMain.handle('getEmojiIndex', (e) => isFrom(e, configWin) ? EMOJI_INDEX : null);
   ipcMain.handle('refreshHaCache', (e) => isFrom(e, configWin) ? refreshHaCache() : null);
   // Editor voice-app options: is the page's CLI actually installed? Lets the editor warn at
   // add-time instead of the user discovering a dead page on the panel later.

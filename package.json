@@ -29,6 +29,7 @@
   "dependencies": {
     "@jitsi/robotjs": "^0.6.22",
     "adm-zip": "^0.6.0",
+    "emojilib": "^4.0.3",
     "node-hid": "^3.3.0",
     "win-ca": "^3.5.1",
     "ws": "^8.18.0"

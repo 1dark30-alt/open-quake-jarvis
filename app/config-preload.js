@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('openQuakeConfig', {
   openWelcome() { return ipcRenderer.invoke('openWelcome'); },
   // Global Home Assistant cache: registries + dashboards in main's memory; per-entity states lazy.
   getHaCache() { return ipcRenderer.invoke('getHaCache'); },
+  getEmojiIndex() { return ipcRenderer.invoke('getEmojiIndex'); },
   refreshHaCache() { return ipcRenderer.invoke('refreshHaCache'); },
   fetchHaEntityState(entityId) { return ipcRenderer.invoke('fetchHaEntityState', entityId); },
   // Claude Code voice app: candidate project directories under the configured projects root (Phase 3).
