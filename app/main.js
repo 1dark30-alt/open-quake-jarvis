@@ -159,6 +159,15 @@ const obsService = new ObsService({
   url: obsWsUrl(obsSettings()), password: obsSettings().password, autoReconnect: obsSettings().autoReconnect,
   getPanicConfig: () => { const o = (config.settings || {}).obs || {}; return { safeScene: o.panicScene || '', muteInputs: Array.isArray(o.panicMutes) ? o.panicMutes : [] }; },
 });
+// When OBS state changes, re-push the live grid so any `obs` tiles reflect it -- but only if the
+// shown page actually has obs tiles, and throttled so a burst of OBS events is one repaint.
+let obsPushTimer = null;
+obsService.on('update', () => {
+  const g = activeGrid();
+  if (!g || !((g.tiles || []).some(t => t && t.type === 'obs'))) return;
+  if (obsPushTimer) return;
+  obsPushTimer = setTimeout(() => { obsPushTimer = null; pushToPanel().catch(() => {}); }, 120);
+});
 let panelWin = null, configWin = null, tray = null, welcomeWin = null;
 let dashSession = null, cookieFlushT = null;   // dashboard webview session + a debounced cookie-store flush
 const dev = new MultiKnob({ hid: HID });
@@ -1215,6 +1224,27 @@ function haEntityEmoji(entityId) {
   return HA_DOMAIN_EMOJI[(entityId || '').split('.')[0] || ''] || '🏠';
 }
 
+// Live OBS state for an `obs` tile -> the panel view-model: a state class (colour) + a subtitle, plus
+// a default label from the bound resource. Read from the service snapshot (sync); no per-tile I/O.
+function applyObsTileState(out, t) {
+  const s = obsService.getSnapshot();
+  const act = t.obsAction || 'scene';
+  out.tileState = ''; out.sub = '';
+  if (s.connection !== 'connected') { if (!out.label && (act === 'scene' || act === 'mute')) out.label = t.value || ''; return; }
+  if (act === 'scene') {
+    if (t.value && t.value === s.programScene) { out.tileState = 'program'; out.sub = 'ON AIR'; }
+    else if (s.studioMode && t.value && t.value === s.previewScene) { out.tileState = 'preview'; out.sub = 'PREVIEW'; }
+    if (!out.label) out.label = t.value || 'Scene';
+  } else if (act === 'mute') {
+    const inp = (s.inputs || []).find(i => i.name === t.value);
+    if (inp) { out.tileState = inp.muted ? 'muted' : 'live'; out.sub = inp.muted ? 'MUTED' : 'LIVE'; }
+    if (!out.label) out.label = t.value || 'Mute';
+  } else if (act === 'studioMode') { out.tileState = s.studioMode ? 'on' : ''; out.sub = s.studioMode ? 'STUDIO' : 'STUDIO OFF'; if (!out.label) out.label = 'Studio'; }
+  else if (act === 'saveReplay') { out.sub = s.replay.active ? 'CLIP' : 'OFF'; if (!out.label) out.label = 'Save Clip'; }
+  else if (act === 'cut') { if (!out.label) out.label = 'Cut'; }
+  else if (act === 'auto') { if (!out.label) out.label = 'Auto'; }
+}
+
 // Resolve app/image icons to a data: URL the panel renderer can draw (works in native + http pages).
 async function resolveTiles(tiles) {
   return Promise.all((tiles || []).map(async t => {
@@ -1243,6 +1273,7 @@ async function resolveTiles(tiles) {
       if (!out.iconSrc && !out.icon) out.icon = haEntityEmoji(t.value);
     }
     else if (t.iconType === 'app') { const d = await getAppIconDataUrl(t.value); if (d) out.iconSrc = d; }
+    if (t.type === 'obs') applyObsTileState(out, t);
     return out;
   }));
 }
@@ -1371,6 +1402,12 @@ async function runAction(a) {
     // or HA error — log and swallow so a misfire never crashes the launch path.
     console.log('launch:', a.label, '-> ha', a.value, 'service=' + (a.service || ''));
     try { await callHaService(a.value, a.service); } catch (e) { console.log('ha action error:', e.message); }
+    return;
+  }
+  if (a.type === 'obs') {
+    // OBS tile: dispatch the picked action (scene/mute/studio/cut/auto/save-clip) to the shared service.
+    console.log('launch:', a.label, '-> obs', a.obsAction || 'scene', a.value || '');
+    try { await obsService.action(a.obsAction || 'scene', a.value); } catch (e) { console.log('obs action error:', e.message); }
     return;
   }
   if (a.value != null && typeof a.value !== 'string') return;   // value, when present, is a string
@@ -3237,6 +3274,8 @@ app.whenReady().then(async () => {
       return { ok: false, error: msg };
     }
   });
+  // Live OBS scenes/inputs for the tile editor's resource pickers (config window only).
+  ipcMain.handle('getObsSnapshot', (e) => isFrom(e, configWin) ? obsService.getSnapshot() : { connection: 'disconnected' });
   // Model list for the AI Voice API backend's editor dropdown: hit the endpoint's standard
   // OpenAI-compatible /models with the page's own URL + key (probeOwui's pattern, minus the
   // OWUI-specific URL normalization — the base here is entered verbatim).

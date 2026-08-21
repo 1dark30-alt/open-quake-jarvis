@@ -39,7 +39,7 @@
   }
   const appIconCache = {};   // app value -> dataURL | false (failed) | null (in-flight)
   const urlIconPreview = {}; // iconCache path -> dataURL of a just-fetched URL icon (editor preview only; dodges file:// browser-cache staleness on Refresh)
-  const TYPES = [['', 'Empty'], ['app', 'App / Program'], ['url', 'Website (URL)'], ['page', 'Go to open-quake page'], ['cmd', 'Shell command'], ['open', 'Open file/folder'], ['system', 'System (lock/config)'], ['counter', 'Counter'], ['paste_text', 'Paste Text'], ['key', 'Send keystroke'], ['macro', 'Macro / Steps'], ['ha', 'HA entity'], ['routine', 'AI Routine']];
+  const TYPES = [['', 'Empty'], ['app', 'App / Program'], ['url', 'Website (URL)'], ['page', 'Go to open-quake page'], ['cmd', 'Shell command'], ['open', 'Open file/folder'], ['system', 'System (lock/config)'], ['counter', 'Counter'], ['paste_text', 'Paste Text'], ['key', 'Send keystroke'], ['macro', 'Macro / Steps'], ['ha', 'HA entity'], ['routine', 'AI Routine'], ['obs', 'OBS Studio']];
   // Curated per-domain service catalog for HA entity tiles. Lookup falls back to HA_SERVICES_DEFAULT
   // for any domain we don't have a more specific list for. First entry is the default service when
   // the user picks an entity of that domain.
@@ -1345,6 +1345,7 @@
     else if (t.type === 'macro') body = `<div class="row"><label>Steps</label></div><div id="macroSteps"></div>`;
     else if (t.type === 'key') body = `<div class="row"><label>Keys</label><input id="tValue" value="${esc(t.value)}" placeholder="${valuePlaceholder('key')}"><button id="tRec" type="button">Record</button></div>`;
     else if (t.type === 'ha') body = haTileBodyHtml(t);
+    else if (t.type === 'obs') body = obsTileBodyHtml(t);
     else body = `<div class="row"><label>Value</label><input id="tValue" value="${esc(t.value)}" placeholder="${valuePlaceholder(t.type)}">${t.type === 'app'
         ? '<button id="tBrowse">Browse…</button>'
         : t.type === 'open'
@@ -1361,7 +1362,8 @@
     document.getElementById('tLabel').oninput = e => { t.label = e.target.value; renderTiles(); markDirty(); };
     document.getElementById('tType').onchange = e => {
       const prev = t.type; t.type = e.target.value;
-      if (t.type === 'page' || prev === 'page' || t.type === 'ha' || prev === 'ha' || t.type === 'routine' || prev === 'routine') { t.value = ''; t.service = ''; }
+      if (t.type === 'page' || prev === 'page' || t.type === 'ha' || prev === 'ha' || t.type === 'routine' || prev === 'routine' || t.type === 'obs' || prev === 'obs') { t.value = ''; t.service = ''; }
+      if (t.type === 'obs' && !t.obsAction) t.obsAction = 'scene';
       // Default HA entity tiles to the "HA icon" iconType so the resolved icon shows immediately
       // without the user having to flip it manually.
       if (t.type === 'ha' && (!t.iconType || t.iconType === 'emoji')) { t.iconType = 'ha'; t.iconCache = ''; t.iconUrl = ''; }
@@ -1386,7 +1388,34 @@
     if (tRec && tv) tRec.onclick = () => captureCombo(tv, c => { t.value = c; tv.value = c; renderTiles(); markDirty(); });
     if (t.type === 'macro') renderMacroSteps(t);
     if (t.type === 'ha') wireHaTile(t);
+    if (t.type === 'obs') wireObsTile(t);
     renderIconPane();
+  }
+  // OBS tile editor: pick an action (scene/mute/studio/cut/auto/save-clip); scene & mute also pick a
+  // resource from the LIVE OBS snapshot (like the HA entity picker). Stores t.obsAction + t.value.
+  const OBS_TILE_ACTIONS = [['scene', 'Switch to scene'], ['mute', 'Toggle input mute'], ['studioMode', 'Toggle Studio Mode'], ['cut', 'Cut (take Preview)'], ['auto', 'Auto transition'], ['saveReplay', 'Save replay clip']];
+  function obsTileBodyHtml(t) {
+    const act = t.obsAction || 'scene';
+    const needsRes = act === 'scene' || act === 'mute';
+    return `<div class="row"><label>Action</label><select id="obsAct" style="flex:1">${OBS_TILE_ACTIONS.map(([v, n]) => `<option value="${v}" ${v === act ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>`
+      + (needsRes ? `<div class="row"><label>${act === 'mute' ? 'Input' : 'Scene'}</label><select id="obsRes" style="flex:1"><option value="${esc(t.value || '')}">${esc(t.value || '(pick from OBS)')}</option></select></div><p class="hint" id="obsHint"></p>` : '');
+  }
+  async function wireObsTile(t) {
+    const actSel = document.getElementById('obsAct');
+    if (actSel) actSel.onchange = e => { t.obsAction = e.target.value; if (t.obsAction !== 'scene' && t.obsAction !== 'mute') t.value = ''; render(); markDirty(); };
+    const resSel = document.getElementById('obsRes');
+    if (!resSel) return;
+    const hint = document.getElementById('obsHint');
+    let snap = null; try { snap = await configApi.getObsSnapshot(); } catch (e) {}
+    if (!snap || snap.connection !== 'connected') {
+      if (hint) hint.textContent = 'Connect OBS (Settings → Auth → OBS Studio) to pick from your live scenes/inputs.';
+      resSel.onchange = e => { t.value = e.target.value; renderTiles(); markDirty(); };
+      return;
+    }
+    const items = t.obsAction === 'mute' ? (snap.inputs || []).map(i => i.name) : (snap.scenes || []);
+    resSel.innerHTML = ['<option value="">(none)</option>'].concat(items.map(n => `<option value="${esc(n)}" ${n === t.value ? 'selected' : ''}>${esc(n)}</option>`)).join('');
+    resSel.onchange = e => { t.value = e.target.value; if (!t.label) t.label = e.target.value; renderTiles(); markDirty(); };
+    if (hint) hint.textContent = '';
   }
 
   // ---- macro step editor ----

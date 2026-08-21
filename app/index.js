@@ -136,9 +136,11 @@
       wrap.appendChild(bMinus); wrap.appendChild(center); wrap.appendChild(bPlus);
       d.appendChild(wrap);
     } else if (!empty) {                                       // build via DOM nodes (never innerHTML) so a config-supplied label/icon can't inject markup
+      if (t.tileState) d.classList.add('obs-' + t.tileState);   // live OBS state (program/preview/muted/live/on) -> colour
       if (t.iconSrc) { const im = document.createElement('img'); im.className = 'ic-img'; im.src = t.iconSrc; d.appendChild(im); }
       else { const icd = document.createElement('div'); icd.className = 'ic'; icd.textContent = t.icon || '▫️'; d.appendChild(icd); }
       const lb = document.createElement('div'); lb.className = 'lb'; lb.textContent = t.label || ''; d.appendChild(lb);
+      if (t.sub) { const sb = document.createElement('div'); sb.className = 'sub'; sb.textContent = t.sub; d.appendChild(sb); }   // live state label
     }
     return d;
   }

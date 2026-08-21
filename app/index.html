@@ -39,6 +39,17 @@
   .tile .ic { font-size: 60px; line-height: 1; }
   .tile .ic-img { width: 64px; height: 64px; object-fit: contain; }
   .tile .lb { font-size: 20px; margin-top: 8px; color: var(--tile-lb); }
+  /* live OBS-tile state: colour reserved for meaning (red on-air, green preview/live, amber muted, accent studio) */
+  .tile .sub { font-size: 13px; margin-top: 3px; letter-spacing: .06em; text-transform: uppercase; font-weight: 800; }
+  .tile.obs-program { border-color: #ed4245; box-shadow: inset 0 0 0 4px #ed4245; }
+  .tile.obs-program .sub { color: #ff6b6d; }
+  .tile.obs-preview { border-color: #2ee889; box-shadow: inset 0 0 0 4px #2ee889; }
+  .tile.obs-preview .sub { color: #2ee889; }
+  .tile.obs-muted { border-color: #f0b84b; box-shadow: inset 0 0 0 4px #f0b84b; }
+  .tile.obs-muted .sub { color: #f0b84b; }
+  .tile.obs-live .sub { color: #2ee889; }
+  .tile.obs-on { border-color: var(--accent); box-shadow: inset 0 0 0 4px color-mix(in srgb, var(--accent) 80%, transparent); }
+  .tile.obs-on .sub { color: var(--accent); }
   .tile.span .ic { font-size: 104px; }
   .tile.span .ic-img { width: 104px; height: 104px; }
   .tile.span .lb { font-size: 26px; }
