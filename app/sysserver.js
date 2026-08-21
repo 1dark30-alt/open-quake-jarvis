@@ -81,6 +81,7 @@ const STATIC_FILES = {
   '/recorderview.js': 'application/javascript; charset=utf-8',
   '/system-audio-capture.js': 'application/javascript; charset=utf-8',
   '/slidecapture-view.js': 'application/javascript; charset=utf-8',
+  '/diagnosticsview.js': 'application/javascript; charset=utf-8',
 };
 for (const appId of ['teams', 'outlook', 'word', 'excel', 'powerpoint', 'onenote', 'onedrive', 'office']) {
   STATIC_FILES['/office-icons/' + appId + '.svg'] = 'image/svg+xml; charset=utf-8';
@@ -91,9 +92,11 @@ let getMeetingState = null, onMeetingRecord = null;   // meeting recorder: panel
 let onMeetingLibrary = null, resolveMeetingAudio = null;   // recordings library + transcription/analysis remotes
 let onSlide = null;   // slide capture: window list / select / start / stop / manual remote
 let onHighlight = null;   // mid-meeting highlights: start / stop / cancel remote
+let getDeviceDiagnostics = null;   // Device Diagnostics served app: live Display/Touch/Knob snapshot
 let getLucidState = null, onLucidDictation = null, onLucidApply = null, onLucidEdit = null, onLucidSetMic = null;   // LucidType dictation: panel poller + start/stop + apply + edit-sync + on-panel mic pick
 let onLucidCleanup = null, onLucidRewrite = null, onLucidReview = null, onLucidSetMode = null;   // LucidType cleanup/rewrite (Phase 2): run + review apply/refine/cancel + rewrite-mode pick
 const lucidSubscribers = new Set();   // open SSE responses for the LucidType page (pushed by main via lucidBroadcast)
+let diagnosticsHtml = FALLBACK;
 let musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK, slideHtml = FALLBACK, lucidtypeHtml = FALLBACK, lucidtypeDictateHtml = FALLBACK;
 // Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
 // Voice-panel app registry: appId (also the URL path prefix) -> { handlers, voiceToken, htmlFile,
@@ -529,6 +532,7 @@ async function handler(req, res) {
   if (url === '/' || url === '/index.html') return html(res, RETIRED_HTML);   // retired SystemView page
   if (url === '/music') return html(res, musicHtml);
   if (url === '/meeting') return html(res, meetingHtml);
+  if (url === '/diagnostics') return html(res, diagnosticsHtml);
   if (url === '/lucidtype') return html(res, lucidtypeHtml);
   if (url === '/lucidtype-dictate') return html(res, lucidtypeDictateHtml);   // hidden LucidType capture page
   if (url === '/recorder') return html(res, recorderHtml);   // hidden meeting-recorder capture page
@@ -771,6 +775,9 @@ async function handler(req, res) {
     return json(res, result);
   }
   // Meeting recorder: the panel page polls /meeting-state and drives start/stop/setMic here.
+  if (url === '/device-diagnostics') {
+    return json(res, typeof getDeviceDiagnostics === 'function' ? getDeviceDiagnostics() : { mode: 'software', channels: {} });
+  }
   if (url === '/meeting-state') {
     return json(res, typeof getMeetingState === 'function' ? getMeetingState() : { recording: false });
   }
@@ -950,6 +957,7 @@ function start(opts) {
   onMeetingRecord = opts.onMeetingRecord || null;
   onSlide = opts.onSlide || null;
   onHighlight = opts.onHighlight || null;
+  getDeviceDiagnostics = opts.getDeviceDiagnostics || null;
   onMeetingLibrary = opts.onMeetingLibrary || null;
   resolveMeetingAudio = opts.resolveMeetingAudio || null;
   getLucidState = opts.getLucidState || null;
@@ -987,6 +995,7 @@ function start(opts) {
     if (server) return resolve(server.address().port);
     try { musicHtml = fs.readFileSync(path.join(__dirname, 'musicview.html'), 'utf8'); } catch (e) {}
     try { meetingHtml = fs.readFileSync(path.join(__dirname, 'meetingview.html'), 'utf8'); } catch (e) {}
+    try { diagnosticsHtml = fs.readFileSync(path.join(__dirname, 'diagnosticsview.html'), 'utf8'); } catch (e) {}
     try { lucidtypeHtml = fs.readFileSync(path.join(__dirname, 'lucidtypeview.html'), 'utf8'); } catch (e) {}
     try { lucidtypeDictateHtml = fs.readFileSync(path.join(__dirname, 'lucidtype-dictate.html'), 'utf8'); } catch (e) {}
     try { recorderHtml = fs.readFileSync(path.join(__dirname, 'recorderview.html'), 'utf8'); } catch (e) {}

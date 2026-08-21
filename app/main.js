@@ -53,6 +53,7 @@ const meetingControl = require('./meetingControl');   // Zoom/Teams call-control
 const { createMeetingRecorder } = require('./meetingRecorder'); // hidden-window meeting recorder (mic + system loopback -> WAV)
 const { createMeetingHighlights } = require('./meetingHighlights'); // mid-meeting highlight spans -> the recording's sidecar
 const routines = require('./routines');       // saved AI routines: a prompt + which AI Chat page runs it
+const deviceDiagnostics = require('./deviceDiagnostics'); // pure: classify the console's Display/Touch/Knob channels
 const { createSlideCapture } = require('./slideCapture');       // hidden-window slide capture (getDisplayMedia -> screenshots)
 const { createLucidDictation } = require('./lucidtypeDictation'); // hidden-window LucidType dictation (mic + VAD -> Wyoming STT -> text)
 const lucidWyoming = require('./claudevoice-wyoming');          // Wyoming STT client (transcribe) for dictation
@@ -94,6 +95,7 @@ const actionDeps = { fs, shell, exec, execFile, spawn, platform: process.platfor
 const mediaKeys = createMediaKeys({ log: message => console.log(message) });
 let firstRun = false;     // set by loadConfig when there was no prior config (fresh install)
 let micState = false;     // current device mic state (LED follows it)
+let lastDeviceState = {};  // cached from the connector's 'state' events (firmware/luminance/mic) for the diagnostics page
 let meetingRecorder = null;   // hidden-window meeting recorder (created once the panel server is up)
 let slideCapture = null;      // hidden-window slide capture controller (created alongside the recorder)
 let meetingHighlights = null; // mid-meeting highlight spans (created alongside the recorder)
@@ -832,6 +834,21 @@ function oauthProviderPayload() {
       enabled: id === 'microsoft',
     });
   });
+}
+
+// Device Diagnostics served app: a live snapshot of the console's three physical channels
+// (Display / Touch / Knob), device-agnostic across DK-QUAKE and bedrock-console. Reads the current
+// HID enumeration + attached displays + cached firmware; the pure classifier decides pass/fail.
+function getDeviceDiagnostics() {
+  let hidDevices = [];
+  try { hidDevices = HID.devices(); } catch (e) {}
+  let displays = [];
+  try { displays = screen.getAllDisplays().map(d => ({ width: d.bounds.width, height: d.bounds.height, id: d.id })); } catch (e) {}
+  let activeName = null;
+  try { activeName = dev && dev.activeName ? dev.activeName() : null; } catch (e) {}
+  const snap = deviceDiagnostics.classify({ hidDevices, displays, activeName, firmware: lastDeviceState.firmware || null });
+  snap.runMode = runMode();   // panel / software / monitor — the page notes when you're not on the device
+  return snap;
 }
 
 // Short sentence on the panel's flash overlay. The only main-side way to tell someone standing at
@@ -2741,6 +2758,7 @@ app.whenReady().then(async () => {
       getMeetingState: meetingStateForPanel, onMeetingRecord: onMeetingRecordRequest,
       onMeetingLibrary: onMeetingLibraryRequest, resolveMeetingAudio: resolveMeetingAudioPath,
       onSlide: onSlideRequest, onHighlight: onHighlightRequest,
+      getDeviceDiagnostics: getDeviceDiagnostics,
       getLucidState: lucidStateForPanel, onLucidDictation: onLucidDictationRequest,
       onLucidApply: lucidApply, onLucidEdit: onLucidEditRequest, onLucidSetMic: onLucidSetMicRequest,
       onLucidCleanup: onLucidCleanupRequest, onLucidRewrite: onLucidRewriteRequest,
@@ -3381,12 +3399,14 @@ app.whenReady().then(async () => {
     }
     applyKnobSettings();
     applyMic(appSettings().micOnLaunch);
+    try { dev.queryFirmware(); } catch (e) {}   // async; the 'state' handler caches the reply for the diagnostics page
     // The mic indicator LED only latches once the panel is fully awake. At connect the device is still
     // mid screen-on activation (screenOn fires at 0/300/800/1500ms), so this first setMic toggles the
     // audio but the LED is dropped. Re-assert after activation settles — screenOn then setMic — which
     // mirrors what a display re-wake does and forces the LED to follow the mic state.
     setTimeout(() => { try { dev.screenOn(); } catch (e) {} applyMic(micState); console.log('mic LED re-assert:', micState); }, 2000);
   });
+  dev.on('state', s => { if (s && typeof s === 'object') Object.assign(lastDeviceState, s); });
   dev.on('error', e => console.log('dev error:', e.message));
   dev.start();
 
