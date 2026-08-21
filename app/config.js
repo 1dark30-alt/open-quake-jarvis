@@ -2448,6 +2448,33 @@
       }
     }
   }
+  // Render a list of manifest options as editor rows against `values`, tagging each control with
+  // `cssClass` -- 'aopt' for a page's own g.options, 'aset' for an app's global settings -- so the
+  // matching change handler in renderAppOpts picks it up. Selects heal a stale stored value to the
+  // manifest default. (#29 wired calls to this helper but never defined it, which threw and broke the
+  // whole App-options box -- app settings, incl. Discord's, never rendered; this restores it.)
+  function renderOptions(options, values, cssClass) {
+    return (options || []).map(o => {
+      let v = (o.key in values) ? values[o.key] : o.default;
+      let field;
+      const attrs = `class="${cssClass}" data-key="${esc(o.key)}"`;
+      if (o.type === 'select') {
+        // Heal a stored value that no longer matches any choice to the manifest default.
+        if (!o.choices.some(ch => String(Array.isArray(ch) ? ch[0] : ch) === String(v))) {
+          v = o.default;
+          if (o.key in values && values[o.key] !== o.default) { values[o.key] = o.default; markDirty(); }
+        }
+        field = `<select ${attrs}>${o.choices.map(ch => { const val = Array.isArray(ch) ? ch[0] : ch, lab = Array.isArray(ch) ? ch[1] : ch; return `<option value="${esc(val)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(lab)}</option>`; }).join('')}</select>`;
+      }
+      else if (o.type === 'bool') field = o.inline
+        ? `<label class="iconopt" style="width:auto"><input type="checkbox" ${attrs} ${v ? 'checked' : ''} style="width:auto"> ${esc(o.inline)}</label>`
+        : `<input type="checkbox" ${attrs} ${v ? 'checked' : ''} style="width:auto">`;
+      else if (o.type === 'secret') field = secretInput(v, attrs);
+      else field = `<input ${attrs} value="${esc(v)}"${o.maxLength ? ` maxlength="${Number(o.maxLength)}"` : ''}>`;
+      const help = o.help ? `<p class="hint" style="margin:-2px 0 10px 78px">${esc(o.help)}</p>` : '';
+      return `<div class="row"><label>${esc(o.label)}</label>${field}</div>${help}`;
+    }).join('');
+  }
   function renderAppOpts(g, def) {
     const el = document.getElementById('appOpts'); if (!el) return;
     if (!def) { el.innerHTML = ''; return; }
@@ -2464,28 +2491,7 @@
       return ('not' in c) ? cur !== String(c.not) : cur === String(c.value);
     };
     const visible = o => !o.showIf || (Array.isArray(o.showIf) ? o.showIf.every(showIfOk) : showIfOk(o.showIf));
-    el.innerHTML = (def.options || []).filter(o => !o.editorCustom).filter(visible).map(o => {
-      let v = (o.key in g.options) ? g.options[o.key] : o.default;
-      let field;
-      const attrs = `class="${cssClass}" data-key="${esc(o.key)}"`;
-      if (o.type === 'select') {
-        // Heal a stored value that no longer matches any choice (e.g. a removed screensaver scene)
-        // to the manifest default — otherwise the select silently displays something else entirely.
-        if (!o.choices.some(ch => String(Array.isArray(ch) ? ch[0] : ch) === String(v))) {
-          v = o.default;
-          if (o.key in g.options && g.options[o.key] !== o.default) { g.options[o.key] = o.default; markDirty(); }
-        }
-        field = `<select ${attrs}>${o.choices.map(ch => { const val = Array.isArray(ch) ? ch[0] : ch, lab = Array.isArray(ch) ? ch[1] : ch; return `<option value="${esc(val)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(lab)}</option>`; }).join('')}</select>`;
-      }
-      else if (o.type === 'bool') field = o.inline
-        ? `<label class="iconopt" style="width:auto"><input type="checkbox" class="aopt" data-key="${esc(o.key)}" ${v ? 'checked' : ''} style="width:auto"> ${esc(o.inline)}</label>`
-        : `<input type="checkbox" ${attrs} ${v ? 'checked' : ''} style="width:auto">`;
-      else if (o.type === 'secret') field = secretInput(v, attrs);
-      else field = `<input ${attrs} value="${esc(v)}"${o.maxLength ? ` maxlength="${Number(o.maxLength)}"` : ''}>`;
-      const help = o.help ? `<p class="hint" style="margin:-2px 0 10px 78px">${esc(o.help)}</p>` : '';
-      return `<div class="row"><label>${esc(o.label)}</label>${field}</div>${help}`;
-    }).join('');
-    const pageHtml = renderOptions((def.options || []).filter(visible), g.options, 'aopt');
+    const pageHtml = renderOptions((def.options || []).filter(o => !o.editorCustom).filter(visible), g.options, 'aopt');
     const regularSettings = settingDef ? settingDef.options.filter(o => !o.advanced) : [];
     const advancedSettings = settingDef ? settingDef.options.filter(o => o.advanced) : [];
     const settingsHtml = settingDef ? `<p class="sectitle" data-app-settings="${esc(def.id)}">${esc(settingDef.title || def.name + ' settings')}</p>${renderOptions(regularSettings, appSettings, 'aset')}${advancedSettings.length ? `<details class="advsec" style="margin-top:12px"><summary>Advanced / developer overrides</summary>${renderOptions(advancedSettings, appSettings, 'aset')}</details>` : ''}` : '';
