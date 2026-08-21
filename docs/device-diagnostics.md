@@ -59,10 +59,9 @@ not dependent on having caught an event.
 
 ## Open questions (logged; assumption taken so the build proceeds)
 
-- **Q: Does bedrock's touch always enumerate as usagePage 0x0D?** The README calls it a "USB HID
-  touchscreen"; standard digitizers are 0x0D. **Assumption:** yes. If a bedrock unit reports a
-  non-standard usage, the Touch row would false-negative; the fix is to widen the touch matcher.
-  Flagged as the one cross-device risk to confirm on real bedrock hardware.
+- **Q: Does bedrock's touch always enumerate as usagePage 0x0D? — RESOLVED.** Confirmed working on
+  real bedrock hardware (T.J., 2026-08-21): diagnostics reads correctly on both the DK-QUAKE and the
+  bedrock-console. The standard-digitizer (0x0D) touch matcher is right for both.
 - **Q: Should diagnostics live-poll the device (queryFirmware) or read cached state?** Chose
   **cached** — main caches firmware/luminance/mic from the connector's `state` events and a
   connect-time query, so the endpoint never blocks on device I/O. Firmware shows "—" until the
