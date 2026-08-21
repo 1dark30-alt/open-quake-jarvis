@@ -10,6 +10,7 @@
   let config = { activeGridId: null, grids: [] };
   let gi = 0, ti = -1, selEnd = -1, dragFrom = -1, dirty = false, appDefs = [], view = 'pages', ledState = null, settingsTab = 'software', dashTab = 'page';
   let voiceModes = null;   // { claude:[{id,label}], codex:[...], copilot:[...], owui:[], api:[] } — lazy-loaded for the Routines tab's Mode picker
+  let selRoutineId = null, routineQuery = '';   // Routines tab master-detail: selection tracked by stable id, plus the search box text
   // Left sidebar tab (Pages vs Groups list) + which group is currently being edited when view='groups'.
   let leftTab = 'pages', groupIndex = -1;
   // Per-page Advanced <details> open state — persisted across re-renders so toggling an override
@@ -511,110 +512,194 @@
       if (inputs.length) inputs[inputs.length - 1].focus();
     };
   }
-  // ---- Routines rows (Settings -> Routines): name + prompt + which AI Chat page runs it ----
-  // Same live-edit model as the AI Profiles rows above: mutate config.settings.routines in place,
-  // markDirty(), Save persists. Ids are stable (never edited); new rows and panel saves mint one.
+  // ---- Routines (Settings -> Routines): searchable master-detail editor ----
+  // Presentation only. Storage is unchanged: config.settings.routines, referenced by stable id
+  // from tiles. Everything here selects and binds by routine ID, never array position, so filtering
+  // or reordering the visible list can never write edits into the wrong routine.
   function aiChatPagesForPicker() {
     return (config.grids || []).filter(g => g && g.kind === 'app' && g.app === 'ai-voice');
   }
-  // Mode row: the permission level the routine runs under, sourced live from each backend
-  // (voiceModes). Only shown where the target page's backend actually has modes -- the same
-  // backends that have a folder. Blank option = leave the page on whatever mode it's set to.
   function backendOfPage(page) { return (page && page.options && page.options.backend) || 'claude'; }
-  function routineModeHtml(r, i, pages) {
-    const page = pages.find(g => g.id === r.appPageId) || pages[0];
-    const list = (voiceModes && voiceModes[backendOfPage(page)]) || [];
-    if (!list.length) return '';   // chat-only backend, or modes not loaded yet -> no picker
-    return `<select class="rtMode" data-i="${i}" title="Permission mode this routine runs under">
-        <option value="">(page's current mode)</option>
-        ${list.map(m => `<option value="${esc(m.id)}" ${m.id === r.mode ? 'selected' : ''}>${esc(m.label || m.id)}</option>`).join('')}
-      </select>`;
+  function routineListArr() { if (!config.settings) config.settings = {}; if (!Array.isArray(config.settings.routines)) config.settings.routines = []; return config.settings.routines; }
+  function routinePlural(n) { return n + ' routine' + (n === 1 ? '' : 's'); }
+
+  // Search matches name, prompt, target page name, and folder. `q` is already lowercased.
+  function routineMatches(r, q, pages) {
+    if (!q) return true;
+    const page = pages.find(g => g.id === r.appPageId);
+    return [r.name, r.prompt, page && page.name, r.folder]
+      .map(x => String(x || '').toLowerCase()).join('  ').indexOf(q) !== -1;
   }
-  // Folder row: only the agent backends have a working directory (Open WebUI and API are plain
-  // chat, and their AI Chat page hides its own Folder row too). Blank = leave the page wherever it
-  // already is; setting one makes the routine switch the page to that folder before it runs.
-  function routineFolderHtml(r, i, pages) {
-    const page = pages.find(g => g.id === r.appPageId) || pages[0];
-    const backend = (page && page.options && page.options.backend) || 'claude';
-    if (['claude', 'codex', 'copilot'].indexOf(backend) === -1) {
-      return `<span class="hint" style="font-size:11px">${esc(page ? (page.name || 'That page') : 'That page')} is chat-only — no folder.</span>`;
+  // Keep the selection valid against what's actually visible: if the current pick was filtered out
+  // (or never set), fall to the first visible result -- never a hidden or stale id.
+  function resolveRoutineSel(filtered) {
+    if (!filtered.some(r => r.id === selRoutineId)) selRoutineId = filtered.length ? filtered[0].id : null;
+  }
+  function routineItemHtml(r, pages) {
+    const page = pages.find(g => g.id === r.appPageId);
+    const pageName = page ? (page.name || '(unnamed page)') : '(no page)';
+    const preview = String(r.prompt || '').replace(/\s+/g, ' ').trim() || '(no prompt yet)';
+    return '<div class="rtItem' + (r.id === selRoutineId ? ' sel' : '') + '" data-id="' + esc(r.id) + '">'
+      + '<div class="rtiName">' + esc(r.name || '(unnamed routine)') + '</div>'
+      + '<div class="rtiSub"><span class="rtiPage">' + esc(pageName) + '</span> · <span class="rtiPrev">' + esc(preview) + '</span></div>'
+      + '</div>';
+  }
+  function routineItemsHtml(filtered, rows, pages) {
+    if (filtered.length) return filtered.map(r => routineItemHtml(r, pages)).join('');
+    return '<div class="rtEmpty">' + (rows.length ? 'No routines match your search.' : 'No routines yet — add one, or save one from the panel with <b>+ Routine</b>.') + '</div>';
+  }
+  // Folder + Mode live only on the agent backends (claude/codex/copilot); chat-only pages (owui/api)
+  // get the same explanatory note the AI Chat page shows. Detail widgets carry no data-index -- the
+  // detail edits exactly one routine, looked up by selRoutineId at event time.
+  function routineDetailFolderHtml(r, page) {
+    if (['claude', 'codex', 'copilot'].indexOf(backendOfPage(page)) === -1) {
+      return '<div class="rtField"><span class="hint" style="margin:0">' + esc(page ? (page.name || 'That page') : 'That page') + ' is chat-only — no folder or permission mode.</span></div>';
     }
-    return `<div style="display:flex;gap:4px">
-        <input class="rtFolder" data-i="${i}" placeholder="Folder (blank = page's current)" value="${esc(r.folder || '')}" style="flex:1;min-width:0">
-        <button class="rtFolderBrowse" type="button" data-i="${i}" title="Browse">…</button>
-      </div>`;
+    return '<div class="rtField"><label>Folder</label>'
+      + '<div class="rtFolderRow">'
+      + '<input id="rtdFolder" placeholder="Folder (blank = page’s current)" value="' + esc(r.folder || '') + '">'
+      + '<button id="rtdFolderBrowse" type="button" title="Browse">…</button>'
+      + '</div></div>';
   }
-  function routineRowsHtml(list) {
-    const rows = Array.isArray(list) ? list : [];
+  function routineDetailModeHtml(r, page) {
+    const list = (voiceModes && voiceModes[backendOfPage(page)]) || [];
+    if (!list.length) return '';   // chat-only backend, or modes not loaded yet
+    return '<div class="rtField"><label>Mode</label>'
+      + '<select id="rtdMode"><option value="">(page’s current mode)</option>'
+      + list.map(m => '<option value="' + esc(m.id) + '" ' + (m.id === r.mode ? 'selected' : '') + '>' + esc(m.label || m.id) + '</option>').join('')
+      + '</select></div>';
+  }
+  function routineDetailHtml(pages) {
+    const r = routineListArr().find(x => x.id === selRoutineId) || null;
+    if (!r) {
+      return '<div class="rtEmpty">' + (routineQuery.trim() ? 'No routine selected — nothing matches your search.' : 'Select a routine on the left, or add one.') + '</div>';
+    }
+    const page = pages.find(g => g.id === r.appPageId) || pages[0];
+    const profiles = ((config.settings || {}).aiProfiles) || [];
+    return ''
+      + '<div class="rtDetailHead"><div class="sectitle" style="margin:0">Edit routine</div>'
+      + '<button id="rtdDelete" type="button" class="danger">Delete routine</button></div>'
+      + '<div class="rtField"><label>Name</label><input id="rtdName" placeholder="Routine name" value="' + esc(r.name || '') + '"></div>'
+      + '<div class="rtField"><label>AI Chat page</label>'
+      + '<select id="rtdPage">' + pages.map(g => '<option value="' + g.id + '" ' + (g.id === r.appPageId ? 'selected' : '') + '>' + esc(g.name || '(unnamed page)') + '</option>').join('') + '</select></div>'
+      + '<div class="rtField"><label>Profile</label>'
+      + '<select id="rtdProfile"><option value="">(page’s current profile)</option>' + profiles.map(p => '<option value="' + esc(p.id) + '" ' + (p.id === r.profileId ? 'selected' : '') + '>' + esc(p.name || '(unnamed)') + '</option>').join('') + '</select></div>'
+      + routineDetailFolderHtml(r, page)
+      + routineDetailModeHtml(r, page)
+      + '<div class="rtField"><label>Prompt</label>'
+      + '<textarea id="rtdPrompt" rows="6" placeholder="What to ask the AI, e.g. Summarize my unread email and list anything needing a reply" style="font-family:inherit">' + esc(r.prompt || '') + '</textarea></div>';
+  }
+  function routineEditorHtml() {
     const pages = aiChatPagesForPicker();
     if (!pages.length) return '<p class="hint">No AI Chat page yet — add one (Pages → + App page → AI Voice) and a routine will have somewhere to run.</p>';
-    if (!rows.length) return '<p class="hint">No routines yet — add one below, or save one from the panel with <b>+ Routine</b>.</p>';
-    const profiles = ((config.settings || {}).aiProfiles) || [];
-    return rows.map((r, i) => `<div class="row" data-idx="${i}" style="margin-top:14px;align-items:flex-start">
-        <div style="display:flex;flex-direction:column;gap:6px;width:230px">
-          <input class="rtName" data-i="${i}" placeholder="Routine name" value="${esc(r.name || '')}">
-          <select class="rtPage" title="Which AI Chat page runs this">${pages.map(g => `<option value="${g.id}" ${g.id === r.appPageId ? 'selected' : ''}>${esc(g.name || '(unnamed page)')}</option>`).join('')}</select>
-          <select class="rtProfile" data-i="${i}" title="Optional AI profile"><option value="">(page's current profile)</option>${profiles.map(p => `<option value="${esc(p.id)}" ${p.id === r.profileId ? 'selected' : ''}>${esc(p.name || '(unnamed)')}</option>`).join('')}</select>
-          ${routineFolderHtml(r, i, pages)}
-          ${routineModeHtml(r, i, pages)}
-        </div>
-        <textarea class="rtPrompt" data-i="${i}" placeholder="What to ask the AI, e.g. Summarize my unread email and list anything needing a reply" rows="4" style="flex:1;margin-left:8px;font-family:inherit">${esc(r.prompt || '')}</textarea>
-        <button class="rtRemove" type="button" data-rm="${i}" title="Remove" style="margin-left:8px">✕</button>
-      </div>`).join('');
+    const rows = routineListArr();
+    const q = routineQuery.trim().toLowerCase();
+    const filtered = rows.filter(r => routineMatches(r, q, pages));
+    resolveRoutineSel(filtered);
+    const count = q ? (filtered.length + ' of ' + routinePlural(rows.length)) : routinePlural(rows.length);
+    return '<div class="rtSplit">'
+      + '<div class="rtList">'
+      + '<div class="rtListHead"><span class="rtCount" id="rtCount">' + esc(count) + '</span><button id="sRoutineAdd" type="button">+ Add routine</button></div>'
+      + '<input id="rtSearch" class="rtSearch" placeholder="Search name, prompt, page, folder" value="' + esc(routineQuery) + '">'
+      + '<div class="rtItems" id="rtItems">' + routineItemsHtml(filtered, rows, pages) + '</div>'
+      + '</div>'
+      + '<div class="rtDetail" id="rtDetail">' + routineDetailHtml(pages) + '</div>'
+      + '</div>';
   }
   function wireRoutineRows() {
     const host = document.getElementById('sRoutineRows');
     if (!host) return;
-    const list = () => { if (!config.settings) config.settings = {}; if (!Array.isArray(config.settings.routines)) config.settings.routines = []; return config.settings.routines; };
-    const redraw = () => { host.innerHTML = routineRowsHtml(list()); wireRows(); };
-    // Bind by the row's own data-i, NOT the match position: the folder and mode fields are absent
-    // on chat-only rows, so a positional index would write a chat-only routine's edits into the
-    // wrong routine whenever one sits above an agent-backed one.
-    function bind(sel, prop) {
-      host.querySelectorAll(sel).forEach(el => {
-        const i = parseInt(el.getAttribute('data-i'), 10);
-        el.oninput = el.onchange = e => { const l = list(); if (l[i]) { l[i][prop] = e.target.value; markDirty(); } };
-      });
-    }
-    // The Mode picker needs the per-backend mode lists from main. Fetch once, then redraw so the
-    // pickers appear -- rows render without them on the first paint (chat-only rows never need them).
+    const list = routineListArr;
+    const curRoutine = () => list().find(r => r.id === selRoutineId) || null;
+
+    // Per-backend mode lists come from main; fetch once, then refresh the detail (the only place a
+    // Mode picker shows). Rows render fine before it lands -- chat-only routines never need it.
     if (!voiceModes && configApi.getVoiceModes) {
-      configApi.getVoiceModes().then(m => { voiceModes = m || {}; if (document.getElementById('sRoutineRows')) redraw(); }).catch(() => { voiceModes = {}; });
+      configApi.getVoiceModes().then(m => { voiceModes = m || {}; if (document.getElementById('sRoutineRows')) renderDetailOnly(); }).catch(() => { voiceModes = {}; });
     }
-    function wireRows() {
-      bind('.rtName', 'name');
-      bind('.rtPrompt', 'prompt');
-      bind('.rtProfile', 'profileId');
-      bind('.rtFolder', 'folder');
-      bind('.rtMode', 'mode');
-      // Changing the page can change whether a folder applies at all, so this row redraws.
-      host.querySelectorAll('.rtPage').forEach((el, i) => {
-        el.onchange = e => { const l = list(); if (l[i]) { l[i].appPageId = e.target.value; markDirty(); redraw(); } };
-      });
-      host.querySelectorAll('.rtFolderBrowse').forEach(btn => {
-        btn.onclick = async () => {
-          const i = parseInt(btn.getAttribute('data-i'), 10);
-          const picked = await configApi.pickFolder();
-          if (!picked) return;
-          const l = list(); if (!l[i]) return;
-          l[i].folder = picked; markDirty();
-          const inp = host.querySelector(`.rtFolder[data-i="${i}"]`);
-          if (inp) inp.value = picked;
+
+    function redraw() { host.innerHTML = routineEditorHtml(); wireAll(); }
+    function renderDetailOnly() {
+      const d = document.getElementById('rtDetail');
+      if (!d) return;
+      d.innerHTML = routineDetailHtml(aiChatPagesForPicker());
+      wireDetail();
+    }
+    // Rebuild the list items + count in place. The #rtSearch box and #rtDetail pane are untouched,
+    // so this is safe to call from a search keystroke, or a name/prompt edit in the detail pane,
+    // without stealing focus from whatever field the user is typing in.
+    function renderListOnly() {
+      const pages = aiChatPagesForPicker();
+      const rows = list();
+      const q = routineQuery.trim().toLowerCase();
+      const filtered = rows.filter(r => routineMatches(r, q, pages));
+      const before = selRoutineId;
+      resolveRoutineSel(filtered);
+      const itemsEl = document.getElementById('rtItems');
+      if (itemsEl) itemsEl.innerHTML = routineItemsHtml(filtered, rows, pages);
+      const countEl = document.getElementById('rtCount');
+      if (countEl) countEl.textContent = q ? (filtered.length + ' of ' + routinePlural(rows.length)) : routinePlural(rows.length);
+      wireItems();
+      if (selRoutineId !== before) renderDetailOnly();   // the search hid the old pick -> show the new one
+    }
+
+    function wireItems() {
+      host.querySelectorAll('.rtItem').forEach(el => {
+        el.onclick = () => {
+          if (el.dataset.id === selRoutineId) return;
+          selRoutineId = el.dataset.id;
+          host.querySelectorAll('.rtItem').forEach(x => x.classList.toggle('sel', x.dataset.id === selRoutineId));
+          renderDetailOnly();
         };
       });
-      host.querySelectorAll('.rtRemove').forEach(btn => {
-        btn.onclick = () => { list().splice(parseInt(btn.getAttribute('data-rm'), 10), 1); markDirty(); redraw(); };
-      });
     }
-    wireRows();
-    const addBtn = document.getElementById('sRoutineAdd');
-    if (addBtn) addBtn.onclick = () => {
-      const pages = aiChatPagesForPicker();
-      list().push({ id: 'r' + Date.now().toString(36), name: '', prompt: '', appPageId: pages.length ? pages[0].id : '', profileId: '', folder: '', mode: '' });
-      markDirty(); redraw();
-      const inputs = host.querySelectorAll('.rtName');
-      if (inputs.length) inputs[inputs.length - 1].focus();
-    };
+    function wireDetail() {
+      const name = document.getElementById('rtdName');
+      if (name) name.oninput = e => { const r = curRoutine(); if (r) { r.name = e.target.value; markDirty(); renderListOnly(); } };
+      const prompt = document.getElementById('rtdPrompt');
+      if (prompt) prompt.oninput = e => { const r = curRoutine(); if (r) { r.prompt = e.target.value; markDirty(); renderListOnly(); } };
+      const pagePick = document.getElementById('rtdPage');
+      if (pagePick) pagePick.onchange = e => { const r = curRoutine(); if (r) { r.appPageId = e.target.value; markDirty(); renderDetailOnly(); renderListOnly(); } };
+      const profile = document.getElementById('rtdProfile');
+      if (profile) profile.onchange = e => { const r = curRoutine(); if (r) { r.profileId = e.target.value; markDirty(); } };
+      const folder = document.getElementById('rtdFolder');
+      if (folder) folder.oninput = e => { const r = curRoutine(); if (r) { r.folder = e.target.value; markDirty(); } };
+      const browse = document.getElementById('rtdFolderBrowse');
+      if (browse) browse.onclick = async () => {
+        const picked = await configApi.pickFolder();
+        if (!picked) return;
+        const r = curRoutine(); if (!r) return;
+        r.folder = picked; markDirty();
+        const inp = document.getElementById('rtdFolder'); if (inp) inp.value = picked;
+      };
+      const mode = document.getElementById('rtdMode');
+      if (mode) mode.onchange = e => { const r = curRoutine(); if (r) { r.mode = e.target.value; markDirty(); } };
+      const del = document.getElementById('rtdDelete');
+      if (del) del.onclick = () => {
+        const r = curRoutine(); if (!r) return;
+        if (!window.confirm('Delete routine “' + (r.name || '(unnamed)') + '”?\n\nAny tile or macro that uses it will show “routine not found” until you point it elsewhere. This can’t be undone.')) return;
+        const l = list(); const idx = l.findIndex(x => x.id === r.id);
+        if (idx >= 0) l.splice(idx, 1);
+        selRoutineId = null;   // resolveRoutineSel picks the first still-visible routine on redraw
+        markDirty(); redraw();
+      };
+    }
+    function wireAdd() {
+      const searchEl = document.getElementById('rtSearch');
+      if (searchEl) searchEl.oninput = e => { routineQuery = e.target.value; renderListOnly(); };
+      const addBtn = document.getElementById('sRoutineAdd');
+      if (addBtn) addBtn.onclick = () => {
+        const pages = aiChatPagesForPicker();
+        const r = { id: 'r' + Date.now().toString(36), name: '', prompt: '', appPageId: pages.length ? pages[0].id : '', profileId: '', folder: '', mode: '' };
+        list().push(r);
+        routineQuery = '';       // clear any active search so the new (blank, unmatchable) routine is visible
+        selRoutineId = r.id;     // ...and selected, with its name focused for immediate typing
+        markDirty(); redraw();
+        const nameEl = document.getElementById('rtdName'); if (nameEl) nameEl.focus();
+      };
+    }
+    function wireAll() { wireAdd(); wireItems(); wireDetail(); }
+    wireAll();
   }
   function officeOptionDefault(def, key) {
     const option = (def.options || []).find(item => item.key === key);
@@ -2931,8 +3016,7 @@
     const rtHtml = `
       <p class="sectitle">Routines</p>
       <p class="hint">A routine is a saved request plus which <b>AI Chat</b> page — and, for the agent backends, which <b>folder</b> — runs it. Put one on a tile (tile type <b>AI Routine</b>) and tapping it switches the panel to that page and sends the request, with the agent's normal tools and approvals. You can also save one straight from the panel: the <b>+ Routine</b> button beside Send on any AI Chat page keeps whatever you just typed or asked for. Remember to Save.</p>
-      <div id="sRoutineRows">${routineRowsHtml((config.settings || {}).routines)}</div>
-      <button id="sRoutineAdd" type="button" style="margin-top:10px">+ Add routine</button>`;
+      <div id="sRoutineRows">${routineEditorHtml()}</div>`;
     el.innerHTML = `
       <p class="sectitle">Settings</p>
       <div class="tabbar">

@@ -22,16 +22,33 @@ compose than speak.
 
 ## Managing them
 
-Settings window (tray icon) → **Routines** tab, next to AI Profiles. One row each:
+Settings window (tray icon) → **Routines** tab, next to AI Profiles. It's a two-pane view: a
+searchable list on the left, the selected routine's fields on the right — so a library of twenty
+routines stays scannable instead of twenty open forms.
+
+- **The list** shows each routine's name, its target AI Chat page, and a one-line prompt preview.
+  The header counts them ("12 routines", or "4 of 12 routines" while searching).
+- **Search** filters by name, prompt, target page, and folder as you type. Searching only filters
+  the view — it never changes what's stored or the order. If your current pick is filtered out, the
+  first visible result is selected; if nothing matches you get a plain empty state.
+- **Click a routine** to edit it on the right. Fields:
 
 | | |
 |---|---|
-| **Routine name** | What the tile shows in its picker. Rename freely. |
-| **AI Chat page** | Which page — and therefore which backend — runs it. |
-| **AI profile** | Optional. Blank means whatever profile that page is currently on. |
+| **Name** | What the tile shows in its picker. Rename freely. |
+| **AI Chat page** | Which page — and therefore which backend — runs it. Changing it refreshes the Folder and Mode controls below. |
+| **Profile** | Optional. Blank means whatever profile that page is currently on. |
 | **Folder** | The working directory the agent runs in. Blank means leave the page wherever it already is. Only shown for the **Claude / Codex / Copilot** backends — Open WebUI and API pages are plain chat with no working directory, and say so instead. |
 | **Mode** | The permission level the routine runs under (e.g. Claude's Manual / Accept edits / Plan / Full auto — each backend has its own set). Blank means leave the page on whatever mode it's set to. Only shown for the backends that have modes (same three). |
 | **Prompt** | The request itself. |
+
+- **+ Add routine** (by the list header) makes a new one, selects it, and focuses its name.
+- **Delete routine** (in the detail pane) removes it after a confirmation that names it. Deleting a
+  routine does not touch tiles that referenced it — those simply report "routine not found" until
+  you point them elsewhere.
+
+Edits apply to the in-memory config as you make them; the window's **Save** button is what writes
+them to disk, exactly as before. Unsaved edits survive selecting a different routine or searching.
 
 Routines are global, not per page: one routine can sit on as many tiles and pages as you like, and
 editing it here changes every tile at once.
