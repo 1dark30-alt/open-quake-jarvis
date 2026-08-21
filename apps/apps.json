@@ -24,7 +24,7 @@
     "file": "obsview.html",
     "served": true,
     "options": [
-      { "key": "layout", "label": "Layout", "type": "select", "default": "12x4", "choices": [["12x4", "12 × 4 — full production"], ["8x2", "8 × 2 — compact"]] }
+      { "key": "layout", "label": "Scene buttons", "type": "select", "default": "12x4", "choices": [["12x4", "Normal — 6 across, 24 visible"], ["8x2", "Large — 4 across, 12 visible"]] }
     ]
   },
   {
