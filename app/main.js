@@ -2378,6 +2378,20 @@ function applyShortcuts() {
       if (!ok) console.log('shortcut already in use, not registered:', dashReload.hotkey, '-> dashboard reload');
     } catch (e) { console.log('shortcut register error:', dashReload.hotkey, '-', e.message); }
   }
+  // Screen forward/back hotkeys: step the panel through the visible pages from anywhere. No toggle;
+  // registered whenever a combo is set.
+  const pageStep = pageStepCfg();
+  [['nextHotkey', 1, 'page forward'], ['prevHotkey', -1, 'page back']].forEach(function (spec) {
+    const combo = pageStep[spec[0]];
+    if (!combo) return;
+    try {
+      const ok = globalShortcut.register(combo, () => {
+        if (process.platform === 'win32') modifiersInAccelerator(combo).forEach(m => mediaKeys.keyUp(m));
+        stepPage(spec[1]);
+      });
+      if (!ok) console.log('shortcut already in use, not registered:', combo, '->', spec[2]);
+    } catch (e) { console.log('shortcut register error:', combo, '-', e.message); }
+  });
   // LucidType dictation hotkeys: toggle dictation + apply text. Global (fire regardless of focus) so
   // dictation starts from any app and Apply pastes into whatever window is foreground.
   const lt = lucidtypeSettings();
@@ -2580,6 +2594,18 @@ function focusFollowCfg() { const f = (config.settings && config.settings.focusF
 // src unchanged when the URL matches, so sessions/scroll state survive page switches) -- this is the
 // deliberate way to force one anyway. Only acts on a currently-showing dashboard/web page.
 function dashboardReloadCfg() { const d = (config.settings && config.settings.dashboardReload) || {}; return { hotkey: typeof d.hotkey === 'string' ? d.hotkey : '' }; }
+// Screen forward/back global hotkeys: step through the visible pages (gridList already excludes
+// hidden ones) in editor order, wrapping. dir = +1 forward, -1 back.
+function pageStepCfg() { const p = (config.settings && config.settings.pageStep) || {}; return { nextHotkey: typeof p.nextHotkey === 'string' ? p.nextHotkey : '', prevHotkey: typeof p.prevHotkey === 'string' ? p.prevHotkey : '' }; }
+function stepPage(dir) {
+  const list = gridList();                       // {id,name}[] of non-hidden pages, config order
+  if (!list.length) return;
+  let idx = list.findIndex(p => p.id === config.activeGridId);
+  if (idx < 0) idx = 0;                           // active page hidden/unknown -> start from the first
+  const next = list[((idx + dir) % list.length + list.length) % list.length];
+  gotoGrid(next.id, true);
+  if (rotateRunning) scheduleRotation();          // a manual step resets the rotation timer, like the knob/tray
+}
 function reloadActiveDashboard() {
   const g = activeGrid();
   if (g && g.kind === 'web' && panelWin && !panelWin.isDestroyed()) panelWin.webContents.send('reloadDashboard');
@@ -3019,6 +3045,16 @@ app.whenReady().then(async () => {
   ipcMain.on('volume', (e, v) => { if (!isFrom(e, panelWin)) return; mediaKeys.volume(v); });
   ipcMain.on('media', (e, cmd) => { if (!isFrom(e, panelWin)) return; mediaKey(cmd); });   // knob 'enter' on the music page -> play/pause
   ipcMain.on('switchGrid', (e, id) => { if (!isFrom(e, panelWin)) return; gotoGrid(id, true); if (rotateRunning) scheduleRotation(); });   // a manual pick resets the rotation timer
+  // Focus a page ON THE DEVICE from the editor. Only pages already in main's config (i.e. saved) can
+  // be focused -- the editor blocks this when it has unsaved changes, so an id we don't know is an
+  // error, not a silent no-op. This is the one place the editor is allowed to move the live page.
+  ipcMain.handle('focusPage', (e, id) => {
+    if (!isFrom(e, configWin)) return { ok: false, error: 'not authorized' };
+    if (!config.grids.some(g => g.id === id)) return { ok: false, error: 'That page is not saved yet.' };
+    gotoGrid(String(id), true);
+    if (rotateRunning) scheduleRotation();
+    return { ok: true };
+  });
   ipcMain.on('toggleRotation', (e) => { if (!isFrom(e, panelWin)) return; toggleRotation(); });
   ipcMain.on('startRotation', (e) => { if (!isFrom(e, panelWin)) return; setRotation(true); });
   ipcMain.on('stopRotation', (e) => { if (!isFrom(e, panelWin)) return; setRotation(false); });

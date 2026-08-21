@@ -1208,12 +1208,14 @@
       ${shortcutRowHtml(g)}
       ${advRowHtml(g)}
       <div class="row">
+        <button id="gFocus">Focus on device</button>
         <button class="danger" id="gDelete">Delete grid</button>
       </div>`;
     document.getElementById('gName').oninput = e => { g.name = e.target.value; renderGrids(); markDirty(); };
     document.getElementById('gCols').onchange = e => { clearAllMerges(g); g.cols = Math.max(1, Math.min(12, +e.target.value || 1)); ensureTiles(g); ti = -1; selEnd = -1; render(); markDirty(); };
     document.getElementById('gRows').onchange = e => { clearAllMerges(g); g.rows = Math.max(1, Math.min(6, +e.target.value || 1)); ensureTiles(g); ti = -1; selEnd = -1; render(); markDirty(); };
     document.getElementById('gDelete').onclick = deleteCurrentPage;
+    { const fb = document.getElementById('gFocus'); if (fb) fb.onclick = focusCurrentPage; }
     wireGroupSelectRow(g); wireRotRow(g); wireShortcutRow(g); wireAdvRow(g);
   }
 
@@ -1799,7 +1801,7 @@
       ${rotRowHtml(g)}
       ${shortcutRowHtml(g)}
       ${advRowHtml(g)}
-      <div class="row" style="margin-top:10px"><button class="danger" id="gDelete">Delete page</button></div>
+      <div class="row" style="margin-top:10px"><button id="gFocus">Focus on device</button><button class="danger" id="gDelete" style="margin-left:8px">Delete page</button></div>
       <p class="hint" id="authHint"></p>
       <p class="hint">Shown full-screen on the panel. Knob scrolls · tap clicks · double-click the knob returns to the page selector.</p>`;
     const dtb = document.getElementById('dtBtns'); if (dtb) dtb.onclick = () => { dashTab = 'buttons'; render(); };
@@ -1807,6 +1809,7 @@
     document.getElementById('gUrl').oninput = e => { g.url = e.target.value; markDirty(); };
     document.getElementById('gAuth').onchange = e => { setAuthType(g, e.target.value); renderAuthFields(g); markDirty(); };
     document.getElementById('gDelete').onclick = deleteCurrentPage;
+    { const fb = document.getElementById('gFocus'); if (fb) fb.onclick = focusCurrentPage; }
     document.getElementById('gExt').onchange = e => { g.linksExternal = e.target.checked; markDirty(); };
     const gua = document.getElementById('gUA'); if (gua) gua.onchange = e => { g.desktopUA = e.target.checked; markDirty(); };
     document.getElementById('gGrid').onchange = e => {
@@ -2138,13 +2141,14 @@
       ${rotRowHtml(g)}
       ${shortcutRowHtml(g)}
       ${advRowHtml(g)}
-      <div class="row" style="margin-top:10px"><button class="danger" id="gDelete">Delete page</button></div>
+      <div class="row" style="margin-top:10px"><button id="gFocus">Focus on device</button><button class="danger" id="gDelete" style="margin-left:8px">Delete page</button></div>
       <p class="hint">${def ? esc(def.name) + ' runs locally and shows full-screen on the panel.' : 'Pick an app, then set its options below.'}</p>`;
     const atb = document.getElementById('atBtns'); if (atb) atb.onclick = () => { dashTab = 'buttons'; render(); };
     document.getElementById('gName').oninput = e => { g.name = e.target.value; renderGrids(); markDirty(); };
     document.getElementById('gApp').onchange = e => { setApp(g, e.target.value); render(); markDirty(); };
     document.getElementById('refreshApps').onclick = refreshApps;
     document.getElementById('gDelete').onclick = deleteCurrentPage;
+    { const fb = document.getElementById('gFocus'); if (fb) fb.onclick = focusCurrentPage; }
     const gg = document.getElementById('gGrid');
     if (gg) gg.onchange = e => {
       g.gridOn = e.target.checked;
@@ -2586,6 +2590,19 @@
     if (cb) cb.onclick = () => configApi.openExternal('https://github.com/TeeJS/open-quake/tree/main/community-wallpapers');
   }
 
+  // Focus a saved page on the device from the editor. The device only knows SAVED pages, so if the
+  // editor has unsaved changes we refuse and tell the user to save first — saving is the user's job,
+  // not something we do silently behind a Focus click.
+  async function focusCurrentPage() {
+    const g = curGrid();
+    if (!g) return;
+    if (dirty) { window.alert('Save your changes first. The device only knows about saved pages, so “Focus on device” is unavailable until you Save.'); return; }
+    try {
+      const r = await configApi.focusPage(g.id);
+      if (r && r.ok) setState('focused “' + (g.name || 'page') + '” on the device', 'saved');
+      else setState((r && r.error) || 'could not focus that page', 'dirty');
+    } catch (e) { setState('could not focus that page', 'dirty'); }
+  }
   function deleteCurrentPage() {
     if (config.grids.length <= 1) return;
     config.grids.splice(gi, 1); gi = 0; ti = -1;
@@ -2729,6 +2746,8 @@
     const focusFollow = currentFocusFollow();
     const currentDashReload = () => Object.assign({ hotkey: '' }, (config.settings || {}).dashboardReload || {});
     const dashReload = currentDashReload();
+    const currentPageStep = () => Object.assign({ nextHotkey: '', prevHotkey: '' }, (config.settings || {}).pageStep || {});
+    const pageStep = currentPageStep();
     const currentMon = () => Object.assign({ knobTurn: 'scroll', knobTap: 'enter' }, (config.settings || {}).monitor || {});
     const mon = currentMon();
     const currentTheme = () => Object.assign({ appearance: 'system', accent: '#7CFFB2', presets: ['#7CFFB2', '#38B6FF', '#FF4040', '#FFB000'] }, (config.settings || {}).theme || {});
@@ -2782,6 +2801,14 @@
         <button id="sRotKeyClear" style="margin-left:8px"${rot.enabled ? '' : ' disabled'}>Clear</button></div>
       <p class="hint">A page rotates only if its category is ticked here <i>and</i> that page's own “Include in rotation” box is checked — the box appears on each page once its category is enabled. Start/stop any time from the knob menu (double-click) or the tray.</p>
       <p class="hint">The <b>hotkey</b> starts and pauses rotation from anywhere, even when open-quake isn't focused. Click the box and press a combo that includes a modifier (e.g. Ctrl+Alt+R). It's only live while Auto-rotate is on; if another app — or one of your page hotkeys — already owns the combo, it just won't fire.</p>
+
+      <div class="row"><label>Page forward</label>
+        <input id="sPageNextKey" readonly placeholder="click, then press keys" value="${esc(pageStep.nextHotkey || '')}" style="width:200px">
+        <button id="sPageNextKeyClear" style="margin-left:8px">Clear</button></div>
+      <div class="row"><label>Page back</label>
+        <input id="sPagePrevKey" readonly placeholder="click, then press keys" value="${esc(pageStep.prevHotkey || '')}" style="width:200px">
+        <button id="sPagePrevKeyClear" style="margin-left:8px">Clear</button></div>
+      <p class="hint">Global hotkeys that step the panel <b>forward</b> / <b>back</b> through your visible pages — in the order they're listed here, wrapping around the ends. Hidden pages are skipped. These work anytime, independent of rotation.</p>
 
       <p class="sectitle" style="margin-top:22px">Desktop focus</p>
       <div class="row"><label>Auto-follow</label>
@@ -3393,6 +3420,14 @@
       const dashReloadKey = document.getElementById('sDashReloadKey'), dashReloadKeyClr = document.getElementById('sDashReloadKeyClear');
       dashReloadKey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { const d = currentDashReload(); d.hotkey = acc; dashReloadKey.value = acc; saveDashReload(d); } };
       dashReloadKeyClr.onclick = () => { const d = currentDashReload(); delete d.hotkey; dashReloadKey.value = ''; saveDashReload(d); };
+
+      const savePageStep = ps => { if (!config.settings) config.settings = {}; config.settings.pageStep = ps; markDirty(); };
+      const pnKey = document.getElementById('sPageNextKey'), pnKeyClr = document.getElementById('sPageNextKeyClear');
+      pnKey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { const ps = currentPageStep(); ps.nextHotkey = acc; pnKey.value = acc; savePageStep(ps); } };
+      pnKeyClr.onclick = () => { const ps = currentPageStep(); delete ps.nextHotkey; pnKey.value = ''; savePageStep(ps); };
+      const ppKey = document.getElementById('sPagePrevKey'), ppKeyClr = document.getElementById('sPagePrevKeyClear');
+      ppKey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { const ps = currentPageStep(); ps.prevHotkey = acc; ppKey.value = acc; savePageStep(ps); } };
+      ppKeyClr.onclick = () => { const ps = currentPageStep(); delete ps.prevHotkey; ppKey.value = ''; savePageStep(ps); };
 
     } else if (tab === 'hardware') {
       const keepAwake = document.getElementById('sKeepAwake');
