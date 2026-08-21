@@ -1,10 +1,11 @@
 'use strict';
 // OBS Studio switcher (served app). State-driven: every control reflects OBS's live snapshot pushed
 // over SSE (/api/obs/events); taps POST to /api/obs/action. Nothing flips optimistically -- the UI
-// re-renders only when OBS confirms via an event. Layout follows the design system's three-part model:
-// a compact context strip (connection + broadcast status), the on-air Program scene as the focal point
-// plus the scene grid as primary content, grouped control clusters as secondary, and a compact audio
-// mixer. Runs under script-src 'self' -- no inline handlers, and dynamic text is set via textContent.
+// re-renders only when OBS confirms via an event. Three stable columns: primary workspace (compact
+// context header with Program as the 36px focal point + the fixed-tile scene viewport) | operations
+// (Studio / Stream / Record / Replay / Panic, Panic anchored bottom) | audio mixer. No status pills:
+// state lives on the controls themselves. Runs under script-src 'self' -- no inline handlers, and
+// dynamic text is set via textContent.
 (function () {
   const app = document.getElementById('app');
   const q = new URLSearchParams(location.search);
@@ -26,7 +27,7 @@
       .then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
   }
   function el(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
-  function labelled(cls, label, name, nameCls) {   // "PROGRAM" over a scene name, used by the focal block
+  function labelled(cls, label, name, nameCls) {   // "PROGRAM" over a scene name (the focal block)
     const box = el('div', cls);
     box.appendChild(el('div', 'lbl', label));
     box.appendChild(el('div', nameCls, name));
@@ -55,7 +56,6 @@
     b.addEventListener('pointercancel', cancel);
     return b;
   }
-  function pill(cls, text) { const p = el('span', 'pill ' + cls); p.appendChild(el('span', 'pd')); p.appendChild(el('span', null, text)); return p; }
 
   function statusText() {
     switch (snap.connection) {
@@ -80,80 +80,72 @@
   function render() {
     app.innerHTML = '';
     const connected = snap.connection === 'connected';
+    app.classList.toggle('off', !connected);   // stable 3-column layout; side columns just disable
 
-    // ---- context strip: connection (left) + broadcast status pills (right) ----
-    const ctx = el('div', 'ctx');
+    // ---- primary: compact context header (connection metadata + Program focal + Preview/Cut/Auto) ----
+    const primary = el('div', 'primary');
+    const ph = el('div', 'pheader');
     const conn = el('div', 'conn ' + snap.connection);
     conn.appendChild(el('span', 'dot'));
     conn.appendChild(el('span', 'ctext', statusText()));
     if (connected && snap.obsVersion) conn.appendChild(el('span', 'ver', 'v' + snap.obsVersion));
-    ctx.appendChild(conn);
-    const bcast = el('div', 'bcast');
-    if (connected) {
-      if (snap.streaming.active) bcast.appendChild(pill('live', 'Live'));
-      if (snap.recording.active) bcast.appendChild(pill('rec' + (snap.recording.paused ? ' paused' : ''), snap.recording.paused ? 'Paused' : 'Rec'));
-      if (snap.replay.active) bcast.appendChild(pill('replay', 'Replay'));
-      if (snap.studioMode) bcast.appendChild(pill('studio', 'Studio'));
-    }
-    ctx.appendChild(bcast);
-    app.appendChild(ctx);
+    ph.appendChild(conn);
 
-    if (!connected) { app.appendChild(offline()); return; }
-
-    const main = el('div', 'main');
-
-    // ---- primary: Program focal point + scene grid ----
-    const primary = el('div', 'primary');
     const focal = el('div', 'focal');
-    focal.appendChild(labelled('prog', 'Program', snap.programScene || '—', 'name'));
-    if (snap.studioMode) {
-      focal.appendChild(labelled('prev', 'Preview', snap.previewScene || '—', 'pname'));
-      const takes = el('div', 'takes');   // Cut/Auto take Preview -> Program; live beside Preview
+    focal.appendChild(labelled('prog', 'Program', connected ? (snap.programScene || '—') : '—', 'name'));
+    if (connected && snap.studioMode) {
+      const pg = el('div', 'prevgroup');   // Preview + its Cut/Auto, one adjacent unit
+      pg.appendChild(labelled('prev', 'Preview', snap.previewScene || '—', 'pname'));
+      const takes = el('div', 'takes');
       takes.appendChild(tapBtn('tk cut', 'Cut', null, () => post('cut')));
       takes.appendChild(tapBtn('tk auto', 'Auto', null, () => post('auto')));
-      focal.appendChild(takes);
+      pg.appendChild(takes);
+      focal.appendChild(pg);
     }
-    primary.appendChild(focal);
+    ph.appendChild(focal);
+    primary.appendChild(ph);
 
+    // ---- primary: scene viewport (fixed 72px tiles, top-left, scrolls locally) ----
     const scard = el('div', 'scenes-card');
-    scard.appendChild(el('div', 'scenes-hd', snap.studioMode ? 'Scenes · tap to preview' : 'Scenes'));
-    const scenes = el('div', 'scenes');
-    (snap.scenes || []).forEach(name => {
-      let cls = 'scene', tag = null;
-      if (name === snap.programScene) { cls += ' program'; tag = 'On air'; }
-      else if (snap.studioMode && name === snap.previewScene) { cls += ' preview'; tag = 'Preview'; }
-      scenes.appendChild(tapBtn(cls, name, tag, () => post('sceneTap', name)));
-    });
-    if (!(snap.scenes || []).length) scenes.appendChild(el('div', 'empty', 'No scenes in OBS'));
-    scard.appendChild(scenes);
+    if (!connected) {
+      scard.appendChild(offline());
+    } else {
+      const scenes = el('div', 'scenes');
+      (snap.scenes || []).forEach(name => {   // OBS ordering preserved
+        let cls = 'scene', tag = null;
+        if (name === snap.programScene) { cls += ' program'; tag = 'On air'; }
+        else if (snap.studioMode && name === snap.previewScene) { cls += ' preview'; tag = 'Preview'; }
+        scenes.appendChild(tapBtn(cls, name, tag, () => post('sceneTap', name)));
+      });
+      if (!(snap.scenes || []).length) scenes.appendChild(el('div', 'empty', 'No scenes in OBS'));
+      scard.appendChild(scenes);
+    }
     primary.appendChild(scard);
-    main.appendChild(primary);
+    app.appendChild(primary);
 
-    // ---- secondary: grouped control clusters ----
+    // ---- operations: Studio (mode), broadcast cluster, Panic anchored bottom ----
     const controls = el('div', 'controls');
-    const gStudio = el('div', 'cgroup');   // Studio / transition
-    gStudio.appendChild(tapBtn('btn studio' + (snap.studioMode ? ' on' : ''), 'Studio', snap.studioMode ? 'On' : 'Off', () => post('studioMode')));
-    controls.appendChild(gStudio);
+    controls.appendChild(tapBtn('btn studio' + (snap.studioMode ? ' on' : ''), 'Studio', null, () => post('studioMode')));
 
-    const gCast = el('div', 'cgroup');     // broadcast: stream + record, with replay beside recording
+    const gCast = el('div', 'cgroup');   // stream + record, replay beside pause/record
     const row1 = el('div', 'crow');
     row1.appendChild(holdBtn('btn stream' + (snap.streaming.active ? ' live' : ''), snap.streaming.active ? 'Stop' : 'Stream', snap.streaming.active ? 'Live' : 'Hold', () => post(snap.streaming.active ? 'stopStream' : 'startStream')));
     row1.appendChild(holdBtn('btn record' + (snap.recording.active ? (snap.recording.paused ? ' paused' : ' rec') : ''), snap.recording.active ? 'Stop Rec' : 'Record', snap.recording.active ? (snap.recording.paused ? 'Paused' : 'Rec') : 'Hold', () => post(snap.recording.active ? 'stopRecord' : 'startRecord')));
     gCast.appendChild(row1);
     const row2 = el('div', 'crow');
     if (snap.recording.active) row2.appendChild(tapBtn('btn recpause', snap.recording.paused ? 'Resume' : 'Pause', 'Rec', () => post(snap.recording.paused ? 'resumeRecord' : 'pauseRecord')));
-    row2.appendChild(tapBtn('btn replay' + (snap.replay.active ? ' on' : ''), 'Save Clip', snap.replay.active ? 'Ready' : 'Buffer off', () => post('saveReplay')));
+    row2.appendChild(tapBtn('btn replay' + (snap.replay.active ? ' on' : ''), 'Save Clip', snap.replay.active ? 'Ready' : 'Off', () => post('saveReplay')));
     gCast.appendChild(row2);
     controls.appendChild(gCast);
 
-    controls.appendChild(holdBtn('btn panic', 'Panic', 'Safe scene', () => post('panic')));
-    main.appendChild(controls);
+    controls.appendChild(holdBtn('btn panic', 'Panic', 'Hold', () => post('panic')));
+    app.appendChild(controls);
 
     // ---- audio mixer (compact channel strip) ----
     const mixer = el('div', 'mixer');
     mixer.appendChild(el('div', 'mixer-hd', 'Audio'));
     const list = el('div', 'mixer-list');
-    if ((snap.inputs || []).length) {
+    if (connected && (snap.inputs || []).length) {
       snap.inputs.forEach(inp => {
         const b = el('button', 'aud ' + (inp.muted ? 'muted' : 'live'));
         b.appendChild(el('span', 'an', inp.name));
@@ -165,12 +157,10 @@
         list.appendChild(b);
       });
     } else {
-      list.appendChild(el('div', 'empty', 'No audio inputs'));
+      list.appendChild(el('div', 'empty', connected ? 'No audio inputs' : ''));
     }
     mixer.appendChild(list);
-    main.appendChild(mixer);
-
-    app.appendChild(main);
+    app.appendChild(mixer);
   }
 
   function apply(s) { if (s && typeof s === 'object') { snap = s; render(); } }

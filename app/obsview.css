@@ -1,8 +1,9 @@
-/* OBS Studio switcher (served app). Broadcast-appliance layout: a compact context strip, a Program
-   focal point + scene grid as primary content, grouped control clusters as secondary, and a compact
-   audio mixer. Calm dark-neutral surface -- colour is reserved for state (red live/on-air, green
-   preview/live, amber muted/paused, accent selection). Spacing uses only 8/16/24/32/48/64. Type uses
-   the documented scale: 36 title / 22 major label / 16 body / 13 status / 11 metadata. */
+/* OBS Studio switcher (served app). Three stable columns: primary workspace (compact context header +
+   scene viewport) | operations (Studio/Stream/Record/Replay/Panic) | audio mixer. No full-width status
+   strip -- connection is tertiary metadata inside the primary header, so the scene grid reclaims that
+   height and shows 3 full rows. Calm dark-neutral surface; colour reserved for state (red program/live,
+   green preview/connected/live-audio, amber muted/paused, accent = selected mode). Spacing 8/16/24/32/48/64.
+   Type: 36 title / 22 subtitle / 16 body / 13 status / 11 metadata. */
 :root {
   color-scheme: dark;
   --bg: #0d1220; --bg-deep: #080c17;
@@ -12,17 +13,21 @@
   --danger: #ed4245; --danger-soft: rgba(237, 66, 69, .16);
   --ok: #2ee889;
   --warning: #f0b84b; --warning-soft: rgba(240, 184, 75, .15);
-  --line: rgba(120, 145, 222, .20); --line-strong: rgba(94, 131, 246, .48);
+  --line: rgba(120, 145, 222, .22); --line-strong: rgba(120, 145, 222, .5);
   --shadow: 0 6px 18px rgba(0, 0, 0, .26);
   --r-btn: 14px; --r-card: 18px;
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #eef2f9; --bg-deep: #e3e9f4;
-  --panel: #ffffff; --panel2: #f2f5fb; --panel3: #e8eef7;
-  --text: #141c2e; --muted: #4d5a76; --faint: #78849e;
-  --danger-soft: rgba(208, 43, 48, .10); --warning-soft: rgba(197, 138, 12, .14);
-  --line: rgba(40, 64, 116, .18); --line-strong: rgba(60, 96, 184, .42);
+  /* buttons/cards are pure white on a light-blue page so tap targets read clearly; semantic greens/ambers
+     are darkened for legible status text on white (no reliance on glow). */
+  --bg: #e7ecf6; --bg-deep: #dbe3f0;
+  --panel: #ffffff; --panel2: #ffffff; --panel3: #eef2f9;
+  --text: #141c2e; --muted: #45526c; --faint: #66748f;
+  --danger: #d5333b; --danger-soft: rgba(213, 51, 59, .10);
+  --ok: #0e9d58;
+  --warning: #a9760c; --warning-soft: rgba(169, 118, 12, .14);
+  --line: rgba(40, 64, 116, .28); --line-strong: rgba(56, 88, 170, .5);
   --shadow: 0 6px 16px rgba(40, 60, 100, .12);
 }
 * { box-sizing: border-box; }
@@ -32,7 +37,8 @@ body {
   color: var(--text); font-family: "Segoe UI", system-ui, sans-serif;
   touch-action: manipulation; user-select: none;
 }
-#app { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
+/* Three columns, each full height. No top strip -- connection lives in the primary header. */
+#app { display: flex; gap: 16px; padding: 16px; }
 
 button { color: inherit; font: inherit; cursor: pointer; touch-action: manipulation;
   border: 1px solid var(--line); border-radius: var(--r-btn); background: var(--panel2);
@@ -40,8 +46,23 @@ button { color: inherit; font: inherit; cursor: pointer; touch-action: manipulat
 button:active { transform: translateY(1px); }
 button:focus:not(:focus-visible) { outline: none; }
 
-/* ============ context strip (compact OBS + broadcast status) ============ */
-.ctx { flex: 0 0 48px; display: flex; align-items: center; gap: 16px; padding: 0 8px; }
+/* subtle-but-touchable scrollbars for the two scroll regions */
+.scenes, .mixer-list { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.scenes::-webkit-scrollbar, .mixer-list::-webkit-scrollbar { width: 8px; }
+.scenes::-webkit-scrollbar-thumb, .mixer-list::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
+.scenes::-webkit-scrollbar-track, .mixer-list::-webkit-scrollbar-track { background: transparent; }
+
+/* ============ column widths ============ */
+.primary { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden; }
+.controls { flex: none; width: 300px; display: flex; flex-direction: column; gap: 16px; }
+.controls .panic { margin-top: auto; }   /* ops stack from the top; Panic anchors the bottom, always in the same place */
+.mixer { flex: none; width: 340px; display: flex; flex-direction: column; overflow: hidden; }
+body.lay-8x2 .controls { width: 280px; }
+body.lay-8x2 .mixer { width: 300px; }
+#app.off .controls, #app.off .mixer { opacity: .4; pointer-events: none; }   /* disconnected: stable layout, dead controls disabled */
+
+/* ============ primary: compact context header ============ */
+.pheader { flex: 0 0 auto; min-height: 96px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 0 8px; }
 .conn { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .conn .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--faint); flex: none; }
 .conn.connected .dot { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
@@ -49,55 +70,28 @@ button:focus:not(:focus-visible) { outline: none; }
 .conn.not-running .dot, .conn.disconnected .dot { background: var(--danger); }
 .conn .ctext { font-size: 13px; font-weight: 650; color: var(--muted); }
 .conn.connected .ctext { color: var(--text); }
-.conn .ver { font-size: 11px; color: var(--faint); letter-spacing: .02em; }
-.bcast { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-.pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 16px;
-  border-radius: 16px; border: 1px solid var(--line); background: var(--panel2);
-  font-size: 13px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
-.pill .pd { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); flex: none; }
-.pill.live { color: var(--danger); border-color: var(--danger); }
-.pill.live .pd { background: var(--danger); box-shadow: 0 0 8px var(--danger); animation: pulse 1.4s infinite; }
-.pill.rec { color: var(--danger); border-color: var(--danger); }
-.pill.rec .pd { background: var(--danger); }
-.pill.rec.paused { color: var(--warning); border-color: var(--warning); }
-.pill.rec.paused .pd { background: var(--warning); }
-.pill.replay { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 60%, var(--line)); }
-.pill.replay .pd { background: var(--ok); }
-.pill.studio { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
-.pill.studio .pd { background: var(--accent); }
+.conn .ver { font-size: 11px; color: var(--faint); margin-left: 8px; }   /* separated from the label, metadata size */
 
-/* ============ main: primary | controls | audio mixer ============ */
-/* Side columns are width-pinned (flex:none) so long scene/audio names can never widen them and shove
-   the primary region -- major regions stay put across every state. overflow:hidden lets inner text ellipsize. */
-.main { flex: 1; display: flex; gap: 16px; min-height: 0; }
-.primary { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden; }
-.controls { flex: none; width: 300px; display: flex; flex-direction: column; gap: 16px; }
-.mixer { flex: none; width: 340px; display: flex; flex-direction: column; overflow: hidden; }
-body.lay-8x2 .controls { width: 280px; }
-body.lay-8x2 .mixer { width: 300px; }
-
-/* ---- Program focal point (not a card -- content on the surface) ---- */
-.focal { flex: 0 0 auto; display: flex; align-items: center; gap: 32px; min-height: 96px; padding: 0 8px; }
+.focal { display: flex; align-items: center; gap: 32px; min-width: 0; }
 .focal .lbl { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; font-weight: 750; margin-bottom: 8px; }
 .focal .prog { min-width: 0; flex: 0 1 auto; }
 .focal .prog .lbl { color: var(--danger); }
 .focal .prog .name { font-size: 36px; font-weight: 800; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.focal .prev { min-width: 0; flex: 0 1 auto; max-width: 34%; }
+.prevgroup { display: flex; align-items: center; gap: 16px; min-width: 0; flex: 0 1 auto; }
+.focal .prev { min-width: 0; flex: 0 1 auto; }
 .focal .prev .lbl { color: var(--ok); }
 .focal .prev .pname { font-size: 22px; font-weight: 700; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
-.focal .takes { flex: none; margin-left: auto; display: flex; gap: 8px; }
-.tk { min-width: 76px; height: 60px; display: flex; align-items: center; justify-content: center;
+.focal .takes { flex: none; display: flex; gap: 8px; }   /* Cut/Auto sit immediately beside Preview */
+.tk { min-width: 72px; height: 56px; display: flex; align-items: center; justify-content: center;
   font-size: 16px; font-weight: 700; color: var(--text); background: var(--panel3); }
 .tk.auto { border-color: var(--line-strong); }
 
-/* ---- scenes (primary, scrollable card) ---- */
+/* ============ primary: scene viewport (fixed tiles, top-left, 3 rows visible) ============ */
 .scenes-card { flex: 1; min-height: 0; display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow); padding: 16px; }
-.scenes-hd { font-size: 13px; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); font-weight: 750; margin-bottom: 16px; }
-.scenes { flex: 1; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); grid-auto-rows: 72px;
-  gap: 16px; align-content: start; }
-body.lay-8x2 .scenes { grid-template-columns: repeat(auto-fill, minmax(216px, 1fr)); grid-auto-rows: 80px; }
+.scenes { flex: 1; overflow-y: auto; overscroll-behavior: contain;
+  display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 72px; gap: 16px; align-content: start; }
+body.lay-8x2 .scenes { grid-template-columns: repeat(4, 1fr); grid-auto-rows: 80px; }
 .scene { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
   padding: 8px 16px; overflow: hidden; }
 .scene .lb { font-size: 22px; font-weight: 700; line-height: 1.05; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -108,17 +102,16 @@ body.lay-8x2 .scenes { grid-template-columns: repeat(auto-fill, minmax(216px, 1f
 .scene.preview .sub { color: var(--ok); }
 .empty { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 16px; }
 
-/* ---- controls (secondary, grouped clusters) ---- */
+/* ============ operations: grouped clusters, Panic anchored bottom ============ */
 .cgroup { display: flex; flex-direction: column; gap: 8px; }
-.cgroup + .cgroup { padding-top: 16px; border-top: 1px solid var(--line); }
 .crow { display: flex; gap: 8px; }
 .crow > * { flex: 1; }
-.btn { position: relative; min-height: 76px; display: flex; flex-direction: column; align-items: center;
+.btn { position: relative; min-height: 88px; display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 8px; overflow: hidden; }
 .btn .lb { font-size: 22px; font-weight: 700; line-height: 1; }
 .btn .sub { font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); font-weight: 650; }
-.btn.studio.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
-.btn.studio.on .sub { color: var(--accent-fg); opacity: .78; }
+/* Studio Mode is a MODE -> restrained accent-selected treatment, never a solid fill. */
+.btn.studio.on { border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--panel2)); box-shadow: inset 0 0 0 1px var(--accent); }
 .btn.stream.live, .btn.record.rec { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn.stream.live .sub, .btn.record.rec .sub { color: #fff; opacity: .92; }
 .btn.record.paused { background: var(--warning); border-color: var(--warning); color: #231800; }
@@ -135,12 +128,12 @@ body.lay-8x2 .scenes { grid-template-columns: repeat(auto-fill, minmax(216px, 1f
 .hold.holding .holdbar { width: 100%; transition: width 1.5s linear; }
 .hold.holding { filter: brightness(1.08); }
 
-/* ---- audio mixer (compact channel strip, scrollable) ---- */
+/* ============ audio mixer (compact channel strip, scrollable) ============ */
 .mixer { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow); padding: 16px; }
 .mixer-hd { font-size: 13px; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); font-weight: 750; margin-bottom: 16px; }
-.mixer-list { flex: 1; min-width: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; display: flex; flex-direction: column; gap: 8px; }
+.mixer-list { flex: 1; min-width: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 8px; }
 .aud { display: flex; align-items: center; gap: 16px; min-width: 0; min-height: 56px; padding: 0 16px; overflow: hidden; text-align: left; background: var(--panel2); }
-.aud .an { flex: 1; min-width: 0; font-size: 22px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aud .an { flex: 1 1 auto; min-width: 0; font-size: 22px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .aud .ast { flex: none; display: flex; align-items: center; gap: 8px; font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); font-weight: 650; }
 .aud .ad { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); flex: none; }
 .aud.muted { background: var(--warning-soft); border-color: var(--warning); }
@@ -148,9 +141,8 @@ body.lay-8x2 .scenes { grid-template-columns: repeat(auto-fill, minmax(216px, 1f
 .aud.muted .ast { color: var(--warning); font-weight: 750; }
 .aud.muted .ad { background: var(--warning); box-shadow: none; }
 
-/* ---- offline / connecting (honest, restrained) ---- */
-.offline { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center;
-  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow); }
+/* ============ offline / connecting (inside the scene viewport, honest + calm) ============ */
+.offline { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; }
 .offline .ohead { font-size: 22px; font-weight: 750; color: var(--muted); }
 .offline p { max-width: 640px; margin: 0; padding: 0 24px; font-size: 16px; line-height: 1.5; color: var(--faint); }
 
