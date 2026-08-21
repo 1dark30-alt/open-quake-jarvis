@@ -5,7 +5,7 @@ What the commercial package advertises versus what open-quake ships. Comparison 
 plus their [Kickstarter](https://www.kickstarter.com/projects/decokee/decokee-quake-the-ultimate-desktop-ai-copilot)
 and [AI-copilot](https://www.decokee.com/pages/quake-ai-copilot) pages (as advertised 2026-08),
 cross-checked against a teardown of the installed DK-Suite (v0.4.69, unpacked Electron); the
-open-quake side is the current release (v0.5.9). This is the running list of what they have that we
+open-quake side is the current release (v0.6.0). This is the running list of what they have that we
 don't — update it when either side changes.
 
 > open-quake is an independent community project, not affiliated with DECOKEE — see the
