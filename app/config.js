@@ -3142,6 +3142,7 @@
     // are stored encrypted at rest via secretStore (same path as settings.spotify.refreshToken).
     const ha = (s.haAuth && typeof s.haAuth === 'object') ? s.haAuth : { url: '', token: '', useHa: false };
     const ow = (s.owui && typeof s.owui === 'object') ? s.owui : { url: '', apiKey: '', model: '' };
+    const obs = (s.obs && typeof s.obs === 'object') ? s.obs : {};
     const authHtml = `
       <p class="sectitle">Home Assistant</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="sHaUse" ${ha.useHa ? 'checked' : ''}> Use Home Assistant</label>
@@ -3163,6 +3164,20 @@
         <button id="sOwTest" type="button" style="margin-left:8px">Test connection</button></div>
       <p class="hint" id="sOwStatus" style="min-height:16px;margin:2px 0 0"></p>
       <p class="hint">One connection shared by the meeting <b>Analysis AI</b> (Open WebUI option on the Meeting tab) and the <b>Open WebUI Voice</b> panel app. The key is stored encrypted at rest. In Open WebUI: avatar (bottom-left) → Settings → Account → API Keys — an admin may need to enable API keys first.</p>
+
+      <p class="sectitle" style="margin-top:22px">OBS Studio</p>
+      <div class="row"><label>Enable</label>
+        <input type="checkbox" id="sObsEnabled" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">connect to OBS for the OBS switcher app and OBS tiles</span></div>
+      <div class="row"><label>Host</label>
+        <input type="text" id="sObsHost" value="${esc(obs.host || '127.0.0.1')}" placeholder="127.0.0.1" style="width:200px">
+        <label style="width:auto;margin:0 8px 0 16px">Port</label>
+        <input type="text" id="sObsPort" value="${esc(obs.port || '4455')}" placeholder="4455" style="width:90px"></div>
+      <div class="row"><label>Password</label>${secretInput(obs.password || '', 'id="sObsPass" placeholder="from OBS → Tools → WebSocket Server Settings"', 'flex:1')}
+        <button id="sObsTest" type="button" style="margin-left:8px">Test connection</button></div>
+      <div class="row"><label>Reconnect</label>
+        <label class="iconopt" style="width:auto"><input type="checkbox" id="sObsAuto" style="width:auto;flex:none"> automatically if OBS restarts</label></div>
+      <p class="hint" id="sObsStatus" style="min-height:16px;margin:2px 0 0"></p>
+      <p class="hint">In OBS: <b>Tools → WebSocket Server Settings</b> → enable the server, then <b>Show Connect Info</b> for the port and password. The password is stored encrypted at rest and never leaves the main process.</p>
 
       <p class="sectitle" style="margin-top:22px">OAuth 2.0</p>
       <p class="hint">Connect services once for built-in integrations. OAuth tokens stay in the main process, are encrypted at rest, and are refreshed before expiry; drop-in apps cannot request them.</p>
@@ -3399,6 +3414,35 @@
           owStatus.style.color = '#7e93ab';
         } catch (e2) { owStatus.textContent = 'Test failed: ' + (e2.message || e2); owStatus.style.color = '#c98'; }
         finally { owTest.disabled = false; }
+      };
+
+      // OBS Studio connection -> config.settings.obs; Test = auto-save-then-probe (same as owui).
+      const saveObs = patch => {
+        if (!config.settings) config.settings = {};
+        const cur = (config.settings.obs && typeof config.settings.obs === 'object') ? config.settings.obs : {};
+        config.settings.obs = Object.assign({ host: '127.0.0.1', port: '4455', password: '', enabled: false, autoReconnect: true }, cur, patch);
+        markDirty();
+      };
+      const obsEnabled = document.getElementById('sObsEnabled');
+      if (obsEnabled) { obsEnabled.checked = obs.enabled === true; obsEnabled.onchange = e => saveObs({ enabled: e.target.checked }); }
+      const obsAuto = document.getElementById('sObsAuto');
+      if (obsAuto) { obsAuto.checked = obs.autoReconnect !== false; obsAuto.onchange = e => saveObs({ autoReconnect: e.target.checked }); }
+      const obsHost = document.getElementById('sObsHost'); if (obsHost) obsHost.oninput = e => saveObs({ host: e.target.value.trim() });
+      const obsPort = document.getElementById('sObsPort'); if (obsPort) obsPort.oninput = e => saveObs({ port: e.target.value.trim() });
+      const obsPass = document.getElementById('sObsPass'); if (obsPass) obsPass.oninput = e => saveObs({ password: e.target.value });
+      const obsTest = document.getElementById('sObsTest');
+      const obsStatus = document.getElementById('sObsStatus');
+      if (obsTest) obsTest.onclick = async () => {
+        obsTest.disabled = true;
+        obsStatus.textContent = dirty ? 'Saving, then testing…' : 'Testing…'; obsStatus.style.color = '#7e93ab';
+        try {
+          if (dirty && !await doSave()) throw new Error('settings were not saved securely');
+          const r = await configApi.probeObs();
+          if (!(r && r.ok)) throw new Error((r && r.error) || 'connection failed');
+          obsStatus.textContent = 'OK — OBS-WebSocket v' + (r.obsVersion || '?') + ', ' + (r.sceneCount || 0) + ' scene(s)';
+          obsStatus.style.color = '#7e93ab';
+        } catch (e2) { obsStatus.textContent = 'Test failed: ' + (e2.message || e2); obsStatus.style.color = '#c98'; }
+        finally { obsTest.disabled = false; }
       };
 
       let oauthPoll = null;

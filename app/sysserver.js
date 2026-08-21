@@ -84,6 +84,8 @@ const STATIC_FILES = {
   '/diagnosticsview.js': 'application/javascript; charset=utf-8',
   '/discordview.js': 'application/javascript; charset=utf-8',
   '/discordview.css': 'text/css; charset=utf-8',
+  '/obsview.js': 'application/javascript; charset=utf-8',
+  '/obsview.css': 'text/css; charset=utf-8',
 };
 for (const appId of ['teams', 'outlook', 'word', 'excel', 'powerpoint', 'onenote', 'onedrive', 'office']) {
   STATIC_FILES['/office-icons/' + appId + '.svg'] = 'image/svg+xml; charset=utf-8';
@@ -99,6 +101,7 @@ let getLucidState = null, onLucidDictation = null, onLucidApply = null, onLucidE
 let onLucidCleanup = null, onLucidRewrite = null, onLucidReview = null, onLucidSetMode = null;   // LucidType cleanup/rewrite (Phase 2): run + review apply/refine/cancel + rewrite-mode pick
 const lucidSubscribers = new Set();   // open SSE responses for the LucidType page (pushed by main via lucidBroadcast)
 let diagnosticsHtml = FALLBACK;
+let obsviewHtml = FALLBACK;
 let musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK, slideHtml = FALLBACK, lucidtypeHtml = FALLBACK, lucidtypeDictateHtml = FALLBACK;
 // Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
 // Voice-panel app registry: appId (also the URL path prefix) -> { handlers, voiceToken, htmlFile,
@@ -109,6 +112,8 @@ let musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, haschedule
 let voiceApps = {};
 let discordApp = null;
 const discordSubscribers = new Set();
+let obsApp = null;                      // OBS control service (main.js provides it via start opts)
+const obsSubscribers = new Set();       // open SSE responses for the served /obs switcher page
 const staticAssets = {};   // request path -> { body, type }; populated at start()
 let appFolders = {};        // drop-in served app id -> { root, proxy }; supplied by main.js
 const appServers = {};      // app id -> required server module
@@ -520,6 +525,20 @@ function subscribeDiscord(req, res) {
   res.on('close', close);
 }
 
+function obsBroadcast(payload) {
+  const line = 'data: ' + JSON.stringify(payload) + '\n\n';
+  for (const res of obsSubscribers) { try { res.write(line); } catch (e) { obsSubscribers.delete(res); } }
+}
+
+function subscribeObs(req, res) {
+  res.writeHead(200, Object.assign(headers('text/event-stream; charset=utf-8'), { Connection: 'keep-alive' }));
+  obsSubscribers.add(res);
+  if (obsApp) res.write('data: ' + JSON.stringify(obsApp.getSnapshot()) + '\n\n');
+  const close = () => obsSubscribers.delete(res);
+  req.on('close', close);
+  res.on('close', close);
+}
+
 // Library route path -> op name passed to onMeetingLibrary (main.js). Kept as one table so the
 // handler branch, main.js dispatch, and the tests all agree on the surface.
 const MEETING_LIBRARY_OPS = {
@@ -557,12 +576,14 @@ async function handler(req, res) {
   const voicePath = voiceApp ? (url.slice(voicePrefixLen) || '/') : null;
   const isAllowedPost = (req.method === 'POST' && voiceApp && (VOICE_POST_SUFFIXES.has(voicePath) || voicePath === '/approval-request'))
     || (req.method === 'POST' && url === '/api/discord/action')
+    || (req.method === 'POST' && url === '/api/obs/action')
     || (req.method === 'POST' && (url === '/lucidtype-edit' || url === '/lucidtype-review/apply' || url === '/lucidtype-review/refine'));   // LucidType edit-sync + review apply/refine (same-origin gated below)
   if (req.method !== 'GET' && !isAllowedPost) { res.writeHead(405); res.end(); return; }
   if (url === '/' || url === '/index.html') return html(res, RETIRED_HTML);   // retired SystemView page
   if (url === '/music') return html(res, musicHtml);
   if (url === '/meeting') return html(res, meetingHtml);
   if (url === '/diagnostics') return html(res, diagnosticsHtml);
+  if (url === '/obs') return html(res, obsviewHtml);
   if (url === '/lucidtype') return html(res, lucidtypeHtml);
   if (url === '/lucidtype-dictate') return html(res, lucidtypeDictateHtml);   // hidden LucidType capture page
   if (url === '/recorder') return html(res, recorderHtml);   // hidden meeting-recorder capture page
@@ -606,6 +627,14 @@ async function handler(req, res) {
     let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
     try { return json(res, await discordApp.action(body && body.action, body && body.value)); }
     catch (e) { return json(res, { ok: false, error: e.message || 'Discord action failed' }); }
+  }
+  if (url === '/api/obs/state') return obsApp ? json(res, obsApp.getSnapshot()) : json(res, { connection: 'disconnected' });
+  if (url === '/api/obs/events') { if (!obsApp) { res.writeHead(503); res.end(); return; } return subscribeObs(req, res); }
+  if (url === '/api/obs/action' && req.method === 'POST') {
+    if (!obsApp) return done(res, false);
+    let body; try { body = await readJsonBody(req); } catch (e) { return done(res, false); }
+    try { return json(res, { ok: true, result: await obsApp.action(body && body.action, body && body.value) }); }
+    catch (e) { return json(res, { ok: false, error: e.message || 'OBS action failed' }); }
   }
   if (url === '/app-config') {
     const m = /[?&]app=([A-Za-z0-9_-]+)/.exec(full);
@@ -1030,6 +1059,8 @@ function start(opts) {
     discordApp.start();
     discordApp.on('update', discordBroadcast);
   }
+  obsApp = opts.obsApp || null;   // main owns the connection lifecycle (start/stop by enabled); we just observe + dispatch
+  if (obsApp) { obsApp.removeListener('update', obsBroadcast); obsApp.on('update', obsBroadcast); }
   voiceApps = {};
   Object.entries(opts.voiceApps || {}).forEach(([id, v]) => {
     voiceApps[id] = {
@@ -1055,6 +1086,7 @@ function start(opts) {
     try { musicHtml = fs.readFileSync(path.join(__dirname, 'musicview.html'), 'utf8'); } catch (e) {}
     try { meetingHtml = fs.readFileSync(path.join(__dirname, 'meetingview.html'), 'utf8'); } catch (e) {}
     try { diagnosticsHtml = fs.readFileSync(path.join(__dirname, 'diagnosticsview.html'), 'utf8'); } catch (e) {}
+    try { obsviewHtml = fs.readFileSync(path.join(__dirname, 'obsview.html'), 'utf8'); } catch (e) {}
     try { lucidtypeHtml = fs.readFileSync(path.join(__dirname, 'lucidtypeview.html'), 'utf8'); } catch (e) {}
     try { lucidtypeDictateHtml = fs.readFileSync(path.join(__dirname, 'lucidtype-dictate.html'), 'utf8'); } catch (e) {}
     try { recorderHtml = fs.readFileSync(path.join(__dirname, 'recorderview.html'), 'utf8'); } catch (e) {}

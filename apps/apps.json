@@ -19,6 +19,15 @@
     }
   },
   {
+    "id": "obs",
+    "name": "OBS Switcher",
+    "file": "obsview.html",
+    "served": true,
+    "options": [
+      { "key": "layout", "label": "Layout", "type": "select", "default": "12x4", "choices": [["12x4", "12 × 4 — full production"], ["8x2", "8 × 2 — compact"]] }
+    ]
+  },
+  {
     "id": "clock",
     "name": "Flip Clock",
     "file": "clock.html",

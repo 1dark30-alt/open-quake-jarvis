@@ -81,6 +81,8 @@ const { DiscordService } = require('./discordService'); // local Discord desktop
 const { DiscordOAuth, DISCORD_SCOPES } = require('./discordOAuth');
 const { DiscordAppHost } = require('./discordAppHost');
 const { DEFAULT_DISCORD_APPLICATION_ID, discordApplicationId, normalizeDiscordSettings } = require('./discordSettings');
+const { ObsService } = require('./obsService');                 // OBS Studio control (shared service)
+const { normalizeObsSettings, obsWsUrl } = require('./obsSettings');
 const claudeVoiceApprovals = require('./claudevoice-approvals'); // required directly ONLY for the boot-time leftover-hook sweep below
 const HA_SCHEDULE_APPS = ['haschedule', 'agenda', 'events'];   // dev apps backed by the shared HA /haschedule-data snapshot
 
@@ -149,6 +151,13 @@ const discordAppHost = new DiscordAppHost(discordService, {
     config.settings.discord = previous;
     return false;
   },
+});
+// OBS Studio control service: one shared connection that drives both the served switcher app and
+// (Phase 2) the `obs` tile type. Password lives encrypted in config.settings.obs (secretStore).
+function obsSettings() { return normalizeObsSettings((config.settings || {}).obs); }
+const obsService = new ObsService({
+  url: obsWsUrl(obsSettings()), password: obsSettings().password, autoReconnect: obsSettings().autoReconnect,
+  getPanicConfig: () => { const o = (config.settings || {}).obs || {}; return { safeScene: o.panicScene || '', muteInputs: Array.isArray(o.panicMutes) ? o.panicMutes : [] }; },
 });
 let panelWin = null, configWin = null, tray = null, welcomeWin = null;
 let dashSession = null, cookieFlushT = null;   // dashboard webview session + a debounced cookie-store flush
@@ -2821,6 +2830,7 @@ app.whenReady().then(async () => {
   config = secretStore.decryptConfig(config);
   const storedDiscordTokens = oauthStorage.getTokens('discord');
   if (normalizeDiscordSettings((config.settings || {}).discord).enabled && storedDiscordTokens && storedDiscordTokens.accessToken) discordService.start();
+  if (obsSettings().enabled) obsService.start();
   if (secretStore.available()) {
     if (needsMigration) saveConfig();                        // migrate plaintext/legacy config to current at-rest form
   } else if (needsMigration) console.log('secret encryption unavailable — refusing to rewrite config secrets');
@@ -2844,6 +2854,7 @@ app.whenReady().then(async () => {
       onLucidReview: onLucidReviewRequest, onLucidSetMode: onLucidSetModeRequest,
       getShortcuts: keyboardShortcutsSnapshot,
       discordApp: discordAppHost,
+      obsApp: obsService,
       // Voice-panel app registry: each entry gets the full /<appId>/* route surface (see
       // sysserver.js). voiceToken gates the claude approval hook's /approval-request long-poll.
       voiceApps: {
@@ -3205,6 +3216,27 @@ app.whenReady().then(async () => {
       return { ok: false, error: (err && err.message) || 'connection failed' };
     }
   });
+  // Test-connect to OBS with the SAVED config (same auto-save-then-probe flow as owui). A throwaway
+  // client so it never disturbs the live obsService connection.
+  ipcMain.handle('probeObs', async (e) => {
+    if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
+    const s = obsSettings();
+    const { OBSWebSocket } = require('obs-websocket-js');
+    const client = new OBSWebSocket();
+    try {
+      const hello = await client.connect(obsWsUrl(s), s.password, { rpcVersion: 1, eventSubscriptions: 0 });
+      let sceneCount = 0;
+      try { const r = await client.call('GetSceneList'); sceneCount = (r.scenes || []).length; } catch (er) {}
+      try { await client.disconnect(); } catch (er) {}
+      return { ok: true, obsVersion: (hello && hello.obsWebSocketVersion) || '?', sceneCount };
+    } catch (err) {
+      try { await client.disconnect(); } catch (er) {}
+      const msg = (err && err.message) || 'connection failed';
+      if (/authentication|password|4009/i.test(msg)) return { ok: false, error: 'OBS rejected the password — check Tools → WebSocket Server Settings.' };
+      if (/ECONNREFUSED|refused|not open|ETIMEDOUT|EHOSTUNREACH/i.test(msg)) return { ok: false, error: 'No OBS at ' + obsWsUrl(s) + ' — is OBS running with the WebSocket server enabled?' };
+      return { ok: false, error: msg };
+    }
+  });
   // Model list for the AI Voice API backend's editor dropdown: hit the endpoint's standard
   // OpenAI-compatible /models with the page's own URL + key (probeOwui's pattern, minus the
   // OWUI-specific URL normalization — the base here is entered verbatim).
@@ -3277,6 +3309,7 @@ app.whenReady().then(async () => {
     newCfg.settings.discord = normalizeDiscordSettings(newCfg.settings.discord);
     if (previousDiscordApplicationId !== discordApplicationId(newCfg.settings.discord)
       && newCfg.settings.oauth && newCfg.settings.oauth.tokens) delete newCfg.settings.oauth.tokens.discord;
+    newCfg.settings.obs = normalizeObsSettings(newCfg.settings.obs);
     config = newCfg;
     if (config.grids.some(g => g.id === active)) config.activeGridId = active;
     else if (!config.grids.some(g => g.id === config.activeGridId)) config.activeGridId = (config.grids[0] || {}).id || null;
@@ -3298,6 +3331,10 @@ app.whenReady().then(async () => {
       if (discordService.getState().state === 'disconnected') discordService.start();
       if (discordAppHost.getSnapshot().capabilities.activity) discordService.setActivity(discordSettings.richPresence ? { details: 'Using open-quake' } : null).catch(() => {});
     }
+    const obsCfg = obsSettings();
+    obsService.setAutoReconnect(obsCfg.autoReconnect);
+    if (!obsCfg.enabled) obsService.stop();
+    else { obsService.configure({ url: obsWsUrl(obsCfg), password: obsCfg.password }); if (obsService.getState().state === 'disconnected') obsService.start(); }
     // Both of these disturb a live recording — respawning the monitor makes it re-announce its
     // state, and setMic tears down and re-acquires the capture. Saving unrelated settings (slide
     // capture, theme, anything) must not do either, so they fire only on a real change.

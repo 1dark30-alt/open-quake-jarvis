@@ -31,6 +31,7 @@
     "adm-zip": "^0.6.0",
     "emojilib": "^4.0.3",
     "node-hid": "^3.3.0",
+    "obs-websocket-js": "^5.0.8",
     "win-ca": "^3.5.1",
     "ws": "^8.18.0"
   },
