@@ -47,9 +47,9 @@ the controls and open-quake shows **Connected**.
 
 ## Troubleshooting
 
-| Symptom | Cause / fix |
+| Symptom | Most likely cause / fix |
 |---|---|
-| `invalid_scope` on the Discord page | You're not the owner/tester of the app whose ID is set. Use **your own** app's Application ID (step 2). |
-| `Invalid OAuth2 redirect_uri` | The redirect in your Discord app doesn't match `http://127.0.0.1:51120/callback` exactly (step 3). |
-| Connect button disabled | Discord integration isn't enabled, or you haven't **Saved** after entering the Application ID. |
-| **Connect hangs / nothing happens after you click Authorize** | The redirect in your Discord app isn't an **exact** match for `http://127.0.0.1:51120/callback` — Discord then errors in the browser and never returns to open-quake, so the button just waits. Re-check the redirect (step 3); deleting and re-creating the app with the correct redirect is the quickest fix. If it still hangs, port `51120` may be in use or blocked locally. |
+| **Connect does nothing, or fails right away** | **Did you click Save after entering your Application ID?** Connect uses the *saved* setting — an unsaved ID isn't used. Save, then Connect. |
+| `invalid_scope` on the Discord page | The app whose ID is set isn't yours — you're not its owner/tester. Use **your own** app's Application ID (step 2). |
+| Connect hangs / nothing after you click **Authorize** | Your redirect URI isn't an **exact** match for `http://127.0.0.1:51120/callback` — Discord errors in the browser and never returns. Re-check step 3 (re-creating the app with the right redirect is the quickest fix); if it still hangs, port `51120` may be in use or blocked locally. |
+| Connect button greyed out | Discord integration is disabled, or no Application ID is saved yet. |

@@ -2554,6 +2554,7 @@
       if (guide) guide.onclick = ev => { ev.preventDefault(); configApi.openExternal(guideUrl); };
       const cbtn = box.querySelector('#dcConnect');
       if (cbtn) cbtn.onclick = async () => {
+        if (dirty) { msg('Save your changes first, then Connect.', true); return; }   // connect uses the SAVED app ID, not the live field
         cbtn.disabled = true; msg('Opening browser…');
         let r; try { r = await configApi.connectOAuthProvider('discord', (dp && dp.scopes) || []); } catch (e) { r = { ok: false, error: e.message }; }
         msg(r && r.ok ? 'Connected.' : 'Connect failed: ' + ((r && r.error) || ''), !(r && r.ok));
