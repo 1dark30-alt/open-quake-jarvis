@@ -2436,7 +2436,7 @@
     const def = appDefs.find(a => a.id === id);
     g.options = {};
     if (def) {
-      def.options.forEach(o => { g.options[o.key] = o.default; });
+      (def.options || []).forEach(o => { g.options[o.key] = o.default; });   // an app may declare no options
       if (!g.name || g.name === 'App' || (prev && g.name === prev.name)) g.name = def.name;  // auto-name from the app
       if (def.grid) {                                       // app embeds a programmable tile grid — seed it
         g.cols = def.grid.cols || 2; g.rows = def.grid.rows || 2;

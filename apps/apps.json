@@ -162,7 +162,8 @@
     "id": "diagnostics",
     "name": "Device Diagnostics",
     "file": "diagnosticsview.html",
-    "served": true
+    "served": true,
+    "options": []
   },
   {
     "id": "music",
