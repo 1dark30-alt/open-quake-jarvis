@@ -31,6 +31,31 @@
         "label": "Show date & day",
         "type": "bool",
         "default": true
+      },
+      {
+        "key": "weather",
+        "label": "Show weather",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "key": "weatherCity",
+        "label": "City",
+        "type": "text",
+        "default": "",
+        "help": "e.g. \"Salt Lake City, US\" — looked up via Open-Meteo, no account or key needed.",
+        "showIf": { "key": "weather", "value": true }
+      },
+      {
+        "key": "weatherUnit",
+        "label": "Units",
+        "type": "select",
+        "default": "f",
+        "choices": [
+          ["f", "°F"],
+          ["c", "°C"]
+        ],
+        "showIf": { "key": "weather", "value": true }
       }
     ]
   },
