@@ -276,13 +276,13 @@ class ObsService extends EventEmitter {
   // with Studio Mode on they set Preview (Cut/Auto takes it to Program); off, they set Program directly.
   action(name, value) {
     switch (name) {
-      case 'sceneTap': return this.snapshot.studioMode ? this.setPreviewScene(value) : this.setProgramScene(value);
+      case 'sceneTap': case 'scene': return this.snapshot.studioMode ? this.setPreviewScene(value) : this.setProgramScene(value);   // 'scene' = tile-editor alias
       case 'setProgramScene': return this.setProgramScene(value);
       case 'setPreviewScene': return this.setPreviewScene(value);
       case 'cut': return this.snapshot.previewScene ? this.setProgramScene(this.snapshot.previewScene) : Promise.resolve();
       case 'auto': case 'transition': return this.triggerStudioTransition();
       case 'studioMode': return this.setStudioMode(value === undefined ? !this.snapshot.studioMode : !!value);
-      case 'toggleMute': return this.toggleInputMute(value);
+      case 'toggleMute': case 'mute': return this.toggleInputMute(value);   // 'mute' = tile-editor alias
       case 'setMute': return this.setInputMute(value && value.inputName, value && value.muted);
       case 'sceneItemEnabled': return this.setSceneItemEnabled(value.sceneName, value.sceneItemId, value.enabled);
       case 'startStream': return this.startStream();

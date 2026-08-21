@@ -170,6 +170,17 @@ test('action() dispatches studio-aware scene taps and named commands', async () 
   await assert.rejects(() => obs.action('bogus'), /Unknown OBS action/);
 });
 
+test('tile-editor action aliases (scene, mute) map to the same commands as the switcher', async () => {
+  const fake = new FakeObs(MODEL);
+  const obs = new ObsService({ clientFactory: () => fake });
+  obs.start(); await flush();
+  fake.calls.length = 0;
+  await obs.action('scene', 'Game');   // studio off -> Program (alias for sceneTap)
+  assert.deepEqual(fake.calls.at(-1), { request: 'SetCurrentProgramScene', data: { sceneName: 'Game' } });
+  await obs.action('mute', 'Mic');     // alias for toggleMute
+  assert.deepEqual(fake.calls.at(-1), { request: 'ToggleInputMute', data: { inputName: 'Mic' } });
+});
+
 test('panic() switches to the safe scene and mutes configured inputs, best-effort', async () => {
   const fake = new FakeObs(MODEL);
   const obs = new ObsService({ clientFactory: () => fake, getPanicConfig: () => ({ safeScene: 'BRB', muteInputs: ['Mic', 'Desktop Audio'] }) });
