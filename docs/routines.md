@@ -66,13 +66,13 @@ run the standup routine".
 ## What happens on a tap
 
 1. The panel switches to the routine's AI Chat page.
-2. If the routine names a folder that page isn't already in, the session restarts there first.
-   **This ends whatever conversation was on that page** — the same thing switching folders on the
-   panel has always done. A routine naming the folder you're already in doesn't restart anything.
-3. Its saved profile and permission mode are applied (after any folder restart, so the restart
-   can't undo them).
-4. Its saved prompt arrives as if you'd just spoken it.
-5. The agent answers normally — streaming reply, tool calls, touch approvals, spoken reply if that
+2. Its saved profile, permission mode, and folder are set on that page, and the agent session
+   starts (or restarts) with them. A routine that names a different folder or a different mode than
+   the page is currently on starts a **fresh** session — **which ends whatever conversation was on
+   that page**, the same as switching folders on the panel. A routine that matches the page's
+   current context just adds its turn to the ongoing conversation.
+3. Its saved prompt arrives as if you'd just spoken it.
+4. The agent answers normally — streaming reply, tool calls, touch approvals, spoken reply if that
    page's speaker is on.
 
 Because it's an ordinary turn, everything else still works: you can talk back to it, approve a tool

@@ -107,4 +107,28 @@ function resolveRoutine(id, ctx) {
   };
 }
 
-module.exports = { AI_VOICE_APP, FOLDER_BACKENDS, aiVoicePages, allowsFolder, backendOf, autoName, newRoutineId, normalizeRoutine, normalizeList, resolveRoutine };
+// Decide how to run a routine against the page it landed on, given what that page's session is
+// currently doing. Pure so it can be unit-tested away from Electron -- and because getting it wrong
+// crashed claude: applying a profile/mode via the live mid-session switches restarts the CLI with
+// `--resume`, which fails ("No conversation found with session ID") before the first turn persists.
+// The plan instead writes the routine's context onto the page OPTIONS (a fresh/lazy start reads
+// them) and asks for a FRESH restart only when a live session must change.
+//   input:  { routine, folder, running, curProfile, curMode }   (folder = resolveRoutine's diff-only folder)
+//   -> { options:{profilePick?,permissionMode?,projectDir?}, persist:bool, restart:bool }
+function planRoutineRun(input) {
+  input = input || {};
+  const routine = input.routine || {};
+  const folder = str(input.folder);
+  const profileId = str(routine.profileId);
+  const mode = str(routine.mode);
+  const options = {};
+  if (profileId) options.profilePick = profileId;
+  if (mode) options.permissionMode = mode;
+  if (folder) options.projectDir = folder;   // so even a cold page's lazy start lands in it
+  const wantsChange = !!folder
+    || (!!profileId && profileId !== str(input.curProfile))
+    || (!!mode && mode !== str(input.curMode));
+  return { options: options, persist: !!(profileId || mode || folder), restart: !!input.running && wantsChange };
+}
+
+module.exports = { AI_VOICE_APP, FOLDER_BACKENDS, aiVoicePages, allowsFolder, backendOf, autoName, newRoutineId, normalizeRoutine, normalizeList, resolveRoutine, planRoutineRun };

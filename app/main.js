@@ -863,16 +863,28 @@ function runRoutine(routineId) {
   gotoGrid(r.pageId, true);
   const page = (config.grids || []).find(g => g.id === r.pageId) || {};
   const host = voiceHostForBackend((page.options && page.options.backend) || 'claude');
-  // Folder FIRST: a working-directory switch restarts the session, which reloads the page's stored
-  // profile and mode -- so it has to happen before we apply the routine's own profile/mode, or the
-  // restart would wipe them. resolveRoutine only reports a folder when it actually differs and the
-  // backend has one, so this never churns a session needlessly. The restart DOES end whatever
-  // conversation was on the page -- the same thing switching folders on the panel has always done.
-  if (r.folder) {
-    try { host.handlers.sessionStart(r.folder); } catch (e) { console.log('[routine] folder switch failed: ' + e.message); }
+  if (!page.options) page.options = {};
+
+  // Apply the routine's profile / mode / folder by writing them onto the page's options and letting
+  // the session START read them -- NEVER via the live setProfile / setPermissionMode switches. On
+  // claude those restart the process with `--resume <id>` to keep the conversation; before the first
+  // turn there is nothing persisted to resume, so that path dies repeatedly with "No conversation
+  // found with session ID". A fresh `start()` mints a new id and passes `--permission-mode` /
+  // `--append-system-prompt` at launch -- clean, and it can never hit that error.
+  let st = {};
+  try { st = host.handlers.getState() || {}; } catch (e) {}
+  const running = !!st.running;
+  const curProfile = page.options.profilePick || '';
+  const curMode = running ? (st.permissionMode || '') : (page.options.permissionMode || '');
+
+  const plan = routines.planRoutineRun({ routine: r.routine, folder: r.folder, running, curProfile, curMode });
+  Object.assign(page.options, plan.options);
+  if (plan.persist) saveConfig();
+  // A LIVE session only picks up a new profile / mode / folder by restarting; do it fresh (new id,
+  // no `--resume`). A cold page needs no restart -- onTurn's lazy start reads the options just set.
+  if (plan.restart) {
+    try { host.handlers.sessionStart(r.folder || undefined); } catch (e) { console.log('[routine] session restart failed: ' + e.message); }
   }
-  if (r.routine.profileId) { try { host.handlers.setProfile(r.routine.profileId); } catch (e) {} }
-  if (r.routine.mode) { try { host.handlers.setPermissionMode(r.routine.mode); } catch (e) {} }   // '' = leave the page's mode alone
   // speak:true -- the page's own speaker toggle decides whether the stream is actually played.
   let sent = null;
   try { sent = host.handlers.onTurn(r.routine.prompt, true); } catch (e) { console.log('[routine] ' + e.message); }

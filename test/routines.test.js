@@ -178,3 +178,46 @@ test('resolveRoutine passes the stored mode through untouched', () => {
   const r = resolveRoutine('r1', { routines: list, grids: [chatB('c1', 'Claude', 'claude', '')] });
   assert.equal(r.routine.mode, 'plan');
 });
+
+// ---- planRoutineRun: how a routine applies to the page it runs on ----
+// Regression guard for the crash where applying a routine's mode/profile via the live mid-session
+// switches restarted claude with --resume and died on "No conversation found". The plan applies
+// context through page OPTIONS and only asks for a FRESH restart when a live session must change.
+const { planRoutineRun } = require('../app/routines');
+
+test('cold page: set options, no restart (the lazy first-turn start reads them)', () => {
+  const plan = planRoutineRun({ routine: { profileId: 'p2', mode: 'plan' }, folder: '', running: false, curProfile: '', curMode: '' });
+  assert.deepEqual(plan.options, { profilePick: 'p2', permissionMode: 'plan' });
+  assert.equal(plan.persist, true);
+  assert.equal(plan.restart, false);
+});
+
+test('live session on a different mode: fresh restart', () => {
+  const plan = planRoutineRun({ routine: { mode: 'plan' }, folder: '', running: true, curProfile: '', curMode: 'manual' });
+  assert.equal(plan.options.permissionMode, 'plan');
+  assert.equal(plan.restart, true);
+});
+
+test('live session already on the routine mode/profile: append, no restart', () => {
+  const plan = planRoutineRun({ routine: { profileId: 'p2', mode: 'plan' }, folder: '', running: true, curProfile: 'p2', curMode: 'plan' });
+  assert.equal(plan.restart, false);
+});
+
+test('a folder always forces a fresh restart on a live session, and lands in that folder', () => {
+  const plan = planRoutineRun({ routine: { mode: 'plan' }, folder: 'D:/repo', running: true, curProfile: '', curMode: 'plan' });
+  assert.equal(plan.options.projectDir, 'D:/repo');
+  assert.equal(plan.restart, true);
+});
+
+test('prompt-only routine on a live session: nothing to set, no restart', () => {
+  const plan = planRoutineRun({ routine: {}, folder: '', running: true, curProfile: 'p2', curMode: 'plan' });
+  assert.deepEqual(plan.options, {});
+  assert.equal(plan.persist, false);
+  assert.equal(plan.restart, false);
+});
+
+test('a live profile change with no mode change still restarts fresh (no --resume)', () => {
+  const plan = planRoutineRun({ routine: { profileId: 'p3' }, folder: '', running: true, curProfile: 'p2', curMode: 'plan' });
+  assert.equal(plan.options.profilePick, 'p3');
+  assert.equal(plan.restart, true);   // the point: fresh start, never setProfile's resume-restart
+});
