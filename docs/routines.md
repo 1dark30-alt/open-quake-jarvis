@@ -43,6 +43,8 @@ routines stays scannable instead of twenty open forms.
 | **Prompt** | The request itself. |
 
 - **+ Add routine** (by the list header) makes a new one, selects it, and focuses its name.
+- **Run routine** (green, in the detail pane) runs it right now on the panel — handy for testing one
+  as you write it. If you have unsaved edits it saves first, so it always runs what's on screen.
 - **Delete routine** (in the detail pane) removes it after a confirmation that names it. Deleting a
   routine does not touch tiles that referenced it — those simply report "routine not found" until
   you point them elsewhere.

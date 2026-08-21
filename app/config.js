@@ -578,7 +578,8 @@
     const profiles = ((config.settings || {}).aiProfiles) || [];
     return ''
       + '<div class="rtDetailHead"><div class="sectitle" style="margin:0">Edit routine</div>'
-      + '<button id="rtdDelete" type="button" class="danger">Delete routine</button></div>'
+      + '<div class="rtHeadBtns"><button id="rtdDelete" type="button" class="danger">Delete routine</button>'
+      + '<button id="rtdRun" type="button" class="rtRun">Run routine</button></div></div>'
       + '<div class="rtField"><label>Name</label><input id="rtdName" placeholder="Routine name" value="' + esc(r.name || '') + '"></div>'
       + '<div class="rtField"><label>AI Chat page</label>'
       + '<select id="rtdPage">' + pages.map(g => '<option value="' + g.id + '" ' + (g.id === r.appPageId ? 'selected' : '') + '>' + esc(g.name || '(unnamed page)') + '</option>').join('') + '</select></div>'
@@ -674,6 +675,21 @@
       };
       const mode = document.getElementById('rtdMode');
       if (mode) mode.onchange = e => { const r = curRoutine(); if (r) { r.mode = e.target.value; markDirty(); } };
+      const run = document.getElementById('rtdRun');
+      if (run) run.onclick = async () => {
+        const r = curRoutine(); if (!r) return;
+        if (!String(r.prompt || '').trim()) { setState('add a prompt before running this routine', 'dirty'); return; }
+        // Run what's on screen: the routine runs from main's config, so commit pending edits first.
+        // A brand-new routine only reaches main once saved, so this is required, not just tidy.
+        if (dirty) { const ok = await doSave(); if (!ok) return; }
+        run.disabled = true;
+        try {
+          const res = await configApi.runRoutine(r.id);
+          if (res && res.ok) setState('▶ running “' + (res.name || r.name || 'routine') + '”' + (res.page ? ' on ' + res.page : '') + ' — check the panel', 'saved');
+          else setState((res && res.error) || 'could not run that routine', 'dirty');
+        } catch (e) { setState('could not run that routine', 'dirty'); }
+        finally { run.disabled = false; }
+      };
       const del = document.getElementById('rtdDelete');
       if (del) del.onclick = () => {
         const r = curRoutine(); if (!r) return;

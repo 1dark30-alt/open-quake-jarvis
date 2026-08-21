@@ -3289,6 +3289,17 @@ app.whenReady().then(async () => {
   // Per-backend permission modes for the Routines tab's Mode picker. Read straight from each
   // backend host's adapter (the same list the panel's Mode button shows) so the editor never
   // duplicates the mode presets. Chat-only backends (owui/api) report [] and get no Mode picker.
+  // Run routine NOW from the editor's Routines tab. The editor saves first when dirty, so main's
+  // config already holds the on-screen version by the time this fires. resolveRoutine gives the
+  // editor a yes/no (e.g. no AI Chat page, empty prompt) to show in its status line; runRoutine does
+  // the actual work and shows its own notice on the panel.
+  ipcMain.handle('runRoutine', (e, id) => {
+    if (!isFrom(e, configWin)) return { ok: false, error: 'not authorized' };
+    const r = routines.resolveRoutine(String(id || ''), { routines: (config.settings || {}).routines, grids: config.grids });
+    if (!r.ok) return { ok: false, error: r.error };
+    try { runRoutine(String(id || '')); } catch (err) { return { ok: false, error: err.message }; }
+    return { ok: true, name: r.routine.name || '', page: ((config.grids || []).find(g => g.id === r.pageId) || {}).name || '' };
+  });
   ipcMain.handle('getVoiceModes', (e) => {
     if (!isFrom(e, configWin)) return {};
     const modesFor = host => { try { return (host.handlers.getState().meta.modes) || []; } catch (er) { return []; } };
