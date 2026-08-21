@@ -5,7 +5,7 @@ What the commercial package advertises versus what open-quake ships. Comparison 
 plus their [Kickstarter](https://www.kickstarter.com/projects/decokee/decokee-quake-the-ultimate-desktop-ai-copilot)
 and [AI-copilot](https://www.decokee.com/pages/quake-ai-copilot) pages (as advertised 2026-08),
 cross-checked against a teardown of the installed DK-Suite (v0.4.69, unpacked Electron); the
-open-quake side is current `main` (v0.5.9). This is the running list of what they have that we
+open-quake side is the current release (v0.5.9). This is the running list of what they have that we
 don't — update it when either side changes.
 
 > open-quake is an independent community project, not affiliated with DECOKEE — see the
@@ -25,6 +25,7 @@ don't — update it when either side changes.
 | OpenClaw integration ("run your favorite OpenClaw tasks with one tap" — via the OpenAI API server-side) | open-quake runs **real agent sessions natively** — Claude Code, Codex, Copilot — with tools, touch approvals, your own plan; no intermediary service. (Their one-tap *saved routines* idea is a genuine gap — see Missing.) |
 | System monitor (real-time CPU/memory/network) | The **System Monitor** app: live CPU, GPU, RAM, disk, network, battery. |
 | Global mic mute (system-level, one tap) | Knob single-click defaults to **mute**; the Meeting app adds per-call mute/video for Zoom and Teams. |
+| AI-generated shortcut panels ("hold the knob, say 'create a shortcut set for Photoshop masking'") | Shipped in v0.5.9: the **Panel Builder** profile — say what you want on your panel and it **builds the page from speech**: validated keystroke tiles (full punctuation-shortcut support), refine or replace by voice, new page lands in the editor for review. Runs on **your own AI backends** — no credits. |
 | Smart home hub (use-case example) | First-class **Home Assistant integration**: entity tiles, real dashboards, MDI icons. |
 | Stock dashboard / expense automation / 3D-printer control (use-case examples) | Web-dashboard pages + shell/macro tiles + HA cover the same ground generically. |
 | LED ring status for recording/translation/AI states | RGB ring is theme-driven and state-driven (listening/thinking/speaking/approval), fully configurable. |
@@ -32,12 +33,6 @@ don't — update it when either side changes.
 | Credit packs / subscriptions | Nothing metered. Costs are only what your own keys/servers cost. |
 | 9 Smart Profiles (knob-switchable "modes") | Teardown: their 9 "profiles" are **page layouts** (Discord/MeetAI/SysView/AI Chat/Music/Clock/…) — already open-quake **pages** with the knob selector and per-page hotkeys. The real feature inside their AI Chat — named prompt modes (theirs: 6, Chinese-only) — **shipped as AI Profiles** (PR #23): 9 editable English instruction presets on all five AI Voice backends, switchable from the panel's full-screen Profile picker, remembered per page. |
 | Wallpapers / screensaver ("Vivid" — teardown: a manually-selected crossfading image/video page, **no idle detection**) | **[Screensaver](screensaver.md)** (PR #24): five built-in live-drawn scenes (Waves, Starfield, Lava lamp, Fireflies, Flurry), your own photos (slideshow or scrapbook **collage**) and videos in separate folders, downloadable loops in [community-wallpapers](../community-wallpapers), and — theirs can't — **idle auto-start** (default 30 min) that wakes back to exactly the page you left. |
-
-## 🔨 In development
-
-| Feature | Status |
-|---|---|
-| **AI-generated shortcut panels** (their pitch: hold the knob, say "create a shortcut set for Photoshop masking" — the AI generates a custom control set, no manual macro programming) | **In progress.** Builds on the two halves open-quake already has: AI routing (CLI agents / OWUI / any endpoint, no credits) and pages-as-JSON tile grids with `key`-type shortcut tiles — a "Generate panel with AI" flow: prompt → validated tile JSON → a new page for review. |
 
 ## ❌ Missing (the actual todo)
 
