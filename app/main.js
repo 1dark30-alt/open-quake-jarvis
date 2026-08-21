@@ -49,6 +49,7 @@ const haClient = require('./haClient');       // Global HA cache (registries + d
 const touchSetup = require('./touchSetup');   // Bind a touchscreen to its physical display via tabcal.exe (Windows)
 const meetingControl = require('./meetingControl');   // Zoom/Teams call-control keystrokes (Meeting app page)
 const { createMeetingRecorder } = require('./meetingRecorder'); // hidden-window meeting recorder (mic + system loopback -> WAV)
+const { createMeetingHighlights } = require('./meetingHighlights'); // mid-meeting highlight spans -> the recording's sidecar
 const { createSlideCapture } = require('./slideCapture');       // hidden-window slide capture (getDisplayMedia -> screenshots)
 const { createLucidDictation } = require('./lucidtypeDictation'); // hidden-window LucidType dictation (mic + VAD -> Wyoming STT -> text)
 const lucidWyoming = require('./claudevoice-wyoming');          // Wyoming STT client (transcribe) for dictation
@@ -92,6 +93,7 @@ let firstRun = false;     // set by loadConfig when there was no prior config (f
 let micState = false;     // current device mic state (LED follows it)
 let meetingRecorder = null;   // hidden-window meeting recorder (created once the panel server is up)
 let slideCapture = null;      // hidden-window slide capture controller (created alongside the recorder)
+let meetingHighlights = null; // mid-meeting highlight spans (created alongside the recorder)
 let lucidDictation = null;    // hidden-window LucidType dictation controller (created alongside the recorder)
 let lucidApplyFocusProc = '';  // foreground process captured at dictation start, so Apply can restore focus in software mode
 const completedRecordings = new Set();   // basenames whose finalize (header patch) has finished — the only safe time to rename
@@ -1374,7 +1376,7 @@ async function onMeetingActionRequest(platform, action) {
 // Settings live under config.settings.meeting (global, like config.settings.monitor) so auto-record
 // works regardless of which app the panel is showing — the meeting page's per-grid options only
 // exist while it's the active app, which is useless for background recording.
-const MEETING_DEFAULTS = { folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '', joplinEnabled: false, joplinUrl: '', joplinToken: '', joplinNotebook: 'NW Pipe', slideCaptureEnabled: false, slideAutoStartOnSelect: false, slideNotifications: true, slideHotkeyToggle: 'Ctrl+Alt+S', slideHotkeySelect: 'Ctrl+Alt+W', slideHotkeyManual: 'Ctrl+Alt+C', slideAppFilter: '', slideIdleStopMin: 30 };
+const MEETING_DEFAULTS = { folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '', joplinEnabled: false, joplinUrl: '', joplinToken: '', joplinNotebook: 'NW Pipe', slideCaptureEnabled: false, slideAutoStartOnSelect: false, slideNotifications: true, slideHotkeyToggle: 'Ctrl+Alt+S', slideHotkeySelect: 'Ctrl+Alt+W', slideHotkeyManual: 'Ctrl+Alt+C', slideAppFilter: '', slideIdleStopMin: 30, highlightEnabled: false, panelsOpen: '' };
 function meetingSettings() { return Object.assign({}, MEETING_DEFAULTS, (config.settings || {}).meeting || {}); }
 // Open WebUI connection (config.settings.owui, edited on the Auth tab): shared by the meeting
 // Analysis-AI backend and the owui-voice panel app. apiKey is a secret — encrypted at rest by
@@ -1601,7 +1603,17 @@ function meetingStateForPanel() {
   ensureVolumeWatcher();       // keeps the persistent volume watcher alive while the panel polls
   st.volume = sysVolCache;     // 0-100, or null when unavailable (panel shows "—")
   st.slide = slideCapture ? slideCapture.getState() : { enabled: false };   // drives the slide-capture column
+  st.highlight = meetingHighlights ? meetingHighlights.getState() : { enabled: false };   // drives the highlight column
+  st.panelsOpen = m.panelsOpen || '';   // which utility columns to restore on page load
   return st;
+}
+// Panel remote for mid-meeting highlights (start/stop/cancel), reached over HTTP via sysserver.
+function onHighlightRequest(cmd) {
+  if (!meetingHighlights) return { ok: false, error: 'highlights unavailable' };
+  if (cmd === 'start') return { ok: true, state: meetingHighlights.start() };
+  if (cmd === 'stop') return { ok: true, state: meetingHighlights.stop() };
+  if (cmd === 'cancel') return { ok: true, state: meetingHighlights.cancel() };
+  return { ok: false, error: 'unknown highlight command: ' + cmd };
 }
 // Panel remote for slide capture (windows/select/start/stop/manual), reached over HTTP via sysserver.
 async function onSlideRequest(cmd, arg) {
@@ -1620,7 +1632,19 @@ function onMeetingRecordRequest(cmd, arg) {
   if (cmd === 'stop') return { ok: true, state: meetingRecorder.stop('manual') };
   if (cmd === 'state') return { ok: true, state: meetingStateForPanel() };
   if (cmd === 'setMic') { setMeetingMic(arg); return { ok: true, state: meetingStateForPanel() }; }
+  if (cmd === 'setPanels') { setMeetingPanels(arg); return { ok: true, state: meetingStateForPanel() }; }
   return { ok: false, error: 'unknown record command: ' + cmd };
+}
+// Which utility columns the meeting page has open, remembered across app restarts. It can't live in
+// the page's localStorage: the panel server binds an ephemeral port (listen(0)), so the origin —
+// and with it any web storage — is new on every launch.
+const PANEL_KEYS = ['ctl', 'slide', 'hl'];
+function setMeetingPanels(csv) {
+  const open = String(csv || '').split(',').map(s => s.trim()).filter(s => PANEL_KEYS.includes(s));
+  if (!config.settings) config.settings = {};
+  if (!config.settings.meeting) config.settings.meeting = {};
+  config.settings.meeting.panelsOpen = open.join(',');
+  saveConfig();
 }
 function setMeetingMic(label) {
   if (!config.settings) config.settings = {};
@@ -1660,6 +1684,15 @@ function writeOutlookMeetingInfo(wavName) {   // wavName = basename (recorder st
       if (!info) { console.log('[meeting] calendar: no meeting scheduled now — no info file'); return; }
       info = fixNames(info);
       const dest = path.join(resolveMeetingFolders().unprocessed, wavName.replace(/\.wav$/i, '') + '.json');
+      // The calendar lookup is async and can land after highlights were already flushed to this
+      // same sidecar (short recording, or a slow Outlook/Graph call). Carry any spans across so
+      // the later writer never wins by wiping the other's field.
+      try {
+        if (fs.existsSync(dest)) {
+          const prior = JSON.parse(fs.readFileSync(dest, 'utf8')) || {};
+          if (Array.isArray(prior.highlights) && prior.highlights.length) info.highlights = prior.highlights;
+        }
+      } catch (e) { /* unreadable prior sidecar — the fresh calendar info still wins */ }
       fs.writeFileSync(dest, JSON.stringify(info, null, 2));
       console.log('[meeting] meeting info saved: ' + path.basename(dest) + ' (' + (info.subject || '') + ')');
       // If the lookup completed after a short recording already FINISHED (onRecordingComplete ran
@@ -2642,7 +2675,7 @@ app.whenReady().then(async () => {
       onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(),
       getMeetingState: meetingStateForPanel, onMeetingRecord: onMeetingRecordRequest,
       onMeetingLibrary: onMeetingLibraryRequest, resolveMeetingAudio: resolveMeetingAudioPath,
-      onSlide: onSlideRequest,
+      onSlide: onSlideRequest, onHighlight: onHighlightRequest,
       getLucidState: lucidStateForPanel, onLucidDictation: onLucidDictationRequest,
       onLucidApply: lucidApply, onLucidEdit: onLucidEditRequest, onLucidSetMic: onLucidSetMicRequest,
       onLucidCleanup: onLucidCleanupRequest, onLucidRewrite: onLucidRewriteRequest,
@@ -2683,6 +2716,14 @@ app.whenReady().then(async () => {
     const haUrl = configureHaSchedule();
     console.log('SystemView + Music on http://127.0.0.1:' + serverPort + (haUrl ? ' · HA Schedule -> ' + haUrl : ''));
 
+    // Highlights ride the recorder's state edges (reset on start, auto-close + flush on stop), so
+    // build them first — the recorder's onState below hands every change straight over.
+    meetingHighlights = createMeetingHighlights({
+      resolveFolders: resolveMeetingFolders,
+      resolveSettings: meetingSettings,
+      log: msg => console.log('[meeting] ' + msg),
+    });
+
     // Meeting recorder: hidden capture window on its OWN session partition (persist:recorder) with
     // the loopback handler registered ONLY there (never the shared dashboards session). Created once
     // the server is up so it can load the served /recorder page from a trusted local origin.
@@ -2703,6 +2744,10 @@ app.whenReady().then(async () => {
         return st => {
           if (st.recording && !wasRecording && st.file) { try { writeOutlookMeetingInfo(st.file); } catch (e) {} }
           if (!st.recording && wasRecording && slideCapture) { try { slideCapture.onRecordingStopped(); } catch (e) {} }
+          // Runs on both edges: arms the span list against this recording, and on the stopping
+          // edge auto-closes + writes the sidecar. Synchronous, so it lands before the stream-close
+          // callback renames that sidecar in appendMeetingNameToRecording.
+          if (meetingHighlights) { try { meetingHighlights.onRecordingState(st); } catch (e) {} }
           wasRecording = !!st.recording;
         };
       })(),

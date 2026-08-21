@@ -90,6 +90,7 @@ let server = null, onMedia = null, onLaunch = null, getGridTiles = null, getAppC
 let getMeetingState = null, onMeetingRecord = null;   // meeting recorder: panel poller + start/stop/setMic remote
 let onMeetingLibrary = null, resolveMeetingAudio = null;   // recordings library + transcription/analysis remotes
 let onSlide = null;   // slide capture: window list / select / start / stop / manual remote
+let onHighlight = null;   // mid-meeting highlights: start / stop / cancel remote
 let getLucidState = null, onLucidDictation = null, onLucidApply = null, onLucidEdit = null, onLucidSetMic = null;   // LucidType dictation: panel poller + start/stop + apply + edit-sync + on-panel mic pick
 let onLucidCleanup = null, onLucidRewrite = null, onLucidReview = null, onLucidSetMode = null;   // LucidType cleanup/rewrite (Phase 2): run + review apply/refine/cancel + rewrite-mode pick
 const lucidSubscribers = new Set();   // open SSE responses for the LucidType page (pushed by main via lucidBroadcast)
@@ -846,11 +847,29 @@ async function handler(req, res) {
     }
     return json(res, result);
   }
+  // Mid-meeting highlights: start / stop the span in progress, or clear it. GET like the slide and
+  // recorder remotes; the state itself rides in /meeting-state so the column polls with everything else.
+  if (url === '/highlight/start' || url === '/highlight/stop' || url === '/highlight/cancel') {
+    const cmd = url.slice('/highlight/'.length);
+    let result = { ok: false, error: 'not wired' };
+    if (typeof onHighlight === 'function') {
+      try { result = await onHighlight(cmd); } catch (e) { result = { ok: false, error: e.message || 'highlight command failed' }; }
+    }
+    return json(res, result);
+  }
   if (url === '/meeting-record/start' || url === '/meeting-record/stop') {
     const cmd = url.endsWith('/start') ? 'start' : 'stop';
     let result = { ok: false, error: 'not wired' };
     if (typeof onMeetingRecord === 'function') {
       try { result = await onMeetingRecord(cmd); } catch (e) { result = { ok: false, error: e.message || 'record command failed' }; }
+    }
+    return json(res, result);
+  }
+  if (url.indexOf('/meeting-set-panels/') === 0) {
+    const csv = decodeURIComponent(url.slice('/meeting-set-panels/'.length));
+    let result = { ok: false, error: 'not wired' };
+    if (typeof onMeetingRecord === 'function') {
+      try { result = await onMeetingRecord('setPanels', csv); } catch (e) { result = { ok: false, error: e.message || 'set-panels failed' }; }
     }
     return json(res, result);
   }
@@ -919,6 +938,7 @@ function start(opts) {
   getMeetingState = opts.getMeetingState || null;
   onMeetingRecord = opts.onMeetingRecord || null;
   onSlide = opts.onSlide || null;
+  onHighlight = opts.onHighlight || null;
   onMeetingLibrary = opts.onMeetingLibrary || null;
   resolveMeetingAudio = opts.resolveMeetingAudio || null;
   getLucidState = opts.getLucidState || null;

@@ -47,12 +47,49 @@ function sanitizeSubjectFolder(subject) {
   return s.replace(/^-+|-+$/g, '');
 }
 
+// Mid-meeting highlights → a prompt block, or null when the recording has none. The spans are
+// stored as ms offsets from the recording's start; the diarizer reports segment start/end as float
+// SECONDS from the same origin (docs/meetings-api.md), so converting here means the model compares
+// like with like. mm:ss labels ride along so a human reading the notes can find the moment.
+//
+// The instruction to emit a Highlights section lives HERE and not only in meeting-analysis-prompt.md
+// because main prefers the user's editable copy of that file when one exists — anyone who ever
+// customized their prompt would otherwise silently never get the section.
+function highlightsBlock(metaText) {
+  if (!metaText) return null;
+  let spans;
+  try { spans = (JSON.parse(metaText) || {}).highlights; } catch (e) { return null; }
+  if (!Array.isArray(spans) || !spans.length) return null;
+  const clock = ms => {
+    const t = Math.max(0, Math.round(ms / 1000));
+    const m = Math.floor(t / 60), s = t % 60;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  };
+  const rows = spans
+    .filter(h => h && Number.isFinite(h.startMs) && Number.isFinite(h.endMs) && h.endMs > h.startMs)
+    .map((h, i) => '  ' + (i + 1) + '. ' + clock(h.startMs) + '–' + clock(h.endMs) +
+      '  (seconds ' + (h.startMs / 1000).toFixed(1) + '–' + (h.endMs / 1000).toFixed(1) + ')');
+  if (!rows.length) return null;
+  return '\n\nHighlighted moments follow. During the meeting the user flagged these spans as worth\n' +
+    'calling out. Times are seconds from the start of the recording — the same origin as the\n' +
+    "diarizer's segment start/end, so match each span against the segments it covers.\n\n" +
+    rows.join('\n') +
+    '\n\nBecause this input is present, add a "## Highlights" section to the document, placed\n' +
+    'immediately after ## Summary. Give one bullet per span, in order, saying what was actually\n' +
+    'being discussed there and why it matters, attributed by name, with the mm:ss span in\n' +
+    'parentheses. Cover every span. If a span holds nothing substantive, say so plainly rather\n' +
+    'than inventing content. Highlights supplement the other sections — a decision or action item\n' +
+    'inside a highlighted span still belongs in Decisions or Action Items as well.';
+}
+
 // Slim a diarizer response down to `Speaker: text` lines for the OWUI backend — local models
 // can't afford the raw JSON's timestamps, speaker_report, and cluster scores (~3-4x the tokens).
 // Consecutive segments from the same speaker merge into one line. Unparseable or segment-less
 // JSON THROWS: silently analyzing a raw blob the model can't fit would produce a confidently
 // wrong summary, and that must never look like success.
-function slimTranscript(transcriptJson) {
+// `stamps` prefixes each merged turn with its [m:ss] start — dead weight normally, but highlights
+// need something to align to, so the OWUI path turns them on for those runs only.
+function slimTranscript(transcriptJson, stamps) {
   let obj;
   try { obj = JSON.parse(transcriptJson); } catch (e) { throw new Error('transcript is not valid JSON: ' + e.message); }
   const segs = obj && Array.isArray(obj.segments) ? obj.segments : null;
@@ -64,10 +101,17 @@ function slimTranscript(transcriptJson) {
     if (!text) continue;
     const speaker = String(s.speaker || '').trim() || 'UNKNOWN';
     if (merged.length && merged[merged.length - 1].speaker === speaker) merged[merged.length - 1].text += ' ' + text;
-    else merged.push({ speaker, text });
+    else merged.push({ speaker, text, start: Number.isFinite(s.start) ? s.start : null });
   }
   if (!merged.length) throw new Error('transcript has no spoken segments');
-  return merged.map(l => l.speaker + ': ' + l.text).join('\n');
+  return merged.map(l => (stamps && l.start !== null ? '[' + clockSec(l.start) + '] ' : '') + l.speaker + ': ' + l.text).join('\n');
+}
+
+// m:ss from float seconds — the diarizer's unit for segment start/end (docs/meetings-api.md).
+function clockSec(sec) {
+  const t = Math.max(0, Math.round(sec));
+  const m = Math.floor(t / 60), s = t % 60;
+  return m + ':' + (s < 10 ? '0' : '') + s;
 }
 
 function createMeetingAnalyzer(deps) {
@@ -167,6 +211,8 @@ function createMeetingAnalyzer(deps) {
       const vttPath = findCompanionVtt(dir, base);
       if (vttPath) { vttText = await fsp.readFile(vttPath, 'utf8'); log('companion VTT found: ' + path.basename(vttPath)); }
     } catch (e) { log('companion VTT unreadable: ' + e.message); }
+    // Mid-meeting highlights ride inside that same sidecar (meetingHighlights writes them there).
+    const hlText = highlightsBlock(metaText);
 
     // The CLI trio gets the raw diarizer JSON in one combined prompt (big context windows),
     // plus the metadata and VTT when present; OWUI gets the prompt as the system message and a
@@ -174,11 +220,12 @@ function createMeetingAnalyzer(deps) {
     // can't afford the raw JSON's 3-4x token overhead, and a whole VTT even less.
     let markdown;
     if (ai === 'owui') {
-      markdown = await runOwui({ prompt, transcriptJson: transcript, metaText });
+      markdown = await runOwui({ prompt, transcriptJson: transcript, metaText, hlText });
     } else {
       const input = prompt
         + (metaText ? '\n\nMeeting metadata JSON follows (calendar info — subject, organizer, attendees):\n\n' + metaText : '')
         + (vttText ? '\n\nTeams live-caption VTT transcript follows (speaker-identity aid only — never a replacement for the diarizer text):\n\n' + vttText : '')
+        + (hlText || '')
         + '\n\nDiarizer JSON follows:\n\n' + transcript;
       markdown = ai === 'codex' ? await runCodex(input) : ai === 'copilot' ? await runCopilot(input) : await runClaude(input);
     }
@@ -381,13 +428,13 @@ function createMeetingAnalyzer(deps) {
   // Open WebUI analysis: one non-streaming chat completion against the shared Auth-tab
   // connection (settings.owui). The analysis prompt rides as the system message, the slimmed
   // transcript as the user message. Every failure maps to a wording that names the fix.
-  async function runOwui({ prompt, transcriptJson, metaText }) {
+  async function runOwui({ prompt, transcriptJson, metaText, hlText }) {
     const cfg = resolveOwui() || {};
     const ep = owuiClient.normalizeOwuiUrl(cfg.url);
     if (!ep) throw new Error("Open WebUI is not configured — set the URL on the editor's Auth tab");
     const model = String(cfg.model || '').trim();
     if (!model) throw new Error("no Open WebUI model set — pick a default model on the editor's Auth tab");
-    const slim = slimTranscript(transcriptJson);
+    const slim = slimTranscript(transcriptJson, !!hlText);   // highlights need turn timestamps to align to
     const body = {
       model,
       stream: false,
@@ -395,7 +442,8 @@ function createMeetingAnalyzer(deps) {
         { role: 'system', content: prompt },
         { role: 'user', content:
           (metaText ? 'Meeting metadata JSON follows (calendar info — subject, organizer, attendees):\n\n' + metaText + '\n\n' : '')
-          + 'Transcript follows:\n\n' + slim },
+          + (hlText ? hlText.trim() + '\n\n' : '')
+          + 'Transcript follows' + (hlText ? ' (each turn prefixed with its [m:ss] start)' : '') + ':\n\n' + slim },
       ],
     };
     let res;
@@ -461,4 +509,4 @@ function createMeetingAnalyzer(deps) {
   return { start, getState, result };
 }
 
-module.exports = { createMeetingAnalyzer, slimTranscript };
+module.exports = { createMeetingAnalyzer, slimTranscript, highlightsBlock };

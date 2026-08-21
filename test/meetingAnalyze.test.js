@@ -9,7 +9,7 @@ const { PassThrough } = require('node:stream');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createMeetingAnalyzer, slimTranscript } = require('../app/meetingAnalyze');
+const { createMeetingAnalyzer, slimTranscript, highlightsBlock } = require('../app/meetingAnalyze');
 const { normalizeOwuiUrl } = require('../app/owuiClient');
 
 // Fake child process: capture stdin, emit stdout, exit with a code on the next tick.
@@ -586,4 +586,62 @@ test('companion metadata + VTT ride along in the CLI input; legacy name never se
   s.an.start('m.json');   // legacy plain name: <base>.json IS the transcript — no fake metadata
   await drained(s.an);
   assert.doesNotMatch(s.spawns[2].stdin, /Meeting metadata JSON follows/);
+});
+
+// ---- mid-meeting highlights ----
+
+test('highlightsBlock converts ms spans to seconds + mm:ss, and asks for the section', () => {
+  const block = highlightsBlock(JSON.stringify({
+    subject: 'Weekly sync',
+    highlights: [{ startMs: 30000, endMs: 75000 }, { startMs: 605000, endMs: 640500 }],
+  }));
+  assert.match(block, /0:30–1:15/);
+  assert.match(block, /seconds 30\.0–75\.0/);
+  assert.match(block, /10:05–10:41/);   // 640.5s rounds to 641 = 10:41
+  assert.match(block, /seconds 605\.0–640\.5/);
+  assert.match(block, /"## Highlights" section/);
+  assert.match(block, /immediately after ## Summary/);
+});
+
+test('highlightsBlock returns null for absent, empty, or malformed spans', () => {
+  assert.equal(highlightsBlock(null), null);
+  assert.equal(highlightsBlock('{ not json'), null);
+  assert.equal(highlightsBlock(JSON.stringify({ subject: 'x' })), null);
+  assert.equal(highlightsBlock(JSON.stringify({ highlights: [] })), null);
+  // a reversed or non-numeric span is dropped; a block of nothing is no block at all
+  assert.equal(highlightsBlock(JSON.stringify({ highlights: [{ startMs: 900, endMs: 100 }] })), null);
+  assert.equal(highlightsBlock(JSON.stringify({ highlights: [{ startMs: 'a', endMs: 'b' }] })), null);
+});
+
+test('highlights ride along in the CLI input when the sidecar carries them', async () => {
+  const s = setup(() => ({ stdout: 'notes', code: 0 }), 'claude');
+  fs.writeFileSync(path.join(s.processed, 'h-diarizer-response.json'), JSON.stringify({ segments: [] }));
+  fs.writeFileSync(path.join(s.processed, 'h.json'), JSON.stringify({
+    subject: 'Weekly sync', highlights: [{ startMs: 12000, endMs: 48000 }],
+  }));
+  s.an.start('h-diarizer-response.json');
+  await drained(s.an);
+  assert.match(s.spawns[0].stdin, /Highlighted moments follow/);
+  assert.match(s.spawns[0].stdin, /0:12–0:48/);
+});
+
+test('a sidecar without highlights adds no highlight block', async () => {
+  const s = setup(() => ({ stdout: 'notes', code: 0 }), 'claude');
+  fs.writeFileSync(path.join(s.processed, 'p-diarizer-response.json'), JSON.stringify({ segments: [] }));
+  fs.writeFileSync(path.join(s.processed, 'p.json'), JSON.stringify({ subject: 'Weekly sync' }));
+  s.an.start('p-diarizer-response.json');
+  await drained(s.an);
+  assert.match(s.spawns[0].stdin, /Meeting metadata JSON follows/);
+  assert.doesNotMatch(s.spawns[0].stdin, /Highlighted moments follow/);
+});
+
+test('slimTranscript stamps turns only when asked', () => {
+  const json = JSON.stringify({ segments: [
+    { speaker: 'T.J. Schmitz', start: 65.4, end: 70, text: 'first' },
+    { speaker: 'T.J. Schmitz', start: 70, end: 72, text: 'still me' },
+    { speaker: 'Speaker A', start: 130.9, end: 134, text: 'their turn' },
+  ] });
+  assert.equal(slimTranscript(json), 'T.J. Schmitz: first still me\nSpeaker A: their turn');
+  // stamped form keeps the FIRST segment's start for a merged run
+  assert.equal(slimTranscript(json, true), '[1:05] T.J. Schmitz: first still me\n[2:11] Speaker A: their turn');
 });
