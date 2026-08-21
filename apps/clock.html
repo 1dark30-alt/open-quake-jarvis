@@ -92,15 +92,19 @@
   #corner .cdate { display: block; font-size: clamp(13px, 4vh, 48px); color: var(--fg); text-shadow: var(--digit-glow); font-weight: 600; letter-spacing: .04em; }
   #corner .cdow  { display: block; font-size: clamp(12px, 3.4vh, 40px); color: var(--fg); text-shadow: var(--digit-glow); font-weight: 700; letter-spacing: .18em; }
 
-  /* ---- weather, bottom-left corner (off by default; see App options) ---- */
-  #weather { position: fixed; bottom: clamp(8px, 3vh, 30px); left: clamp(12px, 3vw, 44px);
-    display: none; align-items: center; gap: clamp(6px, 1.4vw, 16px); }
+  /* ---- weather, bottom-left corner (off by default; see App options) ----
+     Sized per the panel's own scale, not the corner date's (that one reads as
+     metadata on purpose). Temp is the headline here: bold, glowing, body-scale
+     like the rest of this appliance's readable-at-arm's-length text. */
+  #weather { position: fixed; bottom: calc(clamp(8px, 3vh, 30px) + 20px); left: clamp(12px, 3vw, 44px);
+    display: none; align-items: center; gap: clamp(10px, 2vw, 22px); }
   #weather.show { display: flex; }
-  #weather .wicon { font-size: clamp(22px, 6.4vh, 60px); line-height: 1; }
-  #weather .wtext { text-align: left; line-height: 1.16; }
-  #weather .wcity { display: block; font-size: clamp(13px, 3.6vh, 34px); color: var(--fg); text-shadow: var(--digit-glow); font-weight: 600; letter-spacing: .02em; }
-  #weather .wdesc { display: block; font-size: clamp(11px, 2.4vh, 24px); color: var(--label); font-weight: 600; letter-spacing: .05em; }
-  body.light #weather .wcity { color: #26323d; text-shadow: none; }
+  #weather .wicon { font-size: clamp(45.6px, 12vh, 72px); line-height: 1; }
+  #weather .wtext { text-align: left; line-height: 1.15; }
+  #weather .wtemp { display: block; font-size: clamp(36px, 10.2vh, 62.4px); color: var(--fg); text-shadow: var(--digit-glow); font-weight: 700; letter-spacing: .01em; }
+  #weather .wdesc { display: block; font-size: clamp(19.2px, 5.04vh, 31.2px); color: var(--label); font-weight: 600; letter-spacing: .01em; margin-top: 2px; }
+  #weather .wcity { display: block; font-size: clamp(16.8px, 3.84vh, 24px); color: var(--label); font-weight: 600; letter-spacing: .02em; }
+  body.light #weather .wtemp { color: #26323d; text-shadow: none; }
 
   /* ---- settings ---- */
   #gear { position: fixed; top: 14px; right: 16px; width: 40px; height: 40px; border-radius: 10px;
@@ -194,12 +198,24 @@
     const el = $('#weather'); if (!el) return;
     el.innerHTML = html; el.classList.toggle('show', !!html);
   }
-  async function wxGeocode(city) {
-    const r = await fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&name=' + encodeURIComponent(city));
+  async function wxGeocodeOnce(name) {
+    const r = await fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&name=' + encodeURIComponent(name));
     if (!r.ok) throw new Error('geocode ' + r.status);
-    const j = await r.json();
-    const hit = (j.results || [])[0];
-    return hit ? { lat: hit.latitude, lon: hit.longitude, name: hit.name } : null;
+    const hit = ((await r.json()).results || [])[0];
+    return hit ? { lat: hit.latitude, lon: hit.longitude, name: hit.name, admin1: hit.admin1 || '' } : null;
+  }
+  // Open-Meteo geocodes place NAMES, not postcodes or full addresses. Drop digit-bearing tokens
+  // (postcodes, house numbers) from the locality so a pasted address still resolves:
+  // "London W6 9HA, United Kingdom" -> "London, United Kingdom".
+  function simplifyCity(city) {
+    const parts = String(city).split(',');
+    parts[0] = parts[0].split(/\s+/).filter(w => w && !/\d/.test(w)).join(' ');
+    return parts.map(s => s.trim()).filter(Boolean).join(', ');
+  }
+  async function wxGeocode(city) {
+    let hit = await wxGeocodeOnce(city);
+    if (!hit) { const simpler = simplifyCity(city); if (simpler && simpler !== city) hit = await wxGeocodeOnce(simpler); }
+    return hit;
   }
   async function wxFetch(lat, lon, unit) {
     const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
@@ -217,14 +233,19 @@
         const hit = await wxGeocode(city);
         if (myReq !== wxReq) return;
         if (!hit) { wxGeo = null; wxShow('<span class="wicon">🌍</span><span class="wtext"><span class="wdesc">City not found</span></span>'); return; }
-        wxGeo = { key: city, lat: hit.lat, lon: hit.lon, name: hit.name };
+        wxGeo = { key: city, lat: hit.lat, lon: hit.lon, name: hit.name, admin1: hit.admin1 };
       }
       const cur = await wxFetch(wxGeo.lat, wxGeo.lon, settings.weatherUnit);
       if (myReq !== wxReq) return;
       const [icon, label] = WCODE[cur.weather_code] || ['🌡️', 'Unknown'];
       const temp = Math.round(cur.temperature_2m) + '°' + (settings.weatherUnit === 'c' ? 'C' : 'F');
-      wxShow('<span class="wicon">' + icon + '</span><span class="wtext"><span class="wcity">' + wxGeo.name
-        + '</span><span class="wdesc">' + label + ' · ' + temp + '</span></span>');
+      // Temperature is the headline (bright, bold, glowing — the .wtemp the CSS was built for);
+      // description and city are the supporting lines under it. The old build jammed the temp into
+      // the small uppercase-gray .wdesc, so the one number you glance at read as dim metadata.
+      wxShow('<span class="wicon">' + icon + '</span><span class="wtext">'
+        + '<span class="wtemp">' + temp + '</span>'
+        + '<span class="wdesc">' + label + '</span>'
+        + '<span class="wcity">' + wxGeo.name + (wxGeo.admin1 ? ', ' + wxGeo.admin1 : '') + '</span></span>');
     } catch (e) {
       if (myReq !== wxReq) return;
       wxShow('<span class="wicon">🌡️</span><span class="wtext"><span class="wdesc">Weather unavailable</span></span>');
