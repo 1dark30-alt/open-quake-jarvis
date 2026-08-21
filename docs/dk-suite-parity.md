@@ -16,22 +16,22 @@ don't — update it when either side changes.
 | DK-Suite advertises | open-quake |
 |---|---|
 | AI Chat (credit-metered, 100 credits/mo free) | One **AI Voice** app, five backends, **no credits**: real **Claude Code / Codex / Copilot agent sessions** (tools, approvals, your existing plan), **Open WebUI** chat against your own models, or **any OpenAI-compatible API by key** (OpenAI, DeepSeek, OpenRouter, LiteLLM/Ollama). |
+| OpenClaw integration ("run your favorite OpenClaw tasks with one tap" — via the OpenAI API server-side) | open-quake runs **real agent sessions natively** — Claude Code, Codex, Copilot — with tools, touch approvals, your own plan; no intermediary service. (Their one-tap *saved routines* idea is a genuine gap — see Missing.) |
 | Voice commands (press-and-speak) | Knob **hold-to-talk** everywhere + tap-to-toggle conversations; your own local Whisper STT (tts-sst), no cloud dependency. |
 | AI Meeting Assistant (record → transcribe → summarize) | Meeting app: stereo-split recording, auto start/stop, **speaker-diarized transcripts** (self-hosted), attendee-guided speaker ID via Outlook calendar, AI notes (summary/decisions/actions), per-meeting filing, **Joplin export**. Materially deeper than the advertised feature. |
 | Translation (Silver+ paid tiers) | **Live Translate**: word-by-word streaming captions (Soniox, ~$0.18/hr) or bring-your-own AI key (DeepSeek ≈ $0.10/hr, OpenAI, OpenRouter, LiteLLM/Ollama) with cross-sentence context, save-to-file, global hotkey. Not tier-gated. |
 | Instant answers | Any of the AI apps; hold the knob and ask. |
-| Drag-and-drop customization / preset app shortcuts | The PC-side editor: tile grids, merged tiles, per-page apps/dashboards, drag-and-drop, hotkeys. |
-| Music player | Music controller: now-playing, transport, app grid, lyrics. |
-| OpenClaw integration ("run your favorite OpenClaw tasks with one tap" — via the OpenAI API server-side) | open-quake runs **real agent sessions natively** — Claude Code, Codex, Copilot — with tools, touch approvals, your own plan; no intermediary service. (Their one-tap *saved routines* idea is a genuine gap — see Missing.) |
 | System monitor (real-time CPU/memory/network) | The **System Monitor** app: live CPU, GPU, RAM, disk, network, battery. |
 | Global mic mute (system-level, one tap) | Knob single-click defaults to **mute**; the Meeting app adds per-call mute/video for Zoom and Teams. |
-| AI-generated shortcut panels ("hold the knob, say 'create a shortcut set for Photoshop masking'") | Shipped in v0.5.9: the **Panel Builder** profile — say what you want on your panel and it **builds the page from speech**: validated keystroke tiles (full punctuation-shortcut support), refine or replace by voice, new page lands in the editor for review. Runs on **your own AI backends** — no credits. |
+| Drag-and-drop customization / preset app shortcuts | The PC-side editor: tile grids, merged tiles, per-page apps/dashboards, drag-and-drop, hotkeys. |
+| Music player | Music controller: now-playing, transport, app grid, lyrics. |
 | Smart home hub (use-case example) | First-class **Home Assistant integration**: entity tiles, real dashboards, MDI icons. |
 | Stock dashboard / expense automation / 3D-printer control (use-case examples) | Web-dashboard pages + shell/macro tiles + HA cover the same ground generically. |
 | LED ring status for recording/translation/AI states | RGB ring is theme-driven and state-driven (listening/thinking/speaking/approval), fully configurable. |
 | Knob + touchscreen + gestures | Full knob support (rotate/click/double/hold), touch, page selector. |
 | Credit packs / subscriptions | Nothing metered. Costs are only what your own keys/servers cost. |
 | 9 Smart Profiles (knob-switchable "modes") | Teardown: their 9 "profiles" are **page layouts** (Discord/MeetAI/SysView/AI Chat/Music/Clock/…) — already open-quake **pages** with the knob selector and per-page hotkeys. The real feature inside their AI Chat — named prompt modes (theirs: 6, Chinese-only) — **shipped as AI Profiles** (PR #23): 9 editable English instruction presets on all five AI Voice backends, switchable from the panel's full-screen Profile picker, remembered per page. |
+| AI-generated shortcut panels ("hold the knob and say *create a shortcut set for Photoshop masking*") | **[AI panels](ai-panels.md)**: a **Panel Builder** AI Profile — pick it on an AI Voice page, say what you want, and the proposed page is drawn as real tiles for **Accept / Try again / Cancel**. Works on all five backends; Claude and Codex can look up an app's real shortcuts. Every generated page is schema-validated before it can be saved, and anything that would run a shell/AutoHotkey command shows the literal command and needs a second explicit yes. |
 | Wallpapers / screensaver ("Vivid" — teardown: a manually-selected crossfading image/video page, **no idle detection**) | **[Screensaver](screensaver.md)** (PR #24): five built-in live-drawn scenes (Waves, Starfield, Lava lamp, Fireflies, Flurry), your own photos (slideshow or scrapbook **collage**) and videos in separate folders, downloadable loops in [community-wallpapers](../community-wallpapers), and — theirs can't — **idle auto-start** (default 30 min) that wakes back to exactly the page you left. |
 
 ## ❌ Missing (the actual todo)
