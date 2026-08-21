@@ -43,6 +43,8 @@ don't — update it when either side changes.
 | **macOS / Linux support** | Multi-OS: Windows, macOS, Linux | **Large.** The launcher/editor are Electron (portable), but launch/volume/media/loopback-audio/reserved-display code is Windows-specific (README already flags this). Realistic only as a scoped "panel + apps, minus Windows-only extras" port. |
 | **Custom emoji generation** | Speak to generate custom emoji for chat apps (their OpenAI-API feature) | **Gimmick.** No equivalent; listed for completeness. |
 | **Game voice control** | Mentioned in their showcase | **Unclear scope.** Nearest OQ equivalents: global hotkeys, macros, LucidType. Needs a real definition of what theirs does before it's worth chasing. |
+| **Weather on the clock page** | Clock screen shows live weather by city — icon, description, temperature (v0.4.60) | **Small.** OQ already has a Flip Clock app; needs a weather widget (city lookup + icon/description/temp) added to it. |
+| **Device diagnostics panel** | USB/HDMI dual-channel connection check, auto-expands whichever failed (v0.4.67/69) | **Small.** `multiKnob.js` already tracks the knob HID connect/reconnect state; add HDMI-present + touch-HID checks and a status page over that existing state. |
 
 ## 🔮 Their "coming soon" list
 
