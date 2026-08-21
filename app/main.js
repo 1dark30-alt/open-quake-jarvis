@@ -864,6 +864,13 @@ function runRoutine(routineId) {
   const page = (config.grids || []).find(g => g.id === r.pageId) || {};
   const host = voiceHostForBackend((page.options && page.options.backend) || 'claude');
   if (r.routine.profileId) { try { host.handlers.setProfile(r.routine.profileId); } catch (e) {} }
+  // A routine that names a working directory the page isn't already in: restart the session there
+  // first. resolveRoutine only reports a folder when it actually differs and the backend has one,
+  // so this never churns a session needlessly. It DOES end whatever conversation was on the page --
+  // the same thing switching folders on the panel has always done.
+  if (r.folder) {
+    try { host.handlers.sessionStart(r.folder); } catch (e) { console.log('[routine] folder switch failed: ' + e.message); }
+  }
   // speak:true -- the page's own speaker toggle decides whether the stream is actually played.
   let sent = null;
   try { sent = host.handlers.onTurn(r.routine.prompt, true); } catch (e) { console.log('[routine] ' + e.message); }

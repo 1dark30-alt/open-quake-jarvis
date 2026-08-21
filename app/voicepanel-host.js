@@ -258,6 +258,9 @@ function createVoicePanelHost({ appId, storageKey, log, adapter, branding, deps 
       prompt: prompt,
       appPageId: grid.id,
       profileId: (grid.options && grid.options.profilePick) || '',   // the profile this page is on right now
+      // ...and the folder it's in right now, so re-running lands in the same place. Chat-only
+      // backends have no working directory; normalizeRoutine keeps the blank.
+      folder: routinesLib.allowsFolder(grid) ? ((grid.options && grid.options.projectDir) || '') : '',
     });
     if (!routine) return { ok: false, error: 'Nothing to save yet.' };
     config.settings.routines.push(routine);

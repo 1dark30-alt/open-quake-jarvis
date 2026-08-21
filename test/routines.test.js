@@ -38,7 +38,7 @@ test('normalizeRoutine fills a name from the prompt and mints an id', () => {
 
 test('normalizeRoutine keeps a user-given name and existing id', () => {
   const r = normalizeRoutine({ id: 'keepme', name: 'Standup', prompt: 'do the thing', appPageId: 'p1', profileId: 'prof2' }, ids);
-  assert.deepEqual(r, { id: 'keepme', name: 'Standup', prompt: 'do the thing', appPageId: 'p1', profileId: 'prof2' });
+  assert.deepEqual(r, { id: 'keepme', name: 'Standup', prompt: 'do the thing', appPageId: 'p1', profileId: 'prof2', folder: '' });
 });
 
 test('normalizeRoutine rejects an empty prompt — nothing may be saved that would do nothing', () => {
@@ -112,4 +112,54 @@ test('a routine whose prompt was emptied by hand is refused at run time too', ()
 test('a stale profileId is carried through — the host falls back on its own', () => {
   const r = resolveRoutine('r-gone', { routines: ROUTINES, grids: [chat('c1', 'Claude')] });
   assert.equal(r.routine.profileId, 'prof1');
+});
+
+// ---- working directory ----
+// Only claude/codex/copilot pages have one; owui/api are plain chat. A folder is reported to the
+// runner only when it actually differs from where the page already is, so a routine that names the
+// folder you're already in doesn't restart the session (and wipe the conversation) for nothing.
+
+const chatB = (id, name, backend, dir) => ({ id, name, kind: 'app', app: 'ai-voice', options: { backend, projectDir: dir } });
+
+test('normalizeRoutine carries a folder and trims it', () => {
+  const r = normalizeRoutine({ prompt: 'go', folder: '  D:/Github/open-quake  ' }, ids);
+  assert.equal(r.folder, 'D:/Github/open-quake');
+  assert.equal(normalizeRoutine({ prompt: 'go' }, ids).folder, '');
+});
+
+test('a folder that differs from the page is reported so the session restarts there', () => {
+  const list = [{ id: 'r1', prompt: 'build it', appPageId: 'c1', folder: 'D:/Github/open-quake' }];
+  const r = resolveRoutine('r1', { routines: list, grids: [chatB('c1', 'Claude', 'claude', 'D:/Github/other')] });
+  assert.equal(r.ok, true);
+  assert.equal(r.folder, 'D:/Github/open-quake');
+});
+
+test('a folder the page is already in is NOT reported — no needless session restart', () => {
+  const list = [{ id: 'r1', prompt: 'build it', appPageId: 'c1', folder: 'D:/Github/open-quake' }];
+  const r = resolveRoutine('r1', { routines: list, grids: [chatB('c1', 'Claude', 'claude', 'D:/Github/open-quake')] });
+  assert.equal(r.folder, '');
+});
+
+test('a chat-only backend ignores a folder even if one was stored', () => {
+  const list = [{ id: 'r1', prompt: 'summarize', appPageId: 'c1', folder: 'D:/Github/open-quake' }];
+  for (const backend of ['owui', 'api']) {
+    const r = resolveRoutine('r1', { routines: list, grids: [chatB('c1', 'Chat', backend, '')] });
+    assert.equal(r.folder, '', backend + ' should have no folder');
+  }
+});
+
+test('codex and copilot pages do take a folder', () => {
+  const list = [{ id: 'r1', prompt: 'build it', appPageId: 'c1', folder: 'D:/repo' }];
+  for (const backend of ['codex', 'copilot']) {
+    const r = resolveRoutine('r1', { routines: list, grids: [chatB('c1', 'Agent', backend, '')] });
+    assert.equal(r.folder, 'D:/repo', backend + ' should take a folder');
+  }
+});
+
+test('the fallback page decides folder applicability, not the deleted one', () => {
+  const list = [{ id: 'r1', prompt: 'go', appPageId: 'gone', folder: 'D:/repo' }];
+  const r = resolveRoutine('r1', { routines: list, grids: [chatB('c9', 'Open WebUI', 'owui', '')] });
+  assert.equal(r.pageId, 'c9');
+  assert.equal(r.folder, '');            // landed on a chat-only page — the folder is meaningless there
+  assert.match(r.warning, /page is gone/);
 });

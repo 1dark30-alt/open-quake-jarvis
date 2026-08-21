@@ -516,6 +516,20 @@
   function aiChatPagesForPicker() {
     return (config.grids || []).filter(g => g && g.kind === 'app' && g.app === 'ai-voice');
   }
+  // Folder row: only the agent backends have a working directory (Open WebUI and API are plain
+  // chat, and their AI Chat page hides its own Folder row too). Blank = leave the page wherever it
+  // already is; setting one makes the routine switch the page to that folder before it runs.
+  function routineFolderHtml(r, i, pages) {
+    const page = pages.find(g => g.id === r.appPageId) || pages[0];
+    const backend = (page && page.options && page.options.backend) || 'claude';
+    if (['claude', 'codex', 'copilot'].indexOf(backend) === -1) {
+      return `<span class="hint" style="font-size:11px">${esc(page ? (page.name || 'That page') : 'That page')} is chat-only — no folder.</span>`;
+    }
+    return `<div style="display:flex;gap:4px">
+        <input class="rtFolder" data-i="${i}" placeholder="Folder (blank = page's current)" value="${esc(r.folder || '')}" style="flex:1;min-width:0">
+        <button class="rtFolderBrowse" type="button" data-i="${i}" title="Browse">…</button>
+      </div>`;
+  }
   function routineRowsHtml(list) {
     const rows = Array.isArray(list) ? list : [];
     const pages = aiChatPagesForPicker();
@@ -527,6 +541,7 @@
           <input class="rtName" placeholder="Routine name" value="${esc(r.name || '')}">
           <select class="rtPage" title="Which AI Chat page runs this">${pages.map(g => `<option value="${g.id}" ${g.id === r.appPageId ? 'selected' : ''}>${esc(g.name || '(unnamed page)')}</option>`).join('')}</select>
           <select class="rtProfile" title="Optional AI profile"><option value="">(page's current profile)</option>${profiles.map(p => `<option value="${esc(p.id)}" ${p.id === r.profileId ? 'selected' : ''}>${esc(p.name || '(unnamed)')}</option>`).join('')}</select>
+          ${routineFolderHtml(r, i, pages)}
         </div>
         <textarea class="rtPrompt" placeholder="What to ask the AI, e.g. Summarize my unread email and list anything needing a reply" rows="4" style="flex:1;margin-left:8px;font-family:inherit">${esc(r.prompt || '')}</textarea>
         <button class="rtRemove" type="button" data-rm="${i}" title="Remove" style="margin-left:8px">✕</button>
@@ -545,8 +560,23 @@
     function wireRows() {
       bind('.rtName', 'name');
       bind('.rtPrompt', 'prompt');
-      bind('.rtPage', 'appPageId');
       bind('.rtProfile', 'profileId');
+      bind('.rtFolder', 'folder');
+      // Changing the page can change whether a folder applies at all, so this row redraws.
+      host.querySelectorAll('.rtPage').forEach((el, i) => {
+        el.onchange = e => { const l = list(); if (l[i]) { l[i].appPageId = e.target.value; markDirty(); redraw(); } };
+      });
+      host.querySelectorAll('.rtFolderBrowse').forEach(btn => {
+        btn.onclick = async () => {
+          const i = parseInt(btn.getAttribute('data-i'), 10);
+          const picked = await configApi.pickFolder();
+          if (!picked) return;
+          const l = list(); if (!l[i]) return;
+          l[i].folder = picked; markDirty();
+          const inp = host.querySelector(`.rtFolder[data-i="${i}"]`);
+          if (inp) inp.value = picked;
+        };
+      });
       host.querySelectorAll('.rtRemove').forEach(btn => {
         btn.onclick = () => { list().splice(parseInt(btn.getAttribute('data-rm'), 10), 1); markDirty(); redraw(); };
       });
@@ -555,7 +585,7 @@
     const addBtn = document.getElementById('sRoutineAdd');
     if (addBtn) addBtn.onclick = () => {
       const pages = aiChatPagesForPicker();
-      list().push({ id: 'r' + Date.now().toString(36), name: '', prompt: '', appPageId: pages.length ? pages[0].id : '', profileId: '' });
+      list().push({ id: 'r' + Date.now().toString(36), name: '', prompt: '', appPageId: pages.length ? pages[0].id : '', profileId: '', folder: '' });
       markDirty(); redraw();
       const inputs = host.querySelectorAll('.rtName');
       if (inputs.length) inputs[inputs.length - 1].focus();
@@ -2875,7 +2905,7 @@
     // second list under AI Profiles -- that tab is already full.
     const rtHtml = `
       <p class="sectitle">Routines</p>
-      <p class="hint">A routine is a saved request plus which <b>AI Chat</b> page runs it. Put one on a tile (tile type <b>AI Routine</b>) and tapping it switches the panel to that page and sends the request, with the agent's normal tools and approvals. You can also save one straight from the panel: the <b>+ Routine</b> button beside Send on any AI Chat page keeps whatever you just typed or asked for. Remember to Save.</p>
+      <p class="hint">A routine is a saved request plus which <b>AI Chat</b> page — and, for the agent backends, which <b>folder</b> — runs it. Put one on a tile (tile type <b>AI Routine</b>) and tapping it switches the panel to that page and sends the request, with the agent's normal tools and approvals. You can also save one straight from the panel: the <b>+ Routine</b> button beside Send on any AI Chat page keeps whatever you just typed or asked for. Remember to Save.</p>
       <div id="sRoutineRows">${routineRowsHtml((config.settings || {}).routines)}</div>
       <button id="sRoutineAdd" type="button" style="margin-top:10px">+ Add routine</button>`;
     el.innerHTML = `

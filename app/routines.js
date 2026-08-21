@@ -1,7 +1,8 @@
 'use strict';
 // routines.js — saved AI routines (MAIN PROCESS; pure, no electron)
 //
-// A routine is a saved prompt plus where to run it: { id, name, prompt, appPageId, profileId }.
+// A routine is a saved prompt plus where to run it:
+//   { id, name, prompt, appPageId, profileId, folder }
 // They live in config.settings.routines and are referenced BY ID from a `routine` tile, so one
 // routine can sit on several pages and stay editable in one place (Settings window -> Routines tab).
 //
@@ -12,6 +13,12 @@
 // Pure and electron-free so it unit-tests in isolation — same reason as panelSchema.js.
 
 const AI_VOICE_APP = 'ai-voice';
+// Backends that run an agent in a working directory. Open WebUI and the API backend are plain chat
+// — they have no folder, which is why the AI Chat page hides its Folder row for them (hasProject
+// false in main.js's branding). A routine only carries a folder for the other three.
+const FOLDER_BACKENDS = ['claude', 'codex', 'copilot'];
+function backendOf(page) { return ((page && page.options && page.options.backend) || 'claude'); }
+function allowsFolder(page) { return FOLDER_BACKENDS.indexOf(backendOf(page)) !== -1; }
 const NAME_WORDS = 6;     // enough to recognize a routine in a list, short enough to fit a row
 const NAME_MAX = 48;
 
@@ -48,6 +55,7 @@ function normalizeRoutine(raw, makeId) {
     prompt: prompt,
     appPageId: str(raw.appPageId).trim(),
     profileId: str(raw.profileId).trim(),
+    folder: str(raw.folder).trim(),
   };
 }
 
@@ -81,13 +89,21 @@ function resolveRoutine(id, ctx) {
   if (!pages.length) return { ok: false, error: 'No AI Chat page to run this on — add one first.' };
 
   const target = pages.find(g => g.id === str(routine.appPageId));
-  if (target) return { ok: true, routine: routine, pageId: target.id };
+  // A folder is only meaningful on a backend that has a working directory, and only worth acting on
+  // when it differs from where that page already is — switching folders restarts the session, which
+  // ends the conversation showing on the page.
+  const folderFor = page => {
+    const want = str(routine.folder).trim();
+    if (!want || !allowsFolder(page)) return '';
+    return want === str(page.options && page.options.projectDir).trim() ? '' : want;
+  };
+  if (target) return { ok: true, routine: routine, pageId: target.id, folder: folderFor(target) };
   // The page it was saved against is gone. Running it somewhere is better than doing nothing, but
   // say so — a routine silently switching backends would be a nasty surprise.
   return {
-    ok: true, routine: routine, pageId: pages[0].id,
+    ok: true, routine: routine, pageId: pages[0].id, folder: folderFor(pages[0]),
     warning: 'That routine\'s AI Chat page is gone — running it on "' + str(pages[0].name) + '" instead.',
   };
 }
 
-module.exports = { AI_VOICE_APP, aiVoicePages, autoName, newRoutineId, normalizeRoutine, normalizeList, resolveRoutine };
+module.exports = { AI_VOICE_APP, FOLDER_BACKENDS, aiVoicePages, allowsFolder, backendOf, autoName, newRoutineId, normalizeRoutine, normalizeList, resolveRoutine };
