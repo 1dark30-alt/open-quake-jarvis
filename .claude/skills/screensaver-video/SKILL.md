@@ -81,6 +81,10 @@ A one-shot FLF render can only loop motion that stays near the start view. Askin
 
 Two 121f segments ≈ 15s total. For even longer arcs, insert more unpinned middle segments before the FLF closer — but each unpinned segment accumulates drift, so verify each segment's end frame before building on it.
 
+## Character motion (a walking animal/person) that loops
+
+An animated character (dog walking, person strolling) loops with the FLF pin *only if the travel is contained*. A character that crosses the whole frame and must return to the exact start frame makes Wan render the character at **both** ends near the loop point — ghost/duplicate bodies (seen with a corgi walking the full storefront: clean going out, duplicated coming back). Keep the motion local: "takes a few steps left, sniffs, turns and walks back to where it started, staying close to the shopfront" loops cleanly; "walks across the scene and back" ghosts. Put `two dogs, multiple dogs, duplicate, ghost, second <subject>` in the negative. Illustrated/anime styles tolerate character motion better than photoreal. Always check the mid-and-late frames (30/60/90%) for a single well-formed body, not just the endpoints — the duplication shows up around 75%, which endpoint RMSE misses. If a contained walk still ghosts, fall back to ambient life (sit/sniff/tail-wag while other elements move) — lower morph risk, still reads as alive.
+
 ## Batch runs (multiple videos)
 
 ComfyUI queues prompts and runs them serially — POST all jobs at once (capture each `prompt_id`), then watch with one Monitor task polling `/history/<id>` every ~20s, emitting `<name> DONE` / `<name> ERROR` per job. Process each video (download → verify → trim → deliver) as its notification arrives. Don't foreground-wait on renders; a single Bash call will time out before a render finishes.
