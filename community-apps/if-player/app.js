@@ -201,11 +201,16 @@
   function splitSentences(text) {
     var t = String(text || '').replace(/\s+/g, ' ').trim();
     if (!t) return [];
-    var raw = t.match(/[^.!?]*[.!?]+(?=\s|$)|[^.!?]+$/g) || [t];
+    // Partition the WHOLE passage at sentence ends -- a terminator plus any trailing closing quotes or
+    // brackets (!" ." .) etc.) followed by a space -- by inserting a marker there and splitting on it.
+    // This never drops text. (The previous match()-based version silently discarded any run it could
+    // not tokenize, so a sentence ending in a quote/paren -- common in Zork -- vanished or got mangled.)
+    var SEP = String.fromCharCode(1);
+    var marked = t.replace(/([.!?]+["'”’)\]]*)\s+/g, '$1' + SEP);
     var out = [];
-    raw.forEach(function (s) {
+    marked.split(SEP).forEach(function (s) {
       s = s.trim(); if (!s) return;
-      if (out.length && !/[.!?]$/.test(out[out.length - 1])) out[out.length - 1] += ' ' + s;   // glue a heading fragment (no full stop) onto the next
+      if (out.length && !/[.!?]["'”’)\]]*$/.test(out[out.length - 1])) out[out.length - 1] += ' ' + s;   // glue a heading fragment (no terminator) onto the next
       else out.push(s);
     });
     return out.length ? out : [t];
