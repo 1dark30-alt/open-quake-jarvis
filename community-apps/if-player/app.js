@@ -239,8 +239,22 @@
     });
     return out.length ? out : [t];
   }
+  // Clean text for the VOICE only (not what's shown): drop quotes/brackets/markdownish markers the
+  // TTS voice reads aloud, and turn '!' into a plain sentence end (the voice pronounces the exclamation
+  // mark). '?' is kept for question intonation. Splitting already happened on the original text.
+  function ttsSanitize(s) {
+    return String(s || '')
+      .replace(/[*_`~|#>]+/g, ' ')                          // markdown-ish markers
+      .replace(/["'“”‘’()\[\]]+/g, ' ')                     // quotes and brackets (keep the words inside)
+      .replace(/!+/g, '.')                                  // the voice speaks '!' -> plain sentence end
+      .replace(/\s*([.?:;,])[.!?]*/g, '$1')                 // collapse punctuation runs
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
   function fetchSpeech(sentence) {
-    return fetch('/app-api/speak', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: sentence })
+    var say = ttsSanitize(sentence);
+    if (!say) return Promise.resolve({ skip: true });        // nothing speakable (e.g. a punctuation-only line)
+    return fetch('/app-api/speak', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: say })
       .then(function (r) { return r.json(); })
       .then(function (j) { return (j && j.ok && j.wav) ? { wav: j.wav } : { error: (j && j.error) || 'Narration unavailable' }; })
       .catch(function () { return { error: 'Narration unavailable' }; });
@@ -260,8 +274,9 @@
     prefetch = speakQueue.length ? { text: speakQueue[0], p: fetchSpeech(speakQueue[0]) } : null;   // warm the next while this plays
     cur.then(function (res) {
       if (!speaking) return;                      // hushed while this was synthesizing
-      if (!res || res.error) { note(res && res.error); drainSpeech(); return; }
-      playWav(res.wav);
+      if (res && res.wav) { playWav(res.wav); return; }
+      if (res && res.error) note(res.error);
+      drainSpeech();                              // skipped (nothing speakable) or errored -> move on
     });
   }
   function playWav(b64) {
