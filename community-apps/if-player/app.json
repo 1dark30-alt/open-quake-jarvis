@@ -6,53 +6,70 @@
   "server": "server.js",
   "options": [
     {
-      "key": "story",
-      "label": "Story file",
-      "type": "text",
+      "key": "storiesDir",
+      "label": "Stories folder",
+      "type": "folder",
       "default": "",
-      "help": "Story to load: a filename you dropped in the app's stories/ folder (e.g. Advent.z5), or a full http(s):// URL. Z-code (.z3-.z8, .zblorb) and Glulx (.ulx, .gblorb) are supported. Leave blank to pick from the stories/ folder on screen."
+      "help": "Folder anywhere on this PC that holds your story files (.z5 / .z8 / .zblorb / .ulx / .gblorb). Browse to it; every story inside shows up in the on-screen list. Leave blank to use the app's own bundled stories folder."
     },
     {
       "key": "speak",
       "label": "Read the story aloud",
       "type": "bool",
       "default": true,
-      "help": "Speak each new passage through your Wyoming TTS voice. Can be toggled on screen at any time."
+      "help": "Speak each new passage through the system TTS voice (Settings → TTS/STT). Can be toggled on screen at any time."
     },
     {
       "key": "voiceInput",
       "label": "Voice commands",
       "type": "bool",
       "default": true,
-      "help": "Show the Speak/Listen control so you can say commands instead of typing them. Needs Wyoming STT."
+      "help": "Show the Listen control so you can say commands instead of typing them. Uses the system STT (Settings → TTS/STT)."
     },
     {
-      "key": "ttsHost",
-      "label": "TTS host (advanced)",
+      "key": "story",
+      "label": "Auto-start story (optional)",
       "type": "text",
       "default": "",
-      "help": "Advanced: Wyoming TTS host. Leave blank to use the same TTS server as the rest of open-quake (Settings → TTS/STT)."
-    },
-    {
-      "key": "ttsPort",
-      "label": "TTS port (advanced)",
-      "type": "text",
-      "default": "",
-      "help": "Advanced: Wyoming TTS port. Blank uses the global setting (default 10200)."
-    },
-    {
-      "key": "sttHost",
-      "label": "STT host (advanced)",
-      "type": "text",
-      "default": "",
-      "help": "Advanced: Wyoming STT host. Leave blank to use the same STT server as the rest of open-quake (Settings → TTS/STT)."
-    },
-    {
-      "key": "sttPort",
-      "label": "STT port (advanced)",
-      "type": "text",
-      "default": "",
-      "help": "Advanced: Wyoming STT port. Blank uses the global setting (default 10300)."
+      "help": "Optional: a filename from the stories folder to open straight into. Leave blank to browse the on-screen list (the normal way)."
     }
-  ]
+  ],
+  "settings": {
+    "key": "ifPlayer",
+    "title": "Interactive Fiction",
+    "options": [
+      {
+        "key": "ttsHost",
+        "label": "TTS host override",
+        "type": "text",
+        "default": "",
+        "advanced": true,
+        "help": "Developer override: a Wyoming TTS host just for this app. Blank uses the system TTS server (Settings → TTS/STT)."
+      },
+      {
+        "key": "ttsPort",
+        "label": "TTS port override",
+        "type": "text",
+        "default": "",
+        "advanced": true,
+        "help": "Blank uses the system setting (default 10200)."
+      },
+      {
+        "key": "sttHost",
+        "label": "STT host override",
+        "type": "text",
+        "default": "",
+        "advanced": true,
+        "help": "Developer override: a Wyoming STT host just for this app. Blank uses the system STT server (Settings → TTS/STT)."
+      },
+      {
+        "key": "sttPort",
+        "label": "STT port override",
+        "type": "text",
+        "default": "",
+        "advanced": true,
+        "help": "Blank uses the system setting (default 10300)."
+      }
+    ]
+  }
 }

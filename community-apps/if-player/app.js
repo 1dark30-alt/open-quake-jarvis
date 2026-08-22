@@ -1,23 +1,28 @@
 'use strict';
 // Interactive Fiction player: panel chrome + voice, running inside Parchment's own page.
 //
-// vendor-parchment.js builds index.html by taking an upstream Parchment single-file release,
-// externalising its inline scripts (open-quake serves drop-in apps under `script-src 'self'`) and
-// injecting chrome.html + this file. So this runs in the SAME document as the interpreter -- there is
-// no iframe, which also sidesteps the platform's `frame-ancestors 'none'`.
+// vendor-parchment.js builds index.html from an upstream Parchment single-file release, externalises
+// its inline scripts (open-quake serves drop-in apps under `script-src 'self'`), extracts its cores to
+// real files, and injects chrome.html + this file. Same document as the interpreter -- no iframe,
+// which also sidesteps `frame-ancestors 'none'`.
 //
-// Two integration points, both verified against the real interpreter:
+// Stories are loaded as BYTES, never by URL: a story can live in any folder on the PC (the "Stories
+// folder" option), which the local static server won't serve. server.js reads the file and returns
+// base64; here we turn it into a File and hand it to Parchment via load_uploaded_file -- its own
+// supported bytes path. boot.js launches Parchment idle so its Dialog/Glk layer is ready for that.
+//
+// Two interpreter integration points, verified against the real build:
 //   read  -- new game text arrives as .BufferLine elements inside .BufferWindowInner
-//   write -- GlkOte.send_event({type:'line', window:N, value}) submits a command, exactly as typing
-//            does. Synthetic keyboard events on the input textarea do NOT work.
+//   write -- GlkOte.send_event({type:'line', window:N, value}) submits a command.
 //
-// Voice goes through the app's own server.js: POST /app-api/speak (text -> base64 WAV) and
-// POST /app-api/listen (Int16 PCM -> transcript), both backed by the host's Wyoming TTS/STT config.
+// Voice: POST /app-api/speak (text -> base64 WAV) and /app-api/listen (Int16 PCM -> transcript),
+// backed by the system Wyoming TTS/STT.
 (function () {
   var q = new URLSearchParams(location.search);
   var DARK = q.get('_dark') !== '0';
   var ACCENT = /^#[0-9a-fA-F]{6}$/.test(q.get('_accent') || '') ? q.get('_accent') : '#7CFFB2';
-  var OPT_STORY = (q.get('story') || '').trim();
+  var FORCE_PICK = q.get('pick') === '1';                       // set by the Stories button's reload
+  var OPT_STORY = FORCE_PICK ? '' : (q.get('story') || '').trim();
   var WANT_SPEAK = q.get('speak') !== '0' && q.get('speak') !== 'false';
   var WANT_VOICE_IN = q.get('voiceInput') !== '0' && q.get('voiceInput') !== 'false';
 
@@ -25,7 +30,7 @@
   var picker = el('picker'), storylist = el('storylist');
   var statusdot = el('statusdot'), statustext = el('statustext'), storyname = el('storyname');
   var heard = el('heard'), railnote = el('railnote');
-  var speakbtn = el('speakbtn'), listenbtn = el('listenbtn'), stopbtn = el('stopbtn');
+  var speakbtn = el('speakbtn'), listenbtn = el('listenbtn'), stopbtn = el('stopbtn'), librarybtn = el('librarybtn');
 
   document.documentElement.style.setProperty('--if-accent', ACCENT);
   document.documentElement.setAttribute('data-theme', DARK ? 'dark' : 'light');
@@ -35,82 +40,106 @@
   var caps = { tts: false, stt: false };
   var narrating = false, listening = false;
   var speakQueue = [], audio = null, speaking = false;
-  var vad = null, observer = null, gwin = 0;
+  var vad = null, observer = null, gwin = 0, playing = false;
 
   function setStatus(cls, text) { statusdot.className = 'dot ' + (cls || ''); statustext.textContent = text; }
   function note(msg) { railnote.textContent = msg || ''; }
 
-  // ---- story resolution -------------------------------------------------
-  // A bare filename means the app's stories/ folder; anything with a scheme is passed through.
-  function storyUrl(value) {
-    if (/^https?:\/\//i.test(value)) return value;
-    return new URL('stories/' + encodeURIComponent(String(value).split(/[\\/]/).pop()), location.href).href;
-  }
-  // Parchment reads its story from ?story= at launch, so switching stories is a navigation. Our own
-  // options are carried across so the page comes back themed and configured the same way.
-  function loadStory(value) {
-    var keep = new URLSearchParams(location.search);
-    keep.set('story', value);
-    keep.set('autoplay', '1');
-    location.search = keep.toString();
-  }
-  function showPicker(stories, hint) {
-    picker.hidden = false;
+  // ---- story picker -----------------------------------------------------
+  function showPicker(stories, folder) {
     document.body.classList.add('picking');
-    setStatus('', 'No story loaded');
-    el('pickerhint').textContent = hint || (stories.length ? 'Choose a story' : '');
+    picker.hidden = false;
+    setStatus('', 'Choose a story');
+    storyname.textContent = '';
+    el('pkfolder').textContent = folder ? 'Folder: ' + folder : '';
     storylist.innerHTML = '';
-    if (!stories.length) {
+    if (!stories || !stories.length) {
+      el('pickerhint').textContent = 'No stories found';
       var empty = document.createElement('div');
       empty.className = 'pk-empty';
-      empty.textContent = 'Put .z5 / .z8 / .zblorb / .ulx / .gblorb story files in the app’s stories folder, '
-        + 'or set a story file or URL in this page’s app options.';
+      empty.textContent = 'Set this page’s "Stories folder" option to a folder on your PC that holds '
+        + '.z5 / .z8 / .zblorb / .ulx / .gblorb files (or drop some into the app’s bundled stories folder).';
       storylist.appendChild(empty);
       return;
     }
+    el('pickerhint').textContent = stories.length + (stories.length === 1 ? ' story' : ' stories');
     stories.forEach(function (name) {
       var b = document.createElement('button');
       b.type = 'button';
       b.className = 'story';
-      b.textContent = name.replace(/\.[^.]+$/, '');
+      var t = document.createElement('span'); t.className = 'story-name'; t.textContent = name.replace(/\.[^.]+$/, '');
+      var e = document.createElement('span'); e.className = 'story-ext'; e.textContent = (name.split('.').pop() || '').toUpperCase();
+      b.appendChild(t); b.appendChild(e);
       b.addEventListener('click', function () { loadStory(name); });
       storylist.appendChild(b);
     });
   }
 
-  // ---- the interpreter ---------------------------------------------------
-  function glkote() {
-    try { return window.parchment.options.GlkOte; } catch (e) { return null; }
+  function b64ToBytes(b64) {
+    var bin = atob(b64), u = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u;
   }
-  // Poll until Parchment has rendered a buffer window. It fetches a WASM core and the story first, so
-  // there is no single load event to hang this on.
+  // Retry: Parchment's launch() (kicked off by boot.js) initialises its Dialog layer asynchronously,
+  // and load_uploaded_file needs that ready. Attempts settle as soon as it is.
+  function loadIntoParchment(file) {
+    return new Promise(function (resolve, reject) {
+      var tries = 0;
+      (function attempt() {
+        tries++;
+        var p = window.parchment;
+        if (p && typeof p.load_uploaded_file === 'function') {
+          try {
+            Promise.resolve(p.load_uploaded_file(file)).then(resolve, function (e) {
+              if (tries > 40) reject(e); else setTimeout(attempt, 150);
+            });
+            return;
+          } catch (e) { if (tries > 40) return reject(e); }
+        }
+        if (tries > 40) return reject(new Error('interpreter not ready'));
+        setTimeout(attempt, 150);
+      })();
+    });
+  }
+  function loadStory(name) {
+    document.body.classList.remove('picking');
+    picker.hidden = true;
+    storyname.textContent = name;
+    setStatus('busy', 'Loading story…');
+    fetch('/app-api/storyfile?name=' + encodeURIComponent(name))
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.ok || !j.b64) throw new Error(j && j.error || 'could not read story');
+        return loadIntoParchment(new File([b64ToBytes(j.b64)], name));
+      })
+      .then(function () { waitForGame(); })
+      .catch(function (e) { setStatus('bad', 'Load failed'); note((e && e.message) || 'Could not load the story.'); });
+  }
+
+  // ---- the interpreter --------------------------------------------------
+  function glkote() { try { return window.parchment.options.GlkOte; } catch (e) { return null; } }
   function waitForGame() {
     var tries = 0;
     var timer = setInterval(function () {
       tries++;
       var inner = document.querySelector('.BufferWindowInner');
       if (inner) { clearInterval(timer); attach(inner); }
-      else if (tries > 200) {                       // ~40s
-        clearInterval(timer);
-        setStatus('bad', 'Story failed to load');
-        note('Check the story file name, and that it is a Z-code or Glulx file.');
-      }
+      else if (tries > 200) { clearInterval(timer); setStatus('bad', 'Story failed to load'); note('That file may not be a Z-code or Glulx story.'); }
     }, 200);
   }
   function attach(inner) {
     var frameEl = document.querySelector('.BufferWindow');
     gwin = parseInt(String(frameEl && frameEl.id || '').replace(/\D+/g, ''), 10) || 0;
+    playing = true;
     setStatus('ok', 'Playing');
-    document.body.classList.add('playing');
     if (observer) observer.disconnect();
-    // New game text = added .BufferLine nodes. Batch them so one passage becomes one utterance.
     observer = new MutationObserver(function (muts) {
       var text = [];
       muts.forEach(function (m) {
         [].forEach.call(m.addedNodes, function (n) {
           if (n.nodeType !== 1 || !n.classList || !n.classList.contains('BufferLine')) return;
           var t = (n.innerText || '').replace(/\s+/g, ' ').trim();
-          if (!t || t.charAt(0) === '>') return;     // blank, or the echoed player command
+          if (!t || t.charAt(0) === '>') return;               // blank, or the echoed player command
           text.push(t);
         });
       });
@@ -119,27 +148,19 @@
     observer.observe(inner, { childList: true, subtree: true });
     focusGame();
   }
-  function focusGame() {
-    try { var input = document.querySelector('.Input'); if (input) input.focus(); } catch (e) {}
-  }
+  function focusGame() { try { var i = document.querySelector('.Input'); if (i) i.focus(); } catch (e) {} }
   function sendCommand(text) {
     var G = glkote();
     if (!G || !text) return false;
-    try { G.send_event({ type: 'line', window: gwin, value: text }); return true; }
-    catch (e) { return false; }
+    try { G.send_event({ type: 'line', window: gwin, value: text }); return true; } catch (e) { return false; }
   }
 
   // ---- narration (TTS) --------------------------------------------------
-  function enqueueSpeech(text) {
-    if (!narrating || !text) return;
-    speakQueue.push(text);
-    if (!speaking) drainSpeech();
-  }
+  function enqueueSpeech(text) { if (narrating && text) { speakQueue.push(text); if (!speaking) drainSpeech(); } }
   function drainSpeech() {
     if (!speakQueue.length) { speaking = false; updateButtons(); return; }
     var text = speakQueue.shift();
-    speaking = true;
-    updateButtons();
+    speaking = true; updateButtons();
     fetch('/app-api/speak', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: text })
       .then(function (r) { return r.json(); })
       .then(function (j) {
@@ -165,19 +186,11 @@
     vad = window.createClaudeVoiceVAD({ hangoverMs: 700, minSpeechMs: 250 });
     vad.start(function () {}, function (pcm) { onUtterance(pcm); })
       .then(function () { listening = true; updateButtons(); note('Say a command, e.g. “go north”.'); })
-      .catch(function (e) {
-        listening = false; vad = null; updateButtons();
-        note('Microphone unavailable: ' + (e && e.message || 'permission denied'));
-      });
+      .catch(function (e) { listening = false; vad = null; updateButtons(); note('Microphone unavailable: ' + (e && e.message || 'permission denied')); });
   }
-  function stopListening() {
-    if (vad) { try { vad.stop(); } catch (e) {} }
-    vad = null; listening = false; updateButtons();
-  }
+  function stopListening() { if (vad) { try { vad.stop(); } catch (e) {} } vad = null; listening = false; updateButtons(); }
   function onUtterance(pcm) {
-    // Never transcribe our own narration: while a passage is being read the mic is mostly hearing the
-    // speaker, so drop whatever it captured.
-    if (speaking || (audio && !audio.paused)) return;
+    if (speaking || (audio && !audio.paused)) return;            // don't transcribe our own narration
     heard.textContent = '…';
     fetch('/app-api/listen', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: pcm })
       .then(function (r) { return r.json(); })
@@ -190,10 +203,7 @@
       })
       .catch(function () { heard.textContent = ''; });
   }
-  // Whisper punctuates and capitalises dictation; parsers want bare words.
-  function cleanCommand(raw) {
-    return String(raw || '').replace(/[.!?,;:"']+$/g, '').replace(/^[\s.,!?]+/, '').trim().toLowerCase();
-  }
+  function cleanCommand(raw) { return String(raw || '').replace(/[.!?,;:"']+$/g, '').replace(/^[\s.,!?]+/, '').trim().toLowerCase(); }
 
   // ---- buttons ----------------------------------------------------------
   function updateButtons() {
@@ -205,20 +215,23 @@
     listenbtn.disabled = !caps.stt;
     stopbtn.disabled = !speaking && !speakQueue.length;
   }
-  // pointerdown + preventDefault: tapping a control must never pull focus off the game, or the next
-  // thing typed on the keyboard would go nowhere.
+  // pointerdown + preventDefault: tapping a control must never pull focus off the game.
   function wire(btn, fn) {
+    if (!btn) return;
     btn.addEventListener('pointerdown', function (e) { e.preventDefault(); });
-    btn.addEventListener('click', function (e) { e.preventDefault(); fn(); focusGame(); });
+    btn.addEventListener('click', function (e) { e.preventDefault(); fn(); });
   }
-  wire(speakbtn, function () {
-    narrating = !narrating;
-    if (!narrating) hush();
-    updateButtons();
-    note(narrating ? 'Reading new passages aloud.' : '');
+  wire(speakbtn, function () { narrating = !narrating; if (!narrating) hush(); updateButtons(); note(narrating ? 'Reading new passages aloud.' : ''); focusGame(); });
+  wire(listenbtn, function () { listening ? stopListening() : startListening(); focusGame(); });
+  wire(stopbtn, function () { hush(); focusGame(); });
+  // Stories: return to the picker. Reload with ?pick=1 so Parchment restarts clean (a story is already
+  // running); the picker then always acts on a fresh, idle interpreter.
+  wire(librarybtn, function () {
+    hush();
+    var u = new URL(location.href);
+    u.searchParams.set('pick', '1');
+    location.href = u.toString();
   });
-  wire(listenbtn, function () { listening ? stopListening() : startListening(); });
-  wire(stopbtn, hush);
 
   // ---- boot -------------------------------------------------------------
   fetch('/app-api/config').then(function (r) { return r.json(); }).then(function (j) {
@@ -226,37 +239,26 @@
     narrating = WANT_SPEAK && caps.tts;
     updateButtons();
     if (!caps.tts && WANT_SPEAK) note('Set a TTS server in Settings → TTS/STT to hear the story.');
-    if (OPT_STORY) { storyname.textContent = OPT_STORY.split(/[\\/]/).pop(); setStatus('busy', 'Loading story…'); waitForGame(); }
-    else showPicker((j && j.stories) || []);
+    if (OPT_STORY) loadStory(OPT_STORY);
+    else showPicker((j && j.stories) || [], j && j.folder);
   }).catch(function () {
     updateButtons();
-    if (OPT_STORY) { setStatus('busy', 'Loading story…'); waitForGame(); } else showPicker([], 'Story list unavailable');
+    if (OPT_STORY) loadStory(OPT_STORY); else showPicker([], '');
   });
 
-  // Keep the keyboard pointed at the game when the panel returns to this page.
   window.addEventListener('focus', focusGame);
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) focusGame(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && playing) focusGame(); });
 
-  // Safety net for the physical keyboard: if focus is sitting on our chrome (say, just after tapping
-  // a rail button) a keystroke would otherwise be swallowed. Hand focus back to the game and replay
-  // the character, so nothing the player types is lost.
-  //
-  // Two behaviours of GlkOte shape this. Focusing the input leaves document.activeElement on the
-  // enclosing .BufferWindow frame, not the textarea -- so "is the game focused?" has to test
-  // containment, or this would fire on every keystroke and double up. And its focus setup can reset
-  // the field, which swallows a character appended in the same tick; deferring the replay by a tick
-  // avoids that. Only the first keystroke is ever replayed, so ordering stays intact.
+  // Physical-keyboard safety net: if focus is on our chrome rather than the game input, hand it back
+  // and replay the character (deferred a tick -- GlkOte's focus setup can clear the field). Only fires
+  // when focus is astray, so it never doubles native typing. See the earlier debugging notes.
   document.addEventListener('keydown', function (e) {
-    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.ctrlKey || e.altKey || e.metaKey || !playing) return;
     var input = document.querySelector('.Input');
     if (!input) return;
     var ae = document.activeElement;
     if (ae === input || (ae && ae !== document.body && ae.contains && ae.contains(input))) return;
     input.focus();
-    if (e.key && e.key.length === 1) {
-      e.preventDefault();
-      var ch = e.key;
-      setTimeout(function () { try { input.value += ch; } catch (err) {} }, 0);
-    }
+    if (e.key && e.key.length === 1) { e.preventDefault(); var ch = e.key; setTimeout(function () { try { input.value += ch; } catch (err) {} }, 0); }
   });
 })();

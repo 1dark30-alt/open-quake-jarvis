@@ -12,15 +12,17 @@ Install: Settings -> Drop-In Apps -> Add (import .zip), then add a page with
 the Interactive Fiction app.
 
 
-Getting a story
----------------
-No stories ship with the app -- their authors hold the rights to them. Put your
-own into the app's stories/ folder and they appear on the picker, or set the
-page's "Story file" option to a filename or a full http(s):// URL.
+Your story library
+------------------
+Set the page's "Stories folder" option to any folder on your PC that holds
+story files -- click Browse and pick it. Every story in that folder shows up in
+the on-screen list; tap one to play. The "Stories" button (top of the rail)
+returns to the list at any time to switch games. (Leave the option blank to use
+the app's own small bundled folder instead.)
 
 The IF Archive (ifarchive.org) and IFDB (ifdb.org) host thousands of freely
-available works. Note that Infocom titles such as Zork are still copyrighted
-and are not free to redistribute.
+available works. Check a work's own terms before redistributing it; commercial
+titles are generally still copyrighted.
 
 
 Playing
@@ -28,34 +30,29 @@ Playing
 Type on the keyboard exactly as you would in any interpreter -- the game keeps
 keyboard focus, and the on-screen controls never steal it.
 
-  Narration   Reads each new passage aloud through your TTS voice. The command
-              you typed is not read back, only what the game says.
+  Stories     Return to the story list to pick a different game.
+  Narration   Reads each new passage aloud through the system TTS voice. The
+              command you typed is not read back, only what the game says.
   Listen      Turns on the microphone. Say a command ("go north", "take lamp")
               and it is transcribed and entered for you. It ignores anything it
-              hears while the story is being read aloud, so narration can't talk
-              to itself.
+              hears while the story is being read aloud.
   Hush        Stops reading immediately and drops anything queued.
 
-Your position is auto-saved, so if the panel rotates away or reloads you come
-back where you left off. In-game SAVE / RESTORE work normally too.
+In-game SAVE / RESTORE work normally.
 
 
-Voice setup
------------
-Narration and Listen use the same Wyoming TTS/STT servers as the rest of
-open-quake, picked up automatically from Settings -> TTS/STT. Nothing to
-configure here if voice already works elsewhere in the app.
-
-If you want this page to use different servers, the advanced options
-(TTS host/port, STT host/port) override the global ones. Leave them blank to
-inherit. With no TTS configured the Narration control reads "No TTS" and the
-game is still fully playable by keyboard; the same goes for Listen and STT.
+Voice
+-----
+Narration and Listen use the system Wyoming TTS/STT servers from
+Settings -> TTS/STT -- nothing to configure here. With no TTS configured the
+Narration control reads "No TTS" and the game is still fully playable by
+keyboard; likewise Listen needs STT. (Developers can override the servers just
+for this app under "Advanced / developer overrides" in the page editor.)
 
 
 Options
 -------
-  Story file            Filename in stories/, or a full http(s):// URL. Blank
-                        shows the picker.
-  Read the story aloud  Start with narration on.
-  Voice commands        Show the Listen control.
-  TTS/STT host+port     Advanced overrides; blank inherits the global setting.
+  Stories folder        A folder on this PC (Browse to it). Blank = bundled folder.
+  Read the story aloud   Start with narration on.
+  Voice commands         Show the Listen control.
+  Auto-start story        Optional: a filename to open straight into, skipping the list.

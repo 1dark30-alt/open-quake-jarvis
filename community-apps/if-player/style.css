@@ -98,22 +98,27 @@ body.novoicein #listenbtn { display: none; }
 .rbtn.quiet { min-height: 64px; }
 .railnote { font-size: 13px; line-height: 1.45; color: var(--if-faint); padding: 0 4px; }
 
-/* story picker */
+/* story picker: a scrollable vertical list filling the story area */
 #picker {
   position: fixed; top: var(--if-ctx); left: 12px; right: calc(var(--if-rail) + 24px); bottom: 12px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
-  padding: 24px; text-align: center; z-index: 20;
+  display: flex; flex-direction: column; gap: 8px; padding: 16px 16px 8px; z-index: 20;
   background: var(--if-panel); border: 1px solid var(--if-line); border-radius: var(--if-r);
 }
 #picker[hidden] { display: none; }
-.pk-head { font-size: 36px; font-weight: 800; }
-.pk-sub { font-size: 16px; color: var(--if-muted); }
-#storylist { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center;
-  max-width: 100%; overflow-y: auto; max-height: 210px; }
-.story { min-height: 56px; min-width: 200px; padding: 8px 24px; font: inherit; font-size: 22px;
-  font-weight: 700; color: var(--if-text); background: var(--if-panel2);
+.pk-head { flex: none; font-size: 22px; font-weight: 800; }
+.pk-sub { flex: none; font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--if-faint); font-weight: 700; }
+#storylist { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 8px;
+  scrollbar-width: thin; scrollbar-color: var(--if-line-strong, rgba(120,145,222,.5)) transparent; }
+#storylist::-webkit-scrollbar { width: 10px; }
+#storylist::-webkit-scrollbar-thumb { background: var(--if-line-strong, rgba(120,145,222,.5)); border-radius: 5px; }
+.story { flex: none; display: flex; align-items: center; gap: 16px; min-height: 60px; padding: 8px 20px; text-align: left;
+  font: inherit; font-size: 22px; font-weight: 700; color: var(--if-text); background: var(--if-panel2);
   border: 1px solid var(--if-line); border-radius: var(--if-r); cursor: pointer; }
 .story:hover { border-color: var(--if-accent); }
-.pk-empty { font-size: 16px; color: var(--if-faint); max-width: 760px; line-height: 1.5; }
+.story-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.story-ext { flex: none; font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--if-faint);
+  border: 1px solid var(--if-line); border-radius: 8px; padding: 3px 8px; }
+.pk-folder { flex: none; font-size: 11px; color: var(--if-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
+.pk-empty { font-size: 16px; color: var(--if-faint); line-height: 1.5; padding: 16px 4px; }
 
 @keyframes ifpulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }

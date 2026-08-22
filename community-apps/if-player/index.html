@@ -58,6 +58,9 @@
 </div>
 
 <div id="ifrail">
+  <button id="librarybtn" class="rbtn quiet" type="button" tabindex="-1">
+    <span class="lb">Stories</span><span class="sub">Choose another</span>
+  </button>
   <button id="speakbtn" class="rbtn" type="button" tabindex="-1">
     <span class="lb">Narration</span><span class="sub" id="speaksub">Off</span>
   </button>
@@ -71,9 +74,10 @@
 </div>
 
 <div id="picker" hidden>
-  <div class="pk-head">Interactive Fiction</div>
-  <div class="pk-sub" id="pickerhint">Choose a story</div>
+  <div class="pk-head">Choose a story</div>
+  <div class="pk-sub" id="pickerhint"></div>
   <div id="storylist"></div>
+  <div class="pk-folder" id="pkfolder"></div>
 </div>
 
 <script src="vad.js"></script>

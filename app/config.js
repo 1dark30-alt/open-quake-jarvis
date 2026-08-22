@@ -2499,6 +2499,7 @@
         ? `<label class="iconopt" style="width:auto"><input type="checkbox" ${attrs} ${v ? 'checked' : ''} style="width:auto"> ${esc(o.inline)}</label>`
         : `<input type="checkbox" ${attrs} ${v ? 'checked' : ''} style="width:auto">`;
       else if (o.type === 'secret') field = secretInput(v, attrs);
+      else if (o.type === 'folder') field = `<span class="folderopt" style="display:flex;gap:6px;flex:1"><input ${attrs} value="${esc(v)}" placeholder="${esc(o.placeholder || 'No folder chosen')}" style="flex:1"><button type="button" class="folderbrowse" data-for="${esc(o.key)}">Browse…</button></span>`;
       else field = `<input ${attrs} value="${esc(v)}"${o.maxLength ? ` maxlength="${Number(o.maxLength)}"` : ''}>`;
       const help = o.help ? `<p class="hint" style="margin:-2px 0 10px 78px">${esc(o.help)}</p>` : '';
       return `<div class="row"><label>${esc(o.label)}</label>${field}</div>${help}`;
@@ -2547,6 +2548,14 @@
       const o = settingDef.options.find(x => x.key === e.target.dataset.key);
       appSettings[e.target.dataset.key] = o && o.type === 'bool' ? e.target.checked : e.target.value;
       markDirty();
+    });
+    // type:'folder' options -> native folder picker. Sets the sibling input and fires its change so
+    // the normal .aopt/.aset handler above persists it (works for both per-page options and settings).
+    el.querySelectorAll('.folderbrowse').forEach(btn => btn.onclick = async () => {
+      const p = await configApi.pickFolder();
+      if (!p) return;
+      const inp = Array.prototype.find.call(el.querySelectorAll('input'), i => i.dataset.key === btn.dataset.for);
+      if (inp) { inp.value = p; inp.dispatchEvent(new Event('change', { bubbles: true })); }
     });
     if (def.id === 'discord') appendDiscordSetup(el);
     enforceMusicCap(g);
