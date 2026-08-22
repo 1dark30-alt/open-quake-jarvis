@@ -2845,7 +2845,7 @@
 
   // ---- settings page ----
   const DEFAULT_APP_REPO = 'https://github.com/TeeJS/open-quake/tree/main/community-apps';
-  const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false, reservedDisplay: false, keepDisplayAwake: false, offlineIcons: false, appRepo: DEFAULT_APP_REPO };
+  const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false, reservedDisplay: false, keepDisplayAwake: false, offlineIcons: false, appRepo: DEFAULT_APP_REPO, autoPageOnImport: true };
   function appSettings() { return Object.assign({}, DEFAULT_SETTINGS, config.settings || {}); }
   function renderSettings() {
     ['tilegrid', 'mergebar', 'tileform', 'iconpane'].forEach(id => { const e = document.getElementById(id); if (e) e.innerHTML = ''; });
@@ -3228,6 +3228,7 @@
       <p class="hint">Self-contained app folders — install from the app repository, import a .zip, then update, export, or delete. Bundled / built-in apps aren't listed here.</p>
       <div class="row" style="gap:8px;align-items:center"><label style="width:auto">App repository</label><input id="diRepo" style="flex:1" placeholder="${esc(DEFAULT_APP_REPO)}"><button id="diBrowse">Browse…</button></div>
       <p class="hint" style="margin:2px 0 0">A GitHub folder (or any host) serving an <code>index.json</code> + app <code>.zip</code>s. Change it to install from your own fork.</p>
+      <label class="row" style="gap:8px;align-items:center;width:auto;margin-top:6px"><input type="checkbox" id="diAutoPage" style="width:auto"> Add a page for newly installed apps</label>
       <div id="diRepoList" style="margin:8px 0"></div>
       <div class="row" style="gap:8px"><button id="diAdd">Add (import .zip)…</button><button id="diRefresh">Refresh</button><button id="diCommunity" style="margin-left:auto">Community apps ↗</button></div>
       <div id="diMsg" class="hint" style="margin:6px 0;min-height:18px"></div>
@@ -3324,6 +3325,17 @@
     if (tab === 'dropin') {
       let importZipPath = null;   // held across an id-conflict rename retry
       const diMsg = (t, bad) => { const m = document.getElementById('diMsg'); if (m) { m.textContent = t || ''; m.style.color = bad ? '#c98' : '#7e93ab'; } };
+      // Optionally add a ready-to-use page for a freshly installed app (same grid shape as the "Add app
+      // page" button). Skipped on updates and when a page for that app already exists; marks dirty so it
+      // persists on the next Save without force-saving other edits or jumping off this tab.
+      const maybeAddAppPage = (id, name) => {
+        if (!appSettings().autoPageOnImport) return false;
+        if ((config.grids || []).some(g => g && g.kind === 'app' && g.app === id)) return false;
+        if (!config.grids) config.grids = [];
+        config.grids.push({ id: uid(), name: name || id, kind: 'app', app: id, options: {} });
+        markDirty(); renderGrids();
+        return true;
+      };
       const renderList = async () => {
         const host = document.getElementById('diList'); if (!host) return;
         let apps = []; try { apps = (await configApi.listDropInApps()) || []; } catch (e) {}
@@ -3356,7 +3368,7 @@
         if (!importZipPath) importZipPath = await configApi.pickZip();
         if (!importZipPath) return;
         const r = await configApi.importDropInApp(importZipPath, forceId, confirmExec);
-        if (r && r.ok) { importZipPath = null; appDefs = await configApi.getApps(); renderList(); diMsg('Imported "' + r.name + '" (' + r.id + ')'); }
+        if (r && r.ok) { importZipPath = null; appDefs = await configApi.getApps(); renderList(); const added = maybeAddAppPage(r.id, r.name); diMsg('Imported "' + r.name + '" (' + r.id + ')' + (added ? ' — added a page' : '')); }
         else if (r && r.warnExec && !confirmExec) {
           if (window.confirm('This drop-in app contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC with full access. Only import it if you trust the source.\n\nImport anyway?')) doImport(forceId, true);
           else importZipPath = null;
@@ -3369,7 +3381,7 @@
       const doInstall = async (id, confirmExec) => {
         diMsg('Installing "' + id + '"…');
         const r = await configApi.installRepoApp(id, confirmExec, repoField());
-        if (r && r.ok) { appDefs = await configApi.getApps(); renderList(); renderRepo(); diMsg('Installed "' + r.name + '" (' + r.id + ')'); }
+        if (r && r.ok) { appDefs = await configApi.getApps(); renderList(); renderRepo(); const added = maybeAddAppPage(r.id, r.name); diMsg('Installed "' + r.name + '" (' + r.id + ')' + (added ? ' — added a page' : '')); }
         else if (r && r.warnExec && !confirmExec) {
           if (window.confirm('This app contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC with full access. Only install it if you trust the repository.\n\nInstall anyway?')) doInstall(id, true);
           else diMsg('');
@@ -3411,6 +3423,7 @@
         host.querySelectorAll('.diRepoUpd').forEach(b => b.onclick = e => doUpdate(e.currentTarget.dataset.id));
       };
       { const rf = document.getElementById('diRepo'); if (rf) { rf.value = (config.settings && config.settings.appRepo) || DEFAULT_APP_REPO; rf.oninput = () => setS('appRepo', repoField()); } }
+      { const ap = document.getElementById('diAutoPage'); if (ap) { ap.checked = !!appSettings().autoPageOnImport; ap.onchange = () => setS('autoPageOnImport', ap.checked); } }
       document.getElementById('diBrowse').onclick = () => renderRepo();
       document.getElementById('diAdd').onclick = () => { importZipPath = null; doImport(); };
       document.getElementById('diRefresh').onclick = () => renderList();
