@@ -50,11 +50,14 @@ GET /get_personal_high_score.php?game=<slug>&userId=<initials>
 ```
 `personalHighScore` is `null` if the player has no scores yet — handle that.
 
-### Leaderboard (best score per player, ranked)
+### Leaderboard
 ```
 GET /get_leaderboard.php?game=<slug>&limit=10      (limit optional, default 10, max 100)
 → {"success":true,"game":"quake-bird","leaderboard":[{"rank":1,"userid":"TJS","score":42}]}
 ```
+Default is **best score per player** (one row per initials). Add **`&runs=1`** for arcade
+style — the top individual runs, where the same initials can hold several ranks. Prefer
+`runs=1` for on-screen leaderboards so the board fills up even with few players.
 
 ### Health
 ```

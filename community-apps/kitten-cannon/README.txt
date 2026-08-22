@@ -25,15 +25,17 @@ Options (editor > App)
 Score server contract
 ---------------------
 Speaks the shared arcade score API — the authoritative spec is
-server/HANDOFF.md in github.com/TeeJS/kitten-cannon-remake. Every call
+community-apps/SCORE-API.md in this repo. Every call
 carries the game slug ("kitten-cannon"); scores are integer feet:
 
   GET  <base>/get_high_score.php?game=kitten-cannon&score=<int>
        -> {"success":true,"highScore":<int>,"percentile":<0-100>,"totalScores":<int>}
-  GET  <base>/get_personal_high_score.php?game=kitten-cannon&userId=<tag>
+  GET  <base>/get_personal_high_score.php?game=kitten-cannon&userId=<initials>
        -> {"success":true,"personalHighScore":<int|null>}
-  GET  <base>/get_leaderboard.php?game=kitten-cannon&limit=8
+  GET  <base>/get_leaderboard.php?game=kitten-cannon&limit=8&runs=1
        -> {"success":true,"leaderboard":[{"rank":1,"userid":"TJS","score":42},...]}
+       runs=1 = top individual runs, arcade style (same initials can hold
+       several ranks); without it the server sends best-per-player instead.
   POST <base>/save_score.php   (FormData: userId, score, game)
        -> {"success":true,...}
        Called once per run (every death), not just on new personal bests --
