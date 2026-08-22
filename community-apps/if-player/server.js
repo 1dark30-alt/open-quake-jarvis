@@ -10,6 +10,10 @@
 //   storyfile  -> { name, b64 }                            (one story's bytes, base64)
 //   speak      -> { wav }   (base64 WAV of a passage, via Wyoming TTS)
 //   listen     -> { text }  (transcript of POSTed PCM, via Wyoming STT)
+//   save-write -> { ok }              (raw save bytes in the POST body -> saves/<game>/<slot>, slot verbatim)
+//   save-read  -> { b64 } | { ok:false, error }   (one save's bytes, base64)
+//   save-list  -> { slots:[{slot,size,mtime}] }   (a game's saves, newest first)
+//   save-delete-> { ok }              (remove one save; idempotent)
 
 const fs = require('fs');
 const path = require('path');
@@ -20,6 +24,10 @@ const STORY_EXT = new Set(['.z1', '.z2', '.z3', '.z4', '.z5', '.z6', '.z7', '.z8
 const MAX_AUDIO = 8 * 1024 * 1024;    // ~4 minutes of 16kHz mono PCM; an utterance is far smaller
 const MAX_SPEAK = 4000;               // characters per synthesize call
 const MAX_STORY = 64 * 1024 * 1024;   // generous: large Glulx blorbs can be tens of MB
+const MAX_SAVE = 32 * 1024 * 1024;    // full-VM autosave snapshots (esp. Glulx) can run to several MB
+const SAVES_DIR = path.join(__dirname, 'saves');   // sibling to stories/; layout: saves/<game>/<slot>
+                                                   // <slot> is the interpreter's full Glk filename, stored VERBATIM
+                                                   // (it already carries its own extension, e.g. name.glksave / name.glkdata)
 
 // The host config's settings.* block, read fresh each call so changes apply without a restart.
 // Never throws -- a missing/unreadable config yields {}.
@@ -74,6 +82,29 @@ function resolveStory(dir, name) {
   if (full !== path.join(path.resolve(dir), base)) return null;   // belt and suspenders
   try { if (!fs.statSync(full).isFile()) return null; } catch (e) { return null; }
   return full;
+}
+
+// Save files live under saves/<game>/<slot>.glksave. Both the game and the slot come from the
+// interpreter / the player, so each is guarded exactly like a story name: one path component with no
+// separators, no "." / ".." traversal, and none of the characters that are illegal in a Windows
+// filename. Returns the cleaned component, or null if it is unsafe.
+function safeComponent(name) {
+  const base = String(name == null ? '' : name);
+  if (!base || base === '.' || base === '..') return null;
+  if (base !== path.basename(base)) return null;                // no separators / traversal
+  if (/[\\/:*?"<>|\x00-\x1f]/.test(base)) return null;          // reject path seps + control chars + Windows-illegal chars
+  return base;
+}
+// Resolve a (game, slot) pair to an absolute .glksave path inside SAVES_DIR, plus the game's own
+// directory (for listing). Returns null if either component is unsafe.
+function resolveSave(game, slot) {
+  const g = safeComponent(game);
+  const s = safeComponent(slot);
+  if (!g || !s) return null;
+  const dir = path.join(SAVES_DIR, g);
+  const full = path.resolve(dir, s);                                     // slot stored verbatim (carries its own extension)
+  if (full !== path.join(path.resolve(dir), s)) return null;             // belt and suspenders
+  return { dir, full };
 }
 
 async function handle(action, context) {
@@ -136,6 +167,57 @@ async function handle(action, context) {
     } catch (e) {
       return { ok: false, error: 'STT failed: ' + (e.message || 'unknown error') };
     }
+  }
+
+  // --- Save byte store -------------------------------------------------------------------------
+  // A format-agnostic store for interpreter save bytes at saves/<game>/<slot>.glksave. Both manual
+  // SAVE/RESTORE and the autosave timer flow through these four verbs via the asyncglk storage
+  // provider (its only caller). Raw bytes go in on write (the POST body); base64-in-JSON comes back
+  // on read, because this /app-api/ channel only ever emits JSON (see sysserver.js serveAppApi).
+  // The autosave uses a fixed slot; manual saves use the player-chosen name.
+
+  if (action === 'save-write') {
+    const loc = resolveSave(query.game, query.slot);
+    if (!loc) return { ok: false, error: 'bad save name' };
+    const data = context && context.body;
+    if (!data || !data.length) return { ok: false, error: 'no save data' };
+    if (data.length > MAX_SAVE) return { ok: false, error: 'save too large' };
+    try {
+      fs.mkdirSync(loc.dir, { recursive: true });
+      fs.writeFileSync(loc.full, data);
+    } catch (e) { return { ok: false, error: 'could not write save' }; }
+    return { ok: true };
+  }
+
+  if (action === 'save-read') {
+    const loc = resolveSave(query.game, query.slot);
+    if (!loc) return { ok: false, error: 'bad save name' };
+    let buf;
+    try { buf = fs.readFileSync(loc.full); } catch (e) { return { ok: false, error: 'not found' }; }
+    return { ok: true, b64: buf.toString('base64') };
+  }
+
+  if (action === 'save-list') {
+    const g = safeComponent(query.game);
+    if (!g) return { ok: false, error: 'bad save name' };
+    let names = [];
+    try { names = fs.readdirSync(path.join(SAVES_DIR, g)); } catch (e) { return { ok: true, slots: [] }; }
+    const slots = [];
+    for (const n of names) {
+      let st;
+      try { st = fs.statSync(path.join(SAVES_DIR, g, n)); } catch (e) { continue; }
+      if (!st.isFile()) continue;
+      slots.push({ slot: n, size: st.size, mtime: Math.round(st.mtimeMs) });   // verbatim filename, incl. its extension
+    }
+    slots.sort((a, b) => b.mtime - a.mtime);          // most-recent first: powers the Resume prompt + RESTORE picker
+    return { ok: true, slots };
+  }
+
+  if (action === 'save-delete') {
+    const loc = resolveSave(query.game, query.slot);
+    if (!loc) return { ok: false, error: 'bad save name' };
+    try { fs.unlinkSync(loc.full); } catch (e) { /* idempotent: already-gone counts as deleted */ }
+    return { ok: true };
   }
 
   return { ok: false, error: 'unknown action' };

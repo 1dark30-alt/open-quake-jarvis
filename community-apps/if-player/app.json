@@ -29,6 +29,22 @@
       "help": "Show the Listen control so you can say commands instead of typing them. Uses the system STT (Settings → TTS/STT)."
     },
     {
+      "key": "autosave",
+      "label": "Auto-save to file",
+      "type": "bool",
+      "default": false,
+      "help": "Automatically save your progress for the current story every few minutes, so you never lose your place. Saves are written to a 'saves' folder next to your stories. Off by default."
+    },
+    {
+      "key": "autosaveInterval",
+      "label": "Auto-save every (minutes)",
+      "type": "text",
+      "default": "5",
+      "maxLength": 4,
+      "showIf": { "key": "autosave", "value": true },
+      "help": "How often to auto-save, in minutes. Minimum 1."
+    },
+    {
       "key": "story",
       "label": "Auto-start story (optional)",
       "type": "text",

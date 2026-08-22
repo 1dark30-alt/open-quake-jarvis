@@ -41,3 +41,6 @@ open-quake-next/
 
 # transient project-state doc (regenerated locally, not part of the repo)
 docs/current-state.md
+
+# IF player runtime saves (created by server.js save-store at runtime; never source)
+community-apps/if-player/saves/

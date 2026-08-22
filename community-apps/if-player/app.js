@@ -25,6 +25,12 @@
   var OPT_STORY = FORCE_PICK ? '' : (q.get('story') || '').trim();
   var WANT_SPEAK = q.get('speak') !== '0' && q.get('speak') !== 'false';
   var WANT_VOICE_IN = q.get('voiceInput') !== '0' && q.get('voiceInput') !== 'false';
+  var WANT_AUTOSAVE = q.get('autosave') === '1' || q.get('autosave') === 'true';
+  var AUTOSAVE_MS = (function () {
+    var n = parseInt(q.get('autosaveInterval'), 10);
+    if (!isFinite(n) || n < 1) n = 5;                            // default + floor: 5 min, never below 1
+    return n * 60 * 1000;
+  })();
 
   var el = function (id) { return document.getElementById(id); };
   var picker = el('picker'), storylist = el('storylist');
@@ -42,6 +48,7 @@
   var narrating = false, listening = false;
   var speakQueue = [], audio = null, speaking = false, prefetch = null;
   var vad = null, observer = null, gwin = 0, playing = false, gameOver = false;
+  var autosaveTimer = null, suppressSave = false, restoreArtifactUntil = 0, resumeBar = null, lastAutosaveAt = 0;
 
   function setStatus(cls, text) { statusdot.className = 'dot ' + (cls || ''); statustext.textContent = text; }
   function note(msg) { railnote.textContent = msg || ''; }
@@ -149,7 +156,9 @@
       muts.forEach(function (m) {
         [].forEach.call(m.addedNodes, function (n) {
           if (n.nodeType !== 1 || !n.classList || !n.classList.contains('BufferLine')) return;
+          if (suppressSave) { try { n.style.display = 'none'; } catch (e) {} return; }   // autosave turn: hide the whole "> save"/"Ok." turn, speak nothing
           var t = (n.innerText || '').replace(/\s+/g, ' ').trim();
+          if (t && restoreArtifactUntil > Date.now() && /end of history playback|^ok\.?$/i.test(t)) { try { n.style.display = 'none'; } catch (e) {} return; }   // resume: drop asyncglk's replay artifact, keep the room text
           if (!t || t.charAt(0) === '>') return;               // blank, or the echoed player command
           text.push(t);
         });
@@ -168,6 +177,7 @@
       if (initial) enqueueSpeech(initial);
     }
     focusGame();
+    offerResume(0);
   }
   // True when the user is (or should be) typing into a real field: the game's command input, or an
   // interpreter dialog like SAVE/RESTORE's filename box (asyncglk_file_dialog #filename_input), or the
@@ -197,6 +207,7 @@
   function onGameOver() {
     if (gameOver) return;
     gameOver = true;
+    if (autosaveTimer) { clearInterval(autosaveTimer); autosaveTimer = null; }
     setStatus('', 'Game over');
     note('Returning to your stories…');
     var ticks = 0;
@@ -362,6 +373,106 @@
     u.searchParams.set('pick', '1');
     location.href = u.toString();
   });
+
+  // ---- autosave to file (Tier 2: drive the game's own SAVE to a reserved slot, invisibly) ----
+  // window.oqSaves comes from the interpreter's OpenQuake storage provider: begin(slot) is a one-shot
+  // that makes the NEXT save/restore fileref resolve to a fixed on-disk slot with no file dialog; .game
+  // is the exact key server.js stores under; .autoSlot is the reserved autosave filename. We arm it and
+  // submit "save" as an ordinary command -- server.js then writes saves/<game>/<autoSlot>. SAVE is a
+  // meta verb (no world turn), and we only fire while the story is idle at an empty prompt, so play is
+  // untouched. If the provider isn't present (older build), everything here no-ops harmlessly.
+  function oqSaves() { return window.oqSaves || null; }
+  function flashNote(msg) { note(msg); setTimeout(function () { if (railnote.textContent === msg) note(''); }, 2500); }
+  // Safe to inject a command only when the buffer window is waiting on an EMPTY line input: nothing
+  // half-typed to clobber, no "[MORE]" pause (no line input shows during one), not a char/hyperlink
+  // request (also no line input). So "LineInput present and empty" already screens all of those out.
+  function idleForSave() {
+    if (!playing || gameOver || suppressSave) return false;
+    if (speaking || (audio && !audio.paused)) return false;     // don't inject mid-narration
+    var i = document.querySelector('.BufferWindow .LineInput');
+    return !!(i && !String(i.value || '').trim());
+  }
+  // Hide a still-visible ">save" input-echo line the live observer may have raced/missed. Exact-match
+  // on OUR injected command only (never a fuzzy game-output match), so it can't eat real text.
+  function hideCommandEcho(cmd) {
+    var a = '>' + cmd, b = '> ' + cmd;
+    [].forEach.call(document.querySelectorAll('.BufferWindow .BufferLine'), function (n) {
+      if (n.style.display === 'none') return;
+      var t = (n.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      if (t === a || t === b) { try { n.style.display = 'none'; } catch (e) {} }
+    });
+  }
+  function doAutosave() {
+    var s = oqSaves();
+    if (!s || typeof s.begin !== 'function' || !s.autoSlot) return;
+    if (Date.now() - lastAutosaveAt < AUTOSAVE_MS - 1500) return;   // at most once per interval, whatever the timer/poll does
+    if (!idleForSave()) return;                                 // busy this tick -> catch the next interval
+    suppressSave = true;
+    try { s.begin(s.autoSlot); } catch (e) { suppressSave = false; return; }
+    if (!sendCommand('save')) { suppressSave = false; return; }
+    lastAutosaveAt = Date.now();
+    // Un-suppress once the save turn has landed (echo + "Ok." hidden, prompt back). The timeout also
+    // guarantees we never get stuck hiding output if a save somehow didn't complete.
+    setTimeout(function () { suppressSave = false; hideCommandEcho('save'); flashNote('Autosaved.'); }, 900);
+  }
+  function startAutosave() {
+    if (!WANT_AUTOSAVE || autosaveTimer) return;
+    autosaveTimer = setInterval(doAutosave, AUTOSAVE_MS);
+  }
+  function doResume() {
+    var s = oqSaves();
+    if (!s || typeof s.begin !== 'function' || !s.autoSlot) return;
+    restoreArtifactUntil = Date.now() + 1500;                   // hide only the replay artifact; keep the room description
+    try { s.begin(s.autoSlot); } catch (e) { return; }
+    sendCommand('restore');
+  }
+  // A small themed bar offering to resume the autosave, so a fresh start is still possible. Inline
+  // styles only -- keeps this to app.js and off the shared style.css.
+  function showResumeBar() {
+    if (resumeBar) return;
+    resumeBar = document.createElement('div');
+    resumeBar.style.cssText = 'position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:60;'
+      + 'display:flex;gap:10px;align-items:center;padding:9px 14px;border-radius:11px;'
+      + 'background:rgba(20,22,26,.94);color:#fff;font:14px/1.2 system-ui,-apple-system,sans-serif;'
+      + 'box-shadow:0 6px 22px rgba(0,0,0,.45)';
+    var label = document.createElement('span'); label.textContent = 'Resume where you left off?';
+    var yes = document.createElement('button'); yes.type = 'button'; yes.textContent = 'Resume';
+    var no = document.createElement('button'); no.type = 'button'; no.textContent = 'Start fresh';
+    var bstyle = 'cursor:pointer;border:0;border-radius:7px;padding:6px 12px;font:600 13px system-ui,sans-serif';
+    yes.style.cssText = bstyle + ';background:' + ACCENT + ';color:#0a0a0a';
+    no.style.cssText = bstyle + ';background:rgba(255,255,255,.14);color:#fff';
+    resumeBar.appendChild(label); resumeBar.appendChild(yes); resumeBar.appendChild(no);
+    document.body.appendChild(resumeBar);
+    var choose = function (resume) {
+      if (!resumeBar) return;
+      resumeBar.remove(); resumeBar = null;
+      if (resume) doResume();
+      startAutosave();
+      focusGame();
+    };
+    yes.addEventListener('pointerdown', function (e) { e.preventDefault(); });
+    no.addEventListener('pointerdown', function (e) { e.preventDefault(); });
+    yes.addEventListener('click', function (e) { e.preventDefault(); choose(true); });
+    no.addEventListener('click', function (e) { e.preventDefault(); choose(false); });
+  }
+  // On story load: if autosave is on and a saved slot already exists for this game, offer to resume;
+  // otherwise just start the timer. Retries briefly while the provider's game/autoSlot settle post-load.
+  function offerResume(tries) {
+    if (!WANT_AUTOSAVE) return;                                 // feature off -> no autosave, no resume
+    tries = tries || 0;
+    var s = oqSaves();
+    if (!s || !s.game || !s.autoSlot) {
+      if (tries < 20) setTimeout(function () { offerResume(tries + 1); }, 150);
+      return;                                                   // no provider -> autosave simply unavailable
+    }
+    fetch('/app-api/save-list?game=' + encodeURIComponent(s.game))
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var has = j && j.ok && (j.slots || []).some(function (sl) { return sl.slot === s.autoSlot; });
+        if (has) showResumeBar(); else startAutosave();
+      })
+      .catch(function () { startAutosave(); });
+  }
 
   // ---- boot -------------------------------------------------------------
   fetch('/app-api/config').then(function (r) { return r.json(); }).then(function (j) {
