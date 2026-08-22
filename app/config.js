@@ -3230,7 +3230,7 @@
       <p class="hint" style="margin:2px 0 0">A GitHub folder (or any host) serving an <code>index.json</code> + app <code>.zip</code>s. Change it to install from your own fork.</p>
       <label class="row" style="gap:8px;align-items:center;width:auto;margin-top:6px"><input type="checkbox" id="diAutoPage" style="width:auto"> Add a page for newly installed apps</label>
       <div id="diRepoList" style="margin:8px 0"></div>
-      <div class="row" style="gap:8px"><button id="diAdd">Add (import .zip)…</button><button id="diRefresh">Refresh</button><button id="diCommunity" style="margin-left:auto">Community apps ↗</button></div>
+      <div class="row" style="gap:8px"><button id="diAdd">Add (import .zip)…</button><button id="diRefresh">Refresh</button><button id="diCheckAll" style="margin-left:auto">Check all for updates</button></div>
       <div id="diMsg" class="hint" style="margin:6px 0;min-height:18px"></div>
       <div id="diList"><p class="hint">Loading…</p></div>
       <details class="advsec" style="margin-top:16px"><summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Advanced settings</summary>
@@ -3399,7 +3399,7 @@
         }
         diMsg('Updating "' + id + '"…');
         const r = await configApi.updateDropInApp(id, confirmExec);
-        if (r && r.ok && r.updated) { appDefs = await configApi.getApps(); renderList(); renderRepo(); diMsg('Updated "' + (r.name || id) + '" to v' + r.version); }
+        if (r && r.ok && r.updated) { appDefs = await configApi.getApps(); renderList(); diMsg('Updated "' + (r.name || id) + '" to v' + r.version); }
         else if (r && r.ok && r.upToDate) diMsg('"' + id + '" is up to date.');
         else if (r && r.warnExec && !confirmExec) {
           if (window.confirm('This update contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC. Update anyway?')) doUpdate(id, true);
@@ -3427,7 +3427,23 @@
       document.getElementById('diBrowse').onclick = () => renderRepo();
       document.getElementById('diAdd').onclick = () => { importZipPath = null; doImport(); };
       document.getElementById('diRefresh').onclick = () => renderList();
-      document.getElementById('diCommunity').onclick = () => configApi.openExternal(repoField() || DEFAULT_APP_REPO);
+      // Check every repo-installed app at once, then offer to update the ones with a newer version.
+      const checkAllUpdates = async () => {
+        let apps = []; try { apps = (await configApi.listDropInApps()) || []; } catch (e) {}
+        const repoApps = apps.filter(a => a.source);
+        if (!repoApps.length) return diMsg('No apps installed from a repository to check.');
+        diMsg('Checking ' + repoApps.length + ' app(s) for updates…');
+        const updates = [];
+        for (const a of repoApps) { const c = await configApi.checkDropInUpdate(a.id); if (c && c.ok && c.updateAvailable) updates.push({ id: a.id, from: c.installedVersion, to: c.remoteVersion }); }
+        if (!updates.length) return diMsg('All ' + repoApps.length + ' app(s) are up to date.');
+        const summary = updates.map(u => u.id + ' (' + u.from + ' → ' + u.to + ')').join('\n');
+        if (!window.confirm(updates.length + ' update(s) available:\n\n' + summary + '\n\nUpdate all now?')) return diMsg(updates.length + ' update(s) available.');
+        let done = 0;
+        for (const u of updates) { const r = await configApi.updateDropInApp(u.id, true); if (r && r.ok && r.updated) done++; }
+        appDefs = await configApi.getApps(); renderList();
+        diMsg('Updated ' + done + ' of ' + updates.length + ' app(s).', done < updates.length);
+      };
+      document.getElementById('diCheckAll').onclick = () => checkAllUpdates();
       configApi.getDropInInfo().then(info => { if (!info) return; const s2 = document.getElementById('diLoc'); if (s2) s2.value = info.location; const p = document.getElementById('diLocPath'); if (p) p.textContent = info.dir; });
       document.getElementById('diLoc').onchange = async e => {
         const info = await configApi.setDropInLocation(e.target.value);
