@@ -4,7 +4,7 @@
       "id": "if-player",
       "name": "Interactive Fiction",
       "description": "Play Inform / Z-machine & Glulx text adventures with TTS narration and voice commands.",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "zip": "if-player.zip",
       "server": true
     },

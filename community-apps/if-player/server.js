@@ -25,9 +25,10 @@ const MAX_AUDIO = 8 * 1024 * 1024;    // ~4 minutes of 16kHz mono PCM; an uttera
 const MAX_SPEAK = 4000;               // characters per synthesize call
 const MAX_STORY = 64 * 1024 * 1024;   // generous: large Glulx blorbs can be tens of MB
 const MAX_SAVE = 32 * 1024 * 1024;    // full-VM autosave snapshots (esp. Glulx) can run to several MB
-const SAVES_DIR = path.join(__dirname, 'saves');   // sibling to stories/; layout: saves/<game>/<slot>
-                                                   // <slot> is the interpreter's full Glk filename, stored VERBATIM
-                                                   // (it already carries its own extension, e.g. name.glksave / name.glkdata)
+// Save files are written to the user-chosen "Saves folder" (the savesDir option), a real folder on
+// the PC -- kept OUTSIDE this app directory so they survive app updates/reinstalls (which replace the
+// app folder). Layout: <savesDir>/<game>/<slot>, where <slot> is the interpreter's full Glk filename,
+// stored VERBATIM (it already carries its own extension, e.g. name.glksave / name.glkdata).
 
 // The host config's settings.* block, read fresh each call so changes apply without a restart.
 // Never throws -- a missing/unreadable config yields {}.
@@ -64,6 +65,23 @@ function storiesDir(options) {
   }
   return path.join(__dirname, 'stories');
 }
+// The folder to write save files to: the per-page "Saves folder" option (any path on the PC) if set,
+// otherwise a sensible default that is NEVER inside this app dir (an update would wipe it) -- next to
+// the user's stories folder, or the host's per-user data dir when the bundled stories are in use.
+function savesDir(options) {
+  const chosen = String((options && options.savesDir) || '').trim();
+  if (chosen) return path.resolve(chosen);                 // created on first write if it doesn't exist yet
+  const stories = storiesDir(options);
+  if (path.resolve(stories) !== path.resolve(path.join(__dirname, 'stories'))) {
+    return path.join(stories, 'saves');                    // next to the user's own stories
+  }
+  try {
+    const electron = require('electron');
+    const userDir = electron && electron.app && electron.app.getPath('userData');
+    if (userDir) return path.join(userDir, 'if-player-saves');
+  } catch (e) {}
+  return path.join(__dirname, 'saves');                    // last resort (non-electron/test only)
+}
 function listStories(dir) {
   let names = [];
   try { names = fs.readdirSync(dir); } catch (e) { return []; }
@@ -95,13 +113,13 @@ function safeComponent(name) {
   if (/[\\/:*?"<>|\x00-\x1f]/.test(base)) return null;          // reject path seps + control chars + Windows-illegal chars
   return base;
 }
-// Resolve a (game, slot) pair to an absolute .glksave path inside SAVES_DIR, plus the game's own
+// Resolve a (game, slot) pair to an absolute .glksave path inside the saves folder, plus the game's own
 // directory (for listing). Returns null if either component is unsafe.
-function resolveSave(game, slot) {
+function resolveSave(options, game, slot) {
   const g = safeComponent(game);
   const s = safeComponent(slot);
   if (!g || !s) return null;
-  const dir = path.join(SAVES_DIR, g);
+  const dir = path.join(savesDir(options), g);
   const full = path.resolve(dir, s);                                     // slot stored verbatim (carries its own extension)
   if (full !== path.join(path.resolve(dir), s)) return null;             // belt and suspenders
   return { dir, full };
@@ -177,7 +195,7 @@ async function handle(action, context) {
   // The autosave uses a fixed slot; manual saves use the player-chosen name.
 
   if (action === 'save-write') {
-    const loc = resolveSave(query.game, query.slot);
+    const loc = resolveSave(options, query.game, query.slot);
     if (!loc) return { ok: false, error: 'bad save name' };
     const data = context && context.body;
     if (!data || !data.length) return { ok: false, error: 'no save data' };
@@ -190,7 +208,7 @@ async function handle(action, context) {
   }
 
   if (action === 'save-read') {
-    const loc = resolveSave(query.game, query.slot);
+    const loc = resolveSave(options, query.game, query.slot);
     if (!loc) return { ok: false, error: 'bad save name' };
     let buf;
     try { buf = fs.readFileSync(loc.full); } catch (e) { return { ok: false, error: 'not found' }; }
@@ -200,12 +218,13 @@ async function handle(action, context) {
   if (action === 'save-list') {
     const g = safeComponent(query.game);
     if (!g) return { ok: false, error: 'bad save name' };
+    const base = savesDir(options);
     let names = [];
-    try { names = fs.readdirSync(path.join(SAVES_DIR, g)); } catch (e) { return { ok: true, slots: [] }; }
+    try { names = fs.readdirSync(path.join(base, g)); } catch (e) { return { ok: true, slots: [] }; }
     const slots = [];
     for (const n of names) {
       let st;
-      try { st = fs.statSync(path.join(SAVES_DIR, g, n)); } catch (e) { continue; }
+      try { st = fs.statSync(path.join(base, g, n)); } catch (e) { continue; }
       if (!st.isFile()) continue;
       slots.push({ slot: n, size: st.size, mtime: Math.round(st.mtimeMs) });   // verbatim filename, incl. its extension
     }
@@ -214,7 +233,7 @@ async function handle(action, context) {
   }
 
   if (action === 'save-delete') {
-    const loc = resolveSave(query.game, query.slot);
+    const loc = resolveSave(options, query.game, query.slot);
     if (!loc) return { ok: false, error: 'bad save name' };
     try { fs.unlinkSync(loc.full); } catch (e) { /* idempotent: already-gone counts as deleted */ }
     return { ok: true };

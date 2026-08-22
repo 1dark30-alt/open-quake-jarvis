@@ -1,7 +1,7 @@
 {
   "id": "if-player",
   "name": "Interactive Fiction",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Play Inform / Z-machine & Glulx text adventures with TTS narration and voice commands.",
   "entry": "index.html",
   "served": true,
@@ -13,6 +13,13 @@
       "type": "folder",
       "default": "",
       "help": "Folder anywhere on this PC that holds your story files (.z5 / .z8 / .zblorb / .ulx / .gblorb). Browse to it; every story inside shows up in the on-screen list. Leave blank to use the app's own bundled stories folder."
+    },
+    {
+      "key": "savesDir",
+      "label": "Saves folder",
+      "type": "folder",
+      "default": "",
+      "help": "Folder anywhere on this PC where your save files are written (one subfolder per story). Browse to it. Saves are real files kept outside the app, so they survive app updates and reinstalls. Leave blank to keep them in a 'saves' folder next to your stories."
     },
     {
       "key": "speak",
