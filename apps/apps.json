@@ -28,12 +28,6 @@
     ]
   },
   {
-    "id": "bird",
-    "name": "Quake Bird",
-    "file": "bird.html",
-    "options": []
-  },
-  {
     "id": "clock",
     "name": "Flip Clock",
     "file": "clock.html",
