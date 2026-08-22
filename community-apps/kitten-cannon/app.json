@@ -1,0 +1,23 @@
+{
+  "id": "kitten-cannon",
+  "name": "Kitten Cannon",
+  "entry": "index.html",
+  "served": true,
+  "options": [
+    {
+      "key": "playerName",
+      "label": "Player name",
+      "type": "text",
+      "default": "Player",
+      "maxLength": 32,
+      "help": "Name your scores are recorded under on the high-score server."
+    },
+    {
+      "key": "serverUrl",
+      "label": "Server URL (advanced)",
+      "type": "text",
+      "default": "https://scores.doofenshmirtzevil.com",
+      "help": "Advanced: base URL of the kitten-cannon score server. Clear it to play offline — high scores then stay on this PC."
+    }
+  ]
+}

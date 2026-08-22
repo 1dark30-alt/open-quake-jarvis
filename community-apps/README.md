@@ -11,6 +11,12 @@ For how to install or submit an app — and a safety note — see the docs:
 - **[jarvis](jarvis)** — JARVIS voice-assistant client: pairs with a JARVIS server over a
   PIN, and talks to Gemini Live, Ollama, or an OpenAI-compatible endpoint. Download
   [`jarvis.zip`](jarvis.zip) and import via **Settings → Drop-In Apps → Add**.
+- **[kitten-cannon](kitten-cannon)** — a remake of the classic Kitten Cannon flash game,
+  ported for the panel with touch controls: drag or hold the arrow buttons to aim, tap
+  FIRE to launch, bounce off trampolines and TNT for distance. Optional shared
+  high-score server (configurable Server URL; works fully offline too) and a
+  persistent mute button. Download [`kitten-cannon.zip`](kitten-cannon.zip) and import
+  via **Settings → Drop-In Apps → Add**.
 - **[news-spotlight](news-spotlight)** — full-screen rotating RSS feed reader. Defaults
   to BBC / Sky / The Verge / Ars Technica; configurable feeds, story duration, Ken
   Burns motion, breaking-news mode, and an SSRF-safe proxy. Download
