@@ -40,7 +40,7 @@
 
   var caps = { tts: false, stt: false };
   var narrating = false, listening = false;
-  var speakQueue = [], audio = null, speaking = false;
+  var speakQueue = [], audio = null, speaking = false, prefetch = null;
   var vad = null, observer = null, gwin = 0, playing = false;
 
   function setStatus(cls, text) { statusdot.className = 'dot ' + (cls || ''); statustext.textContent = text; }
@@ -148,6 +148,16 @@
       if (text.length) enqueueSpeech(text.join(' '));
     });
     observer.observe(inner, { childList: true, subtree: true });
+    // The observer only sees FUTURE lines. The opening banner + first room are already on screen when
+    // we attach, so they'd never be spoken -- narrate what's here now, once. (Sentence-split below, so
+    // it starts quickly even though the intro is long.)
+    if (narrating) {
+      var initial = [].slice.call(inner.querySelectorAll('.BufferLine'))
+        .map(function (n) { return (n.innerText || '').replace(/\s+/g, ' ').trim(); })
+        .filter(function (t) { return t && t.charAt(0) !== '>'; })
+        .join(' ');
+      if (initial) enqueueSpeech(initial);
+    }
     focusGame();
   }
   // True when the user is (or should be) typing into a real field: the game's command input, or an
@@ -184,18 +194,46 @@
   }
 
   // ---- narration (TTS) --------------------------------------------------
-  function enqueueSpeech(text) { if (narrating && text) { speakQueue.push(text); if (!speaking) drainSpeech(); } }
-  function drainSpeech() {
-    if (!speakQueue.length) { speaking = false; updateButtons(); return; }
-    var text = speakQueue.shift();
-    speaking = true; updateButtons();
-    fetch('/app-api/speak', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: text })
+  // Split a passage into sentences so narration starts after the FIRST sentence synthesizes, not the
+  // whole room -- the server renders a whole /app-api/speak call before returning, so a long room used
+  // to sit silent for seconds. A short leading fragment (a room heading with no full stop) glues onto
+  // the next chunk so it isn't spoken as a lonely blip.
+  function splitSentences(text) {
+    var t = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!t) return [];
+    var raw = t.match(/[^.!?]*[.!?]+(?=\s|$)|[^.!?]+$/g) || [t];
+    var out = [];
+    raw.forEach(function (s) {
+      s = s.trim(); if (!s) return;
+      if (out.length && !/[.!?]$/.test(out[out.length - 1])) out[out.length - 1] += ' ' + s;   // glue a heading fragment (no full stop) onto the next
+      else out.push(s);
+    });
+    return out.length ? out : [t];
+  }
+  function fetchSpeech(sentence) {
+    return fetch('/app-api/speak', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: sentence })
       .then(function (r) { return r.json(); })
-      .then(function (j) {
-        if (!j || !j.ok || !j.wav) { note(j && j.error || 'Narration unavailable'); speakQueue = []; speaking = false; updateButtons(); return; }
-        playWav(j.wav);
-      })
-      .catch(function () { speakQueue = []; speaking = false; updateButtons(); });
+      .then(function (j) { return (j && j.ok && j.wav) ? { wav: j.wav } : { error: (j && j.error) || 'Narration unavailable' }; })
+      .catch(function () { return { error: 'Narration unavailable' }; });
+  }
+  function enqueueSpeech(text) {
+    if (!narrating) return;
+    var parts = splitSentences(text);
+    if (!parts.length) return;
+    parts.forEach(function (p) { speakQueue.push(p); });
+    if (!speaking) drainSpeech();
+  }
+  function drainSpeech() {
+    if (!speakQueue.length) { speaking = false; prefetch = null; updateButtons(); return; }
+    speaking = true; updateButtons();
+    var sentence = speakQueue.shift();
+    var cur = (prefetch && prefetch.text === sentence) ? prefetch.p : fetchSpeech(sentence);
+    prefetch = speakQueue.length ? { text: speakQueue[0], p: fetchSpeech(speakQueue[0]) } : null;   // warm the next while this plays
+    cur.then(function (res) {
+      if (!speaking) return;                      // hushed while this was synthesizing
+      if (!res || res.error) { note(res && res.error); drainSpeech(); return; }
+      playWav(res.wav);
+    });
   }
   function playWav(b64) {
     stopAudio();
@@ -205,7 +243,7 @@
     audio.play().catch(function () { audio = null; drainSpeech(); });
   }
   function stopAudio() { if (audio) { try { audio.pause(); } catch (e) {} audio = null; } }
-  function hush() { speakQueue = []; stopAudio(); speaking = false; updateButtons(); }
+  function hush() { speakQueue = []; prefetch = null; stopAudio(); speaking = false; updateButtons(); }
 
   // ---- voice commands (STT) ---------------------------------------------
   function startListening() {
