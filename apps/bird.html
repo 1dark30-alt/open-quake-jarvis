@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Quake Bird</title>
+<style>
+  /* Original artwork drawn in canvas -- no Flappy Bird assets (those are Dong Nguyen's).
+     Theme (light/dark + accent) comes from the host via the #hash: _dark / _accent. */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05080d; }
+  body { touch-action: manipulation; user-select: none; font-family: "Segoe UI", system-ui, sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+'use strict';
+(function () {
+  // ---- host params (file:// page -> options arrive in the #hash) ----
+  const p = {};
+  location.hash.replace(/^#/, '').split('&').forEach(kv => {
+    const i = kv.indexOf('='); if (i > 0) p[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1));
+  });
+  const DARK = p._dark !== '0';
+  const ACCENT = /^#[0-9a-fA-F]{6}$/.test(p._accent || '') ? p._accent : '#7CFFB2';
+
+  const cv = document.getElementById('c'), cx = cv.getContext('2d');
+  let W = 0, H = 0, sky = null, scenery = [];
+  function resize() {
+    W = cv.width = Math.max(320, window.innerWidth);
+    H = cv.height = Math.max(240, window.innerHeight);
+    sky = cx.createLinearGradient(0, 0, 0, H);
+    if (DARK) { sky.addColorStop(0, '#0d1a2e'); sky.addColorStop(1, '#05080d'); }
+    else { sky.addColorStop(0, '#aed9f2'); sky.addColorStop(1, '#e8f4fb'); }
+    // stars (dark) / clouds (light), parallax layer; fixed per resize so frames stay cheap
+    scenery = [];
+    for (let i = 0; i < (DARK ? 90 : 12); i++) {
+      scenery.push({ x: Math.random() * W, y: Math.random() * (H - 120), s: DARK ? Math.random() * 1.6 + .4 : Math.random() * 30 + 22, v: Math.random() * 8 + 4 });
+    }
+  }
+  window.addEventListener('resize', resize); resize();
+
+  // ---- tuning (classic feel: ~480px-tall world, like the original's 512) ----
+  const G = 1500, FLAP = -430, VMAX = 700;         // gravity px/s^2, flap impulse, terminal velocity
+  const R = 15;                                    // bird collision radius
+  const PIPE_W = 90, SPACING = 430, GROUND = 56;
+  const gapFor = s => Math.max(150, 180 - s);      // gap shrinks 180 -> 150 as you score
+  const speedFor = s => Math.min(380, 250 + 3 * s);
+
+  // ---- state ----
+  const ST = { READY: 0, PLAY: 1, DEAD: 2, PAUSE: 3 };
+  let state = ST.READY, bird, pipes, score, deadAt = 0, t0 = null, wing = 0;
+  let best = 0; try { best = JSON.parse(localStorage.getItem('quakebird') || '{}').best || 0; } catch (e) {}
+  function reset() {
+    bird = { x: Math.min(W * .25, 480), y: H / 2, vy: 0 };
+    pipes = []; score = 0;
+  }
+  reset();
+
+  function spawnPipe(x) {
+    const gap = gapFor(score);
+    const c = 110 + gap / 2 + Math.random() * (H - GROUND - 220 - gap);   // gap center, clear of edges
+    pipes.push({ x, top: c - gap / 2, bot: c + gap / 2, passed: false });
+  }
+
+  // ---- sound: tiny WebAudio blips, created on first input (autoplay policy) ----
+  let ac = null;
+  function beep(f0, f1, dur, vol) {
+    try {
+      if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.state === 'suspended') ac.resume();
+      const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+      o.type = 'square'; o.frequency.setValueAtTime(f0, t); o.frequency.linearRampToValueAtTime(f1, t + dur);
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + dur);
+    } catch (e) {}
+  }
+
+  // ---- input: tap anywhere / Space / ArrowUp ----
+  function tap() {
+    if (state === ST.READY) { state = ST.PLAY; spawnPipe(W + 200); }
+    else if (state === ST.PAUSE) { state = ST.PLAY; t0 = null; return; }
+    else if (state === ST.DEAD) { if (performance.now() - deadAt > 500) { reset(); state = ST.READY; } return; }
+    bird.vy = FLAP; wing = 1; beep(320, 480, .05, .06);
+  }
+  window.addEventListener('pointerdown', e => { e.preventDefault(); tap(); });
+  window.addEventListener('keydown', e => { if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); tap(); } });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && state === ST.PLAY) state = ST.PAUSE; });
+
+  function die() {
+    state = ST.DEAD; deadAt = performance.now(); beep(180, 60, .22, .09);
+    if (score > best) { best = score; try { localStorage.setItem('quakebird', JSON.stringify({ best })); } catch (e) {} }
+  }
+
+  function step(dt) {
+    wing = Math.max(0, wing - dt * 6);
+    if (state !== ST.PLAY) {
+      if (state === ST.READY) bird.y = H / 2 + Math.sin(performance.now() / 300) * 12;   // idle bob
+      return;
+    }
+    bird.vy = Math.min(VMAX, bird.vy + G * dt);
+    bird.y += bird.vy * dt;
+    if (bird.y < R) { bird.y = R; bird.vy = 0; }                 // ceiling clamps (original: only pipes/ground kill)
+    if (bird.y > H - GROUND - R) { bird.y = H - GROUND - R; die(); return; }
+
+    const v = speedFor(score);
+    pipes.forEach(pp => { pp.x -= v * dt; });
+    if (!pipes.length || pipes[pipes.length - 1].x < W - SPACING) spawnPipe(W + PIPE_W);
+    while (pipes.length && pipes[0].x < -PIPE_W - 10) pipes.shift();
+
+    for (const pp of pipes) {
+      if (!pp.passed && pp.x + PIPE_W / 2 < bird.x) { pp.passed = true; score++; beep(700, 900, .07, .06); }
+      // circle vs the two pipe rects (closest-point test)
+      for (const rect of [[pp.x, 0, PIPE_W, pp.top], [pp.x, pp.bot, PIPE_W, H - GROUND - pp.bot]]) {
+        const nx = Math.max(rect[0], Math.min(bird.x, rect[0] + rect[2]));
+        const ny = Math.max(rect[1], Math.min(bird.y, rect[1] + rect[3]));
+        if ((bird.x - nx) ** 2 + (bird.y - ny) ** 2 < R * R) { die(); return; }
+      }
+    }
+  }
+
+  // ---- drawing (all original shapes) ----
+  const PIPE_DARK = shade(ACCENT, DARK ? -.45 : -.35);
+  function shade(hex, k) {
+    const n = parseInt(hex.slice(1), 16), f = c => Math.max(0, Math.min(255, Math.round(c * (1 + k))));
+    return 'rgb(' + f(n >> 16) + ',' + f((n >> 8) & 255) + ',' + f(n & 255) + ')';
+  }
+  function drawPipes() {
+    for (const pp of pipes) {
+      for (const seg of [[0, pp.top, true], [pp.bot, H - GROUND - pp.bot, false]]) {
+        cx.fillStyle = ACCENT; cx.fillRect(pp.x, seg[0], PIPE_W, seg[1]);
+        cx.fillStyle = PIPE_DARK;
+        cx.fillRect(pp.x + PIPE_W - 14, seg[0], 14, seg[1]);                       // side shading
+        const lipY = seg[2] ? seg[0] + seg[1] - 26 : seg[0];
+        cx.fillRect(pp.x - 5, lipY, PIPE_W + 10, 26);                              // lip
+        cx.fillStyle = ACCENT; cx.fillRect(pp.x - 5, lipY + 4, PIPE_W + 2, 18);
+      }
+    }
+  }
+  function drawBird() {
+    const a = Math.max(-.45, Math.min(1.1, bird.vy / 600));                        // tilt with velocity
+    cx.save(); cx.translate(bird.x, bird.y); cx.rotate(state === ST.PLAY || state === ST.DEAD ? a : 0);
+    cx.fillStyle = '#f7c948'; cx.beginPath(); cx.arc(0, 0, 16, 0, 7); cx.fill();   // body
+    cx.fillStyle = '#e8a530'; cx.beginPath(); cx.ellipse(-4, 3 - wing * 9, 9, 6, -.4, 0, 7); cx.fill();  // wing
+    cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(7, -5, 5.5, 0, 7); cx.fill();    // eye
+    cx.fillStyle = '#1b2430'; cx.beginPath(); cx.arc(8.5, -5, 2.6, 0, 7); cx.fill();
+    cx.fillStyle = '#f0662f'; cx.beginPath(); cx.moveTo(12, 1); cx.lineTo(24, 4); cx.lineTo(12, 9); cx.fill();  // beak
+    cx.restore();
+  }
+  function text(s, x, y, size, weight, align) {
+    cx.font = (weight || 800) + ' ' + size + 'px "Segoe UI", system-ui, sans-serif';
+    cx.textAlign = align || 'center';
+    cx.lineWidth = Math.max(3, size / 9); cx.strokeStyle = DARK ? '#05080d' : '#ffffff';
+    cx.strokeText(s, x, y); cx.fillStyle = DARK ? '#f2f5ff' : '#1b2430'; cx.fillText(s, x, y);
+  }
+  let groundX = 0;
+  function draw(dt) {
+    cx.fillStyle = sky; cx.fillRect(0, 0, W, H);
+    cx.fillStyle = DARK ? 'rgba(240,245,255,.8)' : 'rgba(255,255,255,.85)';
+    for (const s of scenery) {                                                    // stars / clouds drift
+      if (state === ST.PLAY) { s.x -= s.v * dt; if (s.x < -60) s.x = W + 40; }
+      if (DARK) cx.fillRect(s.x, s.y, s.s, s.s);
+      else { cx.beginPath(); cx.ellipse(s.x, s.y, s.s, s.s * .55, 0, 0, 7); cx.fill(); }
+    }
+    drawPipes();
+    // ground strip
+    if (state === ST.PLAY) groundX = (groundX - speedFor(score) * dt) % 40;
+    cx.fillStyle = DARK ? '#101826' : '#cfe4a6'; cx.fillRect(0, H - GROUND, W, GROUND);
+    cx.fillStyle = DARK ? '#1a2740' : '#a9cd7c';
+    for (let x = groundX; x < W; x += 40) { cx.save(); cx.translate(x, H - GROUND); cx.transform(1, 0, -.6, 1, 0, 0); cx.fillRect(0, 0, 20, 10); cx.restore(); }
+    drawBird();
+    if (state === ST.PLAY || state === ST.PAUSE) text(score, W / 2, 84, 64);
+    if (state === ST.READY) {
+      text('QUAKE BIRD', W / 2, H / 2 - 90, 72);
+      text('Tap to flap', W / 2, H / 2 + 76, 30, 700);
+      if (best) text('Best  ' + best, W / 2, H / 2 + 120, 22, 700);
+    } else if (state === ST.DEAD) {
+      text('GAME OVER', W / 2, H / 2 - 60, 60);
+      text('Score  ' + score + '      Best  ' + best, W / 2, H / 2 + 4, 34, 700);
+      if (performance.now() - deadAt > 500) text('Tap to retry', W / 2, H / 2 + 56, 26, 700);
+    } else if (state === ST.PAUSE) {
+      text('PAUSED', W / 2, H / 2 - 20, 48);
+      text('Tap to resume', W / 2, H / 2 + 34, 26, 700);
+    }
+  }
+
+  function loop(t) {
+    if (t0 == null) t0 = t;
+    const dt = Math.min(.032, (t - t0) / 1000); t0 = t;
+    if (state !== ST.PAUSE) step(dt);
+    draw(dt);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
