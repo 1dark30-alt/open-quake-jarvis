@@ -833,6 +833,7 @@ async function fetchLeaderboard() {
             .sort((a, b) => b.score - a.score)
             .slice(0, 8)
             .map((e, i) => ({ rank: i + 1, userid: e.userid, score: e.score }));
+        score_board.leaderboardLoaded = true;
         return;
     }
     try {
@@ -843,6 +844,13 @@ async function fetchLeaderboard() {
         const data = await response.json();
         if (data && data.success && Array.isArray(data.leaderboard)) {
             score_board.leaderboard = data.leaderboard;
+            score_board.leaderboardLoaded = true;
+            // The top entry IS the world record; this heals a stale/failed
+            // get_high_score fetch without an extra (rate-limited) call.
+            const top = data.leaderboard[0];
+            if (top && parseInt(top.score) > parseInt(globalHighScore || "0")) {
+                globalHighScore = String(top.score);
+            }
         }
     } catch (e) {
         console.error('Error fetching leaderboard:', e);

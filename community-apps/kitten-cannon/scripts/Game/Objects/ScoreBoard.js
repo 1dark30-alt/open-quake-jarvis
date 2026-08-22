@@ -15,6 +15,7 @@ export default class ScoreBoard {
         this.__create_buttons();
         this.isNewRecord = false; // Add property to track if user set a new record
         this.leaderboard = [];    // [{rank, userid, score}] — filled by main.js
+        this.leaderboardLoaded = false; // true once a fetch (or offline build) succeeded
         this.playerTag = "";      // current player's tag, for row highlighting
     }
 
@@ -105,8 +106,13 @@ export default class ScoreBoard {
             this.__ctx.fillText(txt, canvas_w_half - font_width / 2, canvas_h_half - 230);
         }
         
-        // New Record message - display only if player set a new record
-        if (parseInt(this.score) > parseInt(this.globalHighScore)) {
+        // New Record message - display only if player set a new record.
+        // Also require the run to beat the player's own best: if the world-record
+        // fetch failed (or the server DB is empty) globalHighScore reads 0, and a
+        // 57 ft run must not claim a record while "Your Best" says 217.
+        const isNewWorldRecord = parseInt(this.score) > parseInt(this.globalHighScore)
+            && parseInt(this.score) >= parseInt(this.highScore);
+        if (isNewWorldRecord) {
             this.__ctx.font = "52px Nicotine";
             this.__ctx.fillStyle = "#FF4500"; // Bright orange-red color
             
@@ -145,11 +151,11 @@ export default class ScoreBoard {
         
         { // Global High Score
             let txt;
-            if (parseInt(this.score) > parseInt(this.globalHighScore)) {
+            if (isNewWorldRecord) {
                 txt = "Old World Record: " + this.globalHighScore + " ft";
             } else {
                 txt = "World Record: " + this.globalHighScore + " ft";
-            }           
+            }
             this.__ctx.font = "44px Nicotine";
             this.__ctx.fillStyle = "#cc6600";
             
@@ -157,9 +163,9 @@ export default class ScoreBoard {
             this.__ctx.fillText(txt, canvas_w_half - font_width / 2, canvas_h_half - 30);
         }
         
-        { // Leaderboard side panel (skipped when there's no data or no room beside the board)
+        { // Leaderboard side panel (skipped only when nothing fetched yet or no room beside the board)
             let lb = this.leaderboard;
-            if (Array.isArray(lb) && lb.length && this.__ctx.canvas.width >= 1600) {
+            if (this.leaderboardLoaded && Array.isArray(lb) && this.__ctx.canvas.width >= 1600) {
                 let panelW = 420;
                 let panelH = 400;
                 let panelX = canvas_w_half + 256 + 60;   // right of the 512-wide board
@@ -189,9 +195,19 @@ export default class ScoreBoard {
                 this.__ctx.font = "30px Nicotine";
                 let rowY = panelY + 70;
                 let me = String(this.playerTag || "").toUpperCase();
+                if (!lb.length) {
+                    this.__ctx.fillStyle = "#999";
+                    let empty_txt = "No scores yet!";
+                    let empty_w = this.__ctx.measureText(empty_txt).width;
+                    this.__ctx.fillText(empty_txt, panelX + panelW / 2 - empty_w / 2, panelY + panelH / 2 - 20);
+                }
                 for (let i = 0; i < lb.length && i < 8; i++) {
                     let entry = lb[i];
-                    this.__ctx.fillStyle = (String(entry.userid).toUpperCase() === me) ? "#ff680b" : "#333";
+                    // The server may normalize tags to short arcade initials
+                    // ("KCTEST" stored as "KCT"), so match on prefix.
+                    let tag = String(entry.userid).toUpperCase();
+                    let mine = tag.length && me.length && (me === tag || me.startsWith(tag));
+                    this.__ctx.fillStyle = mine ? "#ff680b" : "#333";
                     this.__ctx.fillText(entry.rank + ". " + entry.userid, panelX + 24, rowY);
                     let score_txt = entry.score + " ft";
                     let score_w = this.__ctx.measureText(score_txt).width;
