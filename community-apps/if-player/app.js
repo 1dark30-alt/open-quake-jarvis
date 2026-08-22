@@ -41,7 +41,7 @@
   var caps = { tts: false, stt: false };
   var narrating = false, listening = false;
   var speakQueue = [], audio = null, speaking = false, prefetch = null;
-  var vad = null, observer = null, gwin = 0, playing = false;
+  var vad = null, observer = null, gwin = 0, playing = false, gameOver = false;
 
   function setStatus(cls, text) { statusdot.className = 'dot ' + (cls || ''); statustext.textContent = text; }
   function note(msg) { railnote.textContent = msg || ''; }
@@ -134,6 +134,15 @@
     playing = true;
     updateCommandButtons();
     setStatus('ok', 'Playing');
+    // Detect the game ending (QUIT confirmed, death then QUIT, etc.): the interpreter calls
+    // GlkOte.exit() on a disabling update, but that method is a stub -- so the finished game just
+    // sits there. Wrap it to return to the story list.
+    var G = glkote();
+    if (G && !G.__ifExitWrapped) {
+      G.__ifExitWrapped = true;
+      var origExit = typeof G.exit === 'function' ? G.exit.bind(G) : function () {};
+      G.exit = function () { try { origExit(); } catch (e) {} onGameOver(); };
+    }
     if (observer) observer.disconnect();
     observer = new MutationObserver(function (muts) {
       var text = [];
@@ -182,6 +191,21 @@
       if (isTypingTarget()) return;            // don't yank focus from a save/restore dialog or field
       var i = gameInput(); if (i) i.focus();
     } catch (e) {}
+  }
+  // The game ended -> hand the panel back to the story list, once. Give the closing text a moment to
+  // be seen, and if narration is on, let it finish reading the final passage first (capped).
+  function onGameOver() {
+    if (gameOver) return;
+    gameOver = true;
+    setStatus('', 'Game over');
+    note('Returning to your stories…');
+    var ticks = 0;
+    (function tick() {
+      ticks++;
+      var narrationDone = !speaking && !speakQueue.length;
+      if ((ticks < 10 || !narrationDone) && ticks < 70) { setTimeout(tick, 300); return; }   // >=3s, let narration finish, cap ~21s
+      var u = new URL(location.href); u.searchParams.set('pick', '1'); location.href = u.toString();
+    })();
   }
   function sendCommand(text) {
     var G = glkote();

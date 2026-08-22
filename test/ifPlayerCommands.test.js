@@ -19,7 +19,7 @@ test('IF player exposes only the approved common touchscreen commands', () => {
     'save', 'restore',
   ]);
   assert.equal((chrome.match(/class="command-btn/g) || []).length, 11);   // compass 7 + quick 4 (Save/Restore are rail buttons)
-  assert.match(chrome, /id="ifcommands-label" class="command-label">Common commands</);
+  assert.match(chrome, /id="ifcommands"[^>]*aria-label="Common commands"/);
 });
 
 test('generated Parchment page contains the current source chrome', () => {

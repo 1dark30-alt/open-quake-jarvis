@@ -134,10 +134,8 @@ body.novoicein #listenbtn { display: none; }
 .rbtn .sub { font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--if-muted); font-weight: 650; }
 .rbtn.on { border: 2px solid var(--if-accent); background: color-mix(in srgb, var(--if-accent) 16%, var(--if-panel2)); }
 .rbtn[disabled] { opacity: .45; cursor: default; }
-.rbtn.quiet { min-height: 64px; }
-.rail-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.rail-pair .rbtn { min-height: 56px; }
-.railnote { font-size: 13px; line-height: 1.45; color: var(--if-faint); padding: 0 4px; }
+.rbtn.quiet { min-height: 56px; }
+.railnote { font-size: 13px; line-height: 1.4; color: var(--if-faint); padding: 0 4px; }
 
 /* story picker: a scrollable vertical list filling the story area */
 #picker {
