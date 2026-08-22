@@ -1,15 +1,17 @@
 {
   "id": "quake-bird",
   "name": "Quake Bird",
+  "version": "1.0.0",
+  "description": "A flappy-style arcade game with optional shared high scores.",
   "entry": "bird.html",
   "options": [
     {
       "key": "playerName",
-      "label": "Player tag (optional)",
+      "label": "Player initials (optional)",
       "type": "text",
       "default": "",
-      "maxLength": 16,
-      "help": "Overrides the initials entered in the game. Scores are recorded under this tag on the shared high-score server (arcade style: same tag = same player)."
+      "maxLength": 3,
+      "help": "Overrides the initials entered in the game. 1-3 letters (A-Z); scores are recorded under them on the shared high-score server (arcade style: same initials = same player)."
     },
     {
       "key": "serverUrl",

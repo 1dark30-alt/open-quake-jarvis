@@ -1,7 +1,13 @@
 # Community drop-in apps — downloads
 
-Downloadable drop-in apps for open-quake. Grab an app's **`.zip`** below and import it with
-**Settings → Drop-In Apps → Add (import .zip)**.
+Install these straight from the panel: **Settings → Drop-In Apps → Browse…** lists every app here
+and installs (and later updates) it in one tap. Or grab an app's **`.zip`** below and import it with
+**Add (import .zip)**.
+
+> **Maintainers:** each app declares a `version` in its `app.json`. When you add an app or bump a
+> version, rebuild that app's `<id>.zip` **and** regenerate the catalog the panel reads:
+> `node tools/build-community-index.js` (writes `index.json`), then commit both. The in-panel
+> **Check for updates** button compares `index.json` against the installed version.
 
 For how to install or submit an app — and a safety note — see the docs:
 **[docs/community-apps.md](../docs/community-apps.md)**.

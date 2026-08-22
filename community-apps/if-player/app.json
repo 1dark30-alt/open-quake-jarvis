@@ -1,6 +1,8 @@
 {
   "id": "if-player",
   "name": "Interactive Fiction",
+  "version": "1.0.0",
+  "description": "Play Inform / Z-machine & Glulx text adventures with TTS narration and voice commands.",
   "entry": "index.html",
   "served": true,
   "server": "server.js",

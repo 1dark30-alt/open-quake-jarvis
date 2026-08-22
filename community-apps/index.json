@@ -1,0 +1,52 @@
+{
+  "apps": [
+    {
+      "id": "if-player",
+      "name": "Interactive Fiction",
+      "description": "Play Inform / Z-machine & Glulx text adventures with TTS narration and voice commands.",
+      "version": "1.0.0",
+      "zip": "if-player.zip",
+      "server": true
+    },
+    {
+      "id": "jarvis",
+      "name": "JARVIS",
+      "description": "JARVIS voice-assistant client — pairs over a PIN, talks to Gemini Live, Ollama, or an OpenAI-compatible endpoint.",
+      "version": "1.0.0",
+      "zip": "jarvis.zip",
+      "server": true
+    },
+    {
+      "id": "kitten-cannon",
+      "name": "Kitten Cannon",
+      "description": "Launch the kitten for distance — a touch remake of the classic, with online high scores.",
+      "version": "1.0.0",
+      "zip": "kitten-cannon.zip",
+      "server": false
+    },
+    {
+      "id": "news-spotlight",
+      "name": "News Spotlight",
+      "description": "Full-screen rotating RSS news reader with Ken Burns motion and breaking-news mode.",
+      "version": "1.0.0",
+      "zip": "news-spotlight.zip",
+      "server": true
+    },
+    {
+      "id": "quake-bird",
+      "name": "Quake Bird",
+      "description": "A flappy-style arcade game with optional shared high scores.",
+      "version": "1.0.0",
+      "zip": "quake-bird.zip",
+      "server": false
+    },
+    {
+      "id": "spotify-volume",
+      "name": "Spotify Volume",
+      "description": "Per-app Windows volume control for the knob (Spotify by default, configurable to any process).",
+      "version": "1.0.0",
+      "zip": "spotify-volume.zip",
+      "server": true
+    }
+  ]
+}

@@ -83,6 +83,7 @@ const { DiscordAppHost } = require('./discordAppHost');
 const { DEFAULT_DISCORD_APPLICATION_ID, discordApplicationId, normalizeDiscordSettings } = require('./discordSettings');
 const { ObsService } = require('./obsService');                 // OBS Studio control (shared service)
 const { normalizeObsSettings, obsWsUrl } = require('./obsSettings');
+const appRepo = require('./appRepo');                            // pure helpers for repo install/update
 const claudeVoiceApprovals = require('./claudevoice-approvals'); // required directly ONLY for the boot-time leftover-hook sweep below
 const HA_SCHEDULE_APPS = ['haschedule', 'agenda', 'events'];   // dev apps backed by the shared HA /haschedule-data snapshot
 
@@ -636,10 +637,16 @@ function copyDirSync(src, dest) {
 }
 function listDropInApps() {
   const base = path.resolve(dropInDir());
-  return appCatalog().apps.filter(a => a._folder).map(a => ({
-    id: a.id, name: a.name, served: !!a.served, hasServer: !!a.server,
-    managed: !!(a._dir && path.resolve(a._dir).startsWith(base)),   // only user-data apps can be deleted/exported
-  }));
+  const sources = readAppSources();
+  return appCatalog().apps.filter(a => a._folder).map(a => {
+    const src = sources[a.id] || null;
+    return {
+      id: a.id, name: a.name, served: !!a.served, hasServer: !!a.server,
+      managed: !!(a._dir && path.resolve(a._dir).startsWith(base)),   // only user-data apps can be deleted/exported
+      version: (src && src.version) || (typeof a.version === 'string' ? a.version : ''),
+      source: src ? src.url : null,                                    // set = installed from a repo (Update available)
+    };
+  });
 }
 function folderAppDir(id) { const def = appCatalog().apps.find(a => a._folder && a.id === id); return def ? def._dir : null; }
 // Import a .zip. On an app-id conflict, return { conflict, id } so the editor can prompt for a new id and retry with forceId.
@@ -658,7 +665,9 @@ function folderHasExecutable(dir) {
   })(dir);
   return found;
 }
-async function importDropInApp(zipPath, forceId, confirmExec) {
+// `replaceId` (set only by the repo-update path): overwrite an existing managed app of that id in
+// place instead of rejecting the id conflict -- the one code path serves fresh install and update.
+async function importDropInApp(zipPath, forceId, confirmExec, replaceId) {
   if (typeof zipPath !== 'string' || !fs.existsSync(zipPath)) return { ok: false, error: 'file not found' };
   const tmp = path.join(USER_DIR, 'import-tmp-' + Date.now());
   try {
@@ -673,13 +682,16 @@ async function importDropInApp(zipPath, forceId, confirmExec) {
     if (!confirmExec && (safeAppEntry(manifest.server) || folderHasExecutable(appRoot))) {
       return { ok: false, warnExec: true, id: id0, server: !!safeAppEntry(manifest.server) };
     }
+    if (replaceId && id0 && id0 !== replaceId) return { ok: false, error: 'downloaded app id "' + id0 + '" does not match "' + replaceId + '"' };
     const finalId = ((forceId || id0) || '').trim();
     if (!SAFE_APP_ID.test(finalId)) return { ok: false, error: 'invalid app id (use lowercase letters, digits, _ or -)' };
     const taken = new Set(appCatalog().apps.map(a => a.id));
     const destDir = path.join(dropInDir(), finalId);
-    if (taken.has(finalId) || fs.existsSync(destDir)) {
+    const replacing = !!replaceId && finalId === replaceId;
+    if (!replacing && (taken.has(finalId) || fs.existsSync(destDir))) {
       return forceId ? { ok: false, error: 'the id "' + finalId + '" is also taken' } : { ok: false, conflict: true, id: id0 || finalId };
     }
+    if (replacing && fs.existsSync(destDir)) { try { fs.rmSync(destDir, { recursive: true, force: true }); } catch (e) { return { ok: false, error: 'could not remove the old version' }; } }
     if (finalId !== id0) { manifest.id = finalId; try { fs.writeFileSync(mp, JSON.stringify(manifest, null, 2)); } catch (e) { return { ok: false, error: 'could not rewrite the manifest id' }; } }
     ensureDropInDir();
     try { fs.renameSync(appRoot, destDir); } catch (e) { copyDirSync(appRoot, destDir); }
@@ -700,8 +712,123 @@ function deleteDropInApp(id) {
   if (!dir) return { ok: false, error: 'app not found' };
   const base = path.resolve(dropInDir());
   if (!path.resolve(dir).startsWith(base + path.sep)) return { ok: false, error: 'only user-installed drop-in apps can be deleted here' };
-  try { fs.rmSync(path.resolve(dir), { recursive: true, force: true }); return { ok: true }; }
+  try { fs.rmSync(path.resolve(dir), { recursive: true, force: true }); setAppSource(id, null); return { ok: true }; }
   catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+}
+
+// ---- install / update drop-in apps from a repository -----------------------------------------------
+// Provenance registry: a single JSON map <id> -> { url, version } stored beside the drop-in apps (NOT
+// inside each app folder, so it survives an in-place update and never ships in an exported zip). An
+// entry marks an app as repo-installed and records the installed version, which the update check
+// compares against the repo's index.json.
+const DEFAULT_APP_REPO = 'https://github.com/TeeJS/open-quake/tree/main/community-apps';
+const APP_ZIP_MAX = 25 * 1024 * 1024;
+function appSourcesPath() { return path.join(dropInDir(), '.oqsources.json'); }
+function readAppSources() { try { return JSON.parse(fs.readFileSync(appSourcesPath(), 'utf8')) || {}; } catch (e) { return {}; } }
+function setAppSource(id, entry) {
+  const s = readAppSources();
+  if (entry) s[id] = entry; else delete s[id];
+  try { ensureDropInDir(); fs.writeFileSync(appSourcesPath(), JSON.stringify(s, null, 2)); return true; } catch (e) { return false; }
+}
+function appRepoSetting() { return (config.settings && typeof config.settings.appRepo === 'string' && config.settings.appRepo.trim()) || DEFAULT_APP_REPO; }
+
+// GET a URL as JSON via Electron's net stack (inherits system proxy/CA). Mirrors app/haClient.js.
+async function fetchJson(url) {
+  const r = await net.fetch(url, { method: 'GET', headers: { 'User-Agent': 'open-quake/' + app.getVersion(), Accept: 'application/json' } });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return JSON.parse(await r.text());
+}
+// Download a URL to a file, size-capped, http(s)-only, redirect-following (modeled on fetchIconToCache).
+function downloadToFile(url, dest, maxBytes) {
+  url = String(url || '').trim();
+  return new Promise(resolve => {
+    if (!/^https?:\/\//i.test(url)) return resolve({ ok: false, error: 'Only http(s) URLs are allowed.' });
+    let req; try { req = net.request({ url, redirect: 'follow' }); } catch (e) { return resolve({ ok: false, error: 'That URL is not valid.' }); }
+    req.setHeader('User-Agent', 'open-quake/' + app.getVersion() + ' (+https://github.com/TeeJS/open-quake)');
+    let done = false;
+    const fail = msg => { if (done) return; done = true; try { req.abort(); } catch (e) {} resolve({ ok: false, error: msg }); };
+    req.on('error', () => fail('Could not reach the repository.'));
+    req.on('response', resp => {
+      const status = resp.statusCode;
+      if (status < 200 || status >= 300) { resp.resume(); return fail('Download failed (HTTP ' + status + ').'); }
+      const chunks = []; let total = 0; const cap = maxBytes || APP_ZIP_MAX;
+      resp.on('data', d => { total += d.length; if (total > cap) return fail('That app is too large (over ' + Math.round(cap / 1048576) + ' MB).'); chunks.push(d); });
+      resp.on('error', () => fail('Error reading the download.'));
+      resp.on('end', () => {
+        if (done) return; done = true;
+        try { fs.writeFileSync(dest, Buffer.concat(chunks)); resolve({ ok: true, path: dest }); }
+        catch (e) { resolve({ ok: false, error: 'Could not write the download.' }); }
+      });
+    });
+    req.end();
+  });
+}
+
+async function fetchRepoIndex(settingUrl) {
+  const base = appRepo.repoRawBase(settingUrl);
+  if (!base) return { error: 'The app-repository URL is not a valid http(s) URL.' };
+  try { return { base, apps: appRepo.parseIndex(await fetchJson(appRepo.indexUrl(base))) }; }
+  catch (e) { return { base, error: 'Could not load the repository catalog: ' + (e.message || e) }; }
+}
+
+// List repo apps, annotated against what's installed (available / installed / update). `repoUrl` is the
+// editor's current (possibly unsaved) field value; falls back to the saved setting.
+async function listRepoApps(repoUrl) {
+  const setting = (typeof repoUrl === 'string' && repoUrl.trim()) || appRepoSetting();
+  const idx = await fetchRepoIndex(setting);
+  if (idx.error) return { ok: false, error: idx.error };
+  const byId = {}; listDropInApps().forEach(a => { byId[a.id] = a; });
+  const apps = idx.apps.map(a => {
+    const inst = byId[a.id];
+    let state = 'available';
+    if (inst) state = (inst.version && appRepo.cmpVersion(a.version, inst.version) > 0) ? 'update' : 'installed';
+    return { id: a.id, name: a.name, description: a.description, version: a.version, server: a.server, installed: !!inst, installedVersion: inst ? inst.version : null, state };
+  });
+  return { ok: true, base: idx.base, apps };
+}
+
+async function downloadAndInstall(base, entry, settingUrl, replaceId, confirmExec) {
+  const url = appRepo.zipUrl(base, entry);
+  if (!url) return { ok: false, error: 'no download URL for "' + entry.id + '".' };
+  const tmpZip = path.join(USER_DIR, 'repo-dl-' + Date.now() + '.zip');
+  const dl = await downloadToFile(url, tmpZip);
+  if (!dl.ok) return dl;
+  try {
+    const r = await importDropInApp(tmpZip, null, confirmExec, replaceId);
+    if (r && r.ok) setAppSource(r.id, { url: settingUrl, version: entry.version });
+    return r;
+  } finally { try { fs.rmSync(tmpZip, { force: true }); } catch (e) {} }
+}
+
+async function installRepoApp(id, confirmExec, repoUrl) {
+  const setting = (typeof repoUrl === 'string' && repoUrl.trim()) || appRepoSetting();
+  const idx = await fetchRepoIndex(setting);
+  if (idx.error) return { ok: false, error: idx.error };
+  const entry = idx.apps.find(a => a.id === id);
+  if (!entry) return { ok: false, error: '"' + id + '" is not in the repository.' };
+  return downloadAndInstall(idx.base, entry, setting, null, confirmExec);
+}
+
+async function checkDropInUpdate(id) {
+  const src = readAppSources()[id];
+  if (!src || !src.url) return { ok: false, error: 'This app was not installed from a repository.' };
+  const idx = await fetchRepoIndex(src.url);
+  if (idx.error) return { ok: false, error: idx.error };
+  const entry = idx.apps.find(a => a.id === id);
+  if (!entry) return { ok: false, error: '"' + id + '" is no longer in the repository.' };
+  return { ok: true, updateAvailable: appRepo.cmpVersion(entry.version, src.version) > 0, installedVersion: src.version, remoteVersion: entry.version };
+}
+
+async function updateDropInApp(id, confirmExec) {
+  const src = readAppSources()[id];
+  if (!src || !src.url) return { ok: false, error: 'This app was not installed from a repository.' };
+  const idx = await fetchRepoIndex(src.url);
+  if (idx.error) return { ok: false, error: idx.error };
+  const entry = idx.apps.find(a => a.id === id);
+  if (!entry) return { ok: false, error: '"' + id + '" is no longer in the repository.' };
+  if (appRepo.cmpVersion(entry.version, src.version) <= 0) return { ok: true, upToDate: true, version: src.version };
+  const r = await downloadAndInstall(idx.base, entry, src.url, id, confirmExec);
+  return (r && r.ok) ? { ok: true, updated: true, id: r.id, name: r.name, version: entry.version } : r;
 }
 // Secret-at-rest store: encrypts the secret-typed config fields (dashboard tokens / Basic passwords /
 // custom header values / app secret options) in config.json. On Windows the backend is raw DPAPI
@@ -3446,6 +3573,11 @@ app.whenReady().then(async () => {
     saveConfig(); ensureDropInDir();
     return { location: config.settings.dropInLocation, dir: dropInDir() };
   });
+  // Install / update drop-in apps from the configured repository (Settings → Drop-In Apps)
+  ipcMain.handle('listRepoApps', (e, repoUrl) => isFrom(e, configWin) ? listRepoApps(repoUrl) : { ok: false });
+  ipcMain.handle('installRepoApp', (e, id, confirmExec, repoUrl) => isFrom(e, configWin) ? installRepoApp(id, confirmExec, repoUrl) : { ok: false });
+  ipcMain.handle('checkDropInUpdate', (e, id) => isFrom(e, configWin) ? checkDropInUpdate(id) : { ok: false });
+  ipcMain.handle('updateDropInApp', (e, id, confirmExec) => isFrom(e, configWin) ? updateDropInApp(id, confirmExec) : { ok: false });
   ipcMain.handle('getAppIcon', (e, value) => isFrom(e, configWin) ? getAppIconDataUrl(value) : null);
   // Sync: editor preview reads a local image as a data: URL through main (the config preload is sandboxed,
   // so it can't touch fs). Same conversion the panel uses, so editor previews match the panel.

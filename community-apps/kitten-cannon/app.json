@@ -1,6 +1,8 @@
 {
   "id": "kitten-cannon",
   "name": "Kitten Cannon",
+  "version": "1.0.0",
+  "description": "Launch the kitten for distance — a touch remake of the classic, with online high scores.",
   "entry": "index.html",
   "served": true,
   "options": [

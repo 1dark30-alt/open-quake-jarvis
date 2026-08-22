@@ -1,6 +1,8 @@
 {
   "id": "news-spotlight",
   "name": "News Spotlight",
+  "version": "1.0.0",
+  "description": "Full-screen rotating RSS news reader with Ken Burns motion and breaking-news mode.",
   "entry": "index.html",
   "served": true,
   "server": "server.js",
