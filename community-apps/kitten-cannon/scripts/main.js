@@ -838,7 +838,9 @@ async function fetchLeaderboard() {
         return;
     }
     try {
-        const response = await fetch(serverApi(`get_leaderboard.php?game=${GAME_SLUG}&limit=8`));
+        // runs=1: top individual runs, arcade style (same initials can repeat).
+        // Servers without that mode ignore it and send best-per-player instead.
+        const response = await fetch(serverApi(`get_leaderboard.php?game=${GAME_SLUG}&limit=8&runs=1`));
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
