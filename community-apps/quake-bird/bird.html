@@ -52,7 +52,10 @@
   // ---- state ----
   const ST = { READY: 0, PLAY: 1, DEAD: 2, PAUSE: 3 };
   let state = ST.READY, bird, pipes, score, deadAt = 0, t0 = null, wing = 0;
-  let best = 0; try { best = JSON.parse(localStorage.getItem('quakebird') || '{}').best || 0; } catch (e) {}
+  let best = 0, muted = false;
+  try { const s = JSON.parse(localStorage.getItem('quakebird') || '{}'); best = s.best || 0; muted = !!s.muted; } catch (e) {}
+  function persist() { try { localStorage.setItem('quakebird', JSON.stringify({ best, muted })); } catch (e) {} }
+  const muteRect = () => [W - 88, 16, 64, 64];   // on-screen mute toggle, top-right, 64px touch target
   function reset() {
     bird = { x: Math.min(W * .25, 480), y: H / 2, vy: 0 };
     pipes = []; score = 0;
@@ -68,6 +71,7 @@
   // ---- sound: tiny WebAudio blips, created on first input (autoplay policy) ----
   let ac = null;
   function beep(f0, f1, dur, vol) {
+    if (muted) return;
     try {
       if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
       if (ac.state === 'suspended') ac.resume();
@@ -85,13 +89,22 @@
     else if (state === ST.DEAD) { if (performance.now() - deadAt > 500) { reset(); state = ST.READY; } return; }
     bird.vy = FLAP; wing = 1; beep(320, 480, .05, .06);
   }
-  window.addEventListener('pointerdown', e => { e.preventDefault(); tap(); });
-  window.addEventListener('keydown', e => { if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); tap(); } });
+  function toggleMute() { muted = !muted; persist(); beep(500, 650, .06, .06); }   // beep only audible when unmuting
+  window.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const m = muteRect();   // a tap on the mute button must not flap the bird
+    if (e.clientX >= m[0] - 8 && e.clientX <= m[0] + m[2] + 8 && e.clientY >= m[1] - 8 && e.clientY <= m[1] + m[3] + 8) { toggleMute(); return; }
+    tap();
+  });
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); tap(); }
+    else if (e.code === 'KeyM') toggleMute();
+  });
   document.addEventListener('visibilitychange', () => { if (document.hidden && state === ST.PLAY) state = ST.PAUSE; });
 
   function die() {
     state = ST.DEAD; deadAt = performance.now(); beep(180, 60, .22, .09);
-    if (score > best) { best = score; try { localStorage.setItem('quakebird', JSON.stringify({ best })); } catch (e) {} }
+    if (score > best) { best = score; persist(); }
   }
 
   function step(dt) {
@@ -171,6 +184,14 @@
     cx.fillStyle = DARK ? '#1a2740' : '#a9cd7c';
     for (let x = groundX; x < W; x += 40) { cx.save(); cx.translate(x, H - GROUND); cx.transform(1, 0, -.6, 1, 0, 0); cx.fillRect(0, 0, 20, 10); cx.restore(); }
     drawBird();
+    const m = muteRect();   // mute toggle, always visible
+    cx.fillStyle = DARK ? 'rgba(242,245,255,.10)' : 'rgba(20,28,46,.08)';
+    cx.beginPath(); cx.roundRect(m[0], m[1], m[2], m[3], 16); cx.fill();
+    cx.strokeStyle = DARK ? 'rgba(242,245,255,.25)' : 'rgba(20,28,46,.25)'; cx.lineWidth = 2; cx.stroke();
+    cx.font = '30px "Segoe UI Emoji", "Segoe UI", sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.fillStyle = DARK ? '#f2f5ff' : '#1b2430';
+    cx.fillText(muted ? '🔇' : '🔊', m[0] + m[2] / 2, m[1] + m[3] / 2 + 2);   // 🔇 / 🔊
+    cx.textBaseline = 'alphabetic';
     if (state === ST.PLAY || state === ST.PAUSE) text(score, W / 2, 84, 64);
     if (state === ST.READY) {
       text('QUAKE BIRD', W / 2, H / 2 - 90, 72);
