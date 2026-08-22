@@ -36,6 +36,14 @@ For how to install or submit an app — and a safety note — see the docs:
 To add one, open a pull request — see
 [docs/community-apps.md](../docs/community-apps.md#submitting-one).
 
+## Shared high scores for your game
+
+Want online leaderboards in your community game? A free hosted score server is available
+to all community apps — kitten-cannon and quake-bird already use it, and you're welcome
+to as well. See **[SCORE-API.md](SCORE-API.md)** for the URL (use of it in community
+games is explicitly permitted), the game-slug and 3-letter-initials conventions, and the
+endpoint reference. Self-hosting instructions are linked there too.
+
 ## For developers
 
 Building your own drop-in app? The [`skills/`](skills) folder holds
