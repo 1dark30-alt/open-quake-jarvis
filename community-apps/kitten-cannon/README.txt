@@ -14,31 +14,31 @@ Distance in feet is your score.
 
 Options (editor > App)
 ----------------------
-- Player name        Name your scores are recorded under (default "Player").
-- Server URL (advanced)  Base URL of the kitten-cannon score server
+- Player tag         The tag your scores are recorded under (1-16 chars,
+                     letters/digits/_/-; uppercased, arcade style: same
+                     tag = same player).
+- Server URL (advanced)  Base URL of the shared score server
                      (default https://scores.doofenshmirtzevil.com). Clear it
-                     to play offline: high scores are then kept in this PC's
-                     localStorage only.
+                     to play offline: high scores and the leaderboard then
+                     come from this PC's localStorage only.
 
 Score server contract
 ---------------------
-Any server that speaks this HTTP API works (the original project's PHP + MySQL
-backend does; a containerized copy of it is the intended host):
+Speaks the shared arcade score API — the authoritative spec is
+server/HANDOFF.md in github.com/TeeJS/kitten-cannon-remake. Every call
+carries the game slug ("kitten-cannon"); scores are integer feet:
 
-  GET  <base>/get_high_score.php?score=<int>
+  GET  <base>/get_high_score.php?game=kitten-cannon&score=<int>
        -> {"success":true,"highScore":<int>,"percentile":<0-100>,"totalScores":<int>}
-  GET  <base>/get_personal_high_score.php?userId=<name>
-       -> {"success":true,"personalHighScore":<int>}
-  POST <base>/save_score.php?t=<timestamp>
-       (application/x-www-form-urlencoded: userid=<name>&score=<int>)
-       -> {"success":true,...}   NOTE: the field is lowercase "userid".
+  GET  <base>/get_personal_high_score.php?game=kitten-cannon&userId=<tag>
+       -> {"success":true,"personalHighScore":<int|null>}
+  GET  <base>/get_leaderboard.php?game=kitten-cannon&limit=8
+       -> {"success":true,"leaderboard":[{"rank":1,"userid":"TJS","score":42},...]}
+  POST <base>/save_score.php   (FormData: userId, score, game)
+       -> {"success":true,...}
        Called once per run (every death), not just on new personal bests --
        that history is what the percentile calculation needs.
 
-IMPORTANT: the game page is served from http://127.0.0.1:<port>, so the score
-server MUST send CORS headers or every call will be blocked by the browser:
-
-  Access-Control-Allow-Origin: *
-  Access-Control-Allow-Methods: GET, POST, OPTIONS
-
-(and answer OPTIONS preflights with 204). Scores are in feet, stored as integers.
+The score board shows a "Top Kittens" leaderboard beside the results:
+best score per player from the server, or built from this PC's local
+bests when offline. CORS must be open on the server (it is, per the spec).

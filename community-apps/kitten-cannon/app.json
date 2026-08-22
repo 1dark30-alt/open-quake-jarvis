@@ -6,11 +6,11 @@
   "options": [
     {
       "key": "playerName",
-      "label": "Player name",
+      "label": "Player tag",
       "type": "text",
       "default": "Player",
-      "maxLength": 32,
-      "help": "Name your scores are recorded under on the high-score server."
+      "maxLength": 16,
+      "help": "The tag your scores are recorded under on the shared high-score server (arcade style: same tag = same player)."
     },
     {
       "key": "serverUrl",

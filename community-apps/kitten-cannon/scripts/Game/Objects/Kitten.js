@@ -123,16 +123,23 @@ export default class Kitten {
         // Offline (no score server configured): keep the score in the local store only.
         window.KC_SAVE_LOCAL && window.KC_SAVE_LOCAL(score);
         const apiUrl = window.KC_SERVER_API && window.KC_SERVER_API('save_score.php');
-        if (!apiUrl) return Promise.resolve({ success: true, offline: true });
+        if (!apiUrl) {
+            window.KC_ON_SCORE_SAVED && window.KC_ON_SCORE_SAVED();
+            return Promise.resolve({ success: true, offline: true });
+        }
+
+        // Shared score API (server/HANDOFF.md): FormData with userId, score, and
+        // the game slug on every call. FormData avoids a CORS preflight.
+        const form = new FormData();
+        form.append('userId', window.userId);
+        form.append('score', score);
+        form.append('game', 'kitten-cannon');
 
         // Add a timestamp to prevent caching issues
         const timestamp = new Date().getTime();
         return fetch(apiUrl + '?t=' + timestamp, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `userid=${encodeURIComponent(window.userId)}&score=${encodeURIComponent(score)}`
+            body: form
         })
         .then(response => {
             if (!response.ok) {
@@ -143,14 +150,15 @@ export default class Kitten {
         .then(text => {
             // For debugging purposes
             console.warn("Score save response:", text);
-            
+
             try {
                 // Store raw response text in case JSON parsing fails
                 window.lastScoreResponseText = text;
-                
+
                 // Try to parse as JSON
                 const data = JSON.parse(text);
                 window.lastScoreResponse = data;
+                window.KC_ON_SCORE_SAVED && window.KC_ON_SCORE_SAVED();
                 return data;
             } catch (e) {
                 window.lastScoreError = "JSON parse error: " + e.message;

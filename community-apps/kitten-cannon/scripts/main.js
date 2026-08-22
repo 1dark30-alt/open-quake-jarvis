@@ -26,7 +26,11 @@ import DistanceDisplay from "./Game/Objects/DistanceDisplay.js";
 // a #hash works too so the page can be opened directly during development.
 const APP_PARAMS = new URLSearchParams(location.search || location.hash.replace(/^#/, "?"));
 const EMBEDDED_IN_HOST = APP_PARAMS.has("_dark"); // open-quake always appends theme params
-window.userId = (APP_PARAMS.get("playerName") || "").trim() || null;
+// Shared-score-server conventions (server/HANDOFF.md in kitten-cannon-remake):
+// game slug on every call; player tag 1-16 chars A-Z 0-9 _ -, uppercased.
+const GAME_SLUG = "kitten-cannon";
+window.userId = (APP_PARAMS.get("playerName") || "").trim().toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, "").slice(0, 16) || null;
 // Base URL of the score server ("Server URL (advanced)" app option). Blank = offline:
 // high scores are kept in localStorage on this PC instead.
 const SCORE_SERVER = (APP_PARAMS.get("serverUrl") || "").trim().replace(/\/+$/, "");
@@ -39,6 +43,9 @@ function serverApi(path) {
 // so it reaches these through window like it already does for userId.
 window.KC_SERVER_API = serverApi;
 window.KC_SAVE_LOCAL = (score) => saveLocalScore(score);
+// Refresh the leaderboard once the run's score has landed, so the player's
+// fresh entry shows on the board they're about to look at.
+window.KC_ON_SCORE_SAVED = () => fetchLeaderboard();
 
 // Offline score store: { "<player name>": bestScoreFeet, ... }
 const LOCAL_SCORES_KEY = "kitten-cannon-scores";
@@ -597,6 +604,7 @@ function render_game_screen() {
             highScoreFetched = true;
             const finalScore = Math.floor(distance_travelled_px / pixel_per_feet);
             fetchGlobalHighScore(finalScore);
+            fetchLeaderboard();   // refreshed again via KC_ON_SCORE_SAVED once this run's score lands
         }
         
         score_board.visible = true;
@@ -743,7 +751,7 @@ async function fetchGlobalHighScore(optionalScore = null) {
 
         console.log("Fetching high score for score:", currentScore);
 
-        const response = await fetch(serverApi(`get_high_score.php?score=${currentScore}`));
+        const response = await fetch(serverApi(`get_high_score.php?game=${GAME_SLUG}&score=${currentScore}`));
         
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -785,14 +793,15 @@ async function fetchPersonalHighScore() {
 
     try {
         console.error("Fetching personal best for user:", window.userId);
-        const response = await fetch(serverApi(`get_personal_high_score.php?userId=${encodeURIComponent(window.userId)}`));
-        
+        const response = await fetch(serverApi(`get_personal_high_score.php?game=${GAME_SLUG}&userId=${encodeURIComponent(window.userId)}`));
+
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const data = await response.json();
-        
+
+        // personalHighScore is null when the player has no scores yet.
         if (data.success && data.personalHighScore) {
             console.error("Personal best retrieved:", data.personalHighScore);
             
@@ -810,6 +819,33 @@ async function fetchPersonalHighScore() {
         }
     } catch (e) {
         console.error('Error fetching personal high score:', e);
+    }
+}
+
+// Best score per player, for the score board's side panel. Online it comes from
+// the server; offline it's built from this PC's local bests, so it still works.
+async function fetchLeaderboard() {
+    if (!score_board) return;
+    score_board.playerTag = window.userId || "";
+    if (!SCORE_SERVER) {
+        score_board.leaderboard = Object.entries(localScores())
+            .map(([userid, score]) => ({ userid: String(userid).toUpperCase(), score: Math.floor(score) }))
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 8)
+            .map((e, i) => ({ rank: i + 1, userid: e.userid, score: e.score }));
+        return;
+    }
+    try {
+        const response = await fetch(serverApi(`get_leaderboard.php?game=${GAME_SLUG}&limit=8`));
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data && data.success && Array.isArray(data.leaderboard)) {
+            score_board.leaderboard = data.leaderboard;
+        }
+    } catch (e) {
+        console.error('Error fetching leaderboard:', e);
     }
 }
 

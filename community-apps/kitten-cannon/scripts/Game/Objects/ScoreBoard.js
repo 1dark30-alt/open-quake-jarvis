@@ -14,6 +14,8 @@ export default class ScoreBoard {
         this.onMenu = () => { }
         this.__create_buttons();
         this.isNewRecord = false; // Add property to track if user set a new record
+        this.leaderboard = [];    // [{rank, userid, score}] — filled by main.js
+        this.playerTag = "";      // current player's tag, for row highlighting
     }
 
     __create_buttons() {
@@ -155,6 +157,50 @@ export default class ScoreBoard {
             this.__ctx.fillText(txt, canvas_w_half - font_width / 2, canvas_h_half - 30);
         }
         
+        { // Leaderboard side panel (skipped when there's no data or no room beside the board)
+            let lb = this.leaderboard;
+            if (Array.isArray(lb) && lb.length && this.__ctx.canvas.width >= 1600) {
+                let panelW = 420;
+                let panelH = 400;
+                let panelX = canvas_w_half + 256 + 60;   // right of the 512-wide board
+                let panelY = canvas_h_half - panelH / 2 - 50;
+
+                this.__ctx.lineWidth = 5;
+                this.__ctx.fillStyle = "#FFF";
+                this.__ctx.strokeStyle = "#960";
+                this.__ctx.fillRect(panelX, panelY, panelW, panelH);
+                this.__ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+                // Legs, same style as the main board
+                this.__ctx.fillStyle = "#960";
+                this.__ctx.strokeStyle = "#83520c";
+                this.__ctx.fillRect(panelX + 60, canvas_h_half + panelH / 2 - 70, 15, 120);
+                this.__ctx.strokeRect(panelX + 60, canvas_h_half + panelH / 2 - 70, 15, 120);
+                this.__ctx.fillRect(panelX + panelW - 75, canvas_h_half + panelH / 2 - 70, 15, 120);
+                this.__ctx.strokeRect(panelX + panelW - 75, canvas_h_half + panelH / 2 - 70, 15, 120);
+
+                this.__ctx.textBaseline = "top";
+                this.__ctx.font = "40px Nicotine";
+                this.__ctx.fillStyle = "#960";
+                let title = "Top Kittens";
+                let title_w = this.__ctx.measureText(title).width;
+                this.__ctx.fillText(title, panelX + panelW / 2 - title_w / 2, panelY + 14);
+
+                this.__ctx.font = "30px Nicotine";
+                let rowY = panelY + 70;
+                let me = String(this.playerTag || "").toUpperCase();
+                for (let i = 0; i < lb.length && i < 8; i++) {
+                    let entry = lb[i];
+                    this.__ctx.fillStyle = (String(entry.userid).toUpperCase() === me) ? "#ff680b" : "#333";
+                    this.__ctx.fillText(entry.rank + ". " + entry.userid, panelX + 24, rowY);
+                    let score_txt = entry.score + " ft";
+                    let score_w = this.__ctx.measureText(score_txt).width;
+                    this.__ctx.fillText(score_txt, panelX + panelW - 24 - score_w, rowY);
+                    rowY += 40;
+                }
+            }
+        }
+
         for (let key in this.buttons) {
             this.buttons[key].draw();
         }
