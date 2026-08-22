@@ -1,6 +1,6 @@
 /* Panel chrome for the Interactive Fiction player, layered onto Parchment's own page.
    Loaded after Parchment's stylesheet, so these rules win. The interpreter keeps rendering into
-   #gameport; we inset that to leave room for a context strip and a voice rail, and re-theme it
+   #gameport; we inset that to leave room for a context strip and two control rails, and re-theme it
    through GlkOte's own --glkote-* custom properties rather than fighting its CSS. */
 :root {
   --if-bg: #0d1220; --if-panel: #131a2c; --if-panel2: #1a2338;
@@ -10,6 +10,7 @@
   --if-line: rgba(120, 145, 222, .22);
   --if-r: 14px;
   --if-rail: 260px;
+  --if-gap: 12px;
   --if-ctx: 40px;
 }
 body.if-light {
@@ -40,16 +41,14 @@ body {
   touch-action: manipulation;
 }
 
-/* The story area: Parchment centres the game in a 900px column. On a 1920x480 panel vertical space
-   is the scarce resource, so widen it -- fewer wrapped lines, less scrolling -- and inset it to
-   clear our chrome. 1100px also gives the status line room for the 80 columns games assume. */
+/* The story area is the fluid middle column between two fixed appliance-style control rails. */
 #gameport {
   top: var(--if-ctx) !important;
-  bottom: 12px !important;
-  left: 12px !important;
-  right: calc(var(--if-rail) + 24px) !important;
-  max-width: 1100px !important;
-  margin: 0 auto !important;
+  bottom: var(--if-gap) !important;
+  left: calc(var(--if-rail) + (var(--if-gap) * 2)) !important;
+  right: calc(var(--if-rail) + (var(--if-gap) * 2)) !important;
+  max-width: none !important;
+  margin: 0 !important;
   background: var(--if-panel) !important;
   border: 1px solid var(--if-line);
   border-radius: var(--if-r);
@@ -58,6 +57,7 @@ body {
 /* Parchment's own front matter (about box, URL entry, file upload) -- we provide a picker instead. */
 #about, #footer-date { display: none !important; }
 body.picking #gameport { display: none !important; }
+body.picking #ifcommands { display: none; }
 
 .BufferWindow { font-size: 23px !important; line-height: 1.5 !important; }
 .BufferWindowInner { padding: 8px 16px !important; }
@@ -66,7 +66,9 @@ body.picking #gameport { display: none !important; }
 
 /* context strip */
 #ifctx {
-  position: fixed; top: 0; left: 12px; right: calc(var(--if-rail) + 24px);
+  position: fixed; top: 0;
+  left: calc(var(--if-rail) + (var(--if-gap) * 2));
+  right: calc(var(--if-rail) + (var(--if-gap) * 2));
   height: var(--if-ctx); display: flex; align-items: center; gap: 16px; padding: 0 8px; z-index: 30;
 }
 .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--if-faint); flex: none; }
@@ -79,9 +81,44 @@ body.picking #gameport { display: none !important; }
 .heard { font-size: 16px; font-weight: 600; color: var(--if-accent);
   max-width: 46%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* common-command rail */
+#ifcommands {
+  position: fixed; top: var(--if-gap); left: var(--if-gap); width: var(--if-rail); bottom: var(--if-gap);
+  display: flex; flex-direction: column; gap: 8px; z-index: 30;
+}
+.command-label {
+  height: 24px; flex: none; display: flex; align-items: center; padding: 0 4px;
+  color: var(--if-faint); font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase;
+}
+.command-compass {
+  flex: 1 1 180px; min-height: 156px; display: grid;
+  grid-template: repeat(3, minmax(48px, 1fr)) / repeat(3, minmax(0, 1fr)); gap: 8px;
+}
+.command-btn {
+  min-width: 0; min-height: 48px; display: flex; align-items: center; justify-content: center;
+  padding: 4px; font: inherit; font-size: 22px; font-weight: 650; color: var(--if-text);
+  background: var(--if-panel2); border: 1px solid var(--if-line); border-radius: var(--if-r);
+  cursor: pointer; touch-action: manipulation;
+}
+.command-btn:active {
+  border-color: var(--if-accent);
+  background: color-mix(in srgb, var(--if-accent) 18%, var(--if-panel2));
+}
+.command-btn:focus-visible { outline: 2px solid var(--if-accent); outline-offset: 2px; }
+.command-btn[disabled] { opacity: .45; cursor: default; }
+.command-btn.north { grid-column: 2; grid-row: 1; }
+.command-btn.west { grid-column: 1; grid-row: 2; }
+.command-btn.look { grid-column: 2; grid-row: 2; color: var(--if-accent); }
+.command-btn.east { grid-column: 3; grid-row: 2; }
+.command-btn.south { grid-column: 2; grid-row: 3; }
+.command-quick { flex: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.command-quick .command-btn {
+  min-height: 64px; font-size: 13px; letter-spacing: .035em; text-transform: uppercase;
+}
+
 /* voice rail */
 #ifrail {
-  position: fixed; top: 12px; right: 12px; width: var(--if-rail); bottom: 12px;
+  position: fixed; top: var(--if-gap); right: var(--if-gap); width: var(--if-rail); bottom: var(--if-gap);
   display: flex; flex-direction: column; gap: 8px; z-index: 30;
 }
 body.novoicein #listenbtn { display: none; }
@@ -100,7 +137,8 @@ body.novoicein #listenbtn { display: none; }
 
 /* story picker: a scrollable vertical list filling the story area */
 #picker {
-  position: fixed; top: var(--if-ctx); left: 12px; right: calc(var(--if-rail) + 24px); bottom: 12px;
+  position: fixed; top: var(--if-ctx); left: var(--if-gap);
+  right: calc(var(--if-rail) + (var(--if-gap) * 2)); bottom: var(--if-gap);
   display: flex; flex-direction: column; gap: 8px; padding: 16px 16px 8px; z-index: 20;
   background: var(--if-panel); border: 1px solid var(--if-line); border-radius: var(--if-r);
 }

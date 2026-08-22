@@ -31,6 +31,7 @@
   var statusdot = el('statusdot'), statustext = el('statustext'), storyname = el('storyname');
   var heard = el('heard'), railnote = el('railnote');
   var speakbtn = el('speakbtn'), listenbtn = el('listenbtn'), stopbtn = el('stopbtn'), librarybtn = el('librarybtn');
+  var commandbtns = [].slice.call(document.querySelectorAll('#ifcommands [data-command]'));
 
   document.documentElement.style.setProperty('--if-accent', ACCENT);
   document.documentElement.setAttribute('data-theme', DARK ? 'dark' : 'light');
@@ -131,6 +132,7 @@
     var frameEl = document.querySelector('.BufferWindow');
     gwin = parseInt(String(frameEl && frameEl.id || '').replace(/\D+/g, ''), 10) || 0;
     playing = true;
+    updateCommandButtons();
     setStatus('ok', 'Playing');
     if (observer) observer.disconnect();
     observer = new MutationObserver(function (muts) {
@@ -157,16 +159,28 @@
     var tag = ae.tagName;
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || ae.isContentEditable === true;
   }
+  // The MAIN command box: the buffer window's line input. Targeting this specifically (not just the
+  // first .Input, which in a status-line game can be a grid-window input) keeps recovered keystrokes
+  // in the story's text box and nowhere else on screen.
+  function gameInput() {
+    return document.querySelector('.BufferWindow .LineInput')
+        || document.querySelector('.BufferWindow .Input')
+        || document.querySelector('.Input');
+  }
   function focusGame() {
     try {
       if (isTypingTarget()) return;            // don't yank focus from a save/restore dialog or field
-      var i = document.querySelector('.Input'); if (i) i.focus();
+      var i = gameInput(); if (i) i.focus();
     } catch (e) {}
   }
   function sendCommand(text) {
     var G = glkote();
     if (!G || !text) return false;
-    try { G.send_event({ type: 'line', window: gwin, value: text }); return true; } catch (e) { return false; }
+    try {
+      G.send_event({ type: 'line', window: gwin, value: text });
+      setTimeout(focusGame, 60);               // after GlkOte re-renders the new prompt, put the keyboard back on it
+      return true;
+    } catch (e) { return false; }
   }
 
   // ---- narration (TTS) --------------------------------------------------
@@ -211,15 +225,29 @@
       .then(function (j) {
         if (!j || !j.ok) { heard.textContent = ''; note(j && j.error || 'Could not transcribe'); return; }
         var text = cleanCommand(j.text);
-        if (!text) { heard.textContent = ''; return; }
+        if (!text || isNoise(text)) { heard.textContent = ''; return; }   // ignore Whisper's noise/filler hallucinations
         heard.textContent = '“' + text + '”';
         sendCommand(text);
       })
       .catch(function () { heard.textContent = ''; });
   }
   function cleanCommand(raw) { return String(raw || '').replace(/[.!?,;:"']+$/g, '').replace(/^[\s.,!?]+/, '').trim().toLowerCase(); }
+  // Whisper hallucinates filler/interjections on room noise and silence ("yeah", "uh", "thank you",
+  // "you", subtitle credits...). None are IF commands, so drop them rather than firing them at the
+  // parser. Real short commands (n/s/e/w/u/d, i, x, z, go, yes, no, wait...) are deliberately NOT here.
+  var STT_NOISE = {};
+  ('yeah yea ya yah yep mm mmm hmm hm hmmm mhm mmhmm uh uhh um umm uhhuh huh er erm ah ahh oh ohh eh ehh '
+    + 'you thanks thankyou thanksforwatching thankyouverymuch pleasesubscribe amaraorg '
+    + 'so okay ok well right hey hi hello youknow bye byebye').split(' ').forEach(function (w) { STT_NOISE[w] = 1; });
+  function isNoise(cmd) {
+    if (STT_NOISE[cmd]) return true;
+    return !!STT_NOISE[cmd.replace(/[^a-z0-9]+/g, '')];   // "uh huh" -> "uhhuh", "thank you" -> "thankyou"
+  }
 
   // ---- buttons ----------------------------------------------------------
+  function updateCommandButtons() {
+    commandbtns.forEach(function (btn) { btn.disabled = !playing; });
+  }
   function updateButtons() {
     el('speaksub').textContent = !caps.tts ? 'No TTS' : (speaking ? 'Reading…' : (narrating ? 'On' : 'Off'));
     speakbtn.classList.toggle('on', narrating && caps.tts);
@@ -235,6 +263,12 @@
     btn.addEventListener('pointerdown', function (e) { e.preventDefault(); });
     btn.addEventListener('click', function (e) { e.preventDefault(); fn(); });
   }
+  commandbtns.forEach(function (btn) {
+    wire(btn, function () {
+      if (playing) sendCommand(btn.getAttribute('data-command'));
+      focusGame();
+    });
+  });
   wire(speakbtn, function () { narrating = !narrating; if (!narrating) hush(); updateButtons(); note(narrating ? 'Reading new passages aloud.' : ''); focusGame(); });
   wire(listenbtn, function () { listening ? stopListening() : startListening(); focusGame(); });
   wire(stopbtn, function () { hush(); focusGame(); });
@@ -269,7 +303,7 @@
   document.addEventListener('keydown', function (e) {
     if (e.ctrlKey || e.altKey || e.metaKey || !playing) return;
     if (isTypingTarget()) return;              // a real field has focus (game input, SAVE dialog…) -> leave it
-    var input = document.querySelector('.Input');
+    var input = gameInput();
     if (!input) return;
     input.focus();
     if (e.key && e.key.length === 1) { e.preventDefault(); var ch = e.key; setTimeout(function () { try { input.value += ch; } catch (err) {} }, 0); }

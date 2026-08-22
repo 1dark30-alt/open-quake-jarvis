@@ -1,5 +1,5 @@
 <!-- Panel chrome injected into Parchment's own page by vendor-parchment.js. Parchment's #gameport
-     stays the story area; this adds the context strip, the voice rail, and the story picker. -->
+     stays the story area; this adds the context strip, command and voice rails, and story picker. -->
 <div id="ifctx">
   <span class="dot" id="statusdot"></span>
   <span id="statustext">Loading&hellip;</span>
@@ -7,6 +7,23 @@
   <span id="spacer"></span>
   <span id="heard" class="heard"></span>
 </div>
+
+<section id="ifcommands" aria-labelledby="ifcommands-label">
+  <div id="ifcommands-label" class="command-label">Common commands</div>
+  <div class="command-compass" aria-label="Movement commands">
+    <button class="command-btn north" type="button" tabindex="-1" data-command="north" aria-label="Go north" disabled>N</button>
+    <button class="command-btn west" type="button" tabindex="-1" data-command="west" aria-label="Go west" disabled>W</button>
+    <button class="command-btn look" type="button" tabindex="-1" data-command="look" disabled>Look</button>
+    <button class="command-btn east" type="button" tabindex="-1" data-command="east" aria-label="Go east" disabled>E</button>
+    <button class="command-btn south" type="button" tabindex="-1" data-command="south" aria-label="Go south" disabled>S</button>
+  </div>
+  <div class="command-quick" aria-label="Frequent actions">
+    <button class="command-btn" type="button" tabindex="-1" data-command="take all" disabled>Take all</button>
+    <button class="command-btn" type="button" tabindex="-1" data-command="inventory" disabled>Inventory</button>
+    <button class="command-btn" type="button" tabindex="-1" data-command="again" disabled>Again</button>
+    <button class="command-btn" type="button" tabindex="-1" data-command="undo" disabled>Undo</button>
+  </div>
+</section>
 
 <div id="ifrail">
   <button id="librarybtn" class="rbtn quiet" type="button" tabindex="-1">
