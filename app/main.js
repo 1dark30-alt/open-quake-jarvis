@@ -3008,7 +3008,14 @@ app.whenReady().then(async () => {
   // Lazy-required so a metrics/load failure can never crash the rest of the app.
   try {
     sysserver = require('./sysserver');
+    // Remember the local server's port across restarts so served-app pages keep the same origin --
+    // their localStorage (drop-in saves, high scores, settings) is per-origin and would otherwise be
+    // orphaned on every launch when the port changed. sysserver falls back to a fresh port if taken.
+    const portFile = path.join(USER_DIR, 'server-port');
+    let preferredPort = 0;
+    try { const n = parseInt(fs.readFileSync(portFile, 'utf8'), 10); if (n >= 1024 && n <= 65535) preferredPort = n; } catch (e) {}
     serverPort = await sysserver.start({
+      preferredPort,
       onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig,
       getOfficeData: officeGraph.getData, connectOffice: officeGraph.connect, onOfficeAction: officeActions.run,
       onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(),
@@ -3054,6 +3061,7 @@ app.whenReady().then(async () => {
         },
       },
     });
+    if (serverPort && serverPort !== preferredPort) { try { fs.writeFileSync(portFile, String(serverPort)); } catch (e) {} }
     ensureSystemViewPage(serverPort); ensureMusicPage(); ensureDropInDir();
     const haUrl = configureHaSchedule();
     console.log('SystemView + Music on http://127.0.0.1:' + serverPort + (haUrl ? ' · HA Schedule -> ' + haUrl : ''));

@@ -1115,8 +1115,21 @@ function start(opts) {
     // NB: the pollers are NOT started here. They're gated by which panel page is shown — main.js
     // calls setActivePage() on every page switch so each poller runs only while its page is on screen.
     server = http.createServer((req, res) => { handler(req, res).catch(() => { try { res.writeHead(500); res.end(); } catch (e) {} }); });
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => resolve(server.address().port));
+    // Reuse a stable port across restarts when we can. The panel's served pages are same-origin
+    // http://127.0.0.1:<port>/, and per-origin localStorage -- drop-in app saves, high scores,
+    // settings -- is lost when that port changes each launch. Try the caller's remembered port and
+    // fall back to an OS-assigned one only if it's taken; main.js persists whatever port we end up on.
+    let settled = false;
+    let triedEphemeral = !(Number.isInteger(opts.preferredPort) && opts.preferredPort >= 1024 && opts.preferredPort <= 65535);
+    const onListening = () => { if (settled) return; settled = true; resolve(server.address().port); };
+    const onError = (e) => {
+      if (settled) return;
+      if (!triedEphemeral && e && e.code === 'EADDRINUSE') { triedEphemeral = true; server.listen(0, '127.0.0.1'); return; }
+      settled = true; reject(e);
+    };
+    server.on('listening', onListening);
+    server.on('error', onError);
+    server.listen(triedEphemeral ? 0 : opts.preferredPort, '127.0.0.1');
   });
 }
 
