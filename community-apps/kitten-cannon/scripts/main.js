@@ -27,10 +27,11 @@ import DistanceDisplay from "./Game/Objects/DistanceDisplay.js";
 const APP_PARAMS = new URLSearchParams(location.search || location.hash.replace(/^#/, "?"));
 const EMBEDDED_IN_HOST = APP_PARAMS.has("_dark"); // open-quake always appends theme params
 // Shared-score-server conventions (server/HANDOFF.md in kitten-cannon-remake):
-// game slug on every call; player tag 1-16 chars A-Z 0-9 _ -, uppercased.
+// game slug on every call; arcade initials — the server keeps the first 3
+// letters (A-Z only), so normalize the same way here.
 const GAME_SLUG = "kitten-cannon";
 window.userId = (APP_PARAMS.get("playerName") || "").trim().toUpperCase()
-    .replace(/[^A-Z0-9_-]/g, "").slice(0, 16) || null;
+    .replace(/[^A-Z]/g, "").slice(0, 3) || null;
 // Base URL of the score server ("Server URL (advanced)" app option). Blank = offline:
 // high scores are kept in localStorage on this PC instead.
 const SCORE_SERVER = (APP_PARAMS.get("serverUrl") || "").trim().replace(/\/+$/, "");

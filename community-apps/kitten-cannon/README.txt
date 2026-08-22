@@ -14,9 +14,9 @@ Distance in feet is your score.
 
 Options (editor > App)
 ----------------------
-- Player tag         The tag your scores are recorded under (1-16 chars,
-                     letters/digits/_/-; uppercased, arcade style: same
-                     tag = same player).
+- Initials           Your 3-letter arcade initials — scores are recorded
+                     under them (uppercased, letters only; same initials =
+                     same player).
 - Server URL (advanced)  Base URL of the shared score server
                      (default https://scores.doofenshmirtzevil.com). Clear it
                      to play offline: high scores and the leaderboard then

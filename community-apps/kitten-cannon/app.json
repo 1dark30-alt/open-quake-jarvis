@@ -6,11 +6,11 @@
   "options": [
     {
       "key": "playerName",
-      "label": "Player tag",
+      "label": "Initials",
       "type": "text",
-      "default": "Player",
-      "maxLength": 16,
-      "help": "The tag your scores are recorded under on the shared high-score server (arcade style: same tag = same player)."
+      "default": "AAA",
+      "maxLength": 3,
+      "help": "Your 3-letter arcade initials — scores are recorded under them on the shared high-score server (same initials = same player)."
     },
     {
       "key": "serverUrl",
