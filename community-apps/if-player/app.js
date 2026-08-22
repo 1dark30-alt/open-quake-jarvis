@@ -148,7 +148,21 @@
     observer.observe(inner, { childList: true, subtree: true });
     focusGame();
   }
-  function focusGame() { try { var i = document.querySelector('.Input'); if (i) i.focus(); } catch (e) {} }
+  // True when the user is (or should be) typing into a real field: the game's command input, or an
+  // interpreter dialog like SAVE/RESTORE's filename box (asyncglk_file_dialog #filename_input), or the
+  // URL box. The keyboard helpers below must never pull focus away from any of these.
+  function isTypingTarget() {
+    var ae = document.activeElement;
+    if (!ae) return false;
+    var tag = ae.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || ae.isContentEditable === true;
+  }
+  function focusGame() {
+    try {
+      if (isTypingTarget()) return;            // don't yank focus from a save/restore dialog or field
+      var i = document.querySelector('.Input'); if (i) i.focus();
+    } catch (e) {}
+  }
   function sendCommand(text) {
     var G = glkote();
     if (!G || !text) return false;
@@ -254,10 +268,9 @@
   // when focus is astray, so it never doubles native typing. See the earlier debugging notes.
   document.addEventListener('keydown', function (e) {
     if (e.ctrlKey || e.altKey || e.metaKey || !playing) return;
+    if (isTypingTarget()) return;              // a real field has focus (game input, SAVE dialog…) -> leave it
     var input = document.querySelector('.Input');
     if (!input) return;
-    var ae = document.activeElement;
-    if (ae === input || (ae && ae !== document.body && ae.contains && ae.contains(input))) return;
     input.focus();
     if (e.key && e.key.length === 1) { e.preventDefault(); var ch = e.key; setTimeout(function () { try { input.value += ch; } catch (err) {} }, 0); }
   });
