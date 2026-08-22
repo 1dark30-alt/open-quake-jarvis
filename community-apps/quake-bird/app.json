@@ -5,11 +5,11 @@
   "options": [
     {
       "key": "playerName",
-      "label": "Player tag",
+      "label": "Player tag (optional)",
       "type": "text",
-      "default": "Player",
+      "default": "",
       "maxLength": 16,
-      "help": "The tag your scores are recorded under on the shared high-score server (arcade style: same tag = same player)."
+      "help": "Overrides the initials entered in the game. Scores are recorded under this tag on the shared high-score server (arcade style: same tag = same player)."
     },
     {
       "key": "serverUrl",

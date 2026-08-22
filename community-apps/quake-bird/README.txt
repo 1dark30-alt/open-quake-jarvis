@@ -11,11 +11,14 @@ mutes the sound; the choice is remembered.
 - Best score is saved on the device.
 - The game pauses automatically when the page is hidden.
 
-Shared high scores (optional): set your Player tag in the app's options
-and personal bests upload to the shared score server -- the title screen
-shows the global best, and game over shows how your flight ranked plus
-the top-5 leaderboard. The Server URL is an advanced option; clear it to
-play fully offline. The game never blocks on the network.
+Shared high scores (optional): the first time you finish a scoring
+flight, the game asks for your initials on an on-screen arcade keyboard
+(change them later via the TAG button on the title screen). Personal
+bests upload to the shared score server -- the title screen shows the
+global best, and game over shows how your flight ranked plus the top-5
+leaderboard. The Player tag app option, when set, overrides the in-game
+initials. The Server URL is an advanced option; clear it to play fully
+offline. The game never blocks on the network.
 
 Install: Settings -> Drop-In Apps -> Add (import .zip), then add a page
 with the Quake Bird app.

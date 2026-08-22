@@ -50,11 +50,11 @@
   const speedFor = s => Math.min(380, 250 + 3 * s);
 
   // ---- state ----
-  const ST = { READY: 0, PLAY: 1, DEAD: 2, PAUSE: 3 };
+  const ST = { READY: 0, PLAY: 1, DEAD: 2, PAUSE: 3, TAG: 4 };
   let state = ST.READY, bird, pipes, score, deadAt = 0, t0 = null, wing = 0;
-  let best = 0, muted = false;
-  try { const s = JSON.parse(localStorage.getItem('quakebird') || '{}'); best = s.best || 0; muted = !!s.muted; } catch (e) {}
-  function persist() { try { localStorage.setItem('quakebird', JSON.stringify({ best, muted })); } catch (e) {} }
+  let best = 0, muted = false, tag = '';
+  try { const s = JSON.parse(localStorage.getItem('quakebird') || '{}'); best = s.best || 0; muted = !!s.muted; tag = (s.tag || '').slice(0, 3); } catch (e) {}
+  function persist() { try { localStorage.setItem('quakebird', JSON.stringify({ best, muted, tag })); } catch (e) {} }
   const muteRect = () => [W - 88, 16, 64, 64];   // on-screen mute toggle, top-right, 64px touch target
 
   // ---- shared high-score server (optional; see server/HANDOFF.md in kitten-cannon-remake) ----
@@ -62,7 +62,8 @@
   // the game never blocks on the network.
   const GAME = 'quake-bird';
   const SERVER = (p.serverUrl || '').trim().replace(/\/+$/, '');
-  const PLAYER = (p.playerName || '').trim().slice(0, 16).replace(/[^A-Za-z0-9_-]/g, '');
+  const OPT_PLAYER = (p.playerName || '').trim().slice(0, 16).replace(/[^A-Za-z0-9_-]/g, '');
+  const player = () => OPT_PLAYER || tag;   // app option overrides the initials entered in-game
   const net = { high: null, pct: null, personal: null, board: null };
   let lastFetch = 0;
   async function jget(url) { const r = await fetch(url); const j = await r.json(); if (!j || j.success !== true) throw new Error('api'); return j; }
@@ -74,17 +75,17 @@
       net.high = hs.highScore; net.pct = score != null ? hs.percentile : net.pct;
       const lb = await jget(SERVER + '/get_leaderboard.php?game=' + GAME + '&limit=5');
       net.board = Array.isArray(lb.leaderboard) ? lb.leaderboard : [];
-      if (PLAYER) {
-        const pb = await jget(SERVER + '/get_personal_high_score.php?game=' + GAME + '&userId=' + encodeURIComponent(PLAYER));
+      if (player()) {
+        const pb = await jget(SERVER + '/get_personal_high_score.php?game=' + GAME + '&userId=' + encodeURIComponent(player()));
         net.personal = pb.personalHighScore;   // null when the player has no scores yet
       }
     } catch (e) {}
   }
   async function submitScore(s) {
-    if (!SERVER || !PLAYER || !(s > 0)) return;
+    if (!SERVER || !player() || !(s > 0)) return;
     if (net.personal != null && s <= net.personal) { lastFetch = 0; refreshNet(s); return; }   // only PBs are worth saving
     try {
-      const fd = new FormData(); fd.append('userId', PLAYER); fd.append('score', s); fd.append('game', GAME);
+      const fd = new FormData(); fd.append('userId', player()); fd.append('score', s); fd.append('game', GAME);
       await fetch(SERVER + '/save_score.php', { method: 'POST', body: fd });
       if (net.personal == null || s > net.personal) net.personal = s;
     } catch (e) {}
@@ -129,19 +130,65 @@
     e.preventDefault();
     const m = muteRect();   // a tap on the mute button must not flap the bird
     if (e.clientX >= m[0] - 8 && e.clientX <= m[0] + m[2] + 8 && e.clientY >= m[1] - 8 && e.clientY <= m[1] + m[3] + 8) { toggleMute(); return; }
+    if (state === ST.TAG) { tagTap(e.clientX, e.clientY); return; }
+    if (state === ST.READY && SERVER && !OPT_PLAYER) {   // READY-screen tag button (hidden when the app option pins the tag)
+      const b = tagBtnRect();
+      if (e.clientX >= b[0] && e.clientX <= b[0] + b[2] && e.clientY >= b[1] && e.clientY <= b[1] + b[3]) {
+        tagEntry = tag; tagFrom = ST.READY; state = ST.TAG; return;
+      }
+    }
     tap();
   });
   window.addEventListener('keydown', e => {
+    if (state === ST.TAG) {   // physical keyboard works too (desktop window)
+      if (/^[a-zA-Z0-9]$/.test(e.key) && tagEntry.length < 3) tagEntry += e.key.toUpperCase();
+      else if (e.code === 'Backspace') tagEntry = tagEntry.slice(0, -1);
+      else if (e.code === 'Enter' && tagEntry) finishTag();
+      return;
+    }
     if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); tap(); }
     else if (e.code === 'KeyM') toggleMute();
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden && state === ST.PLAY) state = ST.PAUSE; });
 
   function die() {
-    state = ST.DEAD; deadAt = performance.now(); beep(180, 60, .22, .09);
+    deadAt = performance.now(); beep(180, 60, .22, .09);
     net.pct = null;   // percentile belongs to THIS run; cleared until the server answers for it
     if (score > best) { best = score; persist(); }
+    // Arcade flow: a submittable score with no tag yet -> ask for initials first, then submit.
+    if (SERVER && !player() && score > 0) { tagEntry = ''; tagFrom = ST.DEAD; state = ST.TAG; return; }
+    state = ST.DEAD;
     submitScore(score);   // fire-and-forget; the game-over screen fills in as answers arrive
+  }
+
+  // ---- initials entry (arcade style, on-screen touch keys) ----
+  let tagEntry = '', tagKeys = [], tagFrom = ST.DEAD;   // tagKeys: [x, y, w, h, label] rebuilt each draw for hit-testing
+  const tagBtnRect = () => [24, H - 76, 280, 56];       // READY-screen "TAG" button, bottom-left
+  function finishTag() {
+    tag = tagEntry; persist(); beep(500, 700, .08, .06);
+    if (tagFrom === ST.READY) { state = ST.READY; lastFetch = 0; refreshNet(); }   // re-pull personal best for the new tag
+    else { state = ST.DEAD; submitScore(score); }
+  }
+  const TAG_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  function tagLayout() {
+    tagKeys = [];
+    const kw = 88, kh = 64, gap = 8, cols = 12;
+    const gw = cols * kw + (cols - 1) * gap;
+    const x0 = (W - gw) / 2, y0 = H / 2 - 40;
+    TAG_CHARS.split('').forEach((ch, i) => {
+      tagKeys.push([x0 + (i % cols) * (kw + gap), y0 + Math.floor(i / cols) * (kh + gap), kw, kh, ch]);
+    });
+    tagKeys.push([x0 + gw - 2 * kw - gap - (kw + gap) * 2, y0 + 3 * (kh + gap), kw * 2 + gap, kh, '⌫']);
+    tagKeys.push([x0 + gw - 2 * kw - gap, y0 + 3 * (kh + gap), kw * 2 + gap, kh, 'OK']);
+  }
+  function tagTap(x, y) {
+    for (const k of tagKeys) {
+      if (x < k[0] || x > k[0] + k[2] || y < k[1] || y > k[1] + k[3]) continue;
+      if (k[4] === '⌫') { tagEntry = tagEntry.slice(0, -1); beep(240, 200, .04, .05); }
+      else if (k[4] === 'OK') { if (tagEntry) finishTag(); }
+      else if (tagEntry.length < 3) { tagEntry += k[4]; beep(420, 520, .04, .05); }
+      return;
+    }
   }
 
   function step(dt) {
@@ -238,6 +285,16 @@
       if (dispBest) parts.push('Best  ' + dispBest);
       if (net.high != null) parts.push('Global  ' + net.high + (net.board && net.board[0] ? '  (' + net.board[0].userid + ')' : ''));
       if (parts.length) text(parts.join('      '), W / 2, H / 2 + 120, 22, 700);
+      if (SERVER && !OPT_PLAYER) {   // initials button (hidden when the app option pins the tag)
+        const b = tagBtnRect();
+        cx.fillStyle = DARK ? 'rgba(242,245,255,.10)' : 'rgba(20,28,46,.08)';
+        cx.beginPath(); cx.roundRect(b[0], b[1], b[2], b[3], 14); cx.fill();
+        cx.strokeStyle = DARK ? 'rgba(242,245,255,.25)' : 'rgba(20,28,46,.25)'; cx.lineWidth = 2; cx.stroke();
+        cx.font = '700 22px "Segoe UI", system-ui, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+        cx.fillStyle = DARK ? '#f2f5ff' : '#1b2430';
+        cx.fillText(tag ? 'TAG  ' + tag : 'SET INITIALS', b[0] + b[2] / 2, b[1] + b[3] / 2 + 1);
+        cx.textBaseline = 'alphabetic';
+      }
     } else if (state === ST.DEAD) {
       text('GAME OVER', W / 2, H / 2 - 60, 60);
       text('Score  ' + score + '      Best  ' + dispBest, W / 2, H / 2 + 4, 34, 700);
@@ -253,6 +310,24 @@
     } else if (state === ST.PAUSE) {
       text('PAUSED', W / 2, H / 2 - 20, 48);
       text('Tap to resume', W / 2, H / 2 + 34, 26, 700);
+    } else if (state === ST.TAG) {
+      cx.fillStyle = DARK ? 'rgba(5,8,13,.72)' : 'rgba(255,255,255,.72)'; cx.fillRect(0, 0, W, H);
+      text('ENTER YOUR INITIALS', W / 2, 74, 40);
+      text('Score  ' + score, W / 2, 116, 22, 700);
+      const slots = (tagEntry + '___').slice(0, 3).split('').join('  ');
+      text(slots, W / 2, 172, 48);
+      tagLayout();
+      for (const k of tagKeys) {
+        const ok = k[4] === 'OK';
+        cx.fillStyle = ok ? ACCENT : (DARK ? 'rgba(242,245,255,.10)' : 'rgba(20,28,46,.08)');
+        if (ok && !tagEntry) cx.fillStyle = DARK ? 'rgba(242,245,255,.05)' : 'rgba(20,28,46,.04)';   // OK disabled until a letter
+        cx.beginPath(); cx.roundRect(k[0], k[1], k[2], k[3], 12); cx.fill();
+        cx.strokeStyle = DARK ? 'rgba(242,245,255,.22)' : 'rgba(20,28,46,.22)'; cx.lineWidth = 1.5; cx.stroke();
+        cx.font = '700 26px "Segoe UI", system-ui, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+        cx.fillStyle = ok && tagEntry ? '#06231a' : (DARK ? '#f2f5ff' : '#1b2430');
+        cx.fillText(k[4], k[0] + k[2] / 2, k[1] + k[3] / 2 + 1);
+      }
+      cx.textBaseline = 'alphabetic';
     }
   }
 
