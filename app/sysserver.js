@@ -42,7 +42,11 @@ const RETIRED_HTML = '<!doctype html><meta charset="utf-8"><title>System Monitor
 const MEDIA_CMDS = { playpause: 1, next: 1, prev: 1 };
 const LOCAL_APP_CSP = [
   "default-src 'self' http: https: file: data: blob:",
-  "script-src 'self'",
+  // 'wasm-unsafe-eval' permits WebAssembly.compile/instantiate ONLY -- it does not enable eval() or
+  // new Function(), unlike 'unsafe-eval'. Needed by drop-in apps that ship a WASM engine (the
+  // interactive-fiction player's Z-machine/Glulx interpreters); the module itself must still come
+  // from an allowed source, which is our own origin.
+  "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: file: http: https:",
   "font-src 'self' data:",

@@ -1,78 +1,119 @@
-/* Panel chrome for the Interactive Fiction player. The interpreter styles itself inside the iframe;
-   this is the surround: a compact context strip, the story as the focal point, a narrow voice rail.
-   Spacing uses the documented 8/16/24/32 scale; colour is reserved for state. */
+/* Panel chrome for the Interactive Fiction player, layered onto Parchment's own page.
+   Loaded after Parchment's stylesheet, so these rules win. The interpreter keeps rendering into
+   #gameport; we inset that to leave room for a context strip and a voice rail, and re-theme it
+   through GlkOte's own --glkote-* custom properties rather than fighting its CSS. */
 :root {
-  color-scheme: dark;
-  --bg: #0d1220; --bg-deep: #080c17;
-  --panel: #131a2c; --panel2: #1a2338;
-  --text: #f2f5ff; --muted: #a7b1cf; --faint: #7c88a6;
-  --accent: #7CFFB2; --accent-fg: #06231a;
-  --ok: #2ee889; --warning: #f0b84b; --danger: #ed4245;
-  --line: rgba(120, 145, 222, .22);
-  --r: 14px;
+  --if-bg: #0d1220; --if-panel: #131a2c; --if-panel2: #1a2338;
+  --if-text: #f2f5ff; --if-muted: #a7b1cf; --if-faint: #7c88a6;
+  --if-accent: #7CFFB2;
+  --if-ok: #2ee889; --if-warning: #f0b84b; --if-danger: #ed4245;
+  --if-line: rgba(120, 145, 222, .22);
+  --if-r: 14px;
+  --if-rail: 260px;
+  --if-ctx: 40px;
 }
-body.light {
-  color-scheme: light;
-  --bg: #eef2f9; --bg-deep: #e3e9f4;
-  --panel: #ffffff; --panel2: #ffffff;
-  --text: #141c2e; --muted: #45526c; --faint: #66748f;
-  --ok: #0e9d58; --warning: #a9760c; --danger: #d5333b;
-  --line: rgba(40, 64, 116, .28);
+body.if-light {
+  --if-bg: #eef2f9; --if-panel: #ffffff; --if-panel2: #ffffff;
+  --if-text: #141c2e; --if-muted: #45526c; --if-faint: #66748f;
+  --if-ok: #0e9d58; --if-warning: #a9760c; --if-danger: #d5333b;
+  --if-line: rgba(40, 64, 116, .28);
 }
-* { box-sizing: border-box; }
+
+/* Re-theme the interpreter through the variables GlkOte already reads. */
+body.if-dark {
+  --glkote-page-bg: var(--if-panel);
+  --glkote-buffer-bg: var(--if-panel); --glkote-buffer-fg: var(--if-text);
+  --glkote-grid-bg: var(--if-panel2); --glkote-grid-fg: var(--if-muted);
+  --glkote-input-fg: var(--if-accent);
+}
+body.if-light {
+  --glkote-page-bg: #ffffff;
+  --glkote-buffer-bg: #ffffff; --glkote-buffer-fg: #141c2e;
+  --glkote-grid-bg: #eef2f9; --glkote-grid-fg: #45526c;
+}
+
 html, body { margin: 0; height: 100%; overflow: hidden; }
 body {
-  background: linear-gradient(180deg, var(--bg), var(--bg-deep));
-  color: var(--text); font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--if-bg) !important;
+  color: var(--if-text);
+  font-family: "Segoe UI", system-ui, sans-serif;
   touch-action: manipulation;
 }
-#app { display: flex; flex-direction: column; height: 100%; padding: 16px; gap: 16px; }
+
+/* The story area: Parchment centres the game in a 900px column. On a 1920x480 panel vertical space
+   is the scarce resource, so widen it -- fewer wrapped lines, less scrolling -- and inset it to
+   clear our chrome. 1100px also gives the status line room for the 80 columns games assume. */
+#gameport {
+  top: var(--if-ctx) !important;
+  bottom: 12px !important;
+  left: 12px !important;
+  right: calc(var(--if-rail) + 24px) !important;
+  max-width: 1100px !important;
+  margin: 0 auto !important;
+  background: var(--if-panel) !important;
+  border: 1px solid var(--if-line);
+  border-radius: var(--if-r);
+  overflow: hidden;
+}
+/* Parchment's own front matter (about box, URL entry, file upload) -- we provide a picker instead. */
+#about, #footer-date { display: none !important; }
+body.picking #gameport { display: none !important; }
+
+.BufferWindow { font-size: 23px !important; line-height: 1.5 !important; }
+.BufferWindowInner { padding: 8px 16px !important; }
+.Input, .LineInput { font-size: 23px !important; }
+.GridWindow { font-size: 17px !important; }
 
 /* context strip */
-#ctx { flex: none; display: flex; align-items: center; gap: 16px; height: 32px; padding: 0 8px; }
-.dot { width: 11px; height: 11px; border-radius: 50%; background: var(--faint); flex: none; }
-.dot.ok { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
-.dot.busy { background: var(--warning); animation: pulse 1.1s infinite; }
-.dot.bad { background: var(--danger); }
-#statustext { font-size: 13px; font-weight: 650; color: var(--muted); }
-#storyname { font-size: 13px; color: var(--faint); }
+#ifctx {
+  position: fixed; top: 0; left: 12px; right: calc(var(--if-rail) + 24px);
+  height: var(--if-ctx); display: flex; align-items: center; gap: 16px; padding: 0 8px; z-index: 30;
+}
+.dot { width: 11px; height: 11px; border-radius: 50%; background: var(--if-faint); flex: none; }
+.dot.ok { background: var(--if-ok); box-shadow: 0 0 10px var(--if-ok); }
+.dot.busy { background: var(--if-warning); animation: ifpulse 1.1s infinite; }
+.dot.bad { background: var(--if-danger); }
+#statustext { font-size: 13px; font-weight: 650; color: var(--if-muted); }
+#storyname { font-size: 13px; color: var(--if-faint); }
 #spacer { flex: 1; }
-.heard { font-size: 16px; font-weight: 600; color: var(--accent); max-width: 46%;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-/* main: story + rail */
-#main { flex: 1; min-height: 0; display: flex; gap: 16px; }
-#stage { flex: 1; min-width: 0; position: relative;
-  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
-#game { width: 100%; height: 100%; border: 0; display: block; background: transparent; }
-#game[hidden] { display: none; }
-
-/* story picker (no story configured) */
-#picker { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 16px; padding: 24px; text-align: center; }
-#picker[hidden] { display: none; }
-.pk-head { font-size: 36px; font-weight: 800; }
-.pk-sub { font-size: 16px; color: var(--muted); }
-#storylist { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; max-width: 100%;
-  overflow-y: auto; max-height: 200px; }
-.story { min-height: 56px; min-width: 200px; padding: 8px 24px; font: inherit; font-size: 22px;
-  font-weight: 700; color: var(--text); background: var(--panel2); border: 1px solid var(--line);
-  border-radius: var(--r); cursor: pointer; }
-.story:hover { border-color: var(--accent); }
-.pk-empty { font-size: 16px; color: var(--faint); max-width: 720px; line-height: 1.5; }
+.heard { font-size: 16px; font-weight: 600; color: var(--if-accent);
+  max-width: 46%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* voice rail */
-#rail { flex: none; width: 260px; display: flex; flex-direction: column; gap: 8px; }
+#ifrail {
+  position: fixed; top: 12px; right: 12px; width: var(--if-rail); bottom: 12px;
+  display: flex; flex-direction: column; gap: 8px; z-index: 30;
+}
 body.novoicein #listenbtn { display: none; }
-.rbtn { position: relative; min-height: 76px; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 8px; font: inherit; color: var(--text);
-  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; }
+.rbtn {
+  position: relative; min-height: 76px; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 8px; font: inherit; color: var(--if-text);
+  background: var(--if-panel2); border: 1px solid var(--if-line); border-radius: var(--if-r); cursor: pointer;
+}
 .rbtn:focus:not(:focus-visible) { outline: none; }
 .rbtn .lb { font-size: 22px; font-weight: 700; line-height: 1; }
-.rbtn .sub { font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); font-weight: 650; }
-.rbtn.on { border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--panel2)); }
+.rbtn .sub { font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: var(--if-muted); font-weight: 650; }
+.rbtn.on { border: 2px solid var(--if-accent); background: color-mix(in srgb, var(--if-accent) 16%, var(--if-panel2)); }
 .rbtn[disabled] { opacity: .45; cursor: default; }
 .rbtn.quiet { min-height: 64px; }
-.railnote { font-size: 13px; line-height: 1.45; color: var(--faint); padding: 0 4px; }
+.railnote { font-size: 13px; line-height: 1.45; color: var(--if-faint); padding: 0 4px; }
 
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+/* story picker */
+#picker {
+  position: fixed; top: var(--if-ctx); left: 12px; right: calc(var(--if-rail) + 24px); bottom: 12px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  padding: 24px; text-align: center; z-index: 20;
+  background: var(--if-panel); border: 1px solid var(--if-line); border-radius: var(--if-r);
+}
+#picker[hidden] { display: none; }
+.pk-head { font-size: 36px; font-weight: 800; }
+.pk-sub { font-size: 16px; color: var(--if-muted); }
+#storylist { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center;
+  max-width: 100%; overflow-y: auto; max-height: 210px; }
+.story { min-height: 56px; min-width: 200px; padding: 8px 24px; font: inherit; font-size: 22px;
+  font-weight: 700; color: var(--if-text); background: var(--if-panel2);
+  border: 1px solid var(--if-line); border-radius: var(--if-r); cursor: pointer; }
+.story:hover { border-color: var(--if-accent); }
+.pk-empty { font-size: 16px; color: var(--if-faint); max-width: 760px; line-height: 1.5; }
+
+@keyframes ifpulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
