@@ -2,5 +2,21 @@
   "id": "quake-bird",
   "name": "Quake Bird",
   "entry": "bird.html",
-  "options": []
+  "options": [
+    {
+      "key": "playerName",
+      "label": "Player tag",
+      "type": "text",
+      "default": "Player",
+      "maxLength": 16,
+      "help": "The tag your scores are recorded under on the shared high-score server (arcade style: same tag = same player)."
+    },
+    {
+      "key": "serverUrl",
+      "label": "Server URL (advanced)",
+      "type": "text",
+      "default": "https://scores.doofenshmirtzevil.com",
+      "help": "Advanced: base URL of the shared score server. Clear it to play offline — your best then stays on this PC."
+    }
+  ]
 }

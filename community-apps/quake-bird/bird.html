@@ -56,6 +56,41 @@
   try { const s = JSON.parse(localStorage.getItem('quakebird') || '{}'); best = s.best || 0; muted = !!s.muted; } catch (e) {}
   function persist() { try { localStorage.setItem('quakebird', JSON.stringify({ best, muted })); } catch (e) {} }
   const muteRect = () => [W - 88, 16, 64, 64];   // on-screen mute toggle, top-right, 64px touch target
+
+  // ---- shared high-score server (optional; see server/HANDOFF.md in kitten-cannon-remake) ----
+  // Both endpoints are app options; clearing the URL plays offline. Every call degrades silently --
+  // the game never blocks on the network.
+  const GAME = 'quake-bird';
+  const SERVER = (p.serverUrl || '').trim().replace(/\/+$/, '');
+  const PLAYER = (p.playerName || '').trim().slice(0, 16).replace(/[^A-Za-z0-9_-]/g, '');
+  const net = { high: null, pct: null, personal: null, board: null };
+  let lastFetch = 0;
+  async function jget(url) { const r = await fetch(url); const j = await r.json(); if (!j || j.success !== true) throw new Error('api'); return j; }
+  async function refreshNet(score) {
+    if (!SERVER) return;
+    const now = Date.now(); if (now - lastFetch < 2000) return; lastFetch = now;   // don't spam (HANDOFF asks ~1 per 2s)
+    try {
+      const hs = await jget(SERVER + '/get_high_score.php?game=' + GAME + (score != null ? '&score=' + score : ''));
+      net.high = hs.highScore; net.pct = score != null ? hs.percentile : net.pct;
+      const lb = await jget(SERVER + '/get_leaderboard.php?game=' + GAME + '&limit=5');
+      net.board = Array.isArray(lb.leaderboard) ? lb.leaderboard : [];
+      if (PLAYER) {
+        const pb = await jget(SERVER + '/get_personal_high_score.php?game=' + GAME + '&userId=' + encodeURIComponent(PLAYER));
+        net.personal = pb.personalHighScore;   // null when the player has no scores yet
+      }
+    } catch (e) {}
+  }
+  async function submitScore(s) {
+    if (!SERVER || !PLAYER || !(s > 0)) return;
+    if (net.personal != null && s <= net.personal) { lastFetch = 0; refreshNet(s); return; }   // only PBs are worth saving
+    try {
+      const fd = new FormData(); fd.append('userId', PLAYER); fd.append('score', s); fd.append('game', GAME);
+      await fetch(SERVER + '/save_score.php', { method: 'POST', body: fd });
+      if (net.personal == null || s > net.personal) net.personal = s;
+    } catch (e) {}
+    lastFetch = 0; refreshNet(s);   // fresh board + percentile for the game-over screen
+  }
+  refreshNet();
   function reset() {
     bird = { x: Math.min(W * .25, 480), y: H / 2, vy: 0 };
     pipes = []; score = 0;
@@ -104,7 +139,9 @@
 
   function die() {
     state = ST.DEAD; deadAt = performance.now(); beep(180, 60, .22, .09);
+    net.pct = null;   // percentile belongs to THIS run; cleared until the server answers for it
     if (score > best) { best = score; persist(); }
+    submitScore(score);   // fire-and-forget; the game-over screen fills in as answers arrive
   }
 
   function step(dt) {
@@ -193,14 +230,26 @@
     cx.fillText(muted ? '🔇' : '🔊', m[0] + m[2] / 2, m[1] + m[3] / 2 + 2);   // 🔇 / 🔊
     cx.textBaseline = 'alphabetic';
     if (state === ST.PLAY || state === ST.PAUSE) text(score, W / 2, 84, 64);
+    const dispBest = Math.max(best, net.personal || 0);   // device best merged with the server's personal best
     if (state === ST.READY) {
       text('QUAKE BIRD', W / 2, H / 2 - 90, 72);
       text('Tap to flap', W / 2, H / 2 + 76, 30, 700);
-      if (best) text('Best  ' + best, W / 2, H / 2 + 120, 22, 700);
+      const parts = [];
+      if (dispBest) parts.push('Best  ' + dispBest);
+      if (net.high != null) parts.push('Global  ' + net.high + (net.board && net.board[0] ? '  (' + net.board[0].userid + ')' : ''));
+      if (parts.length) text(parts.join('      '), W / 2, H / 2 + 120, 22, 700);
     } else if (state === ST.DEAD) {
       text('GAME OVER', W / 2, H / 2 - 60, 60);
-      text('Score  ' + score + '      Best  ' + best, W / 2, H / 2 + 4, 34, 700);
-      if (performance.now() - deadAt > 500) text('Tap to retry', W / 2, H / 2 + 56, 26, 700);
+      text('Score  ' + score + '      Best  ' + dispBest, W / 2, H / 2 + 4, 34, 700);
+      if (net.high != null && score >= net.high && score > 0) text('NEW GLOBAL BEST!', W / 2, H / 2 - 116, 30, 800);
+      else if (net.pct != null) text('Beat ' + net.pct + '% of all flights', W / 2, H / 2 + 44, 22, 700);
+      if (performance.now() - deadAt > 500) text('Tap to retry', W / 2, H / 2 + (net.pct != null ? 88 : 56), 26, 700);
+      if (net.board && net.board.length) {   // top-5 board on the wide screen's right side
+        const bx = Math.min(W - 260, W * .78), by = H / 2 - 92;
+        text('TOP FLIGHTS', bx, by, 24);
+        net.board.slice(0, 5).forEach((row, i) =>
+          text(row.rank + '.  ' + row.userid + '   ' + row.score, bx, by + 42 + i * 34, 22, 700));
+      }
     } else if (state === ST.PAUSE) {
       text('PAUSED', W / 2, H / 2 - 20, 48);
       text('Tap to resume', W / 2, H / 2 + 34, 26, 700);

@@ -24,8 +24,9 @@ For how to install or submit an app — and a safety note — see the docs:
   **Settings → Drop-In Apps → Add**.
 - **[quake-bird](quake-bird)** — a flappy-style arcade game: tap to flap, thread the pipe
   gaps, chase your best score. Original canvas artwork; pipes follow your accent color and
-  the page theme. Download [`quake-bird.zip`](quake-bird.zip) and import via
-  **Settings → Drop-In Apps → Add**.
+  the page theme. Optional shared high scores on the same score server as kitten-cannon
+  (player tag + configurable Server URL; fully playable offline). Download
+  [`quake-bird.zip`](quake-bird.zip) and import via **Settings → Drop-In Apps → Add**.
 - **[spotify-volume](spotify-volume)** — per-app Windows volume control for the knob (Spotify
   by default, configurable to any process). Uses a bundled native helper against the Core
   Audio session APIs — no admin, no Spotify login/Premium, no Web API. By **J Last**.
