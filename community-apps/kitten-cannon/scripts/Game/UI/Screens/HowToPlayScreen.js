@@ -42,7 +42,13 @@ export default class HowToPlayScreen {
 
         if (!this.visible) return;
 
-        this.__frame.draw(this.__ctx, 0, 0, this.__ctx.canvas.width, this.__ctx.canvas.height);
+        // Sky fill behind the art, then the art centered at its native aspect —
+        // stretching it across a 4:1 panel canvas would distort it badly.
+        let canvas_w = this.__ctx.canvas.width, canvas_h = this.__ctx.canvas.height;
+        this.__ctx.fillStyle = "#dbedff";
+        this.__ctx.fillRect(0, 0, canvas_w, canvas_h);
+        let frame_w = canvas_h * (this.__frame.getWidth() / this.__frame.getHeight());
+        this.__frame.draw(this.__ctx, canvas_w / 2 - frame_w / 2, 0, frame_w, canvas_h);
 
         for (let key in this.buttons) {
             this.buttons[key].draw();

@@ -153,8 +153,12 @@ let personalBestDisplay = "0";
 
 function setup() {
     canvas = $("cnvs");
-    canvas.width = 1040;
+    // Fill the whole display: fixed 640px world height, width matched to the
+    // screen's aspect ratio (4:1 on the DK-QUAKE panel -> 2560x640), clamped to
+    // the original 1040 minimum so narrow browser windows still work.
+    const aspect = innerWidth / Math.max(1, innerHeight);
     canvas.height = 640;
+    canvas.width = Math.round(Math.min(2560, Math.max(1040, 640 * aspect)));
     ctx = canvas.getContext("2d");
     resize();
 }
@@ -222,11 +226,11 @@ function reset_game() {
     height_display = new HeightDisplay(renderer, pixel_per_feet, "Nicotine");
     distance_display = new DistanceDisplay(renderer, pixel_per_feet, "Nicotine"); // Initialize the distance display
 
-    // Touch controls, clustered on the right for thumb reach: hold arrows to sweep
-    // the barrel, tap FIRE to launch. Aiming never fires; only FIRE (or Space) does.
-    up_button = new RoundButton(ctx, "▲", new Vector2D(850, 390), 55, "white", "rgba(0,0,0,0.55)");
-    down_button = new RoundButton(ctx, "▼", new Vector2D(850, 530), 55, "white", "rgba(0,0,0,0.55)");
-    fire_button = new RoundButton(ctx, "FIRE", new Vector2D(968, 460), 65, "white", "#c62828", "Nicotine");
+    // Touch controls, clustered at the right edge for thumb reach: hold arrows to
+    // sweep the barrel, tap FIRE to launch. Aiming never fires; only FIRE (or Space) does.
+    up_button = new RoundButton(ctx, "▲", new Vector2D(canvas.width - 190, 390), 55, "white", "rgba(0,0,0,0.55)");
+    down_button = new RoundButton(ctx, "▼", new Vector2D(canvas.width - 190, 530), 55, "white", "rgba(0,0,0,0.55)");
+    fire_button = new RoundButton(ctx, "FIRE", new Vector2D(canvas.width - 72, 460), 65, "white", "#c62828", "Nicotine");
     fire_button.font_size = 44;
 
     camera.follow(new Vector2D(canvas.width / 2, canvas.height / 2), 1);
@@ -412,7 +416,9 @@ function preload_screen() {
     ctx.fillStyle = "#dbedff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     let frame = screens_sprite.getFrame("menu_screen.png");
-    frame.draw(ctx, 0, 0, canvas.width, canvas.height);
+    // Centered at native aspect — stretching to a 4:1 canvas would distort it.
+    let frame_w = canvas.height * (frame.getWidth() / frame.getHeight());
+    frame.draw(ctx, canvas.width / 2 - frame_w / 2, 0, frame_w, canvas.height);
 
 
     let arc_r = 80;

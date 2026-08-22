@@ -19,10 +19,16 @@ export default class Grass {
         let camera = this.__renderer.camera;
         let camera_position = camera.getPosition();
 
-        if (camera_position.x >= this.x + this.width) {
+        // Catch up even when the camera moves more than one tile per frame.
+        while (camera_position.x >= this.x + this.width) {
             this.x += this.width;
         }
-        this.__renderer.drawFrame(this.__frame, this.x, this.y, this.width, this.height);
-        this.__renderer.drawFrame(this.__frame, this.x + this.width - 4, this.y, this.width, this.height);
+        // Tile across the whole viewport (the old code drew exactly two tiles,
+        // which is not enough on a wide panel canvas). 4px overlap hides seams.
+        let step = this.width - 4;
+        let tiles = Math.ceil(camera.getWidth() / step) + 2;
+        for (let i = 0; i < tiles; i++) {
+            this.__renderer.drawFrame(this.__frame, this.x + i * step, this.y, this.width, this.height);
+        }
     }
 }
