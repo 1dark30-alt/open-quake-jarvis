@@ -405,7 +405,11 @@ async function serveAppApi(req, res, full, url) {
   const mod = appServer(appId);
   if (mod && typeof mod.handle === 'function') {
     try {
-      const result = await mod.handle(action, { appId, query: queryObject(full), options: appOptions(appId) });
+      // POST bodies reach the app handler as a raw Buffer (context.body) -- some app APIs carry data
+      // a query string can't hold, e.g. captured PCM audio. GET requests leave body null.
+      let body = null;
+      if (req.method === 'POST') { try { body = await readRawBody(req); } catch (e) { return done(res, false); } }
+      const result = await mod.handle(action, { appId, query: queryObject(full), options: appOptions(appId), body });
       const status = result && result.ok === false && result.error === 'unknown action' ? 400 : 200;
       res.writeHead(status, headers('application/json; charset=utf-8'));
       res.end(JSON.stringify(result == null ? { ok: true } : result));
@@ -577,6 +581,7 @@ async function handler(req, res) {
   const isAllowedPost = (req.method === 'POST' && voiceApp && (VOICE_POST_SUFFIXES.has(voicePath) || voicePath === '/approval-request'))
     || (req.method === 'POST' && url === '/api/discord/action')
     || (req.method === 'POST' && url === '/api/obs/action')
+    || (req.method === 'POST' && url.indexOf('/app-api/') === 0)   // drop-in app APIs: POST carries a body (e.g. captured audio) the query string can't
     || (req.method === 'POST' && (url === '/lucidtype-edit' || url === '/lucidtype-review/apply' || url === '/lucidtype-review/refine'));   // LucidType edit-sync + review apply/refine (same-origin gated below)
   if (req.method !== 'GET' && !isAllowedPost) { res.writeHead(405); res.end(); return; }
   if (url === '/' || url === '/index.html') return html(res, RETIRED_HTML);   // retired SystemView page

@@ -8,6 +8,12 @@ For how to install or submit an app — and a safety note — see the docs:
 
 ## Available apps
 
+- **[if-player](if-player)** — play Inform / Z-machine text adventures (Z-code and Glulx),
+  with the story **read aloud** through your TTS voice and **spoken commands** transcribed by
+  your STT — both picked up automatically from Settings → TTS/STT. Keyboard play works
+  normally; drop story files into the app's `stories/` folder. Bundles the
+  [Parchment](https://github.com/curiousdannii/parchment) interpreter (MIT). Download
+  [`if-player.zip`](if-player.zip) and import via **Settings → Drop-In Apps → Add**.
 - **[jarvis](jarvis)** — JARVIS voice-assistant client: pairs with a JARVIS server over a
   PIN, and talks to Gemini Live, Ollama, or an OpenAI-compatible endpoint. Download
   [`jarvis.zip`](jarvis.zip) and import via **Settings → Drop-In Apps → Add**.

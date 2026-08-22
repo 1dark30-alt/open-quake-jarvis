@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Interactive Fiction</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <!-- Context strip: where am I, what's happening -->
+  <div id="ctx">
+    <span class="dot" id="statusdot"></span>
+    <span id="statustext">Loading…</span>
+    <span id="storyname"></span>
+    <span id="spacer"></span>
+    <span id="heard" class="heard"></span>
+  </div>
+
+  <div id="main">
+    <!-- Primary: the story. Parchment's single-file build runs whole inside this frame; we drive it
+         through GlkOte.send_event and read its buffer lines (same origin, so both are just DOM). -->
+    <div id="stage">
+      <iframe id="game" title="Story"></iframe>
+      <div id="picker" hidden>
+        <div class="pk-head">Interactive Fiction</div>
+        <div class="pk-sub" id="pickerhint">Choose a story</div>
+        <div id="storylist"></div>
+      </div>
+    </div>
+
+    <!-- Secondary: voice controls -->
+    <div id="rail">
+      <button id="speakbtn" class="rbtn" type="button" tabindex="-1">
+        <span class="lb">Narration</span><span class="sub" id="speaksub">Off</span>
+      </button>
+      <button id="listenbtn" class="rbtn" type="button" tabindex="-1">
+        <span class="lb">Listen</span><span class="sub" id="listensub">Off</span>
+      </button>
+      <button id="stopbtn" class="rbtn quiet" type="button" tabindex="-1">
+        <span class="lb">Hush</span><span class="sub">Stop reading</span>
+      </button>
+      <div id="railnote" class="railnote"></div>
+    </div>
+  </div>
+</div>
+<script src="vad.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
