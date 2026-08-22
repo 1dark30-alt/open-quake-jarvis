@@ -14,10 +14,11 @@ const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
 test('IF player exposes only the approved common touchscreen commands', () => {
   const commands = [...chrome.matchAll(/data-command="([^"]+)"/g)].map(match => match[1]);
   assert.deepEqual(commands, [
-    'north', 'west', 'look', 'east', 'south',
-    'take all', 'inventory', 'again', 'undo',
+    'north', 'up', 'west', 'look', 'east', 'south', 'down',
+    'take all', 'inventory', 'again', 'wait',
+    'save', 'restore',
   ]);
-  assert.equal((chrome.match(/class="command-btn/g) || []).length, 9);
+  assert.equal((chrome.match(/class="command-btn/g) || []).length, 11);   // compass 7 + quick 4 (Save/Restore are rail buttons)
   assert.match(chrome, /id="ifcommands-label" class="command-label">Common commands</);
 });
 

@@ -30,10 +30,11 @@ Playing
 Type on the keyboard exactly as you would in any interpreter -- the game keeps
 keyboard focus, and the on-screen controls never steal it.
 
-The Common commands panel provides large touchscreen controls for North, West,
-Look, East, and South, plus Take all, Inventory, Again, and Undo. Each control
-sends the same command you would type at the story prompt. The panel appears
-while a story is playing and stays out of the way while choosing a story.
+The Common commands panel provides large touchscreen controls: a compass with
+North, South, East, West, Up, Down and Look, plus Take all, Inventory, Again,
+and Wait. Save and Restore sit on the right-hand rail. Each control sends the
+same command you would type at the story prompt. The panel appears while a
+story is playing and stays out of the way while choosing a story.
 
   Stories     Return to the story list to pick a different game.
   Narration   Reads each new passage aloud through the system TTS voice. The

@@ -61,16 +61,18 @@
   <div id="ifcommands-label" class="command-label">Common commands</div>
   <div class="command-compass" aria-label="Movement commands">
     <button class="command-btn north" type="button" tabindex="-1" data-command="north" aria-label="Go north" disabled>N</button>
+    <button class="command-btn up" type="button" tabindex="-1" data-command="up" aria-label="Go up" disabled>U</button>
     <button class="command-btn west" type="button" tabindex="-1" data-command="west" aria-label="Go west" disabled>W</button>
     <button class="command-btn look" type="button" tabindex="-1" data-command="look" disabled>Look</button>
     <button class="command-btn east" type="button" tabindex="-1" data-command="east" aria-label="Go east" disabled>E</button>
     <button class="command-btn south" type="button" tabindex="-1" data-command="south" aria-label="Go south" disabled>S</button>
+    <button class="command-btn down" type="button" tabindex="-1" data-command="down" aria-label="Go down" disabled>D</button>
   </div>
   <div class="command-quick" aria-label="Frequent actions">
     <button class="command-btn" type="button" tabindex="-1" data-command="take all" disabled>Take all</button>
     <button class="command-btn" type="button" tabindex="-1" data-command="inventory" disabled>Inventory</button>
     <button class="command-btn" type="button" tabindex="-1" data-command="again" disabled>Again</button>
-    <button class="command-btn" type="button" tabindex="-1" data-command="undo" disabled>Undo</button>
+    <button class="command-btn" type="button" tabindex="-1" data-command="wait" disabled>Wait</button>
   </div>
 </section>
 
@@ -87,6 +89,10 @@
   <button id="stopbtn" class="rbtn quiet" type="button" tabindex="-1">
     <span class="lb">Hush</span><span class="sub">Stop reading</span>
   </button>
+  <div class="rail-pair">
+    <button class="rbtn quiet" type="button" tabindex="-1" data-command="save"><span class="lb">Save</span></button>
+    <button class="rbtn quiet" type="button" tabindex="-1" data-command="restore"><span class="lb">Restore</span></button>
+  </div>
   <div id="railnote" class="railnote"></div>
 </div>
 

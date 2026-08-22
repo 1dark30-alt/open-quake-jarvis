@@ -107,10 +107,12 @@ body.picking #ifcommands { display: none; }
 .command-btn:focus-visible { outline: 2px solid var(--if-accent); outline-offset: 2px; }
 .command-btn[disabled] { opacity: .45; cursor: default; }
 .command-btn.north { grid-column: 2; grid-row: 1; }
+.command-btn.up { grid-column: 3; grid-row: 1; }
 .command-btn.west { grid-column: 1; grid-row: 2; }
 .command-btn.look { grid-column: 2; grid-row: 2; color: var(--if-accent); }
 .command-btn.east { grid-column: 3; grid-row: 2; }
 .command-btn.south { grid-column: 2; grid-row: 3; }
+.command-btn.down { grid-column: 3; grid-row: 3; }
 .command-quick { flex: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .command-quick .command-btn {
   min-height: 64px; font-size: 13px; letter-spacing: .035em; text-transform: uppercase;
@@ -133,6 +135,8 @@ body.novoicein #listenbtn { display: none; }
 .rbtn.on { border: 2px solid var(--if-accent); background: color-mix(in srgb, var(--if-accent) 16%, var(--if-panel2)); }
 .rbtn[disabled] { opacity: .45; cursor: default; }
 .rbtn.quiet { min-height: 64px; }
+.rail-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rail-pair .rbtn { min-height: 56px; }
 .railnote { font-size: 13px; line-height: 1.45; color: var(--if-faint); padding: 0 4px; }
 
 /* story picker: a scrollable vertical list filling the story area */

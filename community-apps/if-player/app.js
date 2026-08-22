@@ -31,7 +31,7 @@
   var statusdot = el('statusdot'), statustext = el('statustext'), storyname = el('storyname');
   var heard = el('heard'), railnote = el('railnote');
   var speakbtn = el('speakbtn'), listenbtn = el('listenbtn'), stopbtn = el('stopbtn'), librarybtn = el('librarybtn');
-  var commandbtns = [].slice.call(document.querySelectorAll('#ifcommands [data-command]'));
+  var commandbtns = [].slice.call(document.querySelectorAll('[data-command]'));   // compass + quick + Save/Restore
 
   document.documentElement.style.setProperty('--if-accent', ACCENT);
   document.documentElement.setAttribute('data-theme', DARK ? 'dark' : 'light');
