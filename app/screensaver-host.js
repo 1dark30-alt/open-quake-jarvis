@@ -43,6 +43,10 @@ const PANEL_OPTIONS = {
   intervalSec: v => { const n = parseInt(v, 10); return n >= 3 && n <= 86400 ? String(n) : null; },
   shuffle: boolOpt,
   idleMinutes: v => { const n = parseInt(v, 10); return n >= 0 && n <= 720 ? String(n) : null; },
+  // Exclusion list: comma-separated grid ids auto-start must never fire over. Ids are opaque
+  // strings, so normalize (trim, drop empties, dedupe) rather than pattern-match; '' = none.
+  excludePages: v => (typeof v === 'string' && v.length <= 2000)
+    ? Array.from(new Set(v.split(',').map(s => s.trim()).filter(Boolean))).join(',') : null,
   photosDir: dirOpt,
   videosDir: dirOpt,
 };
@@ -98,11 +102,21 @@ function createScreensaverHost({ appId = 'screensaver', log, deps, defaultPhotos
     return resolveMediaPath(kindDir(v ? 'v' : 'p'), name, v ? VIDEO_EXTS : IMAGE_EXTS);
   }
 
+  // Candidate pages for the exclusion-list picker: every non-screensaver page (hidden included —
+  // tiles/routines can still land on them). Screensaver pages are already skipped by the
+  // viewing-saver gate, so listing them would only invite no-op picks.
+  function excludablePages() {
+    const cfg = deps.getConfig();
+    return ((cfg && cfg.grids) || [])
+      .filter(g => !(g && g.kind === 'app' && g.app === appId))
+      .map(g => ({ id: g.id, name: g.name || '(unnamed page)' }));
+  }
+
   // The page's on-load /state fetch: per-kind file lists + the folders its settings overlay shows.
   function getState() {
     const o = pageOptions();
     if (!o) {
-      return { ok: false, status: 'idle', photos: { dir: '', usingDefault: true, files: [] }, videos: { dir: '', usingDefault: true, files: [] } };
+      return { ok: false, status: 'idle', photos: { dir: '', usingDefault: true, files: [] }, videos: { dir: '', usingDefault: true, files: [] }, pages: [] };
     }
     const pd = kindDir('p'), vd = kindDir('v');
     return {
@@ -110,7 +124,20 @@ function createScreensaverHost({ appId = 'screensaver', log, deps, defaultPhotos
       status: 'idle',
       photos: { dir: pd || '', usingDefault: !String(o.photosDir || '').trim(), files: pd ? listMedia(pd, IMAGE_EXTS) : [] },
       videos: { dir: vd || '', usingDefault: !String(o.videosDir || '').trim(), files: vd ? listMedia(vd, VIDEO_EXTS) : [] },
+      pages: excludablePages(),
+      // Did idle auto-start bring this page up? On native-touch devices the waking tap reaches
+      // the page instead of main, so the page checks this on show and posts /wake for that tap.
+      autoStarted: !!(deps.saverAutoStarted && deps.saverAutoStarted()),
+      // Touch-only console: EVERY tap exits the page (there's no knob to leave with), so the
+      // page routes all taps to /wake instead of advancing the scene.
+      tapExits: !!(deps.saverTapExits && deps.saverTapExits()),
     };
+  }
+
+  // The page's tap-to-wake on native-touch devices: leave the saver and restore the previous
+  // page. No-op ({ ok: false }) unless the saver actually auto-started.
+  function wake() {
+    return { ok: !!(deps.wakeSaver && deps.wakeSaver()) };
   }
 
   // Folder browser for the page's settings overlay (same generic /projects route the voice apps
@@ -146,7 +173,7 @@ function createScreensaverHost({ appId = 'screensaver', log, deps, defaultPhotos
 
   return {
     appId,
-    handlers: { getState, setOption, resolveMedia, getProjects },
+    handlers: { getState, setOption, resolveMedia, getProjects, wake },
     shutdown() {},   // nothing long-lived to tear down
   };
 }

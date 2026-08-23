@@ -62,7 +62,9 @@
   // Step kinds inside a Macro tile (value semantics mirror the matching tile types).
   const STEP_KINDS = [['key', 'Keystroke'], ['text', 'Type text'], ['delay', 'Delay (ms)'], ['app', 'App / Program'], ['open', 'Open file/folder'], ['url', 'Website (URL)'], ['cmd', 'Shell command'], ['page', 'Go to page'], ['system', 'System'], ['ahk', 'AutoHotkey'], ['routine', 'AI Routine']];
   // Knob behavior options (per page-type, with per-page override). Defaults: turn=Scroll pages, click=Start/stop rotation.
-  const KNOB_TURN_OPTS = [['pages', 'Scroll pages'], ['volume', 'System volume'], ['scroll', 'Scroll in window'], ['select', 'Select button']];
+  // 'app' hands the gesture to the served page's window.oqKnob (generic drop-in knob capability);
+  // pages that don't handle it fall back to the base behavior, so it's always safe to pick.
+  const KNOB_TURN_OPTS = [['pages', 'Scroll pages'], ['volume', 'System volume'], ['scroll', 'Scroll in window'], ['select', 'Select button'], ['app', 'App controlled']];
   const KNOB_CLICK_OPTS = [
     ['rotation', 'Toggle rotation'],
     ['rotation_start', 'Start rotation'],
@@ -70,6 +72,7 @@
     ['mute', 'System audio toggle'],
     ['enter', 'Enter'],
     ['home', 'Go to home page'],
+    ['app', 'App controlled'],
   ];
   // Double-click has the same options as single-click, plus "Page selector" (default) which
   // preserves the historical "double-click opens page selector" behavior.
@@ -2539,6 +2542,7 @@
       const showRow = appendScreensaverShowRow(el, g, def);
       const scenesOn = (g.options && 'showScenes' in g.options) ? !!g.options.showScenes : true;
       if (scenesOn) appendScreensaverMultiRow(el, g, def, 'Scenes', ['sceneWaves', 'sceneStarfield', 'sceneLava', 'sceneFireflies', 'sceneFlurry'], showRow);
+      appendScreensaverExcludeRow(el, g);
       // Browse/Open buttons under each folder text field — always present; hiding folder rows by
       // mode just hides configuration people are looking for.
       appendScreensaverFolderButtons(el, g, 'photosDir', 'photos');
@@ -2558,7 +2562,45 @@
       if (inp) { inp.value = p; inp.dispatchEvent(new Event('change', { bubbles: true })); }
     });
     if (def.id === 'discord') appendDiscordSetup(el);
+    if (def.id === 'deck-host') appendDeckProfiles(el);
     enforceMusicCap(g);
+  }
+  // Stream Deck Host page: manage profiles from the editor (keyboard for names; the panel only
+  // offers quick select/remove). Talks to the app's server through the generic appApiCall bridge.
+  async function appendDeckProfiles(el) {
+    const box = document.createElement('div');
+    box.className = 'advsec';
+    box.style.cssText = 'margin-top:12px;padding:10px;border:1px solid #213145;border-radius:8px';
+    el.appendChild(box);
+    const draw = async () => {
+      let s = null;
+      try { s = await configApi.appApiCall('deck-host', 'state'); } catch (e) {}
+      if (!s || !s.ok) { box.innerHTML = '<p class="hint">Deck profiles unavailable' + (s && s.error ? ': ' + esc(s.error) : '') + '</p>'; return; }
+      box.innerHTML = `<div class="row"><label style="width:auto;font-weight:bold">Deck profiles</label><span class="hint" style="margin:0">separate key layouts; the knob cycles them on the panel</span></div>`
+        + s.profiles.map(p => `<div class="row" style="gap:8px;align-items:center">
+            <input class="dkName" data-id="${esc(p.id)}" value="${esc(p.name)}" style="width:220px">
+            ${p.id === s.activeProfile ? '<span class="hint" style="margin:0">active</span>' : ''}
+            <button class="dkDel danger" data-id="${esc(p.id)}" ${s.profiles.length <= 1 ? 'disabled' : ''} style="margin-left:auto">Remove</button>
+          </div>`).join('')
+        + `<div class="row" style="gap:8px"><input id="dkNewName" placeholder="New profile name" style="width:220px"><button id="dkAdd">Add profile</button><span id="dkMsg" class="hint" style="margin:0"></span></div>`;
+      box.querySelectorAll('.dkName').forEach(inp => inp.onchange = async e => {
+        const r = await configApi.appApiCall('deck-host', 'profile-rename', { id: e.target.dataset.id, name: e.target.value });
+        if (!(r && r.ok)) { document.getElementById('dkMsg').textContent = 'Rename failed: ' + ((r && r.error) || ''); } else draw();
+      });
+      box.querySelectorAll('.dkDel').forEach(b => b.onclick = async e => {
+        if (!window.confirm('Remove this deck profile and its key assignments?')) return;
+        const r = await configApi.appApiCall('deck-host', 'profile-remove', { id: e.currentTarget.dataset.id });
+        if (!(r && r.ok)) document.getElementById('dkMsg').textContent = 'Remove failed: ' + ((r && r.error) || '');
+        draw();
+      });
+      box.querySelector('#dkAdd').onclick = async () => {
+        const name = (document.getElementById('dkNewName').value || '').trim();
+        const r = await configApi.appApiCall('deck-host', 'profile-add', name ? { name } : {});
+        if (!(r && r.ok)) document.getElementById('dkMsg').textContent = 'Add failed: ' + ((r && r.error) || '');
+        draw();
+      };
+    };
+    draw();
   }
   // Discord keeps application configuration and account authorization together in its app settings.
   // The generic option rows cannot represent live provider state or lifecycle actions.
@@ -2688,6 +2730,50 @@
       setLabel();
     });
     return row;
+  }
+  // Screensaver: the exclusion list is a multiselect of the OTHER pages — dynamic content
+  // apps.json can't express, hence the option is editorCustom and rendered here. Stored as a
+  // comma-separated id string in g.options.excludePages; while any picked page is on screen,
+  // idle auto-start never fires. Inserted right under the Idle auto-start field it modifies.
+  function appendScreensaverExcludeRow(el, g) {
+    const pages = (config.grids || []).filter(x => !(x.kind === 'app' && x.app === 'screensaver'));
+    const anchorInp = Array.prototype.find.call(el.querySelectorAll('input'), i => i.dataset.key === 'idleMinutes');
+    if (!pages.length || !anchorInp) return;
+    const picked = () => new Set(String((g.options || {}).excludePages || '').split(',').map(s => s.trim()).filter(Boolean));
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.position = 'relative';
+    row.innerHTML = `<label>Excluded pages</label>
+      <button type="button" data-ms-btn style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></button>
+      <div data-ms-menu style="display:none;position:absolute;left:78px;right:0;top:100%;z-index:30;background:#121a24;border:1px solid #2a3a4e;border-radius:8px;padding:8px 12px">
+        ${pages.map(p => `<label class="iconopt" style="display:block;width:auto;margin:4px 0"><input type="checkbox" data-xid="${esc(p.id)}" ${picked().has(p.id) ? 'checked' : ''}> ${esc(p.name || '(unnamed page)')}</label>`).join('')}
+      </div>`;
+    let after = anchorInp.closest('.row');
+    if (after.nextElementSibling && after.nextElementSibling.classList.contains('hint')) after = after.nextElementSibling;
+    after.insertAdjacentElement('afterend', row);
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.style.cssText = 'margin:-2px 0 10px 78px';
+    hint.textContent = 'While any picked page is on screen, idle auto-start never fires — for pages you watch without touching. Leaving the page resumes the countdown; manual starts still work.';
+    row.insertAdjacentElement('afterend', hint);
+    const btn = row.querySelector('[data-ms-btn]'), menu = row.querySelector('[data-ms-menu]');
+    const setLabel = () => { const n = picked().size; btn.textContent = '▾ ' + (n ? n + ' excluded' : 'None'); };
+    setLabel();
+    btn.onclick = e => {
+      e.stopPropagation();
+      const opening = menu.style.display === 'none';
+      menu.style.display = opening ? '' : 'none';
+      if (opening) setTimeout(() => document.addEventListener('click', () => { menu.style.display = 'none'; }, { once: true }), 0);
+    };
+    menu.onclick = e => e.stopPropagation();
+    menu.querySelectorAll('input[data-xid]').forEach(cb => cb.onchange = () => {
+      const set = picked();
+      if (cb.checked) set.add(cb.dataset.xid); else set.delete(cb.dataset.xid);
+      if (!g.options) g.options = {};
+      g.options.excludePages = Array.from(set).join(',');
+      markDirty();
+      setLabel();
+    });
   }
   // Screensaver: each media folder needs a real folder picker and an "open in Explorer" shortcut —
   // dynamic things apps.json can't express. Buttons are inserted right under that folder's own
@@ -3251,7 +3337,7 @@
       <p class="hint" style="margin:2px 0 0">A GitHub folder (or any host) serving an <code>index.json</code> + app <code>.zip</code>s. Change it to install from your own fork.</p>
       <label class="row" style="gap:8px;align-items:center;width:auto;margin-top:6px"><input type="checkbox" id="diAutoPage" style="width:auto"> Add a page for newly installed apps</label>
       <div id="diRepoList" style="margin:8px 0"></div>
-      <div class="row" style="gap:8px"><button id="diAdd">Add (import .zip)…</button><button id="diRefresh">Refresh</button><button id="diCommunity" style="margin-left:auto">Community apps ↗</button></div>
+      <div class="row" style="gap:8px"><button id="diAdd">Add (import .zip)…</button><button id="diRefresh">Refresh</button><button id="diCheckAll" style="margin-left:auto">Check all for updates</button></div>
       <div id="diMsg" class="hint" style="margin:6px 0;min-height:18px"></div>
       <div id="diList"><p class="hint">Loading…</p></div>
       <details class="advsec" style="margin-top:16px"><summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Advanced settings</summary>
@@ -3420,7 +3506,7 @@
         }
         diMsg('Updating "' + id + '"…');
         const r = await configApi.updateDropInApp(id, confirmExec);
-        if (r && r.ok && r.updated) { appDefs = await configApi.getApps(); renderList(); renderRepo(); diMsg('Updated "' + (r.name || id) + '" to v' + r.version); }
+        if (r && r.ok && r.updated) { appDefs = await configApi.getApps(); renderList(); diMsg('Updated "' + (r.name || id) + '" to v' + r.version); }
         else if (r && r.ok && r.upToDate) diMsg('"' + id + '" is up to date.');
         else if (r && r.warnExec && !confirmExec) {
           if (window.confirm('This update contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC. Update anyway?')) doUpdate(id, true);
@@ -3448,7 +3534,23 @@
       document.getElementById('diBrowse').onclick = () => renderRepo();
       document.getElementById('diAdd').onclick = () => { importZipPath = null; doImport(); };
       document.getElementById('diRefresh').onclick = () => renderList();
-      document.getElementById('diCommunity').onclick = () => configApi.openExternal(repoField() || DEFAULT_APP_REPO);
+      // Check every repo-installed app at once, then offer to update the ones with a newer version.
+      const checkAllUpdates = async () => {
+        let apps = []; try { apps = (await configApi.listDropInApps()) || []; } catch (e) {}
+        const repoApps = apps.filter(a => a.source);
+        if (!repoApps.length) return diMsg('No apps installed from a repository to check.');
+        diMsg('Checking ' + repoApps.length + ' app(s) for updates…');
+        const updates = [];
+        for (const a of repoApps) { const c = await configApi.checkDropInUpdate(a.id); if (c && c.ok && c.updateAvailable) updates.push({ id: a.id, from: c.installedVersion, to: c.remoteVersion }); }
+        if (!updates.length) return diMsg('All ' + repoApps.length + ' app(s) are up to date.');
+        const summary = updates.map(u => u.id + ' (' + u.from + ' → ' + u.to + ')').join('\n');
+        if (!window.confirm(updates.length + ' update(s) available:\n\n' + summary + '\n\nUpdate all now?')) return diMsg(updates.length + ' update(s) available.');
+        let done = 0;
+        for (const u of updates) { const r = await configApi.updateDropInApp(u.id, true); if (r && r.ok && r.updated) done++; }
+        appDefs = await configApi.getApps(); renderList();
+        diMsg('Updated ' + done + ' of ' + updates.length + ' app(s).', done < updates.length);
+      };
+      document.getElementById('diCheckAll').onclick = () => checkAllUpdates();
       configApi.getDropInInfo().then(info => { if (!info) return; const s2 = document.getElementById('diLoc'); if (s2) s2.value = info.location; const p = document.getElementById('diLocPath'); if (p) p.textContent = info.dir; });
       document.getElementById('diLoc').onchange = async e => {
         const info = await configApi.setDropInLocation(e.target.value);

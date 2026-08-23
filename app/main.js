@@ -24,7 +24,7 @@ if (process.platform === 'win32') {
   catch (e) { console.log('win-ca load failed:', e.message); }
 }
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, powerSaveBlocker, ipcMain, shell, dialog, session, net, safeStorage, clipboard, globalShortcut, nativeTheme, Notification } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, powerSaveBlocker, powerMonitor, ipcMain, shell, dialog, session, net, safeStorage, clipboard, globalShortcut, nativeTheme, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -87,6 +87,7 @@ const {
 const { ObsService } = require('./obsService');                 // OBS Studio control (shared service)
 const { normalizeObsSettings, obsWsUrl } = require('./obsSettings');
 const appRepo = require('./appRepo');                            // pure helpers for repo install/update
+const { knobDefaultFor, parseCustomRing } = require('./knobRouting');   // generic drop-in knob capability
 const claudeVoiceApprovals = require('./claudevoice-approvals'); // required directly ONLY for the boot-time leftover-hook sweep below
 const HA_SCHEDULE_APPS = ['haschedule', 'agenda', 'events'];   // dev apps backed by the shared HA /haschedule-data snapshot
 
@@ -284,7 +285,31 @@ const liveTranslateHost = createLiveTranslateHost({
 const screensaverHost = createScreensaverHost({
   appId: 'screensaver',
   log: message => console.log('[screensaver] ' + message),
-  deps: voicePanelDeps('screensaver'),
+  // saverAutoStarted/wakeSaver: on touchscreens without the ARIS-68 touch interface the waking
+  // tap lands INSIDE the page (main never sees it), so the page itself asks "did I auto-start?"
+  // and posts the wake — see /screensaver/wake.
+  deps: Object.assign(voicePanelDeps('screensaver'), {
+    saverAutoStarted: () => saverActive,
+    // Touch-only consoles (no ARIS-68 panel): tapping is the ONLY input, so any tap on the saver
+    // page must leave it — auto-started or not (manual visit, rotation stop, boot-restore). On a
+    // DK-QUAKE the knob leaves manual visits, so there tap keeps its advance-the-scene meaning.
+    saverTapExits: () => dev.activeName() !== 'aris68',
+    wakeSaver: () => {
+      if (saverActive) { wakeFromSaver(); return true; }
+      const g = activeGrid();
+      if (!saverIdle.isScreensaverGrid(g)) return false;
+      // Manual visit: no snapshot to restore — land on home / first visible, never the saver.
+      let target = saverIdle.saverRestoreTarget(config, null);
+      if (target === g.id) {
+        const alt = (config.grids || []).find(x => !saverIdle.isScreensaverGrid(x) && !x.hidden);
+        target = alt ? alt.id : null;
+      }
+      if (!target || target === g.id) return false;
+      console.log('[screensaver] tap-exit from manual visit -> page ' + target);
+      gotoGrid(target, false);
+      return true;
+    },
+  }),
   defaultPhotosDir: path.join(app.getPath('userData'), 'screensaver-media', 'photos'),
   defaultVideosDir: path.join(app.getPath('userData'), 'screensaver-media', 'videos'),
 });
@@ -699,6 +724,9 @@ async function importDropInApp(zipPath, forceId, confirmExec, replaceId) {
     if (finalId !== id0) { manifest.id = finalId; try { fs.writeFileSync(mp, JSON.stringify(manifest, null, 2)); } catch (e) { return { ok: false, error: 'could not rewrite the manifest id' }; } }
     ensureDropInDir();
     try { fs.renameSync(appRoot, destDir); } catch (e) { copyDirSync(appRoot, destDir); }
+    // Updated/installed files must actually run: drop the cached server module (its _shutdown is
+    // called) so the next /app-api call loads the fresh server.js instead of the pre-update one.
+    try { if (sysserver) sysserver.invalidateAppServer(finalId); } catch (e) {}
     return { ok: true, id: finalId, name: manifest.name || finalId };
   } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
   finally { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {} }
@@ -716,6 +744,7 @@ function deleteDropInApp(id) {
   if (!dir) return { ok: false, error: 'app not found' };
   const base = path.resolve(dropInDir());
   if (!path.resolve(dir).startsWith(base + path.sep)) return { ok: false, error: 'only user-installed drop-in apps can be deleted here' };
+  try { if (sysserver) sysserver.invalidateAppServer(id); } catch (e) {}   // shut down its server module (sockets/children)
   try { fs.rmSync(path.resolve(dir), { recursive: true, force: true }); setAppSource(id, null); return { ok: true }; }
   catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 }
@@ -768,10 +797,13 @@ function downloadToFile(url, dest, maxBytes) {
   });
 }
 
+// raw.githubusercontent.com sits behind a ~5-minute CDN cache; a unique query param makes every
+// check/download fetch fresh, so a just-pushed version bump is installable immediately.
+function bustCache(url) { return url + (url.indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now(); }
 async function fetchRepoIndex(settingUrl) {
   const base = appRepo.repoRawBase(settingUrl);
   if (!base) return { error: 'The app-repository URL is not a valid http(s) URL.' };
-  try { return { base, apps: appRepo.parseIndex(await fetchJson(appRepo.indexUrl(base))) }; }
+  try { return { base, apps: appRepo.parseIndex(await fetchJson(bustCache(appRepo.indexUrl(base)))) }; }
   catch (e) { return { base, error: 'Could not load the repository catalog: ' + (e.message || e) }; }
 }
 
@@ -795,7 +827,7 @@ async function downloadAndInstall(base, entry, settingUrl, replaceId, confirmExe
   const url = appRepo.zipUrl(base, entry);
   if (!url) return { ok: false, error: 'no download URL for "' + entry.id + '".' };
   const tmpZip = path.join(USER_DIR, 'repo-dl-' + Date.now() + '.zip');
-  const dl = await downloadToFile(url, tmpZip);
+  const dl = await downloadToFile(bustCache(url), tmpZip);
   if (!dl.ok) return dl;
   try {
     const r = await importDropInApp(tmpZip, null, confirmExec, replaceId);
@@ -1417,12 +1449,16 @@ async function resolveTiles(tiles) {
   }));
 }
 // Knob behavior is configurable per page TYPE (grid / dashboard / app), with an optional per-page override.
-// turn: 'pages' | 'volume' | 'scroll' | 'select'   ·   click: 'rotation' | 'mute' | 'enter'
+// turn: 'pages' | 'volume' | 'scroll' | 'select' | 'app'   ·   click: 'rotation' | 'mute' | 'enter' | 'app'
+// 'app' routes the gesture into the served page's window.oqKnob (generic drop-in knob capability);
+// an app page whose manifest declares "knob": true defaults ALL gestures to 'app'. The user's
+// per-page-type settings and the per-page override remain the final word.
 const KNOB_DEFAULT = { turn: 'pages', click: 'rotation', dblclick: 'selector' };
 function pageTypeOf(g) { return g.kind === 'app' ? 'app' : g.kind === 'web' ? 'dashboard' : 'grid'; }
 function effectiveKnob(g) {
   const all = (config.settings && config.settings.knob) || {};
-  const base = Object.assign({}, KNOB_DEFAULT, all[pageTypeOf(g)] || {});
+  const appDef = (g.kind === 'app' && g.app) ? loadApps().find(a => a.id === g.app) : null;
+  const base = Object.assign({}, knobDefaultFor(g, appDef), all[pageTypeOf(g)] || {});
   if (g.knobOverride && g.knob) return { turn: g.knob.turn || base.turn, click: g.knob.click || base.click, dblclick: g.knob.dblclick || base.dblclick };
   return base;
 }
@@ -2475,9 +2511,9 @@ const RING_STATES = {
   speaking: { hue: 149, sat: 255, effect: 1, speed: 128 },    // solid blue — Claude is talking
   approval: { hue: 28, sat: 255, effect: 5, speed: 220 },     // breathing amber — needs a touch, mirrors --warn
 };
-let ringOverrideState = null;
+let ringOverrideState = null;   // a RING_STATES key, or a {hue,sat,effect,speed} object from OQX_RING::custom:
 function applyRingOverride() {
-  const s = RING_STATES[ringOverrideState];
+  const s = (ringOverrideState && typeof ringOverrideState === 'object') ? ringOverrideState : RING_STATES[ringOverrideState];
   if (!s) { ringOverrideState = null; applyKnobSettings(); return; }
   try { dev.setKnobLed(true); } catch (e) {}
   try { dev.setLedEffect(s.effect & 0xFF); } catch (e) {}
@@ -2487,6 +2523,10 @@ function applyRingOverride() {
 }
 function setRingState(state) {
   if (!state || state === 'idle') { clearRingOverride(); return; }
+  // Generic app ring: OQX_RING::custom:{"hue":..,"sat":..,"effect":..,"speed":..} — any served page
+  // can drive the full ring while it is active; gotoGrid's clearRingOverride() restores on page change.
+  const custom = parseCustomRing(state);
+  if (custom) { ringOverrideState = custom; applyRingOverride(); return; }
   if (!RING_STATES[state]) return;   // unrecognized state string — ignore rather than guess at a mapping
   ringOverrideState = state;
   applyRingOverride();
@@ -2737,16 +2777,26 @@ function voiceSessionBusy() {
 function saverTick() {
   // Self-heal: an editor save can swap the active page without gotoGrid — never keep swallowing.
   if (saverActive && !saverIdle.isScreensaverGrid(activeGrid())) dissolveSaver();
+  // Idle stamp: the ARIS-68 panel reports its own touch over HID, so lastPanelInputAt is the
+  // whole truth there. Every other setup (Bedrock knob, knobless touchscreen) delivers touch as
+  // native Windows input the app never sees — blend in the OS-wide idle clock so tapping the
+  // panel counts as presence. (Kept off for aris68 so PC mouse/keyboard use doesn't hold the
+  // saver back on a DK-QUAKE, matching shipped behavior.)
+  let lastInputAt = lastPanelInputAt;
+  if (dev.activeName() !== 'aris68') {
+    try { lastInputAt = Math.max(lastInputAt, Date.now() - powerMonitor.getSystemIdleTime() * 1000); } catch (e) {}
+  }
   const d = saverIdle.evaluateSaverTick({
     runMode: runMode(), monitorMode, saverActive,
     activeGridId: config.activeGridId, grids: config.grids || [],
-    now: Date.now(), lastInputAt: lastPanelInputAt,
+    now: Date.now(), lastInputAt,
     voiceBusy: voiceSessionBusy(),
     meetingRecording: !!(meetingRecorder && meetingRecorder.getState().recording),
   });
   if (d.enter) enterSaver(d.enter);
 }
 function enterSaver(id) {
+  console.log('[screensaver] idle auto-start (from page ' + config.activeGridId + ')');
   saverPrevGridId = config.activeGridId;
   gotoGrid(id, false);            // before setting saverActive, so gotoGrid's dissolve guard stays quiet
   saverActive = true;
@@ -2757,6 +2807,7 @@ function dissolveSaver() {
   scheduleRotation();
 }
 function wakeFromSaver() {
+  console.log('[screensaver] wake -> restoring page');
   saverActive = false;            // before gotoGrid, so the dissolve guard doesn't fire
   const target = saverIdle.saverRestoreTarget(config, saverPrevGridId);
   saverPrevGridId = null;
@@ -3598,6 +3649,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('installRepoApp', (e, id, confirmExec, repoUrl) => isFrom(e, configWin) ? installRepoApp(id, confirmExec, repoUrl) : { ok: false });
   ipcMain.handle('checkDropInUpdate', (e, id) => isFrom(e, configWin) ? checkDropInUpdate(id) : { ok: false });
   ipcMain.handle('updateDropInApp', (e, id, confirmExec) => isFrom(e, configWin) ? updateDropInApp(id, confirmExec) : { ok: false });
+  // Editor -> drop-in app server bridge (generic): lets the editor host management UI for an app.
+  ipcMain.handle('appApiCall', (e, appId, action, body) => (isFrom(e, configWin) && sysserver) ? sysserver.callAppServer(appId, action, body) : { ok: false });
   ipcMain.handle('getAppIcon', (e, value) => isFrom(e, configWin) ? getAppIconDataUrl(value) : null);
   // Sync: editor preview reads a local image as a data: URL through main (the config preload is sandboxed,
   // so it can't touch fs). Same conversion the panel uses, so editor previews match the panel.

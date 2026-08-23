@@ -39,6 +39,12 @@ For how to install or submit an app — and a safety note — see the docs:
   the page theme. Optional shared high scores on the same score server as kitten-cannon
   (player initials + configurable Server URL; fully playable offline). Download
   [`quake-bird.zip`](quake-bird.zip) and import via **Settings → Drop-In Apps → Add**.
+- **[deck-host](deck-host)** — run **Elgato Stream Deck plugins** on the panel: point it at a
+  folder of `*.sdPlugin` packages and it launches them against Elgato's documented plugin
+  protocol; the on-screen key grid shows each plugin's live images/titles, taps press keys,
+  and the knob cycles profiles. Keypad actions from native/Node plugins (no property
+  inspectors or dials yet). Plugins are real programs — only use ones you trust. Download
+  [`deck-host.zip`](deck-host.zip) and import via **Settings → Drop-In Apps → Add**.
 - **[spotify-volume](spotify-volume)** — per-app Windows volume control for the knob (Spotify
   by default, configurable to any process). Uses a bundled native helper against the Core
   Audio session APIs — no admin, no Spotify login/Premium, no Web API. By **J Last**.

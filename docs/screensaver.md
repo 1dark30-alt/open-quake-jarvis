@@ -12,7 +12,7 @@ immediately, nothing to download or configure.
 
 - **Built-in scenes** (default) — animations drawn live by the page (no media files, nothing
   visibly loops): **Waves** (drifting color ribbons), **Starfield**, **Lava lamp** (gooey
-  molten blobs), **Fireflies** (glowing wanderers over a meadow), and **Flurry** (glowing
+  molten blobs), **Fireflies** (glowing wanderers in the dark), and **Flurry** (glowing
   smoke comets with cycling colors). Each scene is its own on/off toggle — the cycle plays
   whatever mix you leave on (the editor keeps the toggles behind one Scenes dropdown).
 **Show** is one multiselect — any mix of three groups plays in one rotation:
@@ -50,10 +50,21 @@ by itself. Any touch or knob input wakes it — you land back on exactly the pag
 nothing reloaded, and the waking gesture is swallowed so it can't press anything on that page
 (no accidental mic toggles or page flips).
 
+This works on every console type. On a DK-QUAKE the panel reports its own touch; on consoles
+with a standard touchscreen (e.g. a knobless Bedrock build) system-wide mouse/keyboard/touch
+activity counts as presence. On those touch-only consoles **every** tap on the screensaver
+page exits it — auto-started, visited manually, or reached by rotation — because there is no
+knob to leave with; tap-to-advance-the-scene and the on-panel ⚙ overlay are DK-QUAKE-only
+(the same settings all live in the editor's App options).
+
 Sensible guards, all automatic:
 
 - Auto-start only runs in **panel mode** (in software/monitor mode Windows has its own screensaver).
 - It stays away while a **voice conversation** is live or a **meeting is being recorded**.
+- **Excluded pages** (optional): pick pages the screensaver must never start over — for pages
+  you watch without touching, like a dashboard or a meeting view. While one of them is on
+  screen, idle auto-start simply doesn't fire; leave the page and the normal countdown resumes.
+  Starting the screensaver manually (visiting its page) still works.
 - Page **auto-rotation pauses** while the screensaver is up and resumes on wake.
 - If a page hotkey or focus-follow switches the page while the screensaver is up, the screensaver
   simply steps aside.
@@ -74,6 +85,7 @@ the ⚙ settings button).
 | Change every (s) | Seconds per photo/scene; videos play through; a finished collage board displays for this long |
 | Shuffle | Randomize the play order across whatever's enabled |
 | Idle auto-start | Minutes of no input before auto-start; 0 = never |
+| Excluded pages | Multiselect of your other pages — auto-start never fires while one is on screen |
 | Photos / Videos folder | Always shown; blank = the app's own per-kind folder; Browse…/Open buttons under each |
 
 Everything except the folder path can also be changed on the panel: tap → **⚙**.

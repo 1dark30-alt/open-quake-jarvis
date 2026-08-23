@@ -47,6 +47,14 @@
       "version": "1.0.0",
       "zip": "spotify-volume.zip",
       "server": true
+    },
+    {
+      "id": "deck-host",
+      "name": "Stream Deck Host",
+      "description": "Run Elgato Stream Deck plugins and profiles on the panel — real *.sdPlugin packages, plus .streamDeckProfile imports with working Hotkey/Text/Open keys.",
+      "version": "1.4.0",
+      "zip": "deck-host.zip",
+      "server": true
     }
   ]
 }

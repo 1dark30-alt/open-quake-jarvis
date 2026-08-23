@@ -174,6 +174,31 @@ function setAppFolders(folders) {
     appFolders[id] = typeof value === 'string' ? { root: value, proxy: null } : Object.assign({}, value || {});
   });
 }
+// Drop a drop-in app's cached server module so the NEXT /app-api call loads the current file --
+// without this, updating an installed app keeps its OLD server.js running until a full host restart.
+// The module may export _shutdown() (close sockets, kill child processes); call it before purging,
+// and purge Node's require cache for everything under the app root (a server's own helper requires
+// are cached by absolute path too).
+// Editor -> drop-in server bridge: run one /app-api-style action for the config window (which is not
+// a served page, so it can't hit /app-api itself). Same handle() contract and options resolution.
+async function callAppServer(appId, action, body) {
+  const mod = appServer(appId);
+  if (!mod || typeof mod.handle !== 'function') return { ok: false, error: 'app has no server' };
+  try {
+    return await mod.handle(String(action || ''), {
+      appId, query: {}, options: appOptions(appId),
+      body: body != null ? Buffer.from(JSON.stringify(body)) : null,
+    });
+  } catch (e) { return { ok: false, error: e.message || 'app server failed' }; }
+}
+function invalidateAppServer(id) {
+  const mod = appServers[id];
+  delete appServers[id];
+  if (mod && typeof mod._shutdown === 'function') { try { mod._shutdown(); } catch (e) {} }
+  const rec = appFolders[id];
+  const root = rec && rec.root ? path.resolve(rec.root) + path.sep : null;
+  if (root) Object.keys(require.cache).forEach(k => { if (k.startsWith(root)) delete require.cache[k]; });
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -503,6 +528,7 @@ const VOICE_POST_SUFFIXES = new Set([
   '/tts',
   '/option',
   '/append-line',
+  '/wake',
 ]);
 
 // TTS handoff: reply text can be many KB -- far beyond what fits in a GET query string (Node
@@ -715,6 +741,13 @@ async function handler(req, res) {
       if (!key || body.value == null || !h.setOption) return done(res, false);
       let ok = false; try { ok = !!h.setOption(key, String(body.value)); } catch (e) {}
       return done(res, ok);
+    }
+    // Screensaver tap-to-wake: on native-touch devices the waking tap lands in the page, not in
+    // main's HID path — the page posts here to leave the saver and restore the previous page.
+    if (voicePath === '/wake' && req.method === 'POST') {
+      if (!h.wake) return done(res, false);
+      let out = null; try { out = h.wake(); } catch (e) {}
+      return json(res, out && out.ok ? out : { ok: false });
     }
     // Live Translate (Soniox provider): mint a short-lived temp key server-side so the real key never
     // reaches the renderer; the page authenticates its Soniox WebSocket with it. GET, same-origin-gated.
@@ -1167,4 +1200,4 @@ function lucidBroadcast(payload) {
   for (const res of lucidSubscribers) { try { res.write(line); } catch (e) { lucidSubscribers.delete(res); } }
 }
 
-module.exports = { start, stop, setActivePage, setAppFolders, issueOfficeCapability, clearOfficeCapability, lucidBroadcast };
+module.exports = { start, stop, setActivePage, setAppFolders, invalidateAppServer, callAppServer, issueOfficeCapability, clearOfficeCapability, lucidBroadcast };

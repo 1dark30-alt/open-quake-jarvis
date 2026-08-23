@@ -423,19 +423,40 @@
 
   // ---- knob ----
   // The knob does click-type detection in hardware: press index 1 = single-click, 2 = double-click.
+  // Generic drop-in knob capability: a gesture whose resolved mode is 'app' is delivered VERBATIM
+  // into the served page's window.oqKnob(event). The page returns false (or doesn't define oqKnob,
+  // or isn't loaded yet) to decline -> the panel falls back to the base default for that gesture,
+  // so the knob is never dead. Injection targets the one foreground webview, so "only the active
+  // page gets knob events" is inherent.
+  function knobToApp(k) {
+    if (!(webMode && webReady)) return Promise.resolve(false);
+    try {
+      return web.executeJavaScript('(function(){try{return window.oqKnob?(window.oqKnob(' + JSON.stringify(k) + ')!==false):false}catch(e){return false}})()')
+        .then(function (v) { return v === true; }, function () { return false; });
+    } catch (e) { return Promise.resolve(false); }
+  }
+  function pttInject(k) {   // press-and-hold -> push-to-talk; the served chat page defines window.pttStart/Stop
+    if (webMode && webReady) web.executeJavaScript(k.phase === 'start' ? 'window.pttStart&&window.pttStart()' : 'window.pttStop&&window.pttStop()').catch(function () {});
+  }
   panelApi.onKnob(k => {
     if (introOpen) {   // teach by doing: a double-click clears the intro and opens the page menu; ignore other knob input
       if (k.type === 'press' && k.index === 2) { dismissIntro(); openSelector(); }
       return;
     }
-    if (k.type === 'hold') {   // press-and-hold -> push-to-talk; the served chat page defines window.pttStart/Stop
-      if (webMode && webReady) web.executeJavaScript(k.phase === 'start' ? 'window.pttStart&&window.pttStart()' : 'window.pttStop&&window.pttStop()').catch(function () {});
+    const kn = cfg._knob || {};
+    const appMode = kn.turn === 'app' || kn.click === 'app' || kn.dblclick === 'app';
+    if (k.type === 'hold') {
+      // App-controlled pages get hold first (full event vocabulary); unconsumed -> the existing
+      // push-to-talk injection, so ai-voice/livetranslate keep working unchanged.
+      if (appMode) knobToApp(k).then(function (used) { if (!used) pttInject(k); });
+      else pttInject(k);
       return;
     }
     if (k.type === 'rotate') {
       if (selOpen) { moveSelector(k.dir > 0 ? -1 : 1); return; }          // CW scrolls down the page list
-      const turn = (cfg._knob && cfg._knob.turn) || 'pages';
-      if (turn === 'volume') { panelApi.volume(k.dir > 0 ? 1 : -1); flashVol(k.dir > 0 ? '🔊 +' : '🔉 −'); }
+      const turn = kn.turn || 'pages';
+      if (turn === 'app') { knobToApp(k).then(function (used) { if (!used) cyclePage(k.dir > 0 ? -1 : 1); }); }
+      else if (turn === 'volume') { panelApi.volume(k.dir > 0 ? 1 : -1); flashVol(k.dir > 0 ? '🔊 +' : '🔉 −'); }
       else if (turn === 'scroll') {                                       // native wheel at center -> inner scrollables (Grafana/HA, lyrics) scroll too
         if (webMode && webReady) { try { web.sendInputEvent({ type: 'mouseWheel', x: Math.round(webRegion.width / 2), y: 240, deltaX: 0, deltaY: k.dir > 0 ? -120 : 120, wheelTicksX: 0, wheelTicksY: k.dir > 0 ? -1 : 1, hasPreciseScrollingDeltas: true, canScroll: true }); } catch (e) {} }
       }
@@ -452,8 +473,12 @@
       // play/pause needs. An explicit per-page override (Advanced -> Knob) still wins either way.
       const defaultClick = (cfg && (cfg.app === 'ai-voice' || cfg.app === 'livetranslate')) ? 'enter' : 'rotation';
       const action = (k.index === 2)
-        ? ((cfg._knob && cfg._knob.dblclick) || 'selector')
-        : ((cfg._knob && cfg._knob.click) || defaultClick);
+        ? (kn.dblclick || 'selector')
+        : (kn.click || defaultClick);
+      if (action === 'app') {
+        knobToApp(k).then(function (used) { if (!used) doKnobAction(k.index === 2 ? 'selector' : 'rotation'); });
+        return;
+      }
       doKnobAction(action);
     }
   });
