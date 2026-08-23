@@ -34,6 +34,7 @@ button.danger { color: var(--danger); border-color: var(--danger); background: t
 #profiles { display: flex; gap: 8px; }
 #profiles button { min-height: 40px; font-size: 16px; }
 #profiles button.on { border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel2)); }
+#profiles button.removing { color: var(--danger); border-color: var(--danger); background: transparent; }
 #spacer { flex: 1; }
 
 /* key grid */

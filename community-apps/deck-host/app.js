@@ -47,14 +47,34 @@
     dot.className = 'dot ' + (crashed ? 'bad' : running ? 'ok' : 'warn');
     txt.textContent = running + '/' + ps.length + ' plugins running' + (crashed ? ' · ' + crashed + ' need attention' : '');
   }
+  var confirmRemoveId = null;   // profile chip in hold-to-remove confirm state
   function renderProfiles() {
     profilesNav.innerHTML = '';
     (snap.profiles || []).forEach(function (pr) {
+      if (pr.id === confirmRemoveId && (snap.profiles || []).length > 1) {
+        // hold-to-remove confirm: the chip becomes an inline Remove / Keep pair (no popups on a panel)
+        var rm = document.createElement('button');
+        rm.type = 'button'; rm.tabIndex = -1; rm.className = 'removing';
+        rm.textContent = 'Remove "' + pr.name + '"?';
+        rm.addEventListener('click', function () { confirmRemoveId = null; post('profile-remove', { id: pr.id }); });
+        var keep = document.createElement('button');
+        keep.type = 'button'; keep.tabIndex = -1; keep.textContent = 'Keep';
+        keep.addEventListener('click', function () { confirmRemoveId = null; renderProfiles(); });
+        profilesNav.appendChild(rm); profilesNav.appendChild(keep);
+        return;
+      }
       var b = document.createElement('button');
       b.type = 'button'; b.tabIndex = -1;
       b.className = pr.id === snap.activeProfile ? 'on' : '';
       b.textContent = pr.name;
-      b.addEventListener('click', function () { post('profile-select', { id: pr.id }); });
+      var holdT = null, held = false;
+      b.addEventListener('pointerdown', function () {
+        held = false;
+        holdT = setTimeout(function () { held = true; confirmRemoveId = pr.id; renderProfiles(); }, 600);
+      });
+      var up = function () { if (holdT) { clearTimeout(holdT); holdT = null; } };
+      b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
+      b.addEventListener('click', function () { if (!held) post('profile-select', { id: pr.id }); });
       profilesNav.appendChild(b);
     });
   }
@@ -200,7 +220,15 @@
       list.appendChild(d);
     });
   }
-  el('addprofile').addEventListener('click', function () { post('profile-add', {}); });
+  // Stray-tap-proof: first tap arms it, second tap (within 3s) creates. One accidental brush of the
+  // header must never mint a profile the user then has to clean up.
+  var addArm = null;
+  el('addprofile').addEventListener('click', function () {
+    var b = el('addprofile');
+    if (addArm) { clearTimeout(addArm); addArm = null; b.textContent = '+ Profile'; post('profile-add', {}); return; }
+    b.textContent = 'Tap again to add';
+    addArm = setTimeout(function () { addArm = null; b.textContent = '+ Profile'; }, 3000);
+  });
 
   // ---- knob (generic drop-in capability) --------------------------------
   // Rotate cycles profiles; everything else is declined so the panel's defaults keep working.
