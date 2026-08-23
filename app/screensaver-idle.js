@@ -12,14 +12,17 @@ function isScreensaverGrid(g) {
   return !!(g && g.kind === 'app' && g.app === 'screensaver');
 }
 
-// Per-page auto-start setting. idleMinutes: 0 = never auto-start; clamped to at most 12 hours.
-// A missing/garbage value falls back to the shipped default (30 minutes).
+// Per-page auto-start settings. idleMinutes: 0 = never auto-start; clamped to at most 12 hours.
+// A missing/garbage value falls back to the shipped default (30 minutes). excludePages: comma-
+// separated grid ids the saver must never auto-start over (an exclusion list — a dashboard being
+// WATCHED produces no input, so idle alone can't tell it from an abandoned panel).
 function saverSettings(grid) {
   const o = (grid && grid.options) || {};
   let m = parseInt(o.idleMinutes, 10);
   if (!Number.isFinite(m)) m = 30;
   m = Math.max(0, Math.min(720, m));
-  return { idleMinutes: m };
+  const excludeIds = String(o.excludePages || '').split(',').map(s => s.trim()).filter(Boolean);
+  return { idleMinutes: m, excludeIds };
 }
 
 // The auto-start target: the first screensaver page with auto-start enabled. Hidden pages are
@@ -39,6 +42,7 @@ function evaluateSaverTick(s) {
   if (!target) return { enter: null, reason: 'no-saver-page' };
   const active = (s.grids || []).find(g => g.id === s.activeGridId);
   if (isScreensaverGrid(active)) return { enter: null, reason: 'viewing-saver' };   // incl. manual visits
+  if (saverSettings(target).excludeIds.includes(s.activeGridId)) return { enter: null, reason: 'excluded-page' };
   if (s.voiceBusy) return { enter: null, reason: 'voice-busy' };
   if (s.meetingRecording) return { enter: null, reason: 'meeting-recording' };
   const idleMs = saverSettings(target).idleMinutes * 60000;

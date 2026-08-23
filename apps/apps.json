@@ -7773,6 +7773,14 @@
         "help": "Minutes of no input; 0 = never. With no panel touches or knob turns for this long, the panel switches to this page by itself; any input returns to the page you were on. Panel mode only. 0 disables auto-start — the page then only appears manually or in rotation."
       },
       {
+        "key": "excludePages",
+        "label": "Excluded pages",
+        "type": "text",
+        "default": "",
+        "editorCustom": true,
+        "help": "Exclusion list: while any picked page is on screen, idle auto-start never fires — for pages you watch without touching (dashboards, meetings). Leaving the page resumes the normal idle countdown; manual starts still work."
+      },
+      {
         "key": "photosDir",
         "label": "Photos folder",
         "type": "text",

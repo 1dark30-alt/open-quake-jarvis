@@ -34,6 +34,8 @@
     intervalSec: parseInt(Q.get('intervalSec'), 10) || 10,
     shuffle: Q.get('shuffle') === '1',
     idleMinutes: Q.get('idleMinutes') || '30',
+    // Exclusion list: grid ids auto-start must never fire over (comma string in storage).
+    excludeIds: (Q.get('excludePages') || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean),
     sceneOn: {},                                   // per-scene include toggles (any mix)
   };
   var SCENES = ['waves', 'starfield', 'lava', 'fireflies', 'flurry'];
@@ -42,6 +44,7 @@
   SCENES.forEach(function (id) { opts.sceneOn[id] = Q.get(sceneKey(id)) !== '0'; });   // absent = on
   var photos = [], videos = [];                  // file NAMES from /state (photos + videos folders)
   var photosDirLabel = '', videosDirLabel = '', photosDefault = true, videosDefault = true;
+  var pagesList = [];                            // {id,name} candidates for the exclusion-list picker
   function mediaUrl(kind, name) { return '/screensaver/media?k=' + (kind === 'video' ? 'v' : 'p') + '&f=' + encodeURIComponent(name); }
 
   // =====================================================================================
@@ -185,19 +188,8 @@
 
   function sceneFireflies(cv) {
     var ctx = cv.getContext('2d'), run = true, t = 0;
-    // Grass silhouette pre-rendered once; the flies wander with smooth headings and pulse
-    // individually, with the occasional brighter flash.
-    var grass = document.createElement('canvas'); grass.width = W; grass.height = H;
-    var gctx = grass.getContext('2d');
-    for (var layer = 0; layer < 3; layer++) {
-      gctx.fillStyle = 'rgba(6,16,8,' + (0.5 + layer * 0.25) + ')';
-      gctx.beginPath(); gctx.moveTo(0, H);
-      var base = H - 14 - layer * 16;
-      for (var x = 0; x <= W; x += 7) {
-        gctx.lineTo(x, base - Math.abs(Math.sin(x * 0.05 + layer * 9)) * (16 + layer * 10) * (0.4 + Math.abs(Math.sin(x * 0.011 + layer))));
-      }
-      gctx.lineTo(W, H); gctx.closePath(); gctx.fill();
-    }
+    // Pure night sky — the flies wander with smooth headings and pulse individually, with the
+    // occasional brighter flash.
     var N = 46, flies = [];
     for (var i = 0; i < N; i++) {
       flies.push({
@@ -211,7 +203,6 @@
       if (!run) return;
       t++;
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-      ctx.drawImage(grass, 0, 0);
       ctx.globalCompositeOperation = 'lighter';
       for (var i = 0; i < N; i++) {
         var f = flies[i];
@@ -568,6 +559,7 @@
       videos = v.files || [];
       photosDirLabel = p.dir || ''; photosDefault = p.usingDefault !== false;
       videosDirLabel = v.dir || ''; videosDefault = v.usingDefault !== false;
+      pagesList = s.pages || [];
       syncSettingsUI();
       if (cb) cb();
     }).catch(function () { photos = []; videos = []; if (cb) cb(); });
@@ -656,6 +648,26 @@
     renderSeg($('segIdle'), [['0', 'Never'], ['1', '1m'], ['5', '5m'], ['10', '10m'], ['30', '30m'], ['60', '1h']], String(opts.idleMinutes), function (v) {
       opts.idleMinutes = v; postOption('idleMinutes', v); syncSettingsUI();
     });
+    // Exclusion list: a multiselect of the other pages — while a lit one is active, idle
+    // auto-start never fires (a watched dashboard produces no input). Row hidden when the
+    // config has no other pages to pick.
+    (function () {
+      var el = $('segExclude');
+      el.innerHTML = '';
+      pagesList.forEach(function (p) {
+        var b = document.createElement('button');
+        b.textContent = p.name;
+        var idx = opts.excludeIds.indexOf(p.id);
+        if (idx >= 0) b.classList.add('on');
+        b.addEventListener('click', function () {
+          if (idx >= 0) opts.excludeIds.splice(idx, 1); else opts.excludeIds.push(p.id);
+          postOption('excludePages', opts.excludeIds.join(','));
+          syncSettingsUI();
+        });
+        el.appendChild(b);
+      });
+      $('rowExclude').style.display = pagesList.length ? '' : 'none';
+    })();
     $('rowScene').style.display = opts.showScenes ? '' : 'none';
     $('rowStyle').style.display = opts.showPhotos ? '' : 'none';
     $('rowFill').style.display = (opts.showPhotos && opts.imageStyle === 'slide') ? '' : 'none';   // crop applies to slideshow photos only

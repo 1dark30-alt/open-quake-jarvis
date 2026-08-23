@@ -32,7 +32,7 @@ test.before(async () => {
     deps: {
       activeServedAppConfig: () => (active ? { app: 'screensaver', options: grid.options } : null),
       activeGrid: () => (active ? grid : { kind: 'web' }),
-      getConfig: () => ({}),
+      getConfig: () => ({ grids: [{ id: 'p1', kind: 'web', name: 'Home' }, { id: 'p2', kind: 'app', app: 'clock' }, { id: 'sv', kind: 'app', app: 'screensaver', name: 'Saver' }] }),
       saveConfig: () => { saves++; },
       getDocumentsPath: () => root,
     },
@@ -135,6 +135,8 @@ test('/state lists both folders with their files and custom-vs-default flags', a
   assert.equal(s.ok, true);
   assert.deepEqual(s.photos, { dir: photosDir, usingDefault: false, files: ['a.png'] });
   assert.deepEqual(s.videos, { dir: videosDir, usingDefault: false, files: ['clip.mp4'] });
+  // Exclusion-list candidates: every non-screensaver page, unnamed ones labeled.
+  assert.deepEqual(s.pages, [{ id: 'p1', name: 'Home' }, { id: 'p2', name: '(unnamed page)' }]);
 });
 
 test('blank folder options fall back to the per-kind defaults and auto-create them', async () => {
@@ -173,6 +175,10 @@ test('/option validates and persists panel-tunable keys', async () => {
   assert.equal((await (await post('nope', 'x')).json()).ok, false);             // unknown key
   assert.equal((await post('idleMinutes', '0')).status, 200);                   // 0 = never is storable
   assert.equal(grid.options.idleMinutes, '0');
+  assert.equal((await (await post('excludePages', ' a , ,b, a ')).json()).ok, true);   // normalized + deduped
+  assert.equal(grid.options.excludePages, 'a,b');
+  assert.equal((await (await post('excludePages', '')).json()).ok, true);              // clearable
+  assert.equal(grid.options.excludePages, '');
   assert.ok(saves > before);
   grid.options.idleMinutes = '10'; grid.options.imageFit = 'cover'; grid.options.showPhotos = '1';
 });

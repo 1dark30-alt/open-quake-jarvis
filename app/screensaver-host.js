@@ -43,6 +43,10 @@ const PANEL_OPTIONS = {
   intervalSec: v => { const n = parseInt(v, 10); return n >= 3 && n <= 86400 ? String(n) : null; },
   shuffle: boolOpt,
   idleMinutes: v => { const n = parseInt(v, 10); return n >= 0 && n <= 720 ? String(n) : null; },
+  // Exclusion list: comma-separated grid ids auto-start must never fire over. Ids are opaque
+  // strings, so normalize (trim, drop empties, dedupe) rather than pattern-match; '' = none.
+  excludePages: v => (typeof v === 'string' && v.length <= 2000)
+    ? Array.from(new Set(v.split(',').map(s => s.trim()).filter(Boolean))).join(',') : null,
   photosDir: dirOpt,
   videosDir: dirOpt,
 };
@@ -98,11 +102,21 @@ function createScreensaverHost({ appId = 'screensaver', log, deps, defaultPhotos
     return resolveMediaPath(kindDir(v ? 'v' : 'p'), name, v ? VIDEO_EXTS : IMAGE_EXTS);
   }
 
+  // Candidate pages for the exclusion-list picker: every non-screensaver page (hidden included —
+  // tiles/routines can still land on them). Screensaver pages are already skipped by the
+  // viewing-saver gate, so listing them would only invite no-op picks.
+  function excludablePages() {
+    const cfg = deps.getConfig();
+    return ((cfg && cfg.grids) || [])
+      .filter(g => !(g && g.kind === 'app' && g.app === appId))
+      .map(g => ({ id: g.id, name: g.name || '(unnamed page)' }));
+  }
+
   // The page's on-load /state fetch: per-kind file lists + the folders its settings overlay shows.
   function getState() {
     const o = pageOptions();
     if (!o) {
-      return { ok: false, status: 'idle', photos: { dir: '', usingDefault: true, files: [] }, videos: { dir: '', usingDefault: true, files: [] } };
+      return { ok: false, status: 'idle', photos: { dir: '', usingDefault: true, files: [] }, videos: { dir: '', usingDefault: true, files: [] }, pages: [] };
     }
     const pd = kindDir('p'), vd = kindDir('v');
     return {
@@ -110,6 +124,7 @@ function createScreensaverHost({ appId = 'screensaver', log, deps, defaultPhotos
       status: 'idle',
       photos: { dir: pd || '', usingDefault: !String(o.photosDir || '').trim(), files: pd ? listMedia(pd, IMAGE_EXTS) : [] },
       videos: { dir: vd || '', usingDefault: !String(o.videosDir || '').trim(), files: vd ? listMedia(vd, VIDEO_EXTS) : [] },
+      pages: excludablePages(),
     };
   }
 

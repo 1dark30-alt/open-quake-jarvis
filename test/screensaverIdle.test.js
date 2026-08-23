@@ -22,6 +22,14 @@ test('saverSettings clamps and defaults idleMinutes', () => {
   assert.equal(saverSettings(null).idleMinutes, 30);
 });
 
+test('saverSettings parses the excludePages id list; junk collapses to empty', () => {
+  assert.deepEqual(saverSettings(saver('s', { excludePages: 'a,b' })).excludeIds, ['a', 'b']);
+  assert.deepEqual(saverSettings(saver('s', { excludePages: ' a , ,b, ' })).excludeIds, ['a', 'b']);
+  assert.deepEqual(saverSettings(saver('s', { excludePages: '' })).excludeIds, []);
+  assert.deepEqual(saverSettings(saver('s', {})).excludeIds, []);
+  assert.deepEqual(saverSettings(null).excludeIds, []);
+});
+
 test('findSaverGrid: first auto-start-enabled screensaver page wins; 0-minutes pages are skipped', () => {
   assert.equal(findSaverGrid([page('a'), saver('s1', { idleMinutes: '0' }), saver('s2', {})]).id, 's2');
   assert.equal(findSaverGrid([saver('s1', { idleMinutes: '5' }), saver('s2', {})]).id, 's1');
@@ -56,6 +64,14 @@ test('evaluateSaverTick gates: each blocks alone', () => {
   assert.equal(evaluateSaverTick(readyState({ voiceBusy: true })).enter, null);
   assert.equal(evaluateSaverTick(readyState({ meetingRecording: true })).enter, null);
   assert.equal(evaluateSaverTick(readyState({ lastInputAt: 60000 })).enter, null);                 // not idle yet
+});
+
+test('evaluateSaverTick: exclusion list blocks only while an excluded page is active', () => {
+  const grids = xp => [page('a'), page('b'), saver('s', { idleMinutes: '10', excludePages: xp })];
+  const onExcluded = evaluateSaverTick(readyState({ grids: grids('a,b') }));
+  assert.deepEqual(onExcluded, { enter: null, reason: 'excluded-page' });
+  assert.equal(evaluateSaverTick(readyState({ grids: grids('b') })).enter, 's');     // active 'a' not excluded
+  assert.equal(evaluateSaverTick(readyState({ grids: grids('') })).enter, 's');      // empty list = no gate
 });
 
 test('evaluateSaverTick idle threshold comes from the target page', () => {

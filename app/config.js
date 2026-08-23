@@ -2542,6 +2542,7 @@
       const showRow = appendScreensaverShowRow(el, g, def);
       const scenesOn = (g.options && 'showScenes' in g.options) ? !!g.options.showScenes : true;
       if (scenesOn) appendScreensaverMultiRow(el, g, def, 'Scenes', ['sceneWaves', 'sceneStarfield', 'sceneLava', 'sceneFireflies', 'sceneFlurry'], showRow);
+      appendScreensaverExcludeRow(el, g);
       // Browse/Open buttons under each folder text field — always present; hiding folder rows by
       // mode just hides configuration people are looking for.
       appendScreensaverFolderButtons(el, g, 'photosDir', 'photos');
@@ -2708,6 +2709,50 @@
       setLabel();
     });
     return row;
+  }
+  // Screensaver: the exclusion list is a multiselect of the OTHER pages — dynamic content
+  // apps.json can't express, hence the option is editorCustom and rendered here. Stored as a
+  // comma-separated id string in g.options.excludePages; while any picked page is on screen,
+  // idle auto-start never fires. Inserted right under the Idle auto-start field it modifies.
+  function appendScreensaverExcludeRow(el, g) {
+    const pages = (config.grids || []).filter(x => !(x.kind === 'app' && x.app === 'screensaver'));
+    const anchorInp = Array.prototype.find.call(el.querySelectorAll('input'), i => i.dataset.key === 'idleMinutes');
+    if (!pages.length || !anchorInp) return;
+    const picked = () => new Set(String((g.options || {}).excludePages || '').split(',').map(s => s.trim()).filter(Boolean));
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.position = 'relative';
+    row.innerHTML = `<label>Excluded pages</label>
+      <button type="button" data-ms-btn style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></button>
+      <div data-ms-menu style="display:none;position:absolute;left:78px;right:0;top:100%;z-index:30;background:#121a24;border:1px solid #2a3a4e;border-radius:8px;padding:8px 12px">
+        ${pages.map(p => `<label class="iconopt" style="display:block;width:auto;margin:4px 0"><input type="checkbox" data-xid="${esc(p.id)}" ${picked().has(p.id) ? 'checked' : ''}> ${esc(p.name || '(unnamed page)')}</label>`).join('')}
+      </div>`;
+    let after = anchorInp.closest('.row');
+    if (after.nextElementSibling && after.nextElementSibling.classList.contains('hint')) after = after.nextElementSibling;
+    after.insertAdjacentElement('afterend', row);
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.style.cssText = 'margin:-2px 0 10px 78px';
+    hint.textContent = 'While any picked page is on screen, idle auto-start never fires — for pages you watch without touching. Leaving the page resumes the countdown; manual starts still work.';
+    row.insertAdjacentElement('afterend', hint);
+    const btn = row.querySelector('[data-ms-btn]'), menu = row.querySelector('[data-ms-menu]');
+    const setLabel = () => { const n = picked().size; btn.textContent = '▾ ' + (n ? n + ' excluded' : 'None'); };
+    setLabel();
+    btn.onclick = e => {
+      e.stopPropagation();
+      const opening = menu.style.display === 'none';
+      menu.style.display = opening ? '' : 'none';
+      if (opening) setTimeout(() => document.addEventListener('click', () => { menu.style.display = 'none'; }, { once: true }), 0);
+    };
+    menu.onclick = e => e.stopPropagation();
+    menu.querySelectorAll('input[data-xid]').forEach(cb => cb.onchange = () => {
+      const set = picked();
+      if (cb.checked) set.add(cb.dataset.xid); else set.delete(cb.dataset.xid);
+      if (!g.options) g.options = {};
+      g.options.excludePages = Array.from(set).join(',');
+      markDirty();
+      setLabel();
+    });
   }
   // Screensaver: each media folder needs a real folder picker and an "open in Explorer" shortcut —
   // dynamic things apps.json can't express. Buttons are inserted right under that folder's own
