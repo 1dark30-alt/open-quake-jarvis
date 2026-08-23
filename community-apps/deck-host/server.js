@@ -90,7 +90,8 @@ class MiniSocket extends EventEmitter {
     this.readyState = 1;   // OPEN (mirrors the ws module's constant)
     this._buf = Buffer.alloc(0);
     this._frags = [];
-    socket.on('data', d => { this._buf = Buffer.concat([this._buf, d]); this._pump(); });
+    this.lastSeen = Date.now();
+    socket.on('data', d => { this.lastSeen = Date.now(); this._buf = Buffer.concat([this._buf, d]); this._pump(); });
     const closed = () => { if (this.readyState !== 3) { this.readyState = 3; this.emit('close'); } };
     socket.on('close', closed); socket.on('error', closed); socket.on('end', closed);
   }
@@ -125,19 +126,21 @@ class MiniSocket extends EventEmitter {
     try { this.socket.write(Buffer.concat([head, payload])); } catch (e) {}
   }
   send(data) { if (this.readyState === 1) this._frame(1, Buffer.from(String(data), 'utf8')); }
+  ping() { if (this.readyState === 1) this._frame(9, Buffer.alloc(0)); }
   close() { if (this.readyState === 1) { this.readyState = 3; this._frame(8, Buffer.alloc(0)); try { this.socket.end(); } catch (e) {} this.emit('close'); } }
-  terminate() { this.readyState = 3; try { this.socket.destroy(); } catch (e) {} }
+  terminate() { const was = this.readyState; this.readyState = 3; try { this.socket.destroy(); } catch (e) {} if (was !== 3) this.emit('close'); }
 }
 class MiniWss extends EventEmitter {
   constructor(host, port, ready) {
     super();
     this.clients = new Set();
     this.server = http.createServer((req, res) => { res.writeHead(426); res.end(); });
-    this.server.on('upgrade', (req, socket) => {
+    this.server.on('upgrade', (req, socket, head) => {
       const key = req.headers['sec-websocket-key'];
       if (!key || String(req.headers.upgrade || '').toLowerCase() !== 'websocket') { socket.destroy(); return; }
       const accept = crypto.createHash('sha1').update(key + WS_GUID).digest('base64');
       socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ' + accept + '\r\n\r\n');
+      if (head && head.length) socket.unshift(head);   // bytes the HTTP parser read past the handshake ARE the first frame
       const ws = new MiniSocket(socket);
       this.clients.add(ws);
       ws.on('close', () => this.clients.delete(ws));
@@ -190,16 +193,33 @@ function defaultDeck() {
   const id = 'p' + crypto.randomBytes(3).toString('hex');
   return { profiles: [{ id, name: 'Main', keys: {} }], activeProfileId: id, contexts: {}, globalSettings: {} };
 }
+let deckPath = '';       // the file the cached deck came from; changes when the plugins folder does
+let saveTimer = null;
 function loadDeck(options) {
-  if (deck) return deck;
-  try { deck = JSON.parse(fs.readFileSync(deckFile(options), 'utf8')); } catch (e) { deck = null; }
+  const file = deckFile(options);
+  if (deck && deckPath === file) return deck;
+  deckPath = file;
+  try { deck = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { deck = null; }
   if (!deck || !Array.isArray(deck.profiles) || !deck.profiles.length) deck = defaultDeck();
   if (!deck.contexts) deck.contexts = {};
   if (!deck.globalSettings) deck.globalSettings = {};
   if (!deck.profiles.some(p => p.id === deck.activeProfileId)) deck.activeProfileId = deck.profiles[0].id;
   return deck;
 }
-function saveDeck(options) { try { fs.writeFileSync(deckFile(options), JSON.stringify(deck, null, 2)); } catch (e) {} }
+// Atomic write (tmp + rename): a crash mid-write must never leave a torn file that silently resets
+// the user's whole deck on the next load.
+function saveDeck(options) {
+  try {
+    const f = deckFile(options);
+    fs.writeFileSync(f + '.tmp', JSON.stringify(deck, null, 2));
+    fs.renameSync(f + '.tmp', f);
+  } catch (e) {}
+}
+// Debounced variant for chatty plugin-driven writes (setSettings per tick would sync-write per tick).
+function scheduleSave(options) {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => { saveTimer = null; saveDeck(options); }, 500);
+}
 function activeProfile() { return deck.profiles.find(p => p.id === deck.activeProfileId) || deck.profiles[0]; }
 function layoutOf(options) {
   const m = /^(\d+)x(\d+)$/.exec(String((options && options.layout) || '8x3'));
@@ -217,20 +237,30 @@ function extractPackages(dir) {
   let ents = []; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
   for (const ent of ents) {
     if (!ent.isFile() || !/\.streamDeckPlugin$/i.test(ent.name)) continue;
+    // Cheap fast path first: don't re-read/parse a (possibly huge) archive on every scan when its
+    // conventionally-named .sdPlugin folder already exists.
+    const guess = ent.name.replace(/\.streamDeckPlugin$/i, '.sdPlugin');
+    if (fs.existsSync(path.join(dir, guess))) continue;
     try {
       const buf = fs.readFileSync(path.join(dir, ent.name));
       const entries = unzipEntries(buf);
       const roots = new Set(entries.map(e => e.name.split('/')[0]).filter(Boolean));
       const root = [...roots].find(r => /\.sdPlugin$/i.test(r));
       if (!root || roots.size !== 1) { skippedPackages.push({ file: ent.name, reason: 'not a plugin package (no single *.sdPlugin root)' }); continue; }
-      if (fs.existsSync(path.join(dir, root))) continue;   // already extracted
+      if (fs.existsSync(path.join(dir, root))) continue;   // already extracted (root differs from the file name)
       const manEntry = entries.find(e => e.name === root + '/manifest.json');
       const manRaw = manEntry ? manEntry.data() : null;
       if (manRaw && manRaw.subarray(0, 6).toString('latin1') === 'ELGATO') {
         skippedPackages.push({ file: ent.name, reason: 'Elgato Marketplace package (encrypted) — only plain open-source packages can run here' });
         continue;
       }
-      extractZip(buf, dir);
+      // Extract via a temp dir + rename: a failed extraction must never leave a half folder that the
+      // exists-check above then treats as complete.
+      const tmp = path.join(dir, '.oq-extract-' + Date.now());
+      try {
+        extractZip(buf, tmp);
+        fs.renameSync(path.join(tmp, root), path.join(dir, root));
+      } finally { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e2) {} }
     } catch (e) { skippedPackages.push({ file: ent.name, reason: 'could not extract: ' + e.message }); }
   }
 }
@@ -270,22 +300,42 @@ function codePathOf(p) {
 }
 
 // ---- the WebSocket host -----------------------------------------------------------------------
+let wssPromise = null;   // memoized: concurrent startPlugin calls must share ONE server
 function ensureWss() {
-  if (wss) return Promise.resolve(wssPort);
-  return new Promise((resolve, reject) => {
+  if (wssPromise) return wssPromise;
+  wssPromise = new Promise((resolve, reject) => {
     const server = new MiniWss('127.0.0.1', 0, () => {
       wss = server; wssPort = server.address().port; resolve(wssPort);
     });
-    server.on('error', reject);
+    server.on('error', e => { wssPromise = null; reject(e); });
     server.on('connection', ws => {
       // The first message must be the registration: { event: 'registerPlugin', uuid: <pluginUUID> }.
+      const regTimeout = setTimeout(() => { ws.terminate(); }, 10000);   // unknown clients don't get to park sockets
       ws.once('message', raw => {
+        clearTimeout(regTimeout);
         let msg; try { msg = JSON.parse(raw.toString('utf8')); } catch (e) { ws.close(); return; }
         const p = [...plugins.values()].find(x => x.uuid === msg.uuid);
         if (!p) { ws.close(); return; }
-        p.ws = ws; p.status = 'running'; p.restarts = 0;
+        p.ws = ws; p.status = 'running';
+        // A plugin only earns a backoff reset by staying alive -- resetting on registration lets a
+        // register-then-die plugin spawn-loop at 1Hz forever.
+        setTimeout(() => { if (p.ws === ws && p.status === 'running') p.restarts = 0; }, 60000);
         ws.on('message', raw2 => { onPluginMessage(p, raw2); });
-        ws.on('close', () => { if (p.ws === ws) { p.ws = null; if (p.status === 'running') p.status = 'stopped'; bump(); } });
+        ws.on('close', () => {
+          clearInterval(hb);
+          if (p.ws === ws) { p.ws = null; if (p.status === 'running') p.status = 'stopped'; bump(); }
+        });
+        // Keepalive: a deadlocked plugin keeps its socket open and would look healthy forever.
+        const hb = setInterval(() => {
+          if (ws.readyState !== 1) { clearInterval(hb); return; }
+          if (Date.now() - ws.lastSeen > 45000) {
+            clearInterval(hb);
+            if (p.ws === ws) { p.error = 'stopped responding'; }
+            ws.terminate();
+            return;
+          }
+          ws.ping();
+        }, 15000);
         // Announce the device, then surface every visible key owned by this plugin.
         sendTo(p, { event: 'deviceDidConnect', device: deviceId(), deviceInfo: { name: 'open-quake', type: 0, size: lastLayout } });
         visibleContextsOf(p).forEach(ctx => sendTo(p, appearEvent('willAppear', ctx)));
@@ -293,6 +343,7 @@ function ensureWss() {
       });
     });
   });
+  return wssPromise;
 }
 let lastLayout = { columns: 8, rows: 3 };
 function deviceId() { return 'openquake-deck-0'; }
@@ -313,9 +364,20 @@ function appearEvent(event, ctx) {
 // Plugin -> host commands.
 function onPluginMessage(p, raw) {
   let m; try { m = JSON.parse(raw.toString('utf8')); } catch (e) { return; }
-  const ctx = m.context, ks = ctx ? (keyState.get(ctx) || keyState.set(ctx, {}).get(ctx)) : null;
+  const ctx = m.context;
+  // Only live contexts get render state: a plugin with a leaked timer must not recreate state for
+  // (and bump long-polls over) keys that were unassigned or belong to another profile's past.
+  const ks = (ctx && ctxInfo(ctx)) ? (keyState.get(ctx) || keyState.set(ctx, {}).get(ctx)) : null;
   switch (m.event) {
-    case 'setImage': if (ks) { ks.image = (m.payload && m.payload.image) || ''; bump(); } break;
+    case 'setImage': if (ks) {
+      // Images are per-STATE: a 2-state toggle pushes both faces up front and flips with setState.
+      // No payload.state = applies to all states; empty image = reset that state to the manifest default.
+      const img = (m.payload && m.payload.image) || '';
+      if (!ks.images) ks.images = [];
+      if (m.payload && m.payload.state != null) ks.images[m.payload.state | 0] = img;
+      else { ks.images = [img]; ks.imageAll = img; }
+      bump();
+    } break;
     case 'setTitle': if (ks) { ks.title = (m.payload && typeof m.payload.title === 'string') ? m.payload.title : ''; bump(); } break;
     case 'setState': if (ks) { ks.state = (m.payload && m.payload.state) | 0; bump(); } break;
     case 'showAlert': if (ks) { ks.alert = Date.now(); bump(); } break;
@@ -323,10 +385,10 @@ function onPluginMessage(p, raw) {
     case 'setSettings': {
       const c = ctxInfo(ctx); if (!c) break;
       c.settings = (m.payload && typeof m.payload === 'object') ? m.payload : {};
-      saveDeck(lastOptions); sendTo(p, appearEventSettings(ctx)); bump(); break;
+      scheduleSave(lastOptions); sendTo(p, appearEventSettings(ctx)); bump(); break;
     }
     case 'getSettings': { if (ctxInfo(ctx)) sendTo(p, appearEventSettings(ctx)); break; }
-    case 'setGlobalSettings': deck.globalSettings[p.id] = (m.payload && typeof m.payload === 'object') ? m.payload : {}; saveDeck(lastOptions); break;
+    case 'setGlobalSettings': deck.globalSettings[p.id] = (m.payload && typeof m.payload === 'object') ? m.payload : {}; scheduleSave(lastOptions); break;
     case 'getGlobalSettings': sendTo(p, { event: 'didReceiveGlobalSettings', payload: { settings: deck.globalSettings[p.id] || {} } }); break;
     case 'logMessage': p.log.push(String((m.payload && m.payload.message) || '').slice(0, 500)); if (p.log.length > 50) p.log.shift(); break;
     case 'openUrl': break;   // deliberately ignored: a kiosk panel doesn't pop browsers
@@ -338,6 +400,8 @@ function appearEventSettings(ctx) { const e = appearEvent('didReceiveSettings', 
 // ---- plugin processes -------------------------------------------------------------------------
 let lastOptions = null;
 async function startPlugin(p) {
+  if (p.proc) return;   // never double-spawn (a pending backoff timer + a manual restart can race here)
+  if (p.restartTimer) { clearTimeout(p.restartTimer); p.restartTimer = null; }
   const cp = codePathOf(p);
   if (!cp || cp.unsupported) { p.status = 'unsupported'; p.error = (cp && cp.unsupported) || 'no CodePath'; return; }
   let port;
@@ -360,15 +424,23 @@ async function startPlugin(p) {
   p.status = 'starting'; p.error = '';
   p.proc.on('exit', () => {
     p.proc = null;
-    if (p.status === 'stopping') { p.status = 'stopped'; bump(); return; }
+    if (p.status === 'stopping') {
+      p.status = 'stopped'; bump();
+      if (p.restartWanted) { p.restartWanted = false; startPlugin(p); }   // the Restart action's stop->start
+      return;
+    }
     p.status = 'crashed'; bump();
     const delay = RESTART_BACKOFF[Math.min(p.restarts, RESTART_BACKOFF.length - 1)];
-    if (p.restarts < RESTART_BACKOFF.length) { p.restarts++; setTimeout(() => { if (p.status === 'crashed') startPlugin(p); }, delay); }
+    if (p.restarts < RESTART_BACKOFF.length) {
+      p.restarts++;
+      p.restartTimer = setTimeout(() => { p.restartTimer = null; if (p.status === 'crashed') startPlugin(p); }, delay);
+    }
   });
   bump();
 }
 function stopPlugin(p) {
   p.status = 'stopping';
+  if (p.restartTimer) { clearTimeout(p.restartTimer); p.restartTimer = null; }
   try { if (p.ws) p.ws.close(); } catch (e) {}
   try { if (p.proc) p.proc.kill(); } catch (e) {}
 }
@@ -392,7 +464,8 @@ async function ensureStarted(options) {
   for (const found of scanPlugins(dir)) {
     const p = Object.assign(found, { uuid: '', proc: null, ws: null, status: 'stopped', restarts: 0, log: [], error: '',
       actions: found.manifest.Actions.filter(a => !a.Controllers || a.Controllers.indexOf('Keypad') >= 0)
-        .map(a => ({ uuid: a.UUID, name: a.Name || a.UUID, icon: a.Icon || '', states: (a.States || []).length || 1 })) });
+        .map(a => ({ uuid: a.UUID, name: a.Name || a.UUID, icon: a.Icon || '', states: (a.States || []).length || 1,
+          stateImages: (a.States || []).map(s => (s && s.Image) || '') })) });
     plugins.set(p.id, p);
     startPlugin(p);   // fire and forget; status flows through the snapshot
   }
@@ -407,9 +480,14 @@ function snapshot() {
     const ks = keyState.get(ctx) || {};
     const plug = plugins.get(c.plugin);
     const actDef = plug && plug.actions.find(a => a.uuid === c.action);
-    keys[pos] = { context: ctx, action: c.action, plugin: c.plugin, image: ks.image || '', title: ks.title || '',
-      state: ks.state || 0, alert: ks.alert || 0, ok: ks.ok || 0, settings: c.settings || {},
-      name: (actDef && actDef.name) || c.action, icon: (actDef && actDef.icon) || '' };
+    const state = ks.state || 0;
+    // Resolve the face for the CURRENT state: plugin-pushed per-state image, then the plugin's
+    // stateless image, then the manifest's per-state default (served via the asset route).
+    const image = (ks.images && ks.images[state]) || ks.imageAll || '';
+    const iconPath = (actDef && ((actDef.stateImages && actDef.stateImages[state]) || actDef.icon)) || '';
+    keys[pos] = { context: ctx, action: c.action, plugin: c.plugin, image, title: ks.title || '',
+      state, alert: ks.alert || 0, ok: ks.ok || 0, settings: c.settings || {},
+      name: (actDef && actDef.name) || c.action, icon: iconPath };
   });
   return {
     v: version, layout: lastLayout,
@@ -417,7 +495,7 @@ function snapshot() {
     profiles: deck.profiles.map(pr => ({ id: pr.id, name: pr.name })), activeProfile: deck.activeProfileId,
     keys,
     plugins: [...plugins.values()].map(p => ({ id: p.id, name: p.manifest.Name || p.id, status: p.status, error: p.error || '',
-      actions: p.actions })),
+      actions: p.actions, log: p.log.slice(-3) })),
     skipped: skippedPackages.slice(),
   };
 }
@@ -456,7 +534,11 @@ async function handle(action, context) {
   if (action === 'state') {
     const since = Number(query.since) || 0;
     if (since && since >= version) {
-      await new Promise(resolve => { const timer = setTimeout(resolve, LONGPOLL_MS); waiters.push({ resolve, timer }); });
+      await new Promise(resolve => {
+        const w = { resolve, timer: null };
+        w.timer = setTimeout(() => { waiters = waiters.filter(x => x !== w); resolve(); }, LONGPOLL_MS);   // self-remove on timeout (idle panels leaked entries)
+        waiters.push(w);
+      });
     }
     return Object.assign({ ok: true }, snapshot());
   }
@@ -495,6 +577,27 @@ async function handle(action, context) {
     const prof = activeProfile();
     if (!prof.keys[pos]) return { ok: false, error: 'empty slot' };
     unassignPos(prof, pos);
+    saveDeck(options); bump();
+    return { ok: true };
+  }
+
+  if (action === 'move') {   // relocate an assigned key to an empty slot, keeping its context + settings
+    const from = ((body && body.fromCol) | 0) + ',' + ((body && body.fromRow) | 0);
+    const toCol = (body && body.toCol) | 0, toRow = (body && body.toRow) | 0;
+    const to = toCol + ',' + toRow;
+    const lay = layoutOf(options);
+    if (toCol < 0 || toRow < 0 || toCol >= lay.columns || toRow >= lay.rows) return { ok: false, error: 'slot out of range' };
+    const prof = activeProfile();
+    const ctx = prof.keys[from];
+    const c = ctxInfo(ctx);
+    if (!c) return { ok: false, error: 'nothing to move' };
+    if (prof.keys[to]) return { ok: false, error: 'destination is occupied' };
+    const p = plugins.get(c.plugin);
+    if (p) sendTo(p, appearEvent('willDisappear', ctx));   // per spec: disappear at the old coordinates...
+    delete prof.keys[from];
+    c.col = toCol; c.row = toRow;
+    prof.keys[to] = ctx;
+    if (p) sendTo(p, appearEvent('willAppear', ctx));      // ...appear at the new ones
     saveDeck(options); bump();
     return { ok: true };
   }
@@ -569,8 +672,8 @@ async function handle(action, context) {
   if (action === 'restart') {
     const p = plugins.get(String((body && body.plugin) || query.plugin || ''));
     if (!p) return { ok: false, error: 'unknown plugin' };
-    p.restarts = 0;
-    if (p.proc) stopPlugin(p);
+    p.restarts = 0; p.error = '';
+    if (p.proc) { p.restartWanted = true; stopPlugin(p); }   // start again after this exit lands
     else startPlugin(p);
     return { ok: true };
   }
@@ -590,12 +693,14 @@ function unassignPos(prof, pos) {
 // Stop every plugin process, close the WebSocket server, and release parked long-polls. Used by the
 // protocol tests; also safe to call on host teardown.
 function _shutdown() {
-  for (const p of plugins.values()) stopPlugin(p);
+  for (const p of plugins.values()) { p.restartWanted = false; stopPlugin(p); }
   plugins.clear();
   startedFor = '__shutdown__';
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; if (deck) saveDeck(lastOptions); }   // flush a pending debounced save
   const w = waiters; waiters = [];
   w.forEach(x => { clearTimeout(x.timer); try { x.resolve(); } catch (e) {} });
   if (wss) { try { wss.close(); for (const c of wss.clients) { try { c.terminate(); } catch (e) {} } } catch (e) {} wss = null; wssPort = 0; }
+  wssPromise = null;
 }
 
 module.exports = { handle, _shutdown };

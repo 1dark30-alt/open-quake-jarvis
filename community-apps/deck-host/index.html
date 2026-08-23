@@ -7,22 +7,28 @@
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header id="bar">
-    <span class="dot" id="hostdot"></span>
-    <span id="hoststatus">Starting…</span>
+  <aside id="left">
+    <div class="rail-label">Profiles</div>
     <nav id="profiles" aria-label="Profiles"></nav>
-    <span id="spacer"></span>
     <button id="addprofile" type="button" tabindex="-1">+ Profile</button>
-    <button id="editprofiles" type="button" tabindex="-1">Edit</button>
-    <button id="pluginsbtn" type="button" tabindex="-1">Plugins</button>
-  </header>
+    <button id="editbtn" type="button" tabindex="-1">Edit</button>
+  </aside>
 
   <main id="grid" aria-label="Deck keys"></main>
+
+  <aside id="right">
+    <div class="rail-label">Deck host</div>
+    <div id="hostline"><span class="dot" id="hostdot"></span><span id="hoststatus">Starting…</span></div>
+    <div id="plugrail"></div>
+    <button id="pluginsbtn" type="button" tabindex="-1">Plugins</button>
+    <div id="toast" hidden></div>
+  </aside>
 
   <div id="assign" hidden>
     <div class="ov-head">
       <span id="assigntitle">Assign key</span>
       <span class="ov-spacer"></span>
+      <button id="movebtn" type="button">Move…</button>
       <button id="unassignbtn" class="danger" type="button">Clear key</button>
       <button id="assignclose" type="button">Close</button>
     </div>
@@ -31,6 +37,7 @@
       <div class="ov-col">
         <div class="ov-label">Key settings (JSON)</div>
         <textarea id="settingsbox" spellcheck="false"></textarea>
+        <p class="ov-note">No keyboard on the panel? Edit keys from the PC: open this page in the open-quake editor.</p>
         <button id="settingssave" type="button">Save settings</button>
         <div id="assignmsg" class="ov-msg"></div>
       </div>

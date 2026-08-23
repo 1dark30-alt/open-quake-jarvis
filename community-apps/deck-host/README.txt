@@ -25,13 +25,14 @@ Setup
 
 Using the deck
 --------------
-- Tap an empty key (+) to assign a plugin action to it; tap an assigned key
-  to press it; hold a key to reassign it, clear it, or edit its settings
-  (raw JSON -- property-inspector UIs aren't rendered yet).
-- Profiles: separate key layouts. Add them with "+ Profile"; switch by
-  tapping, or just turn the knob -- this app uses open-quake's app-knob
-  capability, and rotation cycles profiles. Knob press keeps its normal
-  panel behavior.
+- Tapping a key presses it (finger down = key down, lift = key up, just
+  like the hardware). Tap "Edit", then tap ANY key -- assigned or empty --
+  to assign, move, clear, or configure it (settings are raw JSON;
+  property-inspector UIs aren't rendered yet). Tap "Done" when finished.
+- Profiles (left rail): separate key layouts. "+ Profile" adds one (tap
+  twice -- stray-tap protection); in Edit mode a profile's X removes it.
+  Rename/add/remove is also in the PC editor on this page's options.
+  Turning the knob cycles profiles.
 - Key layout (5x3 / 8x3 / 10x4) is a page option; it is also the device
   size reported to plugins.
 - Assignments and settings persist in deck-host.json next to your plugins
