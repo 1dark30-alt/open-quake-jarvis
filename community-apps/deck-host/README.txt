@@ -44,14 +44,20 @@ Using the deck
   to put open-quake launcher tiles beside the deck -- the deck sits on its
   own black bezel plate, so the two are impossible to confuse.
 - Importing profiles: drop *.streamDeckProfile files (or zips containing
-  them) anywhere in your plugins folder; they appear under the Profile
-  button as "Import from your plugins folder". Importing creates one deck
-  profile per page (folder keys navigate between them; Back returns), keeps
-  the original key faces, and reflows keys from taller devices (e.g. an
-  8x4 XL) into extra columns. Importing the same file again replaces its
-  earlier import. On Windows pick the Windows variant of a profile when
-  both are offered -- Mac hotkeys use Mac keys. Keys that need a plugin you
-  don't have say so on their face and start working once it's installed.
+  them) anywhere in your plugins folder; they're listed BOTH in the Plugins
+  pane ("Profiles in this folder") and under the Profile button -- tap
+  Import on one. Importing creates one deck profile per page (folder keys
+  navigate between them; Back returns), keeps the original key faces, and
+  reflows keys from taller devices (e.g. an 8x4 XL) into extra columns.
+  Importing the same file again replaces its earlier import. On Windows
+  pick the Windows variant of a profile when both are offered -- Mac
+  hotkeys use Mac keys. Keys that need a plugin you don't have say so on
+  their face and start working once it's installed.
+- Mix and match: imported keys are ordinary keys. In Edit mode, tap a key
+  for Copy to... (duplicate it onto any other profile), Move..., or Clear.
+  The assign list also offers BUILT-IN keys you can create from scratch --
+  Hotkey, Text, Open, Website -- configured via their settings JSON
+  ("key" takes names like C, F5, ENTER, VOLUMEUP; "title" labels the key).
 - Assignments and settings persist in deck-host.json next to your plugins
   folder, so they survive app updates.
 

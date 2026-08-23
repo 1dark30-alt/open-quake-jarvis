@@ -387,6 +387,29 @@ const BUILTIN_MAP = {
   'com.elgato.streamdeck.profile.backtoparent': 'backtoparent',
 };
 const BUILTIN_NAMES = { hotkey: 'Hotkey', text: 'Text', open: 'Open', website: 'Website', openchild: 'Folder', backtoparent: 'Back', unsupported: 'Unsupported' };
+// Built-ins a user can assign fresh from the panel (imports may also carry folder keys).
+const ASSIGNABLE_BUILTINS = {
+  hotkey: { keys: [{ key: '', ctrl: false, shift: false, alt: false, win: false }] },
+  text: { text: '', typing: false, enter: false },
+  open: { target: '' },
+  website: { url: '' },
+};
+// Friendly key names for hand-edited hotkey settings ({"key":"C"} instead of {"vk":67}).
+const VK_NAMES = { ENTER: 0x0D, RETURN: 0x0D, TAB: 0x09, ESC: 0x1B, ESCAPE: 0x1B, SPACE: 0x20, BACKSPACE: 0x08,
+  DELETE: 0x2E, DEL: 0x2E, INSERT: 0x2D, HOME: 0x24, END: 0x23, PAGEUP: 0x21, PAGEDOWN: 0x22,
+  UP: 0x26, DOWN: 0x28, LEFT: 0x25, RIGHT: 0x27, PRINTSCREEN: 0x2C, CAPSLOCK: 0x14, NUMLOCK: 0x90,
+  SCROLLLOCK: 0x91, PAUSE: 0x13, MUTE: 0xAD, VOLUMEDOWN: 0xAE, VOLUMEUP: 0xAF,
+  PLAYPAUSE: 0xB3, NEXTTRACK: 0xB0, PREVTRACK: 0xB1 };
+function vkOf(entry) {
+  if ((entry.vk | 0) > 0) return entry.vk | 0;
+  const name = String(entry.key || '').trim().toUpperCase();
+  if (!name) return 0;
+  if (VK_NAMES[name]) return VK_NAMES[name];
+  if (/^[A-Z0-9]$/.test(name)) return name.charCodeAt(0);
+  const f = /^F([0-9]{1,2})$/.exec(name);
+  if (f && f[1] >= 1 && f[1] <= 24) return 0x70 + (f[1] - 1);
+  return 0;
+}
 const IMG_MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml' };
 const MAX_KEY_IMG = 1024 * 1024;
 
@@ -544,8 +567,9 @@ async function executeBuiltin(ctx, c) {
   const cfg = c.cfg || {};
   try {
     if (c.builtin === 'hotkey') {
-      if (!(cfg.keys || []).length) return done(false, 'no key set on this hotkey');
-      const r = await sendToKeyHelper({ combo: cfg.keys });
+      const combo = (cfg.keys || []).map(k => ({ vk: vkOf(k), ctrl: !!k.ctrl, shift: !!k.shift, alt: !!k.alt, win: !!k.win })).filter(k => k.vk > 0);
+      if (!combo.length) return done(false, 'no key set on this hotkey');
+      const r = await sendToKeyHelper({ combo });
       return done(r === 'ok', r);
     }
     if (c.builtin === 'text') {
@@ -798,7 +822,7 @@ function snapshot() {
     const c = ctxInfo(ctx); if (!c) return;
     const ks = keyState.get(ctx) || {};
     if (c.builtin) {
-      keys[pos] = { context: ctx, builtin: c.builtin, image: c.img || '', title: c.title || '',
+      keys[pos] = { context: ctx, builtin: c.builtin, image: c.img || '', title: (c.cfg && c.cfg.title) || c.title || '',
         state: 0, alert: ks.alert || 0, ok: ks.ok || 0, settings: c.cfg || {},
         name: BUILTIN_NAMES[c.builtin] || c.builtin, icon: '' };
       return;
@@ -886,13 +910,23 @@ async function handle(action, context) {
 
   if (action === 'assign') {
     const col = (body && body.col) | 0, row = (body && body.row) | 0;
-    const act = String((body && body.action) || ''), plug = String((body && body.plugin) || '');
-    const p = plugins.get(plug);
-    if (!p || !p.actions.some(a => a.uuid === act)) return { ok: false, error: 'unknown action' };
     const lay = lastLayout;   // the live page-reported layout
     if (col < 0 || row < 0 || col >= lay.columns || row >= lay.rows) return { ok: false, error: 'slot out of range' };
     const prof = activeProfile();
     const pos = col + ',' + row;
+    const builtin = String((body && body.builtin) || '');
+    if (builtin) {                          // a fresh built-in key (Hotkey / Text / Open / Website)
+      if (!ASSIGNABLE_BUILTINS[builtin]) return { ok: false, error: 'unknown key type' };
+      if (prof.keys[pos]) unassignPos(prof, pos);
+      const ctx = crypto.randomUUID().replace(/-/g, '');
+      deck.contexts[ctx] = { builtin, cfg: JSON.parse(JSON.stringify(ASSIGNABLE_BUILTINS[builtin])), col, row, title: '', img: '' };
+      prof.keys[pos] = ctx;
+      saveDeck(options); bump();
+      return { ok: true, context: ctx, settings: deck.contexts[ctx].cfg };
+    }
+    const act = String((body && body.action) || ''), plug = String((body && body.plugin) || '');
+    const p = plugins.get(plug);
+    if (!p || !p.actions.some(a => a.uuid === act)) return { ok: false, error: 'unknown action' };
     if (prof.keys[pos]) unassignPos(prof, pos);
     const ctx = crypto.randomUUID().replace(/-/g, '');
     deck.contexts[ctx] = { action: act, plugin: plug, col, row, settings: {} };
@@ -901,6 +935,31 @@ async function handle(action, context) {
     if (p.status === 'running') sendTo(p, appearEvent('willAppear', ctx));
     bump();
     return { ok: true, context: ctx };
+  }
+
+  if (action === 'copy') {   // duplicate a key into another profile (same slot if free, else first free)
+    const ctx = String((body && body.context) || '');
+    const c = ctxInfo(ctx);
+    if (!c) return { ok: false, error: 'unknown key' };
+    const target = deck.profiles.find(pr => pr.id === String((body && body.profileId) || ''));
+    if (!target) return { ok: false, error: 'unknown profile' };
+    const lay = lastLayout;
+    let pos = '';
+    if (!target.keys[c.col + ',' + c.row]) pos = c.col + ',' + c.row;
+    else {
+      outer: for (let r = 0; r < lay.rows; r++) for (let col = 0; col < lay.columns; col++) {
+        if (!target.keys[col + ',' + r]) { pos = col + ',' + r; break outer; }
+      }
+    }
+    if (!pos) return { ok: false, error: 'no free key on "' + target.name + '"' };
+    const clone = JSON.parse(JSON.stringify(c));   // settings/cfg/faces copied, nothing shared
+    clone.col = pos.split(',')[0] | 0; clone.row = pos.split(',')[1] | 0;
+    const nctx = crypto.randomUUID().replace(/-/g, '');
+    deck.contexts[nctx] = clone;
+    target.keys[pos] = nctx;
+    if (target.id === deck.activeProfileId && !clone.builtin) { const p = ownerOf(clone); if (p) sendTo(p, appearEvent('willAppear', nctx)); }
+    saveDeck(options); bump();
+    return { ok: true, profile: target.name, pos };
   }
 
   if (action === 'unassign') {

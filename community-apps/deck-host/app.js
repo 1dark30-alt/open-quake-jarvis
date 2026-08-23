@@ -264,6 +264,49 @@
     el('assignmsg').textContent = k ? 'Tap an action twice to replace this key (its settings reset), or edit its settings below.' : 'Tap an action to assign it to this key.';
     var list = el('actionlist');
     list.innerHTML = '';
+    // Built-in keys first: assignable without any plugin. Templates land in the settings box.
+    var BUILTINS = [
+      { b: 'hotkey', label: 'Hotkey', sub: 'press a key combo',
+        tpl: { keys: [{ key: 'C', ctrl: true, shift: false, alt: false, win: false }] },
+        msg: 'Set "key" (A–Z, 0–9, F1–F24, ENTER, TAB, UP, VOLUMEUP…) and the modifiers, then Save settings.' },
+      { b: 'text', label: 'Text', sub: 'paste or type text',
+        tpl: { text: 'Hello', typing: false, enter: false },
+        msg: 'Set "text" (typing:true types it key-by-key; enter:true presses Enter after), then Save settings.' },
+      { b: 'open', label: 'Open', sub: 'app, file, or URL',
+        tpl: { target: 'C:\\Windows\\notepad.exe' },
+        msg: 'Set "target" to a program, file, folder, or https:// URL, then Save settings.' },
+      { b: 'website', label: 'Website', sub: 'open in browser',
+        tpl: { url: 'https://example.com' },
+        msg: 'Set "url", then Save settings.' },
+    ];
+    var lb = document.createElement('div'); lb.className = 'ov-label'; lb.textContent = 'Built-in keys';
+    list.appendChild(lb);
+    BUILTINS.forEach(function (bi) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'act';
+      var g = document.createElement('span'); g.className = 'grow'; g.textContent = bi.label; b.appendChild(g);
+      var s = document.createElement('span'); s.className = 'sub'; s.textContent = bi.sub; b.appendChild(s);
+      b.addEventListener('click', function () {
+        if (assignSlot.key && armAssign !== b) {
+          [].forEach.call(list.children, function (x) { x.classList.remove('arming'); });
+          armAssign = b; b.classList.add('arming');
+          el('assignmsg').textContent = 'Tap again to replace this key with a ' + bi.label + ' key.';
+          return;
+        }
+        if (snap.activeProfile !== assignSlot.profile) { el('assignmsg').textContent = 'The active profile changed — close and try again.'; return; }
+        armAssign = null;
+        post('assign', { col: assignSlot.col, row: assignSlot.row, builtin: bi.b }).then(function (res) {
+          if (!res.ok) { el('assignmsg').textContent = 'Failed: ' + (res.error || ''); return; }
+          assignSlot.context = res.context; assignSlot.key = { context: res.context, builtin: bi.b, settings: res.settings || {} };
+          el('unassignbtn').hidden = false; el('movebtn').hidden = false; el('copybtn').hidden = false;
+          el('settingsbox').value = JSON.stringify(bi.tpl, null, 2);
+          el('assignmsg').textContent = 'Assigned ✓ — ' + bi.msg;
+        });
+      });
+      list.appendChild(b);
+    });
+    var lb2 = document.createElement('div'); lb2.className = 'ov-label'; lb2.textContent = 'Plugin actions';
+    list.appendChild(lb2);
     var any = false;
     ((snap && snap.plugins) || []).forEach(function (p) {
       p.actions.forEach(function (a) {
@@ -290,10 +333,32 @@
         list.appendChild(b);
       });
     });
-    if (!any) { var msg = document.createElement('div'); msg.className = 'pk-empty'; msg.textContent = 'No plugin actions available. Add plugins to your folder first.'; list.appendChild(msg); }
+    if (!any) { var msg = document.createElement('div'); msg.className = 'pk-empty'; msg.textContent = 'No plugin actions yet — add plugins to your folder for more.'; list.appendChild(msg); }
+    el('copybtn').hidden = !k;
     el('assign').hidden = false;
   }
   el('assignclose').addEventListener('click', function () { el('assign').hidden = true; assignSlot = null; });
+  el('copybtn').addEventListener('click', function () {
+    if (!assignSlot) return;
+    var ctx = assignSlot.context || (assignSlot.key && assignSlot.key.context);
+    if (!ctx) return;
+    var list = el('actionlist');
+    list.innerHTML = '';
+    var lb = document.createElement('div'); lb.className = 'ov-label'; lb.textContent = 'Copy this key to…';
+    list.appendChild(lb);
+    ((snap && snap.profiles) || []).forEach(function (pr) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'act';
+      var g = document.createElement('span'); g.className = 'grow'; g.textContent = pr.name; b.appendChild(g);
+      if (pr.id === snap.activeProfile) { var s = document.createElement('span'); s.className = 'sub'; s.textContent = 'this profile'; b.appendChild(s); }
+      b.addEventListener('click', function () {
+        post('copy', { context: ctx, profileId: pr.id }).then(function (r) {
+          if (r.ok) { toast('Copied to "' + r.profile + '" (key ' + (parseInt(r.pos, 10) + 1) + ',' + ((r.pos.split(',')[1] | 0) + 1) + ')'); el('assign').hidden = true; assignSlot = null; }
+          else toast(r.error || 'copy failed', true);
+        });
+      });
+      list.appendChild(b);
+    });
+  });
   el('movebtn').addEventListener('click', function () {
     if (!assignSlot) return;
     movePending = { col: assignSlot.col, row: assignSlot.row };
@@ -323,7 +388,9 @@
     post('rescan', {}).then(function (j) {
       if (j && j.ok) {
         snap = j; render(); renderPluginsPane();
-        toast('Rescanned: ' + j.plugins.length + ' plugin' + (j.plugins.length === 1 ? '' : 's') + (j.skipped.length ? ', ' + j.skipped.length + ' skipped' : ''));
+        toast('Rescanned: ' + j.plugins.length + ' plugin' + (j.plugins.length === 1 ? '' : 's')
+          + ', ' + (j.importables || []).length + ' importable profile' + ((j.importables || []).length === 1 ? '' : 's')
+          + (j.skipped.length ? ', ' + j.skipped.length + ' skipped' : ''));
       } else toast('Rescan failed', true);
     });
   });
@@ -334,9 +401,9 @@
     list.innerHTML = '';
     var ps = (snap && snap.plugins) || [];
     var sk = (snap && snap.skipped) || [];
-    if (!ps.length && !sk.length) {
+    if (!ps.length && !sk.length && !((snap && snap.importables) || []).length) {
       var m = document.createElement('div'); m.className = 'pk-empty';
-      m.textContent = (snap && snap.folder ? 'Nothing in ' + snap.folder + ' yet. Drop *.sdPlugin folders or downloaded .streamDeckPlugin files there.' : 'Set this page’s "Plugins folder" option (and Save).') + ' Plugins are real programs that run on your PC — only use plugins you trust.';
+      m.textContent = (snap && snap.folder ? 'Nothing in ' + snap.folder + ' yet. Drop *.sdPlugin folders, .streamDeckPlugin files, or .streamDeckProfile files there.' : 'Set this page’s "Plugins folder" option (and Save).') + ' Plugins are real programs that run on your PC — only use plugins you trust.';
       list.appendChild(m); return;
     }
     ps.forEach(function (p) {
@@ -363,6 +430,31 @@
       var er = document.createElement('div'); er.className = 'plugerr'; er.textContent = s.reason; d.appendChild(er);
       list.appendChild(d);
     });
+    // Profile files live in the same folder, so they belong in this pane too, importable in place.
+    var imp = (snap && snap.importables) || [];
+    if (imp.length) {
+      var lbl = document.createElement('div'); lbl.className = 'ov-label'; lbl.style.marginTop = '16px';
+      lbl.textContent = 'Profiles in this folder (' + imp.length + ')';
+      list.appendChild(lbl);
+      imp.forEach(function (f) {
+        var d = document.createElement('div'); d.className = 'plug';
+        var head = document.createElement('div'); head.className = 'plughead';
+        var g = document.createElement('span'); g.className = 'grow'; g.textContent = f.name; head.appendChild(g);
+        var st = document.createElement('span'); st.className = 'st'; st.textContent = 'profile'; head.appendChild(st);
+        var b = document.createElement('button'); b.type = 'button'; b.textContent = 'Import';
+        b.addEventListener('click', function () {
+          b.disabled = true; b.textContent = 'Importing…';
+          post('import', { id: f.id }).then(function (r) {
+            b.disabled = false; b.textContent = 'Import';
+            if (r.ok) { toast('Imported ' + r.keys + ' key' + (r.keys === 1 ? '' : 's') + (r.profiles > 1 ? ' across ' + r.profiles + ' pages' : '')); el('pluginspane').hidden = true; }
+            else toast(r.error || 'import failed', true);
+          });
+        });
+        head.appendChild(b);
+        d.appendChild(head);
+        list.appendChild(d);
+      });
+    }
   }
 
   // ---- edit toggle -------------------------------------------------------

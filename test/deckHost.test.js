@@ -242,5 +242,31 @@ test('imports a .streamDeckProfile: built-ins, images, reflow, folders, plugin r
     await call3('import', { body: Buffer.from(JSON.stringify({ id: s.importables[0].id })) });
     s2 = await call3('state');
     assert.equal(s2.profiles.filter(p => p.name.startsWith('TestProf')).length, 2);
+
+    // fresh built-in key from the panel: assign, configure by NAME, press -> resolved combo
+    const asg = await call3('assign', { body: Buffer.from(JSON.stringify({ col: 5, row: 0, builtin: 'hotkey' })) });
+    assert.equal(asg.ok, true);
+    const noKey = await call3('press', { body: Buffer.from(JSON.stringify({ context: asg.context })) });
+    assert.equal(noKey.ok, false);                                              // honest before it's configured
+    await call3('settings-set', { body: Buffer.from(JSON.stringify({ context: asg.context,
+      settings: { title: 'Vol+', keys: [{ key: 'VOLUMEUP' }] } })) });
+    const hit = await call3('press', { body: Buffer.from(JSON.stringify({ context: asg.context })) });
+    assert.equal(hit.ok, true);
+    assert.deepEqual(sent.pop(), { combo: [{ vk: 0xAF, ctrl: false, shift: false, alt: false, win: false }] });
+    s2 = await call3('state');
+    assert.equal(s2.keys['5,0'].title, 'Vol+');                                 // cfg.title shows on the key
+
+    // copy to another profile: same slot if free, contexts independent
+    const add = await call3('profile-add', { body: Buffer.from(JSON.stringify({ name: 'Other' })) });
+    const cp = await call3('copy', { body: Buffer.from(JSON.stringify({ context: asg.context, profileId: add.id })) });
+    assert.equal(cp.ok, true);
+    assert.equal(cp.pos, '5,0');
+    await call3('profile-select', { body: Buffer.from(JSON.stringify({ id: add.id })) });
+    s2 = await call3('state');
+    assert.notEqual(s2.keys['5,0'].context, asg.context);                       // a clone, not a shared key
+    await call3('settings-set', { body: Buffer.from(JSON.stringify({ context: s2.keys['5,0'].context,
+      settings: { title: 'Vol-', keys: [{ key: 'VOLUMEDOWN' }] } })) });
+    await call3('press', { body: Buffer.from(JSON.stringify({ context: asg.context })) });
+    assert.equal(sent.pop().combo[0].vk, 0xAF);                                 // original untouched by the clone's edit
   } finally { server._setKeyHelper(null); }
 });
