@@ -19,6 +19,17 @@ const SUBSCRIPTION_CAPABILITY = Object.freeze({
   NOTIFICATION_CREATE: 'notifications', CURRENT_USER_UPDATE: 'currentUserEvents',
 });
 const CAPABILITIES = Object.freeze([...new Set([...Object.values(COMMAND_CAPABILITY), ...Object.values(SUBSCRIPTION_CAPABILITY), 'messageHistory'])]);
+const CAPABILITY_SCOPES = Object.freeze({
+  voiceSettings: Object.freeze(['rpc.voice.read', 'rpc.voice.write']),
+  perUserVoiceControl: Object.freeze(['rpc.voice.write']),
+  voiceChannelControl: Object.freeze(['rpc.voice.read', 'rpc.voice.write']),
+  guildDiscovery: Object.freeze(['rpc']), channelDiscovery: Object.freeze(['rpc']),
+  textChannelSelection: Object.freeze(['rpc']), activity: Object.freeze(['rpc']),
+  participants: Object.freeze(['rpc.voice.read']), speakingEvents: Object.freeze(['rpc.voice.read']),
+  connectionQuality: Object.freeze(['rpc.voice.read']),
+  messageEvents: Object.freeze(['messages.read']), messageHistory: Object.freeze(['messages.read']),
+  notifications: Object.freeze(['rpc.notifications.read']), currentUserEvents: Object.freeze(['identify', 'rpc']),
+});
 const UNSUPPORTED_CODES = new Set([4001, 4002, 4005]);
 const AUTH_CODES = new Set([4006]);
 const VOICE_CHANNEL_EVENTS = Object.freeze(['VOICE_STATE_CREATE', 'VOICE_STATE_UPDATE', 'VOICE_STATE_DELETE', 'SPEAKING_START', 'SPEAKING_STOP']);
@@ -71,6 +82,7 @@ class DiscordService extends EventEmitter {
     this.oauth = opts.oauth || null;
     this.authState = 'authorization-required';
     this.identity = null;
+    this.grantedScopes = null;
     this.capabilities = Object.fromEntries(CAPABILITIES.map(name => [name, false]));
     this.capabilityState = Object.fromEntries(CAPABILITIES.map(name => [name, 'unverified']));
     this.subscriptions = new Map();
@@ -240,12 +252,13 @@ class DiscordService extends EventEmitter {
   getCapabilities() { return Object.assign({}, this.capabilities); }
   getCapabilityStates() { return Object.assign({}, this.capabilityState); }
   getIdentity() { return this.identity && Object.assign({}, this.identity); }
+  getGrantedScopes() { return this.grantedScopes ? [...this.grantedScopes] : []; }
 
   async _request(command, args) {
     const capability = COMMAND_CAPABILITY[command];
     if (!capability) throw Object.assign(new Error('Unsupported Discord command: ' + command), { code: 'DISCORD_UNSUPPORTED_COMMAND' });
     if (this.authState !== 'authenticated') throw Object.assign(new Error('Discord authorization is required'), { code: 'DISCORD_AUTH_REQUIRED' });
-    if (this.capabilityState[capability] === 'unsupported' || !this.transport) throw Object.assign(new Error('Discord capability is unavailable: ' + capability), { code: 'DISCORD_UNSUPPORTED_CAPABILITY', capability });
+    if (this.capabilityState[capability] === 'unsupported' || this.capabilityState[capability] === 'scope-missing' || !this.transport) throw Object.assign(new Error('Discord capability is unavailable: ' + capability), { code: 'DISCORD_UNSUPPORTED_CAPABILITY', capability });
     try {
       const result = await this.transport.request(command, args);
       this._setCapability(capability, 'available');
@@ -276,7 +289,7 @@ class DiscordService extends EventEmitter {
     const capability = SUBSCRIPTION_CAPABILITY[event];
     if (!capability) throw Object.assign(new Error('Unsupported Discord event: ' + event), { code: 'DISCORD_UNSUPPORTED_EVENT' });
     if (this.authState !== 'authenticated') throw Object.assign(new Error('Discord authorization is required'), { code: 'DISCORD_AUTH_REQUIRED' });
-    if (this.capabilityState[capability] === 'unsupported' || !this.transport) throw Object.assign(new Error('Discord capability is unavailable: ' + capability), { code: 'DISCORD_UNSUPPORTED_CAPABILITY', capability });
+    if (this.capabilityState[capability] === 'unsupported' || this.capabilityState[capability] === 'scope-missing' || !this.transport) throw Object.assign(new Error('Discord capability is unavailable: ' + capability), { code: 'DISCORD_UNSUPPORTED_CAPABILITY', capability });
     try {
       const result = await this.transport.request(command, args || {}, event);
       if (command === 'SUBSCRIBE') this._setCapability(capability, 'available');
@@ -301,10 +314,22 @@ class DiscordService extends EventEmitter {
   }
 
   _setCapability(capability, state) {
+    const requiredScopes = CAPABILITY_SCOPES[capability] || [];
+    if (state === 'available' && this.grantedScopes && requiredScopes.some(scope => !this.grantedScopes.has(scope))) state = 'scope-missing';
     const available = state === 'available';
     if (this.capabilityState[capability] === state && this.capabilities[capability] === available) return;
     this.capabilityState[capability] = state; this.capabilities[capability] = available;
     this.emit('capabilities', this.getCapabilities());
+  }
+
+  _applyGrantedScopes(scopes) {
+    this.grantedScopes = scopes == null ? null : new Set(scopes.map(scope => String(scope || '')).filter(Boolean));
+    if (!this.grantedScopes) return;
+    for (const capability of CAPABILITIES) {
+      const required = CAPABILITY_SCOPES[capability] || [];
+      if (required.some(scope => !this.grantedScopes.has(scope))) this._setCapability(capability, 'scope-missing');
+      else if (this.capabilityState[capability] === 'scope-missing') this._setCapability(capability, 'unverified');
+    }
   }
 
   async _authenticate(transport) {
@@ -318,6 +343,9 @@ class DiscordService extends EventEmitter {
     let authenticated;
     try { authenticated = await transport.request('AUTHENTICATE', { access_token: token }); }
     catch (error) { this.authState = 'auth-error'; if (this.oauth && this.oauth.deleteTokens) this.oauth.deleteTokens(); throw error; }
+    const authenticatedScopes = authenticated && Array.isArray(authenticated.scopes) ? authenticated.scopes
+      : this.oauth && this.oauth.getGrantedScopes ? this.oauth.getGrantedScopes() : null;
+    this._applyGrantedScopes(authenticatedScopes);
     this.identity = cleanDiscordIdentity(authenticated && authenticated.user);
     this.authState = 'authenticated'; this._setState(this.state);
   }
@@ -423,4 +451,4 @@ class DiscordService extends EventEmitter {
   }
 }
 
-module.exports = { DiscordService, COMMAND_CAPABILITY, GLOBAL_EVENTS, SUBSCRIPTION_CAPABILITY, TEXT_CHANNEL_EVENTS, VOICE_CHANNEL_EVENTS, VOICE_FIELDS, cleanDiscordIdentity, projectPresent };
+module.exports = { CAPABILITY_SCOPES, DiscordService, COMMAND_CAPABILITY, GLOBAL_EVENTS, SUBSCRIPTION_CAPABILITY, TEXT_CHANNEL_EVENTS, VOICE_CHANNEL_EVENTS, VOICE_FIELDS, cleanDiscordIdentity, projectPresent };

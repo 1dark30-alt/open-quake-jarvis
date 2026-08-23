@@ -130,7 +130,7 @@ function eventLabel(type) {
 
 function canAttemptCapability(snapshot, capability) {
   const state = snapshot.capabilityStates && snapshot.capabilityStates[capability];
-  return state !== 'unsupported' && state !== 'auth-failure';
+  return state !== 'unsupported' && state !== 'scope-missing' && state !== 'auth-failure';
 }
 
 class DiscordAppHost extends EventEmitter {
@@ -301,7 +301,8 @@ class DiscordAppHost extends EventEmitter {
           const selected = sanitizeChannel(response && response.id ? response : channel);
           this.snapshot.chat.selected = selected;
           this.snapshot.chat.lastSelected = selected;
-          this._setMessages(response && response.messages, channelId);
+          const capabilityStates = this.service.getCapabilityStates ? this.service.getCapabilityStates() : {};
+          this._setMessages(capabilityStates.messageHistory === 'available' ? response && response.messages : null, channelId);
           this.snapshot.chat.status = 'Opened #' + (selected.name || channel.name || selected.id);
         } catch (error) {
           this.snapshot.chat.status = null;

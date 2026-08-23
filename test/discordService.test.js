@@ -41,6 +41,52 @@ test('READY is followed by AUTHENTICATE and capabilities require successful prob
   service.stop();
 });
 
+test('Core-only grants connect while optional voice, messages, and notifications stay unavailable', async () => {
+  const transport = new MockTransport();
+  transport.responses.set('AUTHENTICATE', { user: { id: 'me', username: 'core' }, scopes: ['identify', 'rpc'] });
+  const service = await startService(transport);
+  assert.equal(service.getState().state, 'connected');
+  assert.deepEqual(service.getGrantedScopes(), ['identify', 'rpc']);
+  assert.equal(service.getCapabilities().guildDiscovery, true);
+  assert.equal(service.getCapabilityStates().voiceSettings, 'scope-missing');
+  assert.equal(service.getCapabilityStates().messageHistory, 'scope-missing');
+  assert.equal(service.getCapabilityStates().messageEvents, 'scope-missing');
+  assert.equal(service.getCapabilityStates().notifications, 'scope-missing');
+  assert.equal(service.getCapabilityStates().currentUserEvents, 'available');
+  await assert.rejects(service.getVoiceSettings(), error => error.code === 'DISCORD_UNSUPPORTED_CAPABILITY');
+  assert.equal(transport.requests.some(request => request.command === 'GET_VOICE_SETTINGS'), false);
+  transport.responses.set('SELECT_TEXT_CHANNEL', { id: 'text', messages: [] });
+  await service.selectTextChannel('text');
+  assert.equal(service.getCapabilityStates().textChannelSelection, 'available');
+  assert.equal(service.getCapabilityStates().messageHistory, 'scope-missing');
+  assert.equal(service.getCapabilityStates().messageEvents, 'scope-missing');
+  service.stop();
+});
+
+test('granted capability groups enable only their scoped features before runtime verification', async () => {
+  const transport = new MockTransport();
+  transport.responses.set('AUTHENTICATE', { scopes: ['identify', 'rpc', 'rpc.voice.read', 'rpc.voice.write', 'messages.read'] });
+  transport.responses.set('SELECT_TEXT_CHANNEL', { id: 'text', messages: [] });
+  const service = await startService(transport);
+  assert.equal(service.getCapabilities().voiceSettings, true);
+  assert.equal(service.getCapabilityStates().notifications, 'scope-missing');
+  assert.equal(service.getCapabilityStates().messageEvents, 'unverified');
+  await service.selectTextChannel('text');
+  assert.equal(service.getCapabilityStates().messageHistory, 'available');
+  assert.equal(service.getCapabilityStates().messageEvents, 'available');
+  service.stop();
+});
+
+test('notification permission enables notifications without enabling unrelated optional groups', async () => {
+  const transport = new MockTransport();
+  transport.responses.set('AUTHENTICATE', { scopes: ['identify', 'rpc', 'rpc.notifications.read'] });
+  const service = await startService(transport);
+  assert.equal(service.getCapabilityStates().notifications, 'available');
+  assert.equal(service.getCapabilityStates().voiceSettings, 'scope-missing');
+  assert.equal(service.getCapabilityStates().messageEvents, 'scope-missing');
+  service.stop();
+});
+
 test('browser PKCE authorization completes before RPC AUTHENTICATE', async () => {
   const transport = new MockTransport();
   let authorizations = 0;
@@ -78,6 +124,19 @@ test('failed explicit public-client authorization transitions from authorizing t
   assert.equal(service.getCapabilities().guildDiscovery, false);
   assert.deepEqual(transport.requests, []);
   service.stop();
+});
+
+test('invalid_scope authorization failure is explicit and never schedules an OAuth retry loop', async () => {
+  const timers = [];
+  const service = new DiscordService({
+    clientId: '123', autoReconnect: true,
+    setTimer: (fn, delay) => { timers.push({ fn, delay }); return timers.length; }, clearTimer: () => {},
+    oauth: { authorize: async () => { throw Object.assign(new Error('The configured Discord application rejected one or more requested permissions'), { code: 'DISCORD_AUTH_INVALID_SCOPE' }); } },
+  });
+  await assert.rejects(service.authorize(), error => error.code === 'DISCORD_AUTH_INVALID_SCOPE');
+  assert.equal(service.getState().authState, 'auth-error');
+  assert.equal(service.retryTimer, null);
+  assert.deepEqual(timers, []);
 });
 
 test('scope changes stop automatic reconnect and require an explicit reauthorization action', async () => {

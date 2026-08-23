@@ -4,6 +4,9 @@
     "discord": {
       "enabled": true,
       "applicationIdOverride": "",
+      "customVoiceScopes": false,
+      "customMessageScopes": false,
+      "customNotificationScopes": false,
       "defaultView": "voice",
       "autoReconnect": true,
       "showUnavailable": true,

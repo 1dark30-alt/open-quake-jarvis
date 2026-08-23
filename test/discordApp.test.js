@@ -7,7 +7,7 @@ const path = require('path');
 const { EventEmitter } = require('events');
 const { DiscordAppHost, RECENT_EVENT_LIMIT, RECENT_MESSAGE_LIMIT, RECENT_NOTIFICATION_LIMIT, sanitizeMessage, sanitizeParticipant, sanitizeStatusText, usableTextChannels, usableVoiceChannels } = require('../app/discordAppHost');
 const view = require('../app/discordview');
-const { DEFAULT_DISCORD_APPLICATION_ID, DEFAULT_DISCORD_SETTINGS, discordApplicationId, normalizeDiscordSettings } = require('../app/discordSettings');
+const { DEFAULT_DISCORD_APPLICATION_ID, DEFAULT_DISCORD_SETTINGS, discordApplicationId, discordRequestedScopeGroups, discordRequestedScopes, normalizeDiscordSettings } = require('../app/discordSettings');
 
 class MockDiscordService extends EventEmitter {
   constructor() {
@@ -60,6 +60,23 @@ test('Discord layout is fixed to 1920x480 conventions with large touch controls 
   assert.doesNotMatch(css, /:hover/);
 });
 
+test('Discord overflow regions use contained native vertical touch scrolling', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../app/discordview.css'), 'utf8');
+  const sharedLists = css.match(/\.participant-list,\s*\.touch-list,\s*\.message-list,\s*\.event-list\s*{([^}]*)}/)[1];
+  assert.match(sharedLists, /min-height:\s*0/);
+  assert.match(sharedLists, /overflow-y:\s*auto/);
+  assert.match(sharedLists, /overscroll-behavior:\s*contain/);
+  assert.match(sharedLists, /touch-action:\s*pan-y/);
+  assert.match(sharedLists, /-webkit-overflow-scrolling:\s*touch/);
+  const capabilityList = css.match(/\.capability-popover ul\s*{([^}]*)}/)[1];
+  assert.match(capabilityList, /overflow-y:\s*auto/);
+  assert.match(capabilityList, /touch-action:\s*pan-y/);
+  for (const selector of ['participants', 'feed-column']) {
+    assert.match(css, new RegExp('\\.' + selector + '\\s*\\{[^}]*minmax\\(0, 1fr\\)', 's'));
+  }
+  assert.match(css, /\.chat-browser,\s*\.chat-channels\s*{[^}]*minmax\(0, 1fr\)/s);
+});
+
 test('Discord dropdown options use explicit contrasting theme colours', () => {
   const css = fs.readFileSync(path.join(__dirname, '../app/discordview.css'), 'utf8');
   const options = css.match(/select option,\s*select optgroup\s*{([^}]*)}/)[1];
@@ -95,6 +112,26 @@ test('connected Voice view shows real state and clearly marks unavailable partic
   assert.match(html, />Deafen</);
   assert.match(html, /No participants are exposed/);
   assert.doesNotMatch(html, /fake|sample user/i);
+});
+
+test('Voice, Chat, and Activity mark every live overflowing region for scroll preservation', () => {
+  const service = new MockDiscordService();
+  const state = connected(service);
+  state.participants = [{ id: 'user', username: 'Alex' }];
+  state.chat = {
+    guildId: 'guild', channels: [{ id: 'general', name: 'general' }], selected: { id: 'general', name: 'general' },
+    messages: [{ id: 'message', author: { id: 'user', username: 'Alex' }, content: 'Hello', timestamp: new Date().toISOString() }], historyAvailable: true,
+  };
+  state.notifications = [{ title: 'Mention', body: 'Hello', at: new Date().toISOString() }];
+  state.recentEvents = [{ type: 'MESSAGE_CREATE', label: 'Message received', at: new Date().toISOString() }];
+  assert.match(view.voiceView(state), /data-preserve-scroll="voice-participants"[\s\S]*data-scroll-item="participant-user"/);
+  const chat = view.chatView(state);
+  for (const key of ['chat-guilds', 'chat-channels', 'chat-messages']) assert.match(chat, new RegExp('data-preserve-scroll="' + key + '"'));
+  assert.match(chat, /data-preserve-scroll="chat-messages" data-follow-newest="true"[\s\S]*data-scroll-item="message-message"/);
+  const activity = view.activityView(state);
+  for (const key of ['activity-capabilities', 'activity-notifications', 'activity-events']) assert.match(activity, new RegExp('data-preserve-scroll="' + key + '"'));
+  assert.match(activity, /data-preserve-scroll="activity-notifications" data-follow-newest="true"/);
+  assert.match(activity, /data-preserve-scroll="activity-events" data-follow-newest="true"/);
 });
 
 test('capabilities hide voice controls and disable unsupported channel selection', () => {
@@ -283,6 +320,21 @@ test('Chat filters voice and category channels, then opens a selected text chann
   host.stop();
 });
 
+test('Chat does not expose message history when the OAuth permission is unavailable', async () => {
+  const service = new MockDiscordService();
+  service.capabilities.messageHistory = false;
+  service.capabilities.messageEvents = false;
+  service.selectTextChannel = id => Promise.resolve({ id, name: 'general', type: 0, messages: [{ id: 'secret-message', content: 'must stay hidden' }] });
+  const host = new DiscordAppHost(service); host.start(); await host.refresh();
+  await host.action('chat-guild', 'guild');
+  await host.action('chat-channel', 'general');
+  const snapshot = host.getSnapshot();
+  assert.equal(snapshot.chat.historyAvailable, false);
+  assert.deepEqual(snapshot.chat.messages, []);
+  assert.doesNotMatch(view.chatView(snapshot), /must stay hidden|secret-message/);
+  host.stop();
+});
+
 test('Chat consumes historical and live message create/update/delete data with bounded sanitized history', async () => {
   const service = new MockDiscordService();
   service.selectTextChannel = id => Promise.resolve({ id, name: 'general', type: 0, messages: [
@@ -412,6 +464,136 @@ test('the reusable live renderer preserves Chat scroll positions across unrelate
   assert.equal(after.scrollLeft, 4);
 });
 
+test('newest-first live lists retain the visible item when new content arrives above it', () => {
+  const row = (key, offsetTop) => ({ offsetTop, offsetHeight: 64, getAttribute: name => name === 'data-scroll-item' ? key : null });
+  const list = (top, rows) => ({
+    scrollTop: top, scrollLeft: 0, scrollHeight: 216, children: rows,
+    getAttribute: name => name === 'data-preserve-scroll' ? 'chat-messages' : name === 'data-follow-newest' ? 'true' : null,
+  });
+  let html = 'first';
+  const before = list(90, [row('message-a', 0), row('message-b', 72), row('message-c', 144)]);
+  const firstPaint = list(0, [row('message-a', 0), row('message-b', 72), row('message-c', 144)]);
+  const withIncoming = list(0, [row('message-new', 0), row('message-a', 72), row('message-b', 144), row('message-c', 216)]);
+  const rendered = [firstPaint, withIncoming];
+  let current = [before];
+  const host = {
+    set innerHTML(value) { this.value = value; current = [rendered.shift()]; },
+    querySelectorAll() { return current; },
+  };
+  const renderer = view.createRenderController(host, () => html);
+  renderer.paint();
+  assert.equal(firstPaint.scrollTop, 90);
+  html = 'second';
+  renderer.paint();
+  assert.equal(withIncoming.scrollTop, 162);
+});
+
+test('newest-first live lists continue following updates while already near the latest item', () => {
+  const list = top => ({
+    scrollTop: top, scrollLeft: 0, scrollHeight: 200, children: [],
+    getAttribute: name => name === 'data-preserve-scroll' ? 'activity-events' : name === 'data-follow-newest' ? 'true' : null,
+  });
+  let html = 'first', current = [list(12)];
+  const firstPaint = list(99), withIncoming = list(99), rendered = [firstPaint, withIncoming];
+  const host = {
+    set innerHTML(value) { this.value = value; current = [rendered.shift()]; },
+    querySelectorAll() { return current; },
+  };
+  const renderer = view.createRenderController(host, () => html);
+  renderer.paint();
+  assert.equal(firstPaint.scrollTop, 0);
+  firstPaint.scrollTop = 8;
+  html = 'second';
+  renderer.paint();
+  assert.equal(withIncoming.scrollTop, 0);
+});
+
+test('live rendering stays deferred until an active native scroll finishes', () => {
+  let html = 'first', writes = 0;
+  const scroll = { getAttribute: () => 'chat-messages' };
+  const control = { disabled: false };
+  const host = {
+    set innerHTML(value) { this.value = value; writes += 1; },
+    querySelectorAll() { return []; },
+  };
+  const renderer = view.createRenderController(host, () => html);
+  renderer.paint();
+  renderer.beginScroll(scroll);
+  renderer.beginInteraction(control);
+  html = 'second';
+  assert.equal(renderer.paint(), false);
+  renderer.endInteraction(control);
+  assert.equal(writes, 1);
+  assert.equal(renderer.isPending(), true);
+  renderer.endScroll(scroll);
+  assert.equal(writes, 2);
+});
+
+test('Activity capability details stay open without live rerenders until the picker closes', () => {
+  const service = new MockDiscordService();
+  let subscriber, writes = 0;
+  const handlers = {};
+  const oldLocation = globalThis.location, oldAdd = globalThis.addEventListener, oldRemove = globalThis.removeEventListener;
+  globalThis.location = { search: '' };
+  globalThis.addEventListener = () => {};
+  globalThis.removeEventListener = () => {};
+  const host = {
+    set innerHTML(value) { this.value = value; writes += 1; }, addEventListener(name, fn) { handlers[name] = fn; },
+    removeEventListener() {}, querySelectorAll() { return []; },
+  };
+  const doc = { documentElement: { dataset: {}, style: { setProperty() {} } }, getElementById: id => id === 'app' ? host : null };
+  const mounted = view.mount(doc, { action: () => Promise.resolve({}), subscribe: onData => { subscriber = onData; return () => {}; } });
+  const popover = { disabled: false, hasAttribute: name => name === 'popover' };
+  handlers.toggle({ target: popover, newState: 'open' });
+  subscriber(Object.assign(connected(service), { voice: { mute: true } }));
+  assert.equal(writes, 1);
+  handlers.toggle({ target: popover, newState: 'closed' });
+  assert.equal(writes, 2);
+  mounted.cleanup();
+  globalThis.location = oldLocation;
+  globalThis.addEventListener = oldAdd;
+  globalThis.removeEventListener = oldRemove;
+});
+
+test('a cancelled pointer scroll does not invoke its underlying list button action', () => {
+  const service = new MockDiscordService();
+  const initial = Object.assign(connected(service), { chat: { guildId: null, channels: [] } });
+  let subscriber, writes = 0;
+  const handlers = {}, actions = [];
+  const oldLocation = globalThis.location, oldAdd = globalThis.addEventListener, oldRemove = globalThis.removeEventListener;
+  globalThis.location = { search: '' };
+  globalThis.addEventListener = () => {};
+  globalThis.removeEventListener = () => {};
+  const scroll = { closest: selector => selector === '[data-preserve-scroll]' ? scroll : null };
+  const button = {
+    tagName: 'BUTTON', type: 'button', disabled: false, dataset: { action: 'chat-guild', value: 'guild' },
+    closest: selector => selector === '[data-preserve-scroll]' ? scroll : selector.includes('button') ? button : null,
+  };
+  const host = {
+    _html: '', set innerHTML(value) { this._html = value; writes += 1; }, get innerHTML() { return this._html; },
+    addEventListener(name, fn) { handlers[name] = fn; }, removeEventListener() {}, querySelectorAll() { return []; },
+  };
+  const doc = { documentElement: { dataset: {}, style: { setProperty() {} } }, getElementById: id => id === 'app' ? host : null };
+  const mounted = view.mount(doc, {
+    action: (name, value) => { actions.push([name, value]); return Promise.resolve(initial); },
+    subscribe: onData => { subscriber = onData; return () => {}; },
+  });
+  let prevented = 0;
+  handlers.wheel({ target: scroll, preventDefault: () => { prevented += 1; } });
+  assert.equal(prevented, 0);
+  handlers.pointerdown({ target: button });
+  subscriber(Object.assign({}, initial, { voice: { mute: true } }));
+  handlers.pointercancel({ target: button });
+  assert.equal(writes, 1);
+  handlers.scrollend({ target: scroll });
+  assert.equal(writes, 2);
+  assert.deepEqual(actions, []);
+  mounted.cleanup();
+  globalThis.location = oldLocation;
+  globalThis.addEventListener = oldAdd;
+  globalThis.removeEventListener = oldRemove;
+});
+
 test('renderer cleanup closes its Discord event subscription', () => {
   let closed = 0, pagehide, removed = 0;
   const oldLocation = globalThis.location, oldAdd = globalThis.addEventListener, oldRemove = globalThis.removeEventListener;
@@ -423,7 +605,7 @@ test('renderer cleanup closes its Discord event subscription', () => {
   const mounted = view.mount(doc, { action: () => Promise.resolve({}), subscribe: () => () => { closed += 1; } });
   mounted.cleanup(); mounted.cleanup();
   assert.equal(closed, 1);
-  assert.equal(removed, 8);
+  assert.equal(removed, 12);
   assert.equal(typeof pagehide, 'function');
   globalThis.location = oldLocation;
   globalThis.addEventListener = oldAdd;
@@ -567,9 +749,19 @@ test('Discord setting defaults and invalid values are normalised without retaini
   assert.equal(normalizeDiscordSettings({ enabled: false, defaultView: 'settings' }).defaultView, 'voice');
   assert.equal(normalizeDiscordSettings({ applicationId: ' legacy-id ' }).applicationIdOverride, 'legacy-id');
   assert.equal(normalizeDiscordSettings({ clientId: ' id<script>\u0000 ' }).applicationIdOverride, 'idscript');
-  assert.equal(discordApplicationId({}), '');   // no built-in app -- each user brings their own
-  assert.equal(DEFAULT_DISCORD_APPLICATION_ID, '');
+  assert.equal(discordApplicationId({}), DEFAULT_DISCORD_APPLICATION_ID);
+  assert.equal(DEFAULT_DISCORD_APPLICATION_ID, '1539959318974169088');
   assert.equal(discordApplicationId({ applicationIdOverride: ' developer-id ' }), 'developer-id');
+});
+
+test('official and custom Discord applications resolve explicit capability scope groups', () => {
+  assert.deepEqual(discordRequestedScopeGroups({}), ['core', 'voice', 'messages', 'notifications']);
+  assert.deepEqual(discordRequestedScopes({}), ['identify', 'rpc', 'rpc.voice.read', 'rpc.voice.write', 'messages.read', 'rpc.notifications.read']);
+  assert.deepEqual(discordRequestedScopeGroups({ applicationIdOverride: 'custom' }), ['core']);
+  assert.deepEqual(discordRequestedScopes({ applicationIdOverride: 'custom' }), ['identify', 'rpc']);
+  assert.deepEqual(discordRequestedScopeGroups({
+    applicationIdOverride: 'custom', customVoiceScopes: true, customMessageScopes: true, customNotificationScopes: true,
+  }), ['core', 'voice', 'messages', 'notifications']);
 });
 
 test('panel host rejects settings writes while preserving reconnect and disconnect actions', async () => {

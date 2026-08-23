@@ -1,60 +1,86 @@
 # Connecting Discord to open-quake
 
-open-quake's Discord panel controls your Discord voice/mic (mute, voice state) through Discord's
-**RPC**. Discord only grants those controls to an application's **owner** — so each person registers
-their **own** free Discord application and points open-quake at it. It's a one-time, ~5-minute setup,
-the same "bring your own app" pattern used for Home Assistant and similar integrations.
+Connect the Discord account from the **Discord app settings**: select the page that uses the
+Discord app in the editor, then use the **Discord account** card beneath its settings. By default,
+open-quake uses its built-in Discord Application ID and requests the complete permission set that
+the official application is configured to use.
 
-## 1. Create your Discord application
-1. Go to <https://discord.com/developers/applications> and sign in.
-2. Click **New Application**, give it a name (e.g. "My open-quake"), accept the terms, and **Create**.
+open-quake uses OAuth 2.0 Authorization Code with PKCE as a public client. The callback is the
+loopback URI `http://127.0.0.1:51120/callback`; there is no Client Secret. Access and refresh tokens
+are kept in the main process and encrypted at rest.
 
-## 2. Copy your Application ID
-On the app's **General Information** page, copy the **Application ID** (a long number).
+## Custom Discord applications
 
-## 3. Register the redirect URI
-1. In the left sidebar, open **OAuth2**.
-2. Under **Redirects**, click **Add Redirect** and paste this **exactly**:
-   ```
-   http://127.0.0.1:51120/callback
-   ```
-3. Click **Save Changes**. **It must match exactly** — a wrong port or a missing `/callback` makes Connect silently hang, because Discord errors in the browser and never returns to open-quake.
+A personal or team-owned Discord application can be selected from the Discord page's
+**Advanced / developer overrides** section:
 
-## 4. Paste the ID into open-quake
-1. In open-quake, open the editor and select your **Discord** app page.
-2. In the **Discord integration** section, paste your Application ID into **Your Discord Application ID**.
-3. Click **Save**.
+1. Create or select an application at <https://discord.com/developers/applications>.
+2. Copy its Application ID.
+3. Add the exact OAuth2 redirect URI `http://127.0.0.1:51120/callback`.
+4. Enter the ID as **Custom Discord Application ID** and save.
+5. Choose only the enhanced capability groups the application is allowed to use.
+6. Connect or explicitly reconnect from the **Discord account** card in the Discord app settings.
 
-## 5. Connect
-Click **Connect to Discord** (in the Discord integration box, or under **Settings → Auth**). Your
-browser opens Discord's authorize page — click **Authorize**. Because you own the app, Discord grants
-the controls and open-quake shows **Connected**.
+Custom applications request Core by default. Voice, Messages, and Notifications are opt-in so one
+unavailable enhanced permission cannot prevent otherwise usable Core authorization.
 
----
+| Capability group | OAuth scopes | Behaviour when not granted |
+|---|---|---|
+| Core | `identify`, `rpc` | The local RPC integration cannot authenticate. |
+| Voice | `rpc.voice.read`, `rpc.voice.write` | Voice state, devices, channel and participant controls are unavailable. |
+| Messages | `messages.read` | Message history and live message events are unavailable. |
+| Notifications | `rpc.notifications.read` | Discord notification events are unavailable. |
 
-## Notes
+The same Authorization Code + PKCE implementation is used for personal and team-owned custom
+applications. Discord's documentation only describes a team-specific restriction for the separate
+Client Credentials grant; open-quake does not use that grant.
 
-- **Why your own app?** Discord's RPC voice scopes (`rpc`, `rpc.voice.read`, `rpc.voice.write`, …)
-  are restricted to an application's **owner and whitelisted testers** unless Discord approves the app
-  for general access. Owning your own app makes you the owner, so it works with no approval and no
-  tester list.
-- **The redirect URI must match exactly** — including `:51120` and `/callback`. Discord compares it
-  character-for-character; a mismatch is the most common cause of a failed connect.
-- **Nothing sensitive is shared.** open-quake uses PKCE (no client secret). Your access token is
-  stored **encrypted** on your PC and never leaves the app's main process.
-- **Rich Presence** (showing "using open-quake" as your Discord status) needs only the Application ID
-  — no authorize step — so it works even without the voice-control connect above.
-- The Activity view reports capabilities as **ready**, **awaiting use**, or **unavailable**. Some
-  features are verified only when they become relevant, such as participant controls after joining
-  a voice channel. Tap the capability summary for the full breakdown.
-- A saved Rich Presence setting is applied automatically whenever Discord reconnects. The panel
-  distinguishes the saved setting from whether Discord has confirmed it in the current session.
+## Discord scope availability
+
+Discord's [OAuth2 scope reference](https://docs.discord.com/developers/topics/oauth2#shared-resources-oauth2-scopes)
+currently says:
+
+- `identify` is generally available and exposes the current user's basic profile.
+- `rpc` is only available to approved partners.
+- `rpc.voice.read`, `rpc.voice.write`, and `rpc.notifications.read` are only available to approved partners.
+- `messages.read` allows local RPC to read messages from client channels. The scope table does not
+  clearly state whether this scope itself needs separate approval. Discord's
+  [RPC documentation](https://docs.discord.com/developers/topics/rpc#authorize) says its optional RPC
+  token flow disallows `messages.read`; open-quake does not use that Client Secret-based flow.
+
+Discord's RPC documentation also says unapproved applications are restricted to users on the
+application's tester list (up to 50) until approval. This is less precise than the scope table about
+which approval controls each scope. Application ownership alone is not documented as granting every
+enhanced scope, so open-quake does not infer entitlements from ownership or the Developer Portal UI.
+
+Discord documents no supported API that reports an application's permitted OAuth scopes before the
+user authorizes it. The `/oauth2/@me` endpoint and RPC `AUTHENTICATE` response report scopes only after
+an access token exists. Custom scope choices therefore remain explicit; open-quake does not repeatedly
+launch authorization to guess combinations.
+
+## Scope changes and capability status
+
+Requested and granted scopes are stored as non-secret metadata beside the encrypted token record.
+When desired groups are added, the existing authorization remains usable for its already-granted
+features and the Discord app settings show that an explicit reconnect is required. OAuth is never
+opened silently during startup.
+
+Changing the Application ID removes the incompatible stored Discord authorization. Reconnect is then
+an explicit user action.
+
+Panel features are enabled only when both conditions hold:
+
+1. the required OAuth scope was actually granted; and
+2. the current Discord RPC session successfully supports the command or event.
+
+The Activity capability popover distinguishes a missing permission from an unsupported RPC operation
+or a temporary runtime failure.
 
 ## Troubleshooting
 
 | Symptom | Most likely cause / fix |
 |---|---|
-| **Connect does nothing, or fails right away** | **Did you click Save after entering your Application ID?** Connect uses the *saved* setting — an unsaved ID isn't used. Save, then Connect. |
-| `invalid_scope` on the Discord page | The app whose ID is set isn't yours — you're not its owner/tester. Use **your own** app's Application ID (step 2). |
-| Connect hangs / nothing after you click **Authorize** | Your redirect URI isn't an **exact** match for `http://127.0.0.1:51120/callback` — Discord errors in the browser and never returns. Re-check step 3 (re-creating the app with the right redirect is the quickest fix); if it still hangs, port `51120` may be in use or blocked locally. |
-| Connect button greyed out | Discord integration is disabled, or no Application ID is saved yet. |
+| Configured application rejected one or more requested permissions | Discord returned `invalid_scope`. For a custom app, turn off unapproved enhanced groups, save, and explicitly reconnect. Core itself includes approval-gated `rpc`, so the application may still need Discord approval or tester access. |
+| Redirect URI error or callback timeout | Register `http://127.0.0.1:51120/callback` exactly and make sure local port 51120 is available. |
+| Reconnect required after enabling a group | Expected: the stored token lacks the newly requested scope. Existing granted features remain usable until you choose Reconnect. |
+| A granted feature still appears unavailable | Discord rejected or did not support the corresponding command/event in the current RPC session. Scope grant alone is not treated as proof of runtime support. |

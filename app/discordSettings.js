@@ -3,6 +3,9 @@
 const DEFAULT_DISCORD_SETTINGS = Object.freeze({
   enabled: true,
   applicationIdOverride: '',
+  customVoiceScopes: false,
+  customMessageScopes: false,
+  customNotificationScopes: false,
   defaultView: 'voice',
   autoReconnect: true,
   showUnavailable: true,
@@ -23,6 +26,9 @@ function normalizeDiscordSettings(value) {
   return {
     enabled: source.enabled !== false,
     applicationIdOverride: cleanId(applicationIdOverride, 128),
+    customVoiceScopes: source.customVoiceScopes === true,
+    customMessageScopes: source.customMessageScopes === true,
+    customNotificationScopes: source.customNotificationScopes === true,
     defaultView,
     autoReconnect: source.autoReconnect !== false,
     showUnavailable: source.showUnavailable !== false,
@@ -30,14 +36,43 @@ function normalizeDiscordSettings(value) {
   };
 }
 
-// No built-in Discord application. RPC voice scopes are owner-only, so each user registers their own
-// free Discord app and sets it as "Your Discord Application ID" (see docs/discord.md). A blank override
-// therefore resolves to no application -- the connect UI stays disabled until the user sets one.
-const DEFAULT_DISCORD_APPLICATION_ID = '';
+// Public application identifier for the open-quake Discord Developer Portal app.
+// This is deliberately not a secret; OAuth tokens remain in the encrypted store.
+const DEFAULT_DISCORD_APPLICATION_ID = '1539959318974169088';
+
+const DISCORD_SCOPE_GROUPS = Object.freeze({
+  core: Object.freeze(['identify', 'rpc']),
+  voice: Object.freeze(['rpc.voice.read', 'rpc.voice.write']),
+  messages: Object.freeze(['messages.read']),
+  notifications: Object.freeze(['rpc.notifications.read']),
+});
+const DISCORD_SCOPE_GROUP_ORDER = Object.freeze(['core', 'voice', 'messages', 'notifications']);
 
 function discordApplicationId(settings) {
   const normalized = normalizeDiscordSettings(settings);
   return normalized.applicationIdOverride || DEFAULT_DISCORD_APPLICATION_ID;
 }
 
-module.exports = { DEFAULT_DISCORD_APPLICATION_ID, DEFAULT_DISCORD_SETTINGS, discordApplicationId, normalizeDiscordSettings };
+function discordUsesCustomApplication(settings) {
+  return !!normalizeDiscordSettings(settings).applicationIdOverride;
+}
+
+function discordRequestedScopeGroups(settings) {
+  const normalized = normalizeDiscordSettings(settings);
+  if (!normalized.applicationIdOverride) return DISCORD_SCOPE_GROUP_ORDER.slice();
+  return ['core'].concat([
+    normalized.customVoiceScopes && 'voice',
+    normalized.customMessageScopes && 'messages',
+    normalized.customNotificationScopes && 'notifications',
+  ].filter(Boolean));
+}
+
+function discordRequestedScopes(settings) {
+  return discordRequestedScopeGroups(settings).flatMap(group => DISCORD_SCOPE_GROUPS[group]);
+}
+
+module.exports = {
+  DEFAULT_DISCORD_APPLICATION_ID, DEFAULT_DISCORD_SETTINGS, DISCORD_SCOPE_GROUP_ORDER, DISCORD_SCOPE_GROUPS,
+  discordApplicationId, discordRequestedScopeGroups, discordRequestedScopes, discordUsesCustomApplication,
+  normalizeDiscordSettings,
+};
