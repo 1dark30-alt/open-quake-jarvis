@@ -24,7 +24,7 @@ if (process.platform === 'win32') {
   catch (e) { console.log('win-ca load failed:', e.message); }
 }
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, powerSaveBlocker, ipcMain, shell, dialog, session, net, safeStorage, clipboard, globalShortcut, nativeTheme, Notification } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, powerSaveBlocker, powerMonitor, ipcMain, shell, dialog, session, net, safeStorage, clipboard, globalShortcut, nativeTheme, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -281,7 +281,13 @@ const liveTranslateHost = createLiveTranslateHost({
 const screensaverHost = createScreensaverHost({
   appId: 'screensaver',
   log: message => console.log('[screensaver] ' + message),
-  deps: voicePanelDeps('screensaver'),
+  // saverAutoStarted/wakeSaver: on touchscreens without the ARIS-68 touch interface the waking
+  // tap lands INSIDE the page (main never sees it), so the page itself asks "did I auto-start?"
+  // and posts the wake — see /screensaver/wake.
+  deps: Object.assign(voicePanelDeps('screensaver'), {
+    saverAutoStarted: () => saverActive,
+    wakeSaver: () => { if (!saverActive) return false; wakeFromSaver(); return true; },
+  }),
   defaultPhotosDir: path.join(app.getPath('userData'), 'screensaver-media', 'photos'),
   defaultVideosDir: path.join(app.getPath('userData'), 'screensaver-media', 'videos'),
 });
@@ -2741,10 +2747,19 @@ function voiceSessionBusy() {
 function saverTick() {
   // Self-heal: an editor save can swap the active page without gotoGrid — never keep swallowing.
   if (saverActive && !saverIdle.isScreensaverGrid(activeGrid())) dissolveSaver();
+  // Idle stamp: the ARIS-68 panel reports its own touch over HID, so lastPanelInputAt is the
+  // whole truth there. Every other setup (Bedrock knob, knobless touchscreen) delivers touch as
+  // native Windows input the app never sees — blend in the OS-wide idle clock so tapping the
+  // panel counts as presence. (Kept off for aris68 so PC mouse/keyboard use doesn't hold the
+  // saver back on a DK-QUAKE, matching shipped behavior.)
+  let lastInputAt = lastPanelInputAt;
+  if (dev.activeName() !== 'aris68') {
+    try { lastInputAt = Math.max(lastInputAt, Date.now() - powerMonitor.getSystemIdleTime() * 1000); } catch (e) {}
+  }
   const d = saverIdle.evaluateSaverTick({
     runMode: runMode(), monitorMode, saverActive,
     activeGridId: config.activeGridId, grids: config.grids || [],
-    now: Date.now(), lastInputAt: lastPanelInputAt,
+    now: Date.now(), lastInputAt,
     voiceBusy: voiceSessionBusy(),
     meetingRecording: !!(meetingRecorder && meetingRecorder.getState().recording),
   });

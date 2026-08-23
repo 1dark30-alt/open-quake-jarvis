@@ -50,6 +50,10 @@ by itself. Any touch or knob input wakes it — you land back on exactly the pag
 nothing reloaded, and the waking gesture is swallowed so it can't press anything on that page
 (no accidental mic toggles or page flips).
 
+This works on every console type. On a DK-QUAKE the panel reports its own touch; on consoles
+with a standard touchscreen (e.g. a knobless Bedrock build) system-wide mouse/keyboard/touch
+activity counts as presence, and a tap on the auto-started screensaver wakes it.
+
 Sensible guards, all automatic:
 
 - Auto-start only runs in **panel mode** (in software/monitor mode Windows has its own screensaver).

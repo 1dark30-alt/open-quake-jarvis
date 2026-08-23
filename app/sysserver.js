@@ -528,6 +528,7 @@ const VOICE_POST_SUFFIXES = new Set([
   '/tts',
   '/option',
   '/append-line',
+  '/wake',
 ]);
 
 // TTS handoff: reply text can be many KB -- far beyond what fits in a GET query string (Node
@@ -740,6 +741,13 @@ async function handler(req, res) {
       if (!key || body.value == null || !h.setOption) return done(res, false);
       let ok = false; try { ok = !!h.setOption(key, String(body.value)); } catch (e) {}
       return done(res, ok);
+    }
+    // Screensaver tap-to-wake: on native-touch devices the waking tap lands in the page, not in
+    // main's HID path — the page posts here to leave the saver and restore the previous page.
+    if (voicePath === '/wake' && req.method === 'POST') {
+      if (!h.wake) return done(res, false);
+      let out = null; try { out = h.wake(); } catch (e) {}
+      return json(res, out && out.ok ? out : { ok: false });
     }
     // Live Translate (Soniox provider): mint a short-lived temp key server-side so the real key never
     // reaches the renderer; the page authenticates its Soniox WebSocket with it. GET, same-origin-gated.

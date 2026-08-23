@@ -125,7 +125,16 @@ function createScreensaverHost({ appId = 'screensaver', log, deps, defaultPhotos
       photos: { dir: pd || '', usingDefault: !String(o.photosDir || '').trim(), files: pd ? listMedia(pd, IMAGE_EXTS) : [] },
       videos: { dir: vd || '', usingDefault: !String(o.videosDir || '').trim(), files: vd ? listMedia(vd, VIDEO_EXTS) : [] },
       pages: excludablePages(),
+      // Did idle auto-start bring this page up? On native-touch devices the waking tap reaches
+      // the page instead of main, so the page checks this on show and posts /wake for that tap.
+      autoStarted: !!(deps.saverAutoStarted && deps.saverAutoStarted()),
     };
+  }
+
+  // The page's tap-to-wake on native-touch devices: leave the saver and restore the previous
+  // page. No-op ({ ok: false }) unless the saver actually auto-started.
+  function wake() {
+    return { ok: !!(deps.wakeSaver && deps.wakeSaver()) };
   }
 
   // Folder browser for the page's settings overlay (same generic /projects route the voice apps
@@ -161,7 +170,7 @@ function createScreensaverHost({ appId = 'screensaver', log, deps, defaultPhotos
 
   return {
     appId,
-    handlers: { getState, setOption, resolveMedia, getProjects },
+    handlers: { getState, setOption, resolveMedia, getProjects, wake },
     shutdown() {},   // nothing long-lived to tear down
   };
 }

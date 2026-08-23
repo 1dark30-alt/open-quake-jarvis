@@ -45,6 +45,11 @@
   var photos = [], videos = [];                  // file NAMES from /state (photos + videos folders)
   var photosDirLabel = '', videosDirLabel = '', photosDefault = true, videosDefault = true;
   var pagesList = [];                            // {id,name} candidates for the exclusion-list picker
+  // True while idle auto-start brought this page up. On the ARIS-68 panel the waking tap is
+  // swallowed in the main process and never reaches us; on native touchscreens (knobless
+  // Bedrock consoles) it lands HERE — so an auto-started saver treats the first tap as "wake",
+  // not "next scene". Refreshed from /state on load and every time the page is shown.
+  var autoStarted = false;
   function mediaUrl(kind, name) { return '/screensaver/media?k=' + (kind === 'video' ? 'v' : 'p') + '&f=' + encodeURIComponent(name); }
 
   // =====================================================================================
@@ -560,6 +565,7 @@
       photosDirLabel = p.dir || ''; photosDefault = p.usingDefault !== false;
       videosDirLabel = v.dir || ''; videosDefault = v.usingDefault !== false;
       pagesList = s.pages || [];
+      autoStarted = s.autoStarted === true;
       syncSettingsUI();
       if (cb) cb();
     }).catch(function () { photos = []; videos = []; if (cb) cb(); });
@@ -574,8 +580,16 @@
     if (gearTimer) clearTimeout(gearTimer);
     gearTimer = setTimeout(function () { $('gear').classList.remove('show'); }, 5000);
   }
-  $('stage').addEventListener('click', function () { advance(); flashGear(); });
-  $('hint').addEventListener('click', function () { flashGear(); });
+  // Auto-started: the tap is a wake, nothing else — main restores the previous page and this
+  // page goes back to hiding. Manual visit: the tap advances and reveals ⚙, as always.
+  function wakeTap() {
+    if (!autoStarted) return false;
+    autoStarted = false;                         // one tap = one wake; never double-post
+    fetch('/screensaver/wake', { method: 'POST' }).catch(function () {});
+    return true;
+  }
+  $('stage').addEventListener('click', function () { if (wakeTap()) return; advance(); flashGear(); });
+  $('hint').addEventListener('click', function () { if (wakeTap()) return; flashGear(); });
   $('gear').addEventListener('click', function (e) { e.stopPropagation(); openSettings(); });
 
   function postOption(key, value, cb) {
@@ -727,7 +741,8 @@
   // pages unload on real page switches, but grid pages only hide us. Videos advance on their own
   // 'ended', so only the image/scene timer needs re-arming.
   document.addEventListener('visibilitychange', function () {
-    if (document.hidden) { clearTimer(); return; }
+    if (document.hidden) { autoStarted = false; clearTimer(); return; }
+    fetchState();   // refresh the auto-started flag (and media/pages) every time we're shown
     var cur = playlist.length ? playlist[order[Math.max(0, pos)]] : null;
     if (playlist.length > 1 && cur && cur.kind !== 'video') armTimer(intervalMs());
   });
