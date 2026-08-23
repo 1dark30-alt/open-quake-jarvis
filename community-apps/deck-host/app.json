@@ -1,8 +1,8 @@
 {
   "id": "deck-host",
   "name": "Stream Deck Host",
-  "version": "1.2.0",
-  "description": "Run Elgato Stream Deck plugins on the panel — a key grid driven by real *.sdPlugin packages.",
+  "version": "1.3.0",
+  "description": "Run Elgato Stream Deck plugins and profiles on the panel — real *.sdPlugin packages, plus .streamDeckProfile imports with working Hotkey/Text/Open keys.",
   "entry": "index.html",
   "served": true,
   "server": "server.js",
@@ -13,7 +13,7 @@
       "label": "Plugins folder",
       "type": "folder",
       "default": "",
-      "help": "Folder on this PC holding your *.sdPlugin packages (each a folder like com.example.name.sdPlugin with a manifest.json). Plugins are real programs that run on your PC — only add plugins you trust."
+      "help": "Folder on this PC holding your *.sdPlugin packages and any *.streamDeckProfile files to import (Profile button → Import). Plugins are real programs that run on your PC — only add plugins you trust."
     },
     {
       "key": "rows",

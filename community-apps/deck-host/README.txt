@@ -1,11 +1,14 @@
 Stream Deck Host
 ================
 
-Run Elgato Stream Deck plugins on the open-quake panel. The app implements
-Elgato's documented plugin protocol (the same approach as OpenDeck), so
-unmodified *.sdPlugin packages work: the host launches each plugin, and the
-on-screen key grid shows the images and titles the plugin draws. Tap a key
-to press it.
+Run Elgato Stream Deck plugins AND profiles on the open-quake panel. The app
+implements Elgato's documented plugin protocol (the same approach as
+OpenDeck), so unmodified *.sdPlugin packages work: the host launches each
+plugin, and the on-screen key grid shows the images and titles the plugin
+draws. Tap a key to press it. Shared *.streamDeckProfile files import as
+ready-made key layouts, including the built-in Elgato actions most profiles
+are made of -- Hotkey, Text, Open, and folder keys -- which this host
+implements itself (keystrokes are sent as real keyboard input).
 
 SECURITY: Stream Deck plugins are real programs that run on your PC with
 your user rights. Only add plugins you trust, exactly as you would any
@@ -40,6 +43,15 @@ Using the deck
 - Half quake / half deck: enable the page's "Buttons" strip in the editor
   to put open-quake launcher tiles beside the deck -- the deck sits on its
   own black bezel plate, so the two are impossible to confuse.
+- Importing profiles: drop *.streamDeckProfile files (or zips containing
+  them) anywhere in your plugins folder; they appear under the Profile
+  button as "Import from your plugins folder". Importing creates one deck
+  profile per page (folder keys navigate between them; Back returns), keeps
+  the original key faces, and reflows keys from taller devices (e.g. an
+  8x4 XL) into extra columns. Importing the same file again replaces its
+  earlier import. On Windows pick the Windows variant of a profile when
+  both are offered -- Mac hotkeys use Mac keys. Keys that need a plugin you
+  don't have say so on their face and start working once it's installed.
 - Assignments and settings persist in deck-host.json next to your plugins
   folder, so they survive app updates.
 
@@ -47,7 +59,11 @@ What works / what doesn't (yet)
 -------------------------------
 Works: Keypad actions from native (.exe) and Node.js plugins -- key images
 (setImage), titles, states, alerts/OK ticks, per-key and global settings,
-crash auto-restart.
+crash auto-restart. Profile import with built-in Hotkey (real keystrokes,
+incl. Win-key combos), Text (paste or type, optional Enter), Open
+(apps/files/URLs), Website, and folder navigation keys.
 Not yet: property-inspector configuration pages, plugins whose CodePath is
 an HTML file (they need Elgato's embedded browser runtime), dial/Encoder
-actions, multi-actions, setFeedback layouts.
+actions, multi-actions, setFeedback layouts, Elgato Marketplace downloads
+(their packages are encrypted -- both plugins and profiles must come from
+developers' own releases).

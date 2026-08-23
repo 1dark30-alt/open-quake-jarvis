@@ -18,6 +18,13 @@
 //   profile-select {id} · profile-add {name} · profile-remove {id}
 //   asset?plugin=..&path=..            -> base64 of a plugin image file (icons for the picker)
 //   restart {plugin}                   -> restart a crashed/stopped plugin
+//   import {id}                        -> import a *.streamDeckProfile found in the plugins folder
+//
+// Profile import: *.streamDeckProfile files (plain zips wrapping a *.sdProfile folder) become deck
+// profiles, including the Elgato BUILT-IN actions most shared profiles are made of -- Hotkey, Text,
+// Open, Website, and folder navigation -- which this host implements itself (keystrokes go out
+// through sendkeys.ps1 / user32 SendInput). Plugin-backed keys in a profile work when that plugin
+// is installed and show an honest "needs <plugin>" face when it isn't.
 
 const fs = require('fs');
 const path = require('path');
@@ -25,7 +32,7 @@ const crypto = require('crypto');
 const zlib = require('zlib');
 const http = require('http');
 const { EventEmitter } = require('events');
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 
 // ZERO npm dependencies. A drop-in installed under %APPDATA% is outside every node_modules tree, so
 // requiring ws/adm-zip is fragile there; this file uses only Node builtins -- a built-in zip reader
@@ -306,6 +313,286 @@ function codePathOf(p) {
   return { unsupported: 'CodePath "' + raw + '" not found in the plugin' };
 }
 
+// ---- Stream Deck profile import ---------------------------------------------------------------
+// A *.streamDeckProfile is a plain zip wrapping <name>.sdProfile/ with an outer manifest (Name,
+// Pages) and one folder per page under Profiles/. Page folders are named either with the page's
+// literal UPPERCASE UUID (older app versions) or with Elgato's custom base32 of the UUID bytes:
+// RFC4648 base32hex bit-grouping over an alphabet that SKIPS the letter U (so 30='V', 31='W'),
+// plus a fixed 'Z' suffix -- verified against real exports. openchild keys reference pages by
+// UUID, so both encodings must resolve.
+const B32_ALPH = '0123456789ABCDEFGHIJKLMNOPQRSTVW';
+function uuidToPageDir(uuid) {
+  const hex = String(uuid || '').replace(/-/g, '');
+  if (!/^[0-9a-fA-F]{32}$/.test(hex)) return '';
+  const bytes = Buffer.from(hex, 'hex');
+  let out = '', acc = 0, bits = 0;
+  for (const b of bytes) {
+    acc = (acc << 8) | b; bits += 8;
+    while (bits >= 5) { out += B32_ALPH[(acc >>> (bits - 5)) & 31]; bits -= 5; }
+  }
+  if (bits) out += B32_ALPH[(acc << (5 - bits)) & 31];
+  return out + 'Z';
+}
+function parseJsonLoose(buf) { return JSON.parse(buf.toString('utf8').replace(/^﻿/, '')); }
+
+// Everything importable found in (and under) the plugins folder: bare *.streamDeckProfile files
+// and ones nested inside ordinary *.zip archives. Refreshed on every rescan / folder change.
+let profileFiles = [];   // [{ id, name, file, inner }]
+function scanProfileFiles(dir) {
+  const found = [];
+  const walk = (d, depth) => {
+    if (depth > 4) return;
+    let ents = []; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }
+    for (const ent of ents) {
+      const full = path.join(d, ent.name);
+      if (ent.isDirectory()) {
+        if (/^__MACOSX$/i.test(ent.name) || /\.sdPlugin$/i.test(ent.name) || ent.name.startsWith('.oq-extract-')) continue;
+        walk(full, depth + 1);
+      } else if (/\.streamDeckProfile$/i.test(ent.name)) {
+        found.push({ file: full, inner: '', name: ent.name.replace(/\.streamDeckProfile$/i, '') });
+      } else if (/\.zip$/i.test(ent.name) && depth === 0) {
+        try {
+          for (const e of unzipEntries(fs.readFileSync(full))) {
+            if (e.dir || !/\.streamDeckProfile$/i.test(e.name) || /(^|\/)__MACOSX\//.test(e.name)) continue;
+            found.push({ file: full, inner: e.name, name: path.basename(e.name).replace(/\.streamDeckProfile$/i, '') });
+          }
+        } catch (e) {}
+      }
+    }
+  };
+  if (dir) walk(dir, 0);
+  for (const f of found) f.id = crypto.createHash('sha1').update(f.file + '|' + f.inner).digest('hex').slice(0, 12);
+  // Same profile name in several places (Win/Mac subfolders, a zip AND its extracted copy):
+  // disambiguate with the containing folder so the pick is an informed one.
+  const byName = {};
+  for (const f of found) (byName[f.name] = byName[f.name] || []).push(f);
+  for (const same of Object.values(byName)) {
+    if (same.length < 2) continue;
+    for (const f of same) {
+      const where = f.inner ? path.basename(f.file) + (f.inner.indexOf('/') >= 0 ? ' · ' + path.dirname(f.inner).split('/').pop() : '')
+        : path.basename(path.dirname(f.file));
+      f.name += ' (' + where + ')';
+    }
+  }
+  found.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  return found;
+}
+
+const BUILTIN_MAP = {
+  'com.elgato.streamdeck.system.hotkey': 'hotkey',
+  'com.elgato.streamdeck.system.text': 'text',
+  'com.elgato.streamdeck.system.open': 'open',
+  'com.elgato.streamdeck.system.website': 'website',
+  'com.elgato.streamdeck.profile.openchild': 'openchild',
+  'com.elgato.streamdeck.profile.backtoparent': 'backtoparent',
+};
+const BUILTIN_NAMES = { hotkey: 'Hotkey', text: 'Text', open: 'Open', website: 'Website', openchild: 'Folder', backtoparent: 'Back', unsupported: 'Unsupported' };
+const IMG_MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml' };
+const MAX_KEY_IMG = 1024 * 1024;
+
+// Parse one Elgato action instance into a deck key description (builtin or plugin-backed).
+function importedKeyOf(act, imgOf) {
+  const uuid = String(act.UUID || '');
+  const st = (act.States || [])[act.State | 0] || (act.States || [])[0] || {};
+  const title = st.ShowTitle === false ? '' : String(st.Title || '');
+  const img = st.Image ? imgOf(String(st.Image)) : '';
+  const s = (act.Settings && typeof act.Settings === 'object') ? act.Settings : {};
+  const builtin = BUILTIN_MAP[uuid];
+  if (builtin === 'hotkey') {
+    const raw = Array.isArray(s.Hotkeys) ? s.Hotkeys : (s.Hotkey ? [s.Hotkey] : []);
+    const keys = raw.filter(h => h && (h.VKeyCode | 0) > 0)
+      .map(h => ({ vk: h.VKeyCode | 0, ctrl: !!h.KeyCtrl, shift: !!h.KeyShift, alt: !!h.KeyOption, win: !!h.KeyCmd }));
+    return { builtin, cfg: { keys }, title, img };
+  }
+  if (builtin === 'text') return { builtin, cfg: { text: String(s.pastedText || ''), typing: !!s.isTypingMode, enter: !!s.isSendingEnter }, title, img };
+  if (builtin === 'open') return { builtin, cfg: { target: String(s.path || '') }, title, img };
+  if (builtin === 'website') return { builtin, cfg: { url: String(s.path || s.url || '') }, title, img };
+  if (builtin === 'openchild') return { builtin, cfg: { page: String(s.ProfileUUID || ''), profileId: '' }, title, img };
+  if (builtin === 'backtoparent') return { builtin, cfg: {}, title: title || 'Back', img };
+  if (/^com\.elgato\.streamdeck\./.test(uuid)) return { builtin: 'unsupported', cfg: { label: uuid.split('.').pop() }, title, img };
+  // plugin-backed: bound by action UUID; the owning plugin is resolved live (see ownerOf)
+  const owner = [...plugins.values()].find(p => p.actions.some(a => a.uuid === uuid));
+  return { plugin: owner ? owner.id : uuid.split('.').slice(0, 3).join('.'), action: uuid, settings: s, title, img };
+}
+
+function importProfilePackage(entry, options) {
+  let buf = fs.readFileSync(entry.file);
+  if (entry.inner) {
+    const nested = unzipEntries(buf).find(e => e.name === entry.inner);
+    if (!nested) throw new Error('archive changed on disk');
+    buf = nested.data();
+  }
+  const entries = unzipEntries(buf).filter(e => !e.dir);
+  const byName = new Map(entries.map(e => [e.name, e]));
+  // outer manifest = the *.sdProfile/manifest.json with the shortest path
+  const outers = entries.map(e => e.name).filter(n => /\.sdProfile\/manifest\.json$/i.test(n) && n.split('.sdProfile').length === 2)
+    .sort((a, b) => a.length - b.length);
+  if (!outers.length) throw new Error('no .sdProfile manifest inside');
+  const root = outers[0].replace(/\/manifest\.json$/i, '');
+  const outer = parseJsonLoose(byName.get(outers[0]).data());
+  const pagePrefix = root + '/Profiles/';
+  const pageDirs = [...new Set(entries.map(e => e.name).filter(n => n.startsWith(pagePrefix)).map(n => n.slice(pagePrefix.length).split('/')[0]))]
+    .filter(d => byName.has(pagePrefix + d + '/manifest.json'));
+  if (!pageDirs.length) throw new Error('profile has no pages');
+  const dirOfUuid = u => {
+    if (!u || /^0+-/.test(u)) return '';
+    const lit = String(u).toUpperCase(), enc = uuidToPageDir(u);
+    return pageDirs.find(d => d.toUpperCase() === lit || d === enc) || '';
+  };
+  const pg = outer.Pages || {};
+  const rootDir = dirOfUuid(pg.Default) || dirOfUuid(pg.Current) || dirOfUuid((pg.Pages || [])[0]) || pageDirs[0];
+  const ordered = [rootDir, ...pageDirs.filter(d => d !== rootDir)];
+  const baseName = String(outer.Name || entry.name).trim().slice(0, 32) || entry.name;
+
+  // Re-import replaces what a previous import of the same file created.
+  for (const old of deck.profiles.filter(p => p.src === entry.id)) {
+    Object.keys(old.keys).forEach(pos => unassignPos(old, pos));
+  }
+  deck.profiles = deck.profiles.filter(p => p.src !== entry.id);
+  if (!deck.profiles.some(p => p.id === deck.activeProfileId)) deck.activeProfileId = (deck.profiles[0] || {}).id;
+
+  const rows = lastLayout.rows || 3;
+  const profOfDir = {};   // pageDir -> created profile
+  let keyCount = 0, dropped = 0;
+  const created = ordered.map((dirName, i) => {
+    const prof = { id: 'p' + crypto.randomBytes(3).toString('hex'), name: i ? baseName + ' › ' + (i + 1) : baseName, keys: {}, src: entry.id };
+    profOfDir[dirName] = prof;
+    return prof;
+  });
+  created.forEach((prof, i) => { if (i) prof.parentId = created[0].id; });
+  const pending = [];   // openchild cfgs to resolve once every page has a profile id
+  created.forEach((prof, i) => {
+    const dirName = ordered[i];
+    const man = parseJsonLoose(byName.get(pagePrefix + dirName + '/manifest.json').data());
+    const ctl = Array.isArray(man.Controllers) ? (man.Controllers.find(c => c && c.Actions) || {}) : man;
+    const acts = ctl.Actions || {};
+    const srcCols = Math.max(1, ...Object.keys(acts).map(k => (k.split(',')[0] | 0) + 1));
+    const imgOf = rel => {
+      const e = byName.get(pagePrefix + dirName + '/' + rel.replace(/\\/g, '/'));
+      if (!e) return '';
+      const mime = IMG_MIME[path.extname(rel).toLowerCase()];
+      if (!mime) return '';
+      try { const d = e.data(); return d.length <= MAX_KEY_IMG ? 'data:' + mime + ';base64,' + d.toString('base64') : ''; } catch (e2) { return ''; }
+    };
+    for (const [pos, act] of Object.entries(acts)) {
+      const col = pos.split(',')[0] | 0, row = pos.split(',')[1] | 0;
+      // Reflow to OUR form factor: rows beyond ours continue to the right in reading order.
+      const col2 = col + srcCols * Math.floor(row / rows), row2 = row % rows;
+      if (col2 > 15) { dropped++; continue; }
+      let key; try { key = importedKeyOf(act, imgOf); } catch (e2) { dropped++; continue; }
+      if (key.cfg && key.builtin === 'openchild') pending.push(key.cfg);
+      const ctx = crypto.randomUUID().replace(/-/g, '');
+      deck.contexts[ctx] = Object.assign({ col: col2, row: row2 }, key);
+      prof.keys[col2 + ',' + row2] = ctx;
+      keyCount++;
+    }
+  });
+  for (const cfg of pending) {
+    const d = dirOfUuid(cfg.page);
+    cfg.profileId = (d && profOfDir[d]) ? profOfDir[d].id : '';
+  }
+  deck.profiles.push(...created);
+  // land on the first page that actually has keys (some exports keep an empty default page)
+  const landing = created.find(p => Object.keys(p.keys).length) || created[0];
+  selectProfileById(landing.id, options);
+  saveDeck(options);
+  return { profiles: created.length, keys: keyCount, dropped };
+}
+
+// ---- built-in action execution ----------------------------------------------------------------
+// Hotkey / typed text go out as real keyboard input via the sendkeys.ps1 helper (user32 SendInput);
+// the helper is spawned once and kept alive, so after the first press there is no spawn latency.
+let sender = null;               // { proc, queue:[{resolve,timer}] }
+let keyHelperOverride = null;    // test hook
+function sendToKeyHelper(obj) {
+  if (keyHelperOverride) return Promise.resolve(keyHelperOverride(obj));
+  return new Promise(resolve => {
+    if (!sender || !sender.proc || sender.proc.exitCode !== null) {
+      const ps = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'sendkeys.ps1')],
+        { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+      sender = { proc: ps, queue: [] };
+      let acc = '';
+      ps.stdout.on('data', d => {
+        acc += d.toString();
+        let nl;
+        while ((nl = acc.indexOf('\n')) >= 0) {
+          const line = acc.slice(0, nl).trim(); acc = acc.slice(nl + 1);
+          if (!line || line === 'ready') continue;
+          const w = sender.queue.shift();
+          if (w) { clearTimeout(w.timer); w.resolve(line); }
+        }
+      });
+      ps.on('exit', () => {
+        if (sender && sender.proc === ps) {
+          sender.queue.forEach(w => { clearTimeout(w.timer); w.resolve('err key helper exited'); });
+          sender = null;
+        }
+      });
+      ps.on('error', () => {});
+    }
+    const w = { resolve, timer: null };
+    w.timer = setTimeout(() => { const i = sender ? sender.queue.indexOf(w) : -1; if (i >= 0) sender.queue.splice(i, 1); resolve('err key helper timeout'); }, 10000);
+    sender.queue.push(w);
+    try { sender.proc.stdin.write(JSON.stringify(obj) + '\n'); }
+    catch (e) { const i = sender.queue.indexOf(w); if (i >= 0) sender.queue.splice(i, 1); clearTimeout(w.timer); resolve('err ' + e.message); }
+  });
+}
+
+async function executeBuiltin(ctx, c) {
+  const ks = keyState.get(ctx) || keyState.set(ctx, {}).get(ctx);
+  const done = (ok, error) => { if (ok) ks.ok = Date.now(); else ks.alert = Date.now(); bump(); return ok ? { ok: true } : { ok: false, error: error || 'failed' }; };
+  const cfg = c.cfg || {};
+  try {
+    if (c.builtin === 'hotkey') {
+      if (!(cfg.keys || []).length) return done(false, 'no key set on this hotkey');
+      const r = await sendToKeyHelper({ combo: cfg.keys });
+      return done(r === 'ok', r);
+    }
+    if (c.builtin === 'text') {
+      if (!cfg.text) return done(false, 'no text set');
+      let r;
+      let clip = null; try { clip = require('electron').clipboard; } catch (e) {}
+      if (!cfg.typing && clip) {           // Elgato's default mode: paste via the clipboard
+        const prev = clip.readText();
+        clip.writeText(cfg.text);
+        r = await sendToKeyHelper({ combo: [{ vk: 0x56, ctrl: true }] });
+        setTimeout(() => { try { clip.writeText(prev); } catch (e) {} }, 1500);
+      } else {
+        r = await sendToKeyHelper({ text: cfg.text });
+      }
+      if (r === 'ok' && cfg.enter) r = await sendToKeyHelper({ combo: [{ vk: 0x0D }] });
+      return done(r === 'ok', r);
+    }
+    if (c.builtin === 'open') {
+      let t = String(cfg.target || '').trim();
+      if (!t) return done(false, 'nothing to open');
+      if (/^https?:\/\//i.test(t)) { require('electron').shell.openExternal(t); return done(true); }
+      if (/^cmd(\.exe)?\s+\/c\s+/i.test(t)) t = t.replace(/^cmd(\.exe)?\s+\/c\s+/i, '');
+      else t = 'start "" "' + t + '"';
+      exec(t, { windowsHide: true }, () => {});
+      return done(true);
+    }
+    if (c.builtin === 'website') {
+      const u = String(cfg.url || '').trim();
+      if (!/^https?:\/\//i.test(u)) return done(false, 'no URL set');
+      require('electron').shell.openExternal(u);
+      return done(true);
+    }
+    if (c.builtin === 'openchild') {
+      if (!cfg.profileId || !deck.profiles.some(p => p.id === cfg.profileId)) return done(false, 'folder page missing');
+      selectProfileById(cfg.profileId, lastOptions); ks.ok = Date.now(); bump();
+      return { ok: true };
+    }
+    if (c.builtin === 'backtoparent') {
+      const cur = activeProfile();
+      const target = cur.parentId && deck.profiles.some(p => p.id === cur.parentId) ? cur.parentId : (deck.profiles.find(p => !p.parentId) || deck.profiles[0]).id;
+      selectProfileById(target, lastOptions); ks.ok = Date.now(); bump();
+      return { ok: true };
+    }
+  } catch (e) { return done(false, e.message); }
+  return done(false, 'this key type is not supported yet');
+}
+
 // ---- the WebSocket host -----------------------------------------------------------------------
 let wssPromise = null;   // memoized: concurrent startPlugin calls must share ONE server
 function ensureWss() {
@@ -356,9 +643,30 @@ let lastLayout = { columns: 8, rows: 3 };
 function deviceId() { return 'openquake-deck-0'; }
 function sendTo(p, obj) { if (p && p.ws && p.ws.readyState === 1) { try { p.ws.send(JSON.stringify(obj)); } catch (e) {} } }
 function ctxInfo(ctx) { return deck.contexts[ctx] || null; }
+// Resolve the plugin that owns a context's action. Imported profile keys carry a GUESSED plugin id
+// (the plugin wasn't necessarily installed at import time) -- when the real owner shows up, heal the
+// stored id so willAppear/keyDown route correctly from then on.
+function ownerOf(c) {
+  if (!c || c.builtin) return null;
+  let p = plugins.get(c.plugin);
+  if (!p) {
+    p = [...plugins.values()].find(x => x.actions.some(a => a.uuid === c.action));
+    if (p) c.plugin = p.id;
+  }
+  return p;
+}
 function visibleContextsOf(p) {
   const prof = activeProfile();
-  return Object.values(prof.keys).filter(ctx => { const c = ctxInfo(ctx); return c && c.plugin === p.id; });
+  return Object.values(prof.keys).filter(ctx => { const c = ctxInfo(ctx); return c && !c.builtin && ownerOf(c) === p; });
+}
+// Profile switch with the spec'd willDisappear/willAppear flow; shared by the API action, folder
+// keys (openchild/backtoparent), and profile import.
+function selectProfileById(id, options) {
+  if (id === deck.activeProfileId || !deck.profiles.some(pr => pr.id === id)) return;
+  for (const ctx of Object.values(activeProfile().keys)) { const c = ctxInfo(ctx); const p = ownerOf(c); if (p) sendTo(p, appearEvent('willDisappear', ctx)); }
+  deck.activeProfileId = id;
+  for (const ctx of Object.values(activeProfile().keys)) { const c = ctxInfo(ctx); const p = ownerOf(c); if (p) sendTo(p, appearEvent('willAppear', ctx)); }
+  saveDeck(options || lastOptions); bump();
 }
 function appearEvent(event, ctx) {
   const c = ctxInfo(ctx);
@@ -470,6 +778,7 @@ async function ensureStarted(options, wpx, hpx) {
   plugins.clear();
   startedFor = dir;
   loadDeck(options);
+  profileFiles = dir ? scanProfileFiles(dir) : [];
   if (!dir) return;
   for (const found of scanPlugins(dir)) {
     const p = Object.assign(found, { uuid: '', proc: null, ws: null, status: 'stopped', restarts: 0, log: [], error: '',
@@ -488,7 +797,13 @@ function snapshot() {
   Object.entries(prof.keys).forEach(([pos, ctx]) => {
     const c = ctxInfo(ctx); if (!c) return;
     const ks = keyState.get(ctx) || {};
-    const plug = plugins.get(c.plugin);
+    if (c.builtin) {
+      keys[pos] = { context: ctx, builtin: c.builtin, image: c.img || '', title: c.title || '',
+        state: 0, alert: ks.alert || 0, ok: ks.ok || 0, settings: c.cfg || {},
+        name: BUILTIN_NAMES[c.builtin] || c.builtin, icon: '' };
+      return;
+    }
+    const plug = ownerOf(c);
     const actDef = plug && plug.actions.find(a => a.uuid === c.action);
     const state = ks.state || 0;
     // Resolve the face for the CURRENT state: plugin-pushed per-state image, then the plugin's
@@ -502,11 +817,12 @@ function snapshot() {
   return {
     v: version, layout: lastLayout,
     folder: (startedFor && startedFor !== '__shutdown__') ? startedFor : '',
-    profiles: deck.profiles.map(pr => ({ id: pr.id, name: pr.name })), activeProfile: deck.activeProfileId,
+    profiles: deck.profiles.map(pr => ({ id: pr.id, name: pr.name, child: !!pr.parentId })), activeProfile: deck.activeProfileId,
     keys,
     plugins: [...plugins.values()].map(p => ({ id: p.id, name: p.manifest.Name || p.id, status: p.status, error: p.error || '',
       actions: p.actions, log: p.log.slice(-3) })),
     skipped: skippedPackages.slice(),
+    importables: profileFiles.map(f => ({ id: f.id, name: f.name })),
   };
 }
 
@@ -557,8 +873,13 @@ async function handle(action, context) {
     const ctx = String((body && body.context) || query.context || '');
     const c = ctxInfo(ctx);
     if (!c) return { ok: false, error: 'unknown key' };
-    const p = plugins.get(c.plugin);
-    if (!p || p.status !== 'running') return { ok: false, error: 'plugin not running' };
+    if (c.builtin) {
+      if (action === 'release') return { ok: true };   // built-ins fire on the press
+      return executeBuiltin(ctx, c);
+    }
+    const p = ownerOf(c);
+    if (!p) return { ok: false, error: 'needs the ' + c.plugin + ' plugin' };
+    if (p.status !== 'running') return { ok: false, error: 'plugin not running' };
     sendTo(p, appearEvent(action === 'press' ? 'keyDown' : 'keyUp', ctx));
     return { ok: true };
   }
@@ -602,7 +923,7 @@ async function handle(action, context) {
     const c = ctxInfo(ctx);
     if (!c) return { ok: false, error: 'nothing to move' };
     if (prof.keys[to]) return { ok: false, error: 'destination is occupied' };
-    const p = plugins.get(c.plugin);
+    const p = ownerOf(c);
     if (p) sendTo(p, appearEvent('willDisappear', ctx));   // per spec: disappear at the old coordinates...
     delete prof.keys[from];
     c.col = toCol; c.row = toRow;
@@ -616,9 +937,11 @@ async function handle(action, context) {
     const ctx = String((body && body.context) || '');
     const c = ctxInfo(ctx);
     if (!c) return { ok: false, error: 'unknown key' };
-    c.settings = (body && typeof body.settings === 'object' && body.settings) || {};
+    const parsed = (body && typeof body.settings === 'object' && body.settings) || {};
+    if (c.builtin) { c.cfg = parsed; saveDeck(options); bump(); return { ok: true }; }
+    c.settings = parsed;
     saveDeck(options);
-    const p = plugins.get(c.plugin);
+    const p = ownerOf(c);
     if (p && p.status === 'running') sendTo(p, appearEventSettings(ctx));
     bump();
     return { ok: true };
@@ -627,14 +950,15 @@ async function handle(action, context) {
   if (action === 'profile-select') {
     const id = String((body && body.id) || query.id || '');
     if (!deck.profiles.some(pr => pr.id === id)) return { ok: false, error: 'unknown profile' };
-    if (id !== deck.activeProfileId) {
-      // willDisappear for the outgoing profile's keys, willAppear for the incoming.
-      for (const ctx of Object.values(activeProfile().keys)) { const c = ctxInfo(ctx); const p = c && plugins.get(c.plugin); if (p) sendTo(p, appearEvent('willDisappear', ctx)); }
-      deck.activeProfileId = id;
-      for (const ctx of Object.values(activeProfile().keys)) { const c = ctxInfo(ctx); const p = c && plugins.get(c.plugin); if (p) sendTo(p, appearEvent('willAppear', ctx)); }
-      saveDeck(options); bump();
-    }
+    selectProfileById(id, options);
     return { ok: true };
+  }
+
+  if (action === 'import') {
+    const entry = profileFiles.find(f => f.id === String((body && body.id) || ''));
+    if (!entry) return { ok: false, error: 'unknown profile file' };
+    try { return Object.assign({ ok: true }, importProfilePackage(entry, options)); }
+    catch (e) { return { ok: false, error: 'import failed: ' + e.message }; }
   }
 
   if (action === 'profile-add') {
@@ -694,7 +1018,7 @@ async function handle(action, context) {
 function unassignPos(prof, pos) {
   const ctx = prof.keys[pos];
   const c = ctxInfo(ctx);
-  if (c) { const p = plugins.get(c.plugin); if (p) sendTo(p, appearEvent('willDisappear', ctx)); }
+  if (c) { const p = ownerOf(c); if (p) sendTo(p, appearEvent('willDisappear', ctx)); }
   delete prof.keys[pos];
   delete deck.contexts[ctx];
   keyState.delete(ctx);
@@ -711,6 +1035,10 @@ function _shutdown() {
   w.forEach(x => { clearTimeout(x.timer); try { x.resolve(); } catch (e) {} });
   if (wss) { try { wss.close(); for (const c of wss.clients) { try { c.terminate(); } catch (e) {} } } catch (e) {} wss = null; wssPort = 0; }
   wssPromise = null;
+  if (sender && sender.proc) { try { sender.proc.kill(); } catch (e) {} sender = null; }
 }
 
-module.exports = { handle, _shutdown };
+module.exports = { handle, _shutdown,
+  // test hooks: fake the keystroke helper / verify the page-dir encoding without real input
+  _setKeyHelper(fn) { keyHelperOverride = fn; },
+  _uuidToPageDir: uuidToPageDir };

@@ -157,3 +157,90 @@ test('.streamDeckPlugin packages auto-extract (plain), encrypted ones are skippe
   const stub = s.plugins.find(p => p.id === 'com.test.stub');
   assert.notEqual(stub.status, 'unsupported');                                                // "stub" resolved to stub.exe
 });
+
+// ---- Stream Deck profile import ---------------------------------------------------------------
+
+test('page-dir encoding matches real Elgato exports (base32hex, U skipped, Z suffix)', () => {
+  // pairs read from real .streamDeckProfile files (Hue Controller root page; Teams folder page)
+  assert.equal(server._uuidToPageDir('ce6e6c52-2022-4176-a983-89d3115c7ef1'), 'PPN6OKH0490NDAC3H79H2N3VV4Z');
+  assert.equal(server._uuidToPageDir('19266f55-a561-4471-ad18-d84bc5c036f6'), '34J6VLD5C5273B8OR15SBG1MVOZ');
+  assert.equal(server._uuidToPageDir('nonsense'), '');
+});
+
+test('imports a .streamDeckProfile: built-ins, images, reflow, folders, plugin refs', async () => {
+  const AdmZip = require('adm-zip');
+  const TMP3 = fs.mkdtempSync(path.join(os.tmpdir(), 'deckhost3-'));
+  const call3 = (action, extra) => server.handle(action, Object.assign({ appId: 'deck-host', query: {}, options: { pluginsDir: TMP3, rows: '3' } }, extra));
+
+  const rootUuid = 'ce6e6c52-2022-4176-a983-89d3115c7ef1';
+  const childUuid = '19266f55-a561-4471-ad18-d84bc5c036f6';
+  const rootDir = 'Test.sdProfile/Profiles/' + server._uuidToPageDir(rootUuid);
+  const childDir = 'Test.sdProfile/Profiles/' + server._uuidToPageDir(childUuid);
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+  const hk = (vk, mods) => ({ UUID: 'com.elgato.streamdeck.system.hotkey', State: 0,
+    Settings: { Hotkeys: [Object.assign({ VKeyCode: vk, KeyCtrl: false, KeyShift: false, KeyOption: false, KeyCmd: false }, mods),
+      { VKeyCode: -1, QTKeyCode: 33554431 }] },   // trailing unset entries, like real exports
+    States: [{ Title: 'HK', Image: 'Images/k.png' }] });
+  const zip = new AdmZip();
+  zip.addFile('Test.sdProfile/manifest.json', Buffer.from(JSON.stringify({
+    Name: 'TestProf', Version: '2.0', Device: { Model: '20GAA9902' },
+    Pages: { Current: rootUuid, Pages: [rootUuid] } })));
+  zip.addFile(rootDir + '/manifest.json', Buffer.from(JSON.stringify({ Controllers: [{ Type: 'Keypad', Actions: {
+    '0,0': hk(67, { KeyCtrl: true }),
+    '1,0': { UUID: 'com.elgato.streamdeck.system.text', Settings: { pastedText: 'hello', isTypingMode: true, isSendingEnter: false }, States: [{ Title: 'Txt' }] },
+    '2,0': { UUID: 'com.elgato.streamdeck.profile.openchild', Settings: { ProfileUUID: childUuid }, States: [{ Title: 'More' }] },
+    '0,3': hk(65, {}),   // row 3 on a 3-row target -> reflows right (srcCols=3 -> col 3, row 0)
+  } }] })));
+  zip.addFile(rootDir + '/Images/k.png', png);
+  zip.addFile(childDir + '/manifest.json', Buffer.from(JSON.stringify({ Controllers: [{ Type: 'Keypad', Actions: {
+    '0,0': { UUID: 'com.elgato.streamdeck.profile.backtoparent', Settings: {}, States: [{}] },
+    '1,0': { UUID: 'com.notinstalled.thing.act', Settings: { a: 1 }, States: [{ Title: 'Plug' }] },
+  } }] })));
+  fs.writeFileSync(path.join(TMP3, 'TestProf.streamDeckProfile'), zip.toBuffer());
+
+  const sent = [];
+  server._setKeyHelper(m => { sent.push(m); return 'ok'; });
+  try {
+    let s = await call3('state');
+    assert.equal(s.importables.length, 1);
+    const imp = await call3('import', { body: Buffer.from(JSON.stringify({ id: s.importables[0].id })) });
+    assert.equal(imp.ok, true);
+    assert.equal(imp.profiles, 2);
+    assert.equal(imp.keys, 6);
+    assert.equal(imp.dropped, 0);
+
+    s = await call3('state');
+    const main = s.profiles.find(p => p.name === 'TestProf');
+    assert.ok(main && !main.child);
+    assert.ok(s.profiles.find(p => p.name === 'TestProf › 2' && p.child));
+    assert.equal(s.activeProfile, main.id);                                       // import switches to the imported profile
+    assert.equal(s.keys['0,0'].builtin, 'hotkey');
+    assert.match(s.keys['0,0'].image, /^data:image\/png;base64,/);                // key face came from the profile
+    assert.equal(s.keys['0,0'].title, 'HK');
+    assert.equal(s.keys['3,0'].builtin, 'hotkey');                                // '0,3' reflowed to '3,0'
+
+    // hotkey press goes to the key helper as a combo (trailing unset entries filtered out)
+    await call3('press', { body: Buffer.from(JSON.stringify({ context: s.keys['0,0'].context })) });
+    assert.deepEqual(sent.pop(), { combo: [{ vk: 67, ctrl: true, shift: false, alt: false, win: false }] });
+    // typing-mode text goes out as unicode text
+    await call3('press', { body: Buffer.from(JSON.stringify({ context: s.keys['1,0'].context })) });
+    assert.deepEqual(sent.pop(), { text: 'hello' });
+
+    // folder key enters the child page; its Back key returns; its plugin key is honest about the gap
+    await call3('press', { body: Buffer.from(JSON.stringify({ context: s.keys['2,0'].context })) });
+    let s2 = await call3('state');
+    assert.notEqual(s2.activeProfile, main.id);
+    assert.equal(s2.keys['1,0'].plugin, 'com.notinstalled.thing');
+    const miss = await call3('press', { body: Buffer.from(JSON.stringify({ context: s2.keys['1,0'].context })) });
+    assert.equal(miss.ok, false);
+    assert.match(miss.error, /needs the com\.notinstalled\.thing plugin/);
+    await call3('press', { body: Buffer.from(JSON.stringify({ context: s2.keys['0,0'].context })) });
+    s2 = await call3('state');
+    assert.equal(s2.activeProfile, main.id);
+
+    // importing again replaces, not duplicates
+    await call3('import', { body: Buffer.from(JSON.stringify({ id: s.importables[0].id })) });
+    s2 = await call3('state');
+    assert.equal(s2.profiles.filter(p => p.name.startsWith('TestProf')).length, 2);
+  } finally { server._setKeyHelper(null); }
+});

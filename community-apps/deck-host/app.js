@@ -92,6 +92,7 @@
     return /^data:/.test(img) ? img : 'data:image/png;base64,' + img;
   }
   function shortName(k) {
+    if (k.builtin) return k.name || k.builtin;
     if (k.name && k.name.indexOf('.') < 0) return k.name;
     var parts = String(k.name || k.action || '').split('.');
     return parts[parts.length - 1] || 'key';
@@ -125,8 +126,8 @@
         var d = document.createElement('div');
         d.className = 'key' + (k ? '' : ' empty');
         if (k) {
-          var plug = ps.find(function (p) { return p.id === k.plugin; });
-          if (!plug || plug.status !== 'running') d.classList.add('dead');
+          var plug = k.builtin ? null : ps.find(function (p) { return p.id === k.plugin; });
+          if (!k.builtin && (!plug || plug.status !== 'running')) d.classList.add('dead');
           var img = normalizeImage(k.image);
           var t = document.createElement('span'); t.className = 'kt';
           t.textContent = k.title || (img ? '' : shortName(k));
@@ -137,7 +138,8 @@
             var im2 = document.createElement('img'); actionIcon(k.plugin, k.icon, im2); d.appendChild(im2); d.classList.add('has-img');
           }
           if (t.textContent) d.appendChild(t);
-          if (!plug) { var miss = document.createElement('span'); miss.className = 'kt missing'; miss.textContent = 'plugin missing'; d.appendChild(miss); }
+          if (!k.builtin && !plug) { var miss = document.createElement('span'); miss.className = 'kt missing'; miss.textContent = 'needs ' + (k.plugin || 'plugin'); d.appendChild(miss); }
+          if (k.builtin === 'unsupported') { var un = document.createElement('span'); un.className = 'kt missing'; un.textContent = 'not supported'; d.appendChild(un); }
           if (k.ok && Date.now() - k.ok < 1500) flashKey(d, 'okflash', 1500 - (Date.now() - k.ok));
           if (k.alert && Date.now() - k.alert < 1500) flashKey(d, 'alertflash', 1500 - (Date.now() - k.alert));
           wireAssigned(d, k, c, r);
@@ -212,8 +214,30 @@
       }
       list.appendChild(row);
     });
+    var imp = (snap && snap.importables) || [];
+    if (imp.length) {
+      var lbl = document.createElement('div'); lbl.className = 'ov-label'; lbl.style.marginTop = '16px';
+      lbl.textContent = 'Import from your plugins folder';
+      list.appendChild(lbl);
+      imp.forEach(function (f) {
+        var row = document.createElement('div'); row.className = 'prof';
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'grow';
+        b.textContent = '⇩ ' + f.name;
+        b.addEventListener('click', function () {
+          b.disabled = true; b.textContent = 'Importing…';
+          post('import', { id: f.id }).then(function (r) {
+            if (r.ok) {
+              toast('Imported ' + r.keys + ' key' + (r.keys === 1 ? '' : 's') + (r.profiles > 1 ? ' across ' + r.profiles + ' pages' : '') + (r.dropped ? ' (' + r.dropped + ' didn’t fit)' : ''));
+              el('profilepane').hidden = true;
+            } else { toast(r.error || 'import failed', true); b.disabled = false; b.textContent = '⇩ ' + f.name; }
+          });
+        });
+        row.appendChild(b);
+        list.appendChild(row);
+      });
+    }
     var hint = document.createElement('div'); hint.className = 'pk-empty';
-    hint.textContent = 'Profiles are separate key layouts. The knob cycles them. Rename them from the PC editor on this page’s options.';
+    hint.textContent = 'Profiles are separate key layouts. The knob cycles them. Importing a .streamDeckProfile again replaces what its last import created. Rename profiles from the PC editor on this page’s options.';
     list.appendChild(hint);
   }
   var addArm = null;
@@ -352,7 +376,10 @@
   window.oqKnob = function (ev) {
     if (!el('assign').hidden || !el('pluginspane').hidden || !el('profilepane').hidden || movePending || editing) return false;
     if (ev && ev.type === 'rotate' && snap && snap.profiles && snap.profiles.length > 1) {
-      var ids = snap.profiles.map(function (p) { return p.id; });
+      // cycle top-level profiles only; folder pages (children) are entered via their keys
+      var tops = snap.profiles.filter(function (p) { return !p.child || p.id === snap.activeProfile; });
+      var ids = tops.map(function (p) { return p.id; });
+      if (ids.length < 2) return true;
       var i = ids.indexOf(snap.activeProfile);
       post('profile-select', { id: ids[(i + (ev.dir > 0 ? 1 : ids.length - 1)) % ids.length] });
       return true;
