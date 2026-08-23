@@ -769,10 +769,13 @@ function downloadToFile(url, dest, maxBytes) {
   });
 }
 
+// raw.githubusercontent.com sits behind a ~5-minute CDN cache; a unique query param makes every
+// check/download fetch fresh, so a just-pushed version bump is installable immediately.
+function bustCache(url) { return url + (url.indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now(); }
 async function fetchRepoIndex(settingUrl) {
   const base = appRepo.repoRawBase(settingUrl);
   if (!base) return { error: 'The app-repository URL is not a valid http(s) URL.' };
-  try { return { base, apps: appRepo.parseIndex(await fetchJson(appRepo.indexUrl(base))) }; }
+  try { return { base, apps: appRepo.parseIndex(await fetchJson(bustCache(appRepo.indexUrl(base)))) }; }
   catch (e) { return { base, error: 'Could not load the repository catalog: ' + (e.message || e) }; }
 }
 
@@ -796,7 +799,7 @@ async function downloadAndInstall(base, entry, settingUrl, replaceId, confirmExe
   const url = appRepo.zipUrl(base, entry);
   if (!url) return { ok: false, error: 'no download URL for "' + entry.id + '".' };
   const tmpZip = path.join(USER_DIR, 'repo-dl-' + Date.now() + '.zip');
-  const dl = await downloadToFile(url, tmpZip);
+  const dl = await downloadToFile(bustCache(url), tmpZip);
   if (!dl.ok) return dl;
   try {
     const r = await importDropInApp(tmpZip, null, confirmExec, replaceId);
