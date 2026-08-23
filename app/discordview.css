@@ -286,7 +286,9 @@ input:disabled {
 
 .view {
   min-width: 0;
+  min-height: 0;
   height: 448px;
+  overflow: hidden;
 }
 
 .voice,
@@ -294,6 +296,7 @@ input:disabled {
 .activity-view {
   display: grid;
   min-width: 0;
+  min-height: 0;
   height: 100%;
   gap: 16px;
 }
@@ -312,6 +315,7 @@ input:disabled {
 
 .card {
   min-width: 0;
+  min-height: 0;
   height: 100%;
   border-radius: 24px;
   overflow: hidden;
@@ -611,6 +615,8 @@ input:disabled {
   overscroll-behavior: contain;
   padding: 0;
   scrollbar-width: thin;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 .capability-item {
@@ -665,6 +671,7 @@ input:disabled {
 }
 
 .capability-unsupported > span,
+.capability-scope-missing > span,
 .capability-auth-failure > span,
 .capability-temporary-error > span {
   background: var(--danger-soft);
@@ -680,8 +687,13 @@ input:disabled {
 .touch-list,
 .message-list,
 .event-list {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 .participant-list::-webkit-scrollbar,
@@ -693,7 +705,7 @@ input:disabled {
 
 .participant-list {
   display: grid;
-  max-height: 352px;
+  max-height: none;
   gap: 8px;
   margin-top: 12px;
   overflow-y: auto;
@@ -855,10 +867,12 @@ input:disabled {
 
 .participants {
   position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .participants:has(.control-lock) .participant-list {
-  max-height: 326px;
+  margin-bottom: 26px;
 }
 
 .selectors,
@@ -1020,11 +1034,17 @@ input:disabled {
 
 .touch-list {
   display: grid;
-  max-height: 356px;
+  max-height: none;
   gap: 8px;
   margin-top: 12px;
   overflow-y: auto;
   padding-bottom: 8px;
+}
+
+.chat-browser,
+.chat-channels {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .touch-list button {
@@ -1464,12 +1484,16 @@ input:disabled {
 
 .recent-card {
   display: grid;
+  min-height: 0;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
 
 .feed-column {
+  display: grid;
   min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -1503,7 +1527,7 @@ input:disabled {
 
 .event-list {
   display: grid;
-  max-height: 352px;
+  max-height: none;
   align-content: start;
   gap: 8px;
   margin: 12px 0 0;

@@ -10,11 +10,14 @@
       "title": "Discord integration",
       "options": [
         { "key": "enabled", "label": "Enable Discord integration", "type": "bool", "default": true },
-        { "key": "applicationIdOverride", "label": "Your Discord Application ID", "type": "text", "default": "", "maxLength": 128, "help": "Discord requires each person to register their own free Discord app for voice control. Create one at discord.com/developers, then paste its Application ID here (see the setup guide below)." },
         { "key": "autoReconnect", "label": "Automatic reconnect", "type": "bool", "default": true },
         { "key": "richPresence", "label": "Rich Presence enabled", "type": "bool", "default": false },
         { "key": "defaultView", "label": "Default Discord view", "type": "select", "default": "voice", "choices": [["voice", "Voice"], ["chat", "Chat"], ["activity", "Activity"]] },
-        { "key": "showUnavailable", "label": "Show/hide unavailable controls", "type": "bool", "default": true }
+        { "key": "showUnavailable", "label": "Show/hide unavailable controls", "type": "bool", "default": true },
+        { "key": "applicationIdOverride", "label": "Custom Discord Application ID", "type": "text", "default": "", "maxLength": 128, "advanced": true, "help": "Development/team override. Leave blank to use the built-in open-quake Discord application. Register http://127.0.0.1:51120/callback for a custom app." },
+        { "key": "customVoiceScopes", "label": "Custom app: Voice permissions", "type": "bool", "default": false, "advanced": true, "help": "Request rpc.voice.read and rpc.voice.write. These scopes require Discord approval or applicable tester access." },
+        { "key": "customMessageScopes", "label": "Custom app: Message permissions", "type": "bool", "default": false, "advanced": true, "help": "Request messages.read for message history and live message events." },
+        { "key": "customNotificationScopes", "label": "Custom app: Notification permissions", "type": "bool", "default": false, "advanced": true, "help": "Request rpc.notifications.read. Discord documents this scope as approved-partner only." }
       ]
     }
   },

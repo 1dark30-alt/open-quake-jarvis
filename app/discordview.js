@@ -13,7 +13,7 @@
   }).join('');
   const capability = (state, name) => !!(state.capabilities && state.capabilities[name]);
   const capabilityState = (state, name) => state.capabilityStates && state.capabilityStates[name] || (capability(state, name) ? 'available' : 'unverified');
-  const canAttempt = (state, name) => !['unsupported', 'auth-failure'].includes(capabilityState(state, name));
+  const canAttempt = (state, name) => !['unsupported', 'scope-missing', 'auth-failure'].includes(capabilityState(state, name));
   const disabled = value => value ? ' disabled' : '';
   const actionValue = value => value === undefined ? undefined : value === 'true' ? true : value === 'false' ? false : value;
   const ICONS = {
@@ -77,7 +77,7 @@
   };
   const CAPABILITY_STATE_LABELS = {
     available: 'Ready', unverified: 'Awaiting use', 'temporary-error': 'Retry needed',
-    unsupported: 'Unavailable', 'auth-failure': 'Reconnect required',
+    unsupported: 'Unavailable', 'scope-missing': 'Permission not granted', 'auth-failure': 'Reconnect required',
   };
 
   function capabilityDetail(item) {
@@ -85,6 +85,7 @@
     if (item.status === 'unverified') return item.hint;
     if (item.status === 'temporary-error') return 'Use this feature again to retry.';
     if (item.status === 'auth-failure') return 'Reconnect Discord to check this feature.';
+    if (item.status === 'scope-missing') return 'The connected account did not grant the required Discord permission.';
     if (item.status === 'unsupported') return 'Discord does not expose this feature.';
     return 'Not checked in this session.';
   }
@@ -102,7 +103,7 @@
         : awaiting ? awaiting + ' awaiting use' : 'All capabilities ready';
     const items = entries.map(item => '<li class="capability-item capability-' + esc(item.status) + '"><div><strong>' + esc(item.label) + '</strong><small>' + esc(capabilityDetail(item)) + '</small></div><span>' + esc(CAPABILITY_STATE_LABELS[item.status] || 'Not checked') + '</span></li>').join('');
     return '<button type="button" class="capability-count" popovertarget="discord-capabilities" aria-label="Show Discord capability details"><strong>' + ready + ' ready</strong><small>' + esc(secondary) + '</small></button>'
-      + '<div class="capability-popover" id="discord-capabilities" role="dialog" aria-modal="true" aria-labelledby="discord-capabilities-title" popover><header><div><div class="eyebrow">Discord RPC</div><h2 id="discord-capabilities-title">Capabilities</h2></div><button type="button" class="popover-close" popovertarget="discord-capabilities" popovertargetaction="hide" aria-label="Close capability details">Close</button></header><p>Features are marked ready only after Discord confirms them in this session.</p><ul>' + items + '</ul></div>';
+      + '<div class="capability-popover" id="discord-capabilities" role="dialog" aria-modal="true" aria-labelledby="discord-capabilities-title" popover><header><div><div class="eyebrow">Discord RPC</div><h2 id="discord-capabilities-title">Capabilities</h2></div><button type="button" class="popover-close" popovertarget="discord-capabilities" popovertargetaction="hide" aria-label="Close capability details">Close</button></header><p>Features are marked ready only after Discord confirms them in this session.</p><ul data-preserve-scroll="activity-capabilities">' + items + '</ul></div>';
   }
 
   function richPresenceDisplay(activityState, enabled, connected) {
@@ -111,6 +112,7 @@
       : { label: 'Off', detail: 'Discord confirmed that no activity is being published.' };
     if (activityState === 'temporary-error') return { label: 'Confirmation failed', detail: 'Discord could not confirm the saved setting. Change it to retry.' };
     if (activityState === 'auth-failure') return { label: 'Reconnect required', detail: 'Reconnect Discord to verify this setting.' };
+    if (activityState === 'scope-missing') return { label: 'Permission not granted', detail: 'Reconnect with the required Discord permission to use this setting.' };
     if (activityState === 'unsupported') return { label: 'Unavailable', detail: 'This Discord connection does not support activity updates.' };
     if (connected) return { label: enabled ? 'Configured on' : 'Configured off', detail: 'Checking the saved setting with Discord…' };
     return { label: enabled ? 'Configured on' : 'Configured off', detail: 'Connect Discord to verify this setting.' };
@@ -145,7 +147,7 @@
       + '<button class="control-button danger" data-action="leave"' + disabled(!channelCap || !channel.id) + '>' + icon('leave') + '<span>Leave</span><small>Voice channel</small></button></div><button class="channel-change" data-focus="' + (selectedGuildId ? 'channel' : 'guild') + '"' + disabled(!guildDiscovery) + '>' + icon('server') + '<span>Change voice channel</span><strong>' + esc(channel.name || 'None selected') + '</strong></button></article>'
       + '<article class="card participants"><div class="section-heading"><div><div class="eyebrow">Voice room</div><h2>Participants</h2></div><span class="count-pill">' + participants.length + '</span></div>' + (participants.length ? '<div class="participant-list" data-preserve-scroll="voice-participants">' + participants.map(p => {
         const participantState = [p.selfMute || p.mute ? 'Muted' : '', p.selfDeaf || p.deaf ? 'Deafened' : '', p.speaking ? 'Speaking' : 'Listening'].filter(Boolean).join(' · ');
-        return '<div class="participant ' + (p.speaking ? 'speaking' : '') + '">' + avatar(p, 'participant-avatar') + '<div class="participant-name"><strong>' + esc(displayName(p)) + '</strong><span>' + esc(participantState) + '</span></div>' + (participantControls ? '<button class="participant-mute ' + (p.localMute ? 'active-state' : '') + '" data-participant-action="participant-mute" data-user-id="' + esc(p.id) + '" data-value="' + (!p.localMute) + '" aria-pressed="' + (!!p.localMute) + '">' + (p.localMute ? 'Unmute' : 'Mute') + '</button><label class="participant-volume"><span>Vol</span><input aria-label="Participant volume" data-participant-action="participant-volume" data-user-id="' + esc(p.id) + '" type="range" min="0" max="200" value="' + esc(p.volume == null ? 100 : p.volume) + '"><output>' + esc(p.volume == null ? 100 : p.volume) + '%</output></label>' : '<span class="capability-note">Controls unavailable</span>') + '</div>';
+        return '<div class="participant ' + (p.speaking ? 'speaking' : '') + '" data-scroll-item="participant-' + esc(p.id) + '">' + avatar(p, 'participant-avatar') + '<div class="participant-name"><strong>' + esc(displayName(p)) + '</strong><span>' + esc(participantState) + '</span></div>' + (participantControls ? '<button class="participant-mute ' + (p.localMute ? 'active-state' : '') + '" data-participant-action="participant-mute" data-user-id="' + esc(p.id) + '" data-value="' + (!p.localMute) + '" aria-pressed="' + (!!p.localMute) + '">' + (p.localMute ? 'Unmute' : 'Mute') + '</button><label class="participant-volume"><span>Vol</span><input aria-label="Participant volume" data-participant-action="participant-volume" data-user-id="' + esc(p.id) + '" type="range" min="0" max="200" value="' + esc(p.volume == null ? 100 : p.volume) + '"><output>' + esc(p.volume == null ? 100 : p.volume) + '%</output></label>' : '<span class="capability-note">Controls unavailable</span>') + '</div>';
       }).join('') + '</div>' : '<div class="empty-state">' + icon('user') + '<strong>No participants are exposed</strong><span>Discord has not supplied anyone for this voice channel.</span></div>') + (state.voiceControlLock ? '<p class="control-lock">Participant settings stay under open-quake control until RPC disconnects.</p>' : '') + '</article>'
       + '<article class="card mixer"><div class="section-heading"><div><div class="eyebrow">Voice setup</div><h2>Channel &amp; audio</h2></div></div><div class="selectors"><div class="field"><label for="guild">Server</label><select id="guild" data-action="guild"' + disabled(!guildDiscovery) + '>' + options(state.guilds, selectedGuildId, 'Select server') + '</select></div><div class="field"><label for="channel">Voice channel</label><select id="channel" data-action="channel" aria-busy="' + loadingChannels + '"' + disabled(!selectedGuildId || loadingChannels || !!selection.error || !voiceChannels.length || !channelDiscovery || !channelCap) + '>' + options(voiceChannels, selectedChannelId, channelPlaceholder) + '</select></div></div><div class="selector-feedback ' + (selection.error ? 'error' : '') + '" role="status">' + esc(channelFeedback) + '</div>'
       + (voiceCap ? '<div class="devices"><div class="field"><label for="input-device">Microphone</label><select id="input-device" data-action="input-device">' + options(input.available_devices, input.device_id, 'System default') + '</select></div><div class="field"><label for="output-device">Output</label><select id="output-device" data-action="output-device">' + options(output.available_devices, output.device_id, 'System default') + '</select></div></div><div class="volumes"><label class="range-row"><span>Mic level</span><input data-action="input-volume" type="range" min="0" max="200" value="' + esc(input.volume == null ? 100 : input.volume) + '"><output>' + esc(input.volume == null ? 100 : input.volume) + '%</output></label><label class="range-row"><span>Output</span><input data-action="output-volume" type="range" min="0" max="200" value="' + esc(output.volume == null ? 100 : output.volume) + '"><output>' + esc(output.volume == null ? 100 : output.volume) + '%</output></label></div>' : '<div class="empty-state compact-empty">' + icon('headphones') + '<strong>Voice controls unavailable</strong><span>Voice device and volume controls are unavailable in this Discord connection.</span></div>') + '</article></section>';
@@ -160,14 +162,14 @@
     const presence = richPresenceDisplay(activityState, !!settings.richPresence, connected);
     const capabilityDisplay = capabilitySummary(state, connected);
     const events = Array.isArray(state.recentEvents) ? state.recentEvents.slice(0, 8) : [];
-    const quality = state.voiceConnection || {}, qualityState = qualityDetails(quality), notifications = Array.isArray(state.notifications) ? state.notifications.slice(0, 6) : [];
+    const quality = state.voiceConnection || {}, qualityState = qualityDetails(quality), notifications = Array.isArray(state.notifications) ? state.notifications.slice(0, 8) : [];
     const currentUser = state.currentUser || {};
     const accountAvailable = !!(currentUser.id || currentUser.username || currentUser.global_name || currentUser.displayName);
     const accountName = accountAvailable ? displayName(currentUser) : 'Identity unavailable';
     const status = { 'not-running': 'Discord not running', connecting: 'Connecting', connected: 'Connected', reconnecting: 'Reconnecting', disconnected: 'Disconnected', error: 'Connection error' }[connection.state] || 'Disconnected';
     return '<section class="activity-view"><article class="card activity-overview"><div class="section-heading"><div><div class="eyebrow">Discord status</div><h2>Connection</h2></div><span class="state-pill ' + (connected ? 'connected' : 'disconnected') + '"><span class="dot ' + (connected ? '' : 'inactive') + '"></span>' + esc(status) + '</span></div><div class="identity-row">' + avatar(accountAvailable ? currentUser : { displayName: 'Account' }, 'identity-avatar') + '<div><span>' + (accountAvailable ? 'Signed in as' : 'Current account') + '</span><strong>' + esc(accountName) + '</strong></div></div><div class="voice-summary"><div><span>Current voice</span><strong title="' + esc(channel.name || 'No voice channel selected') + '">' + esc(channel.name || 'No voice channel selected') + '</strong><small>' + esc(guild && guild.name || channel.guild_name || 'No active server') + '</small></div><div class="quality-tile ' + qualityState.tone + '">' + icon('pulse') + '<span>' + esc(qualityState.label) + '</span><strong>' + esc(qualityState.ping) + '</strong></div></div>' + (connection.error ? '<div class="activity-error" role="status">' + esc(connection.error) + '</div>' : '') + '</article>'
       + '<article class="card presence-card"><div class="section-heading"><div><div class="eyebrow">Voice &amp; presence</div><h2>Live state</h2></div>' + capabilityDisplay + '</div><dl class="activity-facts"><div><dt>Discord RPC</dt><dd>' + esc(status) + '</dd></div><div><dt>Voice settings</dt><dd>' + (capability(state, 'voiceSettings') ? esc((voice.mute ? 'Muted' : 'Mic on') + ' · ' + (voice.deaf ? 'Deafened' : 'Audio on')) : 'Unavailable') + '</dd></div><div><dt>Voice channel</dt><dd>' + esc(channel.id ? channel.name || 'Connected' : 'Not connected') + '</dd></div><div><dt>Ping</dt><dd>' + (quality.lastPing == null ? '— No active voice connection' : esc(quality.lastPing + ' / ' + quality.averagePing + ' ms')) + '</dd></div></dl><div class="presence-control"><div><span>Rich Presence</span><strong>' + esc(presence.label) + '</strong><small>' + esc(presence.detail) + '</small></div>' + (activitySupported ? '<button class="accent" data-action="rich-presence" data-value="' + (!settings.richPresence) + '">' + (settings.richPresence ? 'Turn off' : 'Turn on') + '</button>' : '') + '</div></article>'
-      + '<article class="card recent-card"><div class="feed-column"><div class="feed-heading">' + icon('bell') + '<div><div class="eyebrow">Inbox</div><h2>Notifications</h2></div><span class="count-pill">' + notifications.length + '</span></div>' + (notifications.length ? '<ol class="event-list notification-list" data-preserve-scroll="activity-notifications">' + notifications.map(item => '<li>' + (item.iconUrl ? '<span class="event-icon"><img src="' + esc(item.iconUrl) + '" alt=""></span>' : '<span class="event-icon">' + icon('bell') + '</span>') + '<span class="event-copy"><strong>' + esc(item.title || 'Discord notification') + '</strong><small>' + esc(item.body || '') + '</small></span><time>' + esc(localTime(item.at)) + '</time></li>').join('') + '</ol>' : '<div class="feed-empty">No recent Discord notifications.</div>') + '</div><div class="feed-column"><div class="feed-heading">' + icon('activity') + '<div><div class="eyebrow">RPC stream</div><h2>Recent events</h2></div><span class="count-pill">' + events.length + '</span></div>' + (events.length ? '<ol class="event-list" data-preserve-scroll="activity-events">' + events.slice(0, 5).map(event => '<li><span class="event-icon">' + icon('spark') + '</span><span class="event-copy"><strong>' + esc(event.label || 'Discord activity received') + '</strong><small>' + esc(event.type || 'Discord event') + '</small></span><time>' + esc(localTime(event.at)) + '</time></li>').join('') + '</ol>' : '<div class="feed-empty">No recent Discord events.</div>') + '</div></article></section>';
+      + '<article class="card recent-card"><div class="feed-column"><div class="feed-heading">' + icon('bell') + '<div><div class="eyebrow">Inbox</div><h2>Notifications</h2></div><span class="count-pill">' + notifications.length + '</span></div>' + (notifications.length ? '<ol class="event-list notification-list" data-preserve-scroll="activity-notifications" data-follow-newest="true">' + notifications.map(item => '<li data-scroll-item="notification-' + esc(item.at) + '">' + (item.iconUrl ? '<span class="event-icon"><img src="' + esc(item.iconUrl) + '" alt=""></span>' : '<span class="event-icon">' + icon('bell') + '</span>') + '<span class="event-copy"><strong>' + esc(item.title || 'Discord notification') + '</strong><small>' + esc(item.body || '') + '</small></span><time>' + esc(localTime(item.at)) + '</time></li>').join('') + '</ol>' : '<div class="feed-empty">No recent Discord notifications.</div>') + '</div><div class="feed-column"><div class="feed-heading">' + icon('activity') + '<div><div class="eyebrow">RPC stream</div><h2>Recent events</h2></div><span class="count-pill">' + events.length + '</span></div>' + (events.length ? '<ol class="event-list" data-preserve-scroll="activity-events" data-follow-newest="true">' + events.map(event => '<li data-scroll-item="event-' + esc(event.at) + '-' + esc(event.type) + '"><span class="event-icon">' + icon('spark') + '</span><span class="event-copy"><strong>' + esc(event.label || 'Discord activity received') + '</strong><small>' + esc(event.type || 'Discord event') + '</small></span><time>' + esc(localTime(event.at)) + '</time></li>').join('') + '</ol>' : '<div class="feed-empty">No recent Discord events.</div>') + '</div></article></section>';
   }
 
   function chatView(state) {
@@ -183,11 +185,11 @@
     const streamLabel = chat.historyAvailable === false ? 'Live only' : chat.historyAvailable === true ? 'History + live' : 'Waiting for channel';
     return '<section class="chat-view">'
       + '<article class="card chat-browser"><div class="section-heading"><div><div class="eyebrow">Discord servers</div><h2>Servers</h2></div><span class="status-dot" title="Connected"><span class="dot"></span></span></div>'
-      + (guilds.length ? '<div class="touch-list" role="list" data-preserve-scroll="chat-guilds">' + guilds.map(guild => '<button role="listitem" data-action="chat-guild" data-value="' + esc(guild.id) + '"' + (String(guild.id) === String(chat.guildId || '') ? ' aria-current="true"' : '') + '><span class="list-icon">' + icon('server') + '</span><span>' + esc(guild.name || guild.id) + '</span></button>').join('') + '</div>' : '<div class="empty-state list-empty">' + icon('server') + '<strong>No Discord servers</strong><span>No Discord servers are available.</span></div>') + '</article>'
+      + (guilds.length ? '<div class="touch-list" role="list" data-preserve-scroll="chat-guilds">' + guilds.map(guild => '<button role="listitem" data-scroll-item="guild-' + esc(guild.id) + '" data-action="chat-guild" data-value="' + esc(guild.id) + '"' + (String(guild.id) === String(chat.guildId || '') ? ' aria-current="true"' : '') + '><span class="list-icon">' + icon('server') + '</span><span>' + esc(guild.name || guild.id) + '</span></button>').join('') + '</div>' : '<div class="empty-state list-empty">' + icon('server') + '<strong>No Discord servers</strong><span>No Discord servers are available.</span></div>') + '</article>'
       + '<article class="card chat-channels"><div class="section-heading"><div><div class="eyebrow">' + esc(selectedGuild && selectedGuild.name || 'Text channels') + '</div><h2>' + (chat.guildId ? 'Channels' : 'Select a server') + '</h2></div></div>'
-      + (chat.guildId ? (channels.length ? '<div class="touch-list" role="list" data-preserve-scroll="chat-channels">' + channels.map(channel => '<button role="listitem" data-action="chat-channel" data-value="' + esc(channel.id) + '"' + (selected && String(selected.id) === String(channel.id) ? ' aria-current="true"' : '') + '><span class="list-icon">' + icon('hash') + '</span><span>' + esc(channel.name || channel.id) + '</span></button>').join('') + '</div>' : '<div class="empty-state list-empty">' + icon('hash') + '<strong>No usable text channels</strong><span>No usable text channels are available in this server.</span></div>') : '<div class="empty-state list-empty">' + icon('hash') + '<strong>Choose a server</strong><span>Your server\'s text channels will appear here.</span></div>') + '</article>'
+      + (chat.guildId ? (channels.length ? '<div class="touch-list" role="list" data-preserve-scroll="chat-channels">' + channels.map(channel => '<button role="listitem" data-scroll-item="channel-' + esc(channel.id) + '" data-action="chat-channel" data-value="' + esc(channel.id) + '"' + (selected && String(selected.id) === String(channel.id) ? ' aria-current="true"' : '') + '><span class="list-icon">' + icon('hash') + '</span><span>' + esc(channel.name || channel.id) + '</span></button>').join('') + '</div>' : '<div class="empty-state list-empty">' + icon('hash') + '<strong>No usable text channels</strong><span>No usable text channels are available in this server.</span></div>') : '<div class="empty-state list-empty">' + icon('hash') + '<strong>Choose a server</strong><span>Your server\'s text channels will appear here.</span></div>') + '</article>'
       + '<article class="card chat-status"><header class="chat-header"><div class="channel-heading"><span class="channel-icon">' + icon('hash') + '</span><div><div class="eyebrow">Recent messages</div><div class="launch-title" title="' + esc(selected && (selected.name || selected.id) || 'No channel opened') + '">' + (selected ? '#' + esc(selected.name || selected.id) : 'No channel opened') + '</div></div></div><div class="chat-header-actions"><span class="stream-pill ' + (chat.historyAvailable === false ? 'live-only' : '') + '"><span class="dot"></span>' + esc(streamLabel) + '</span>' + (selected ? '<button class="accent open-discord" data-action="chat-channel" data-value="' + esc(selected.id) + '">' + icon('external') + '<span>Open in Discord</span></button>' : '') + '</div></header><div class="stream-status">' + esc(chat.error || chat.status || (chat.historyAvailable === false ? 'Message history is unavailable. New subscribed messages will appear here live.' : selected ? 'Read-only Discord messages. New events appear automatically.' : 'Select a server and text channel to view available messages.')) + '</div>'
-      + (messages.length ? '<ol class="message-list" data-preserve-scroll="chat-messages">' + messages.map(message => '<li class="message ' + (message.deleted ? 'deleted' : '') + '">' + avatar(message.author, 'message-avatar') + '<div class="message-copy"><header><strong>' + esc(displayName(message.author)) + '</strong><time>' + esc(localTime(message.timestamp)) + '</time>' + (message.edited ? '<span class="edited">edited</span>' : '') + '</header><p>' + esc(message.deleted ? 'Message deleted' : message.content || '(No text content exposed)') + '</p></div></li>').join('') + '</ol>' : '<div class="empty-state message-empty">' + icon('chat') + '<strong>' + (selected ? 'No messages exposed' : 'Choose a channel') + '</strong><span>' + (selected ? (chat.historyAvailable === false ? 'Live messages will appear here as Discord sends them.' : 'No messages are available for this channel yet.') : 'This is a read-only Discord message surface.') + '</span></div>') + (chat.error ? '<div class="activity-error" role="status">' + esc(chat.error) + '</div>' : '') + '</article></section>';
+      + (messages.length ? '<ol class="message-list" data-preserve-scroll="chat-messages" data-follow-newest="true">' + messages.map(message => '<li class="message ' + (message.deleted ? 'deleted' : '') + '" data-scroll-item="message-' + esc(message.id) + '">' + avatar(message.author, 'message-avatar') + '<div class="message-copy"><header><strong>' + esc(displayName(message.author)) + '</strong><time>' + esc(localTime(message.timestamp)) + '</time>' + (message.edited ? '<span class="edited">edited</span>' : '') + '</header><p>' + esc(message.deleted ? 'Message deleted' : message.content || '(No text content exposed)') + '</p></div></li>').join('') + '</ol>' : '<div class="empty-state message-empty">' + icon('chat') + '<strong>' + (selected ? 'No messages exposed' : 'Choose a channel') + '</strong><span>' + (selected ? (chat.historyAvailable === false ? 'Live messages will appear here as Discord sends them.' : 'No messages are available for this channel yet.') : 'This is a read-only Discord message surface.') + '</span></div>') + (chat.error ? '<div class="activity-error" role="status">' + esc(chat.error) + '</div>' : '') + '</article></section>';
   }
 
   function render(state, view) {
@@ -198,23 +200,41 @@
   }
 
   function createRenderController(host, renderHtml) {
-    let activeControl = null, pending = false, lastHtml = null;
+    let activeControl = null, activeScroll = null, pending = false, lastHtml = null;
+    const itemKey = item => item && item.getAttribute ? item.getAttribute('data-scroll-item') : null;
     const captureScroll = () => {
       if (!host.querySelectorAll) return [];
-      return Array.from(host.querySelectorAll('[data-preserve-scroll]')).map(element => ({
-        key: element.getAttribute('data-preserve-scroll'), top: element.scrollTop, left: element.scrollLeft,
-      }));
+      return Array.from(host.querySelectorAll('[data-preserve-scroll]')).map(element => {
+        const top = element.scrollTop || 0;
+        const newestFirst = element.getAttribute('data-follow-newest') === 'true';
+        const children = Array.from(element.children || []);
+        const anchor = newestFirst && top > 24
+          ? children.find(item => itemKey(item) && (item.offsetTop || 0) + (item.offsetHeight || 0) > top)
+          : null;
+        return {
+          key: element.getAttribute('data-preserve-scroll'), top, left: element.scrollLeft || 0,
+          scrollHeight: element.scrollHeight, newestFirst, atNewest: newestFirst && top <= 24,
+          anchorKey: itemKey(anchor), anchorOffset: anchor ? (anchor.offsetTop || 0) - top : null,
+        };
+      });
     };
     const restoreScroll = positions => {
       if (!positions.length || !host.querySelectorAll) return;
       const elements = Array.from(host.querySelectorAll('[data-preserve-scroll]'));
       positions.forEach(position => {
         const element = elements.find(item => item.getAttribute('data-preserve-scroll') === position.key);
-        if (element) { element.scrollTop = position.top; element.scrollLeft = position.left; }
+        if (!element) return;
+        element.scrollLeft = position.left;
+        if (position.atNewest) { element.scrollTop = 0; return; }
+        const anchor = position.anchorKey && Array.from(element.children || []).find(item => itemKey(item) === position.anchorKey);
+        if (anchor) { element.scrollTop = (anchor.offsetTop || 0) - position.anchorOffset; return; }
+        const heightChange = Number.isFinite(element.scrollHeight) && Number.isFinite(position.scrollHeight)
+          ? element.scrollHeight - position.scrollHeight : 0;
+        element.scrollTop = position.top + heightChange;
       });
     };
     const paint = force => {
-      if (activeControl && !force) { pending = true; return false; }
+      if ((activeControl || activeScroll) && !force) { pending = true; return false; }
       const html = renderHtml();
       if (html === lastHtml) { pending = false; return false; }
       const scroll = captureScroll();
@@ -230,7 +250,13 @@
       activeControl = null;
       if (pending && flush !== false) paint();
     };
-    return { paint, beginInteraction, endInteraction, isPending: () => pending };
+    const beginScroll = target => { if (target) activeScroll = target; };
+    const endScroll = (target, flush) => {
+      if (target && activeScroll && target !== activeScroll) return;
+      activeScroll = null;
+      if (pending && flush !== false) paint();
+    };
+    return { paint, beginInteraction, endInteraction, beginScroll, endScroll, isPending: () => pending };
   }
 
   function mount(doc, transport) {
@@ -242,7 +268,7 @@
       doc.documentElement.style.setProperty('--accent', accent);
       doc.documentElement.style.setProperty('--accent-fg', accentForeground(accent));
     }
-    let state = { connection: { state: 'connecting' }, capabilities: {}, settings: {} }, view = 'voice', source, userNavigated = false;
+    let state = { connection: { state: 'connecting' }, capabilities: {}, settings: {} }, view = 'voice', source, userNavigated = false, scrollEndTimer = null;
     const api = transport || {
       action: (name, value) => fetch('/api/discord/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: name, value }) }).then(r => r.json()),
       subscribe: onData => { const s = new EventSource('/api/discord/events'); s.onmessage = e => onData(JSON.parse(e.data)); return () => s.close(); },
@@ -259,6 +285,16 @@
       const control = protectedControl(target);
       return control && (control.tagName === 'SELECT' || control.type === 'range') ? control : null;
     };
+    const scrollContainer = target => target && target.closest ? target.closest('[data-preserve-scroll]') : null;
+    const finishScroll = target => {
+      if (scrollEndTimer) clearTimeout(scrollEndTimer);
+      scrollEndTimer = null;
+      renderer.endScroll(target);
+    };
+    const finishScrollSoon = target => {
+      if (scrollEndTimer) clearTimeout(scrollEndTimer);
+      scrollEndTimer = setTimeout(() => finishScroll(target), 180);
+    };
     const onClick = e => {
       const clickedButton = e.target.closest('button');
       if (clickedButton) renderer.endInteraction(clickedButton, false);
@@ -273,29 +309,48 @@
       if (e.target.dataset.action) act(e.target.dataset.action, e.target.value);
     };
     const onInput = e => { if (e.target.type === 'range') { const out = e.target.nextElementSibling; if (out) out.value = e.target.value; } };
-    const onPointerDown = e => { const control = protectedControl(e.target); if (control) renderer.beginInteraction(control); };
+    const onPointerDown = e => {
+      const scroll = scrollContainer(e.target); if (scroll) renderer.beginScroll(scroll);
+      const control = protectedControl(e.target); if (control) renderer.beginInteraction(control);
+    };
     const onFocusIn = e => { const control = valueControl(e.target); if (control) renderer.beginInteraction(control); };
     const onFocusOut = e => { const control = valueControl(e.target); if (control) renderer.endInteraction(control); };
-    const onPointerCancel = e => { const control = protectedControl(e.target); if (control) renderer.endInteraction(control); };
+    const onPointerCancel = e => {
+      const control = protectedControl(e.target); if (control) renderer.endInteraction(control);
+      const scroll = scrollContainer(e.target); if (scroll) finishScrollSoon(scroll);
+    };
     const onPointerUp = e => {
-      if (e.target.type !== 'range') return;
-      if (e.target.dataset.participantAction) act(e.target.dataset.participantAction, { userId: e.target.dataset.userId, value: Number(e.target.value) });
-      else if (e.target.dataset.action) act(e.target.dataset.action, Number(e.target.value));
-      renderer.endInteraction(e.target, false);
+      if (e.target.type === 'range') {
+        if (e.target.dataset.participantAction) act(e.target.dataset.participantAction, { userId: e.target.dataset.userId, value: Number(e.target.value) });
+        else if (e.target.dataset.action) act(e.target.dataset.action, Number(e.target.value));
+        renderer.endInteraction(e.target, false);
+      }
+      const scroll = scrollContainer(e.target); if (scroll) finishScrollSoon(scroll);
+    };
+    const onScroll = e => { const scroll = scrollContainer(e.target); if (scroll) { renderer.beginScroll(scroll); finishScrollSoon(scroll); } };
+    const onScrollEnd = e => { const scroll = scrollContainer(e.target); if (scroll) finishScroll(scroll); };
+    const onWheel = e => { const scroll = scrollContainer(e.target); if (scroll) { renderer.beginScroll(scroll); finishScrollSoon(scroll); } };
+    const onToggle = e => {
+      if (!e.target || !e.target.hasAttribute || !e.target.hasAttribute('popover')) return;
+      if (e.newState === 'open') renderer.beginInteraction(e.target);
+      else renderer.endInteraction(e.target);
     };
     const listeners = {
       click: onClick, change: onChange, input: onInput, pointerdown: onPointerDown, pointerup: onPointerUp,
       pointercancel: onPointerCancel, focusin: onFocusIn, focusout: onFocusOut,
+      scroll: onScroll, scrollend: onScrollEnd, wheel: onWheel, toggle: onToggle,
     };
-    Object.keys(listeners).forEach(name => host.addEventListener(name, listeners[name]));
+    const capturedListeners = new Set(['scroll', 'scrollend', 'toggle']);
+    Object.keys(listeners).forEach(name => host.addEventListener(name, listeners[name], capturedListeners.has(name)));
     paint(); source = api.subscribe(next => { state = next; if (!userNavigated && next.settings && next.settings.defaultView) view = next.settings.defaultView; paint(); });
     let cleaned = false;
     const cleanup = () => {
       if (cleaned) return;
       cleaned = true;
+      if (scrollEndTimer) clearTimeout(scrollEndTimer);
       if (source) source();
       source = null;
-      Object.keys(listeners).forEach(name => { if (host.removeEventListener) host.removeEventListener(name, listeners[name]); });
+      Object.keys(listeners).forEach(name => { if (host.removeEventListener) host.removeEventListener(name, listeners[name], capturedListeners.has(name)); });
       if (root.removeEventListener) root.removeEventListener('pagehide', cleanup);
     };
     root.addEventListener('pagehide', cleanup, { once: true });

@@ -78,9 +78,12 @@ const owuiClient = require('./owuiClient'); // shared OWUI URL normalization + m
 const { resolveRunMode, reservedDisplayEnabled } = require('./runMode'); // pure run-mode helpers (panel/software/monitor)
 const voiceConfig = require('./voiceConfig'); // global TTS/STT endpoints + per-page override resolution + legacy migration
 const { DiscordService } = require('./discordService'); // local Discord desktop RPC; protocol stays behind this main-process service
-const { DiscordOAuth, DISCORD_SCOPES } = require('./discordOAuth');
+const { DiscordOAuth } = require('./discordOAuth');
 const { DiscordAppHost } = require('./discordAppHost');
-const { DEFAULT_DISCORD_APPLICATION_ID, discordApplicationId, normalizeDiscordSettings } = require('./discordSettings');
+const {
+  DEFAULT_DISCORD_APPLICATION_ID, DISCORD_SCOPE_GROUPS, discordApplicationId,
+  discordRequestedScopeGroups, discordRequestedScopes, discordUsesCustomApplication, normalizeDiscordSettings,
+} = require('./discordSettings');
 const { ObsService } = require('./obsService');                 // OBS Studio control (shared service)
 const { normalizeObsSettings, obsWsUrl } = require('./obsSettings');
 const appRepo = require('./appRepo');                            // pure helpers for repo install/update
@@ -138,6 +141,7 @@ let config = loadConfig();
 const initialDiscordSettings = normalizeDiscordSettings((config.settings || {}).discord);
 const discordOAuth = new DiscordOAuth({
   getClientId: () => discordApplicationId((config.settings || {}).discord),
+  getRequestedScopes: () => discordRequestedScopes((config.settings || {}).discord),
   getTokens: () => oauthStorage.getTokens('discord'), setTokens: value => oauthStorage.setTokens('discord', value), deleteTokens: () => oauthStorage.deleteTokens('discord'),
   openExternal: url => shell.openExternal(url),
 });
@@ -1015,11 +1019,19 @@ function oauthProviderPayload() {
   const discordTokens = oauthStorage.getTokens('discord');
   const discordConnected = !!(discordTokens && discordTokens.refreshToken);
   const discordGrantedScopes = discordTokens && discordTokens.scope ? String(discordTokens.scope).split(/\s+/).filter(Boolean) : [];
-  const discordReauthorizationRequired = discordConnected && DISCORD_SCOPES.some(scope => !discordGrantedScopes.includes(scope));
+  const discordRequested = discordRequestedScopes(discordSettings);
+  const discordGroups = discordRequestedScopeGroups(discordSettings);
+  const discordReauthorizationRequired = discordConnected && (discordRequested.some(scope => !discordGrantedScopes.includes(scope))
+    || (discordTokens.clientId && String(discordTokens.clientId) !== discordApplicationId(discordSettings)));
   standard.push({
     provider: 'discord', name: 'Discord', configured: !!discordApplicationId(discordSettings), connected: discordConnected,
     expiresAt: discordTokens && discordTokens.expiresAt || null,
-    scopes: discordGrantedScopes.length ? discordGrantedScopes : DISCORD_SCOPES,
+    scopes: discordGrantedScopes.length ? discordGrantedScopes : discordRequested,
+    requestedScopes: discordRequested, grantedScopes: discordGrantedScopes,
+    capabilityGroups: Object.entries(DISCORD_SCOPE_GROUPS).map(([id, scopes]) => ({
+      id, requested: discordGroups.includes(id), granted: scopes.every(scope => discordGrantedScopes.includes(scope)), scopes,
+    })),
+    customApplication: discordUsesCustomApplication(discordSettings),
     managedClient: !discordSettings.applicationIdOverride && !!DEFAULT_DISCORD_APPLICATION_ID,
     enabled: !!discordApplicationId(discordSettings), authState: discordService.getState().authState,
     reauthorizationRequired: discordReauthorizationRequired,
@@ -3328,7 +3340,7 @@ app.whenReady().then(async () => {
       else await oauthHandler.connect(provider, scopes);
       return { ok: true, providers: oauthProviderPayload() };
     }
-    catch (err) { return { ok: false, error: err.message || String(err) }; }
+    catch (err) { return { ok: false, error: err.message || String(err), code: err.code || '' }; }
   });
   ipcMain.handle('disconnectOAuthProvider', async (e, provider) => {
     if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };

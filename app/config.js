@@ -2560,10 +2560,8 @@
     if (def.id === 'discord') appendDiscordSetup(el);
     enforceMusicCap(g);
   }
-  // Discord app page: after the generic settings, a hand-rendered block with the setup-guide link
-  // and a Connect/Disconnect button that reuses the same OAuth flow as Settings -> Auth, so the whole
-  // Discord setup lives in one place (the generic option rows can't hold a link or a live button).
-  // Async because it reads live provider/connection state.
+  // Discord keeps application configuration and account authorization together in its app settings.
+  // The generic option rows cannot represent live provider state or lifecycle actions.
   async function appendDiscordSetup(el) {
     const box = document.createElement('div');
     box.className = 'advsec';
@@ -2571,39 +2569,62 @@
     el.appendChild(box);
     const guideUrl = 'https://github.com/TeeJS/open-quake/blob/main/docs/discord.md';
     const draw = async () => {
-      let dp = null;
-      try { dp = (await configApi.listOAuthProviders()).find(p => p.provider === 'discord'); } catch (e) {}
-      const connected = !!(dp && dp.connected);
-      const who = dp && dp.identity && (dp.identity.global_name || dp.identity.username);
-      box.innerHTML =
-        `<div class="row" style="gap:8px;align-items:center">
-           <label style="width:auto;font-weight:bold">Discord connection</label>
-           <span class="hint" style="margin:0">${connected ? 'Connected' + (who ? ' as ' + esc(who) : '') : 'Not connected'}</span>
-           <span id="dcMsg" class="hint" style="margin:0 0 0 auto"></span>
-         </div>
-         <p class="hint" style="margin:4px 0 8px">First time? <a href="#" id="dcGuide">How to set up your Discord app ↗</a> — register a free app at discord.com/developers, add the redirect URI, and paste its ID above (then Save).</p>
-         <div class="row" style="gap:8px">
-           ${connected
-             ? '<button class="danger" id="dcDisconnect">Disconnect</button>'
-             : `<button id="dcConnect"${dp && dp.enabled ? '' : ' disabled'}>Connect to Discord</button>`}
-         </div>`;
-      const msg = (t, bad) => { const m = box.querySelector('#dcMsg'); if (m) { m.textContent = t || ''; m.style.color = bad ? '#c98' : '#7e93ab'; } };
+      let provider = null;
+      try { provider = (await configApi.listOAuthProviders()).find(value => value.provider === 'discord'); } catch (e) {}
+      const connected = !!(provider && provider.connected);
+      const reauthorizationRequired = !!(provider && provider.reauthorizationRequired);
+      const identity = provider && provider.identity;
+      const account = identity && (identity.global_name || identity.username);
+      const status = connected
+        ? (reauthorizationRequired ? 'Connected · Reconnect to approve updated permissions' : provider.authState === 'authenticated' ? 'Connected and authenticated' : 'Authorized; waiting for Discord')
+        : (provider && provider.enabled ? 'Ready to connect' : 'Discord is unavailable');
+      const labels = { core: 'Core', voice: 'Voice', messages: 'Messages', notifications: 'Notifications' };
+      const permissions = provider && Array.isArray(provider.capabilityGroups) ? provider.capabilityGroups.map(group => {
+        const groupStatus = group.granted ? 'granted' : group.requested ? (connected ? 'reconnect required' : 'requested') : 'not requested';
+        return `${esc(labels[group.id] || group.id)}: ${esc(groupStatus)}`;
+      }).join(' · ') : 'Permission status unavailable';
+      box.innerHTML = `<div class="row" style="gap:8px;align-items:center">
+          <label style="width:auto;font-weight:bold">Discord account</label>
+          <span class="hint" style="margin:0">${esc(status)}</span>
+          <span id="dcMsg" class="hint" style="margin:0 0 0 auto"></span>
+        </div>
+        <div class="row"><label>Application</label><span class="hint" style="margin:0">${provider && provider.customApplication ? 'Custom Discord application' : 'Built into open-quake'}</span></div>
+        ${account ? `<div class="row"><label>Account</label><span class="hint" style="margin:0">${esc(account)}${identity.username && identity.global_name ? ' (' + esc(identity.username) + ')' : ''}</span></div>` : ''}
+        <div class="row"><label>Permissions</label><span class="hint" style="margin:0">${permissions}</span></div>
+        <p class="hint" style="margin:4px 0 8px"><a href="#" id="dcGuide">Discord connection guide ↗</a>${provider && provider.customApplication ? ' · Save changes before connecting or reconnecting so the selected application and permission groups are used.' : ''}</p>
+        <div class="row" style="gap:8px">
+          <button id="dcConnect"${provider && provider.enabled ? '' : ' disabled'}>${connected ? 'Reconnect' : 'Connect'}</button>
+          <button class="danger" id="dcDisconnect"${connected && provider.enabled ? '' : ' disabled'}>Disconnect</button>
+        </div>`;
+      const message = (text, bad) => { const target = box.querySelector('#dcMsg'); if (target) { target.textContent = text || ''; target.style.color = bad ? '#c98' : '#7e93ab'; } };
       const guide = box.querySelector('#dcGuide');
-      if (guide) guide.onclick = ev => { ev.preventDefault(); configApi.openExternal(guideUrl); };
-      const cbtn = box.querySelector('#dcConnect');
-      if (cbtn) cbtn.onclick = async () => {
-        if (dirty) { msg('Save your changes first, then Connect.', true); return; }   // connect uses the SAVED app ID, not the live field
-        cbtn.disabled = true; msg('Opening browser…');
-        let r; try { r = await configApi.connectOAuthProvider('discord', (dp && dp.scopes) || []); } catch (e) { r = { ok: false, error: e.message }; }
-        msg(r && r.ok ? 'Connected.' : 'Connect failed: ' + ((r && r.error) || ''), !(r && r.ok));
+      if (guide) guide.onclick = event => { event.preventDefault(); configApi.openExternal(guideUrl); };
+      const connect = box.querySelector('#dcConnect');
+      if (connect) connect.onclick = async () => {
+        if (dirty) { message('Save your changes first, then connect.', true); return; }
+        connect.disabled = true; message('Opening browser…');
+        let result;
+        try { result = await configApi.connectOAuthProvider('discord', (provider && provider.scopes) || []); }
+        catch (error) { result = { ok: false, error: error.message || String(error) }; }
+        if (!result || !result.ok) {
+          const invalidScope = result && result.code === 'DISCORD_AUTH_INVALID_SCOPE';
+          const invalidMessage = provider && provider.customApplication
+            ? 'The custom Discord application rejected one or more requested permissions. Adjust its enhanced groups, Save, then reconnect.'
+            : 'The built-in Discord application rejected one or more requested permissions. Its Discord approval configuration needs attention.';
+          message(invalidScope ? invalidMessage : 'Connect failed: ' + ((result && result.error) || ''), true);
+          connect.disabled = false;
+          return;
+        }
         await draw();
       };
-      const dbtn = box.querySelector('#dcDisconnect');
-      if (dbtn) dbtn.onclick = async () => {
-        if (!window.confirm('Disconnect Discord and remove the stored tokens?')) return;
-        msg('Disconnecting…');
-        let r; try { r = await configApi.disconnectOAuthProvider('discord'); } catch (e) { r = { ok: false, error: e.message }; }
-        msg(r && r.ok ? 'Disconnected.' : 'Disconnect failed: ' + ((r && r.error) || ''), !(r && r.ok));
+      const disconnect = box.querySelector('#dcDisconnect');
+      if (disconnect) disconnect.onclick = async () => {
+        if (!window.confirm('Disconnect Discord and remove the stored OAuth tokens?')) return;
+        disconnect.disabled = true; message('Disconnecting…');
+        let result;
+        try { result = await configApi.disconnectOAuthProvider('discord'); }
+        catch (error) { result = { ok: false, error: error.message || String(error) }; }
+        if (!result || !result.ok) { message('Disconnect failed: ' + ((result && result.error) || ''), true); disconnect.disabled = false; return; }
         await draw();
       };
     };
@@ -3566,10 +3587,9 @@
         const host = document.getElementById('sOauthList'); if (!host) return;
         let providers = [];
         try { providers = await configApi.listOAuthProviders(); } catch (e) {}
+        providers = providers.filter(value => value.provider !== 'discord');
         if (!providers.length) { host.innerHTML = '<p class="hint">No OAuth providers available.</p>'; return; }
-        const authState = p => p.provider === 'discord' && p.connected
-          ? (p.reauthorizationRequired || p.authState === 'reauthorization-required' ? 'Reconnect to approve updated Discord permissions' : p.authState === 'authenticated' ? 'Authenticated' : p.authState === 'auth-error' ? 'Authorization needs attention' : 'Authorized; waiting for Discord')
-          : (p.connected ? 'Connected, ' + fmtExpiry(p.expiresAt) : (p.configured ? 'Ready to connect' : 'Not configured'));
+        const authState = p => p.connected ? 'Connected, ' + fmtExpiry(p.expiresAt) : (p.configured ? 'Ready to connect' : 'Not configured');
         const identity = p => p.identity && (p.identity.global_name || p.identity.username)
           ? `<div class="row"><label>Account</label><span class="hint" style="margin:0">${esc(p.identity.global_name || p.identity.username)}${p.identity.username && p.identity.global_name ? ' (' + esc(p.identity.username) + ')' : ''}</span></div>` : '';
         host.innerHTML = providers.map(p => `
@@ -3596,9 +3616,8 @@
             const provider = providers.find(value => value.provider === id);
             const requestedScopes = id === 'microsoft' ? ['User.Read', 'Presence.Read', 'Calendars.Read', 'offline_access'] : (provider && provider.scopes || []);
             const r = await configApi.connectOAuthProvider(id, requestedScopes);
-            oauthMsg(id, r && r.ok ? (id === 'discord' ? 'Connected.' : 'Finish sign-in in your browser.') : 'Connect failed: ' + ((r && r.error) || ''), !(r && r.ok));
+            oauthMsg(id, r && r.ok ? 'Finish sign-in in your browser.' : 'Connect failed: ' + ((r && r.error) || ''), !(r && r.ok));
             e.currentTarget.disabled = false;
-            if (r && r.ok && id === 'discord') renderOauth();
             if (oauthPoll) clearInterval(oauthPoll);
             let tries = 0;
             oauthPoll = setInterval(() => { tries += 1; renderOauth(); if (tries >= 15) { clearInterval(oauthPoll); oauthPoll = null; } }, 2000);

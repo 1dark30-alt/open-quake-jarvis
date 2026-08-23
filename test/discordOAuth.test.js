@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('events');
 const { DiscordOAuth, DISCORD_CALLBACK_HOST, DISCORD_CALLBACK_PATH, DISCORD_CALLBACK_PORT, DISCORD_REDIRECT_URI, DISCORD_SCOPES, createPkce, secureEqual } = require('../app/discordOAuth');
+const { discordRequestedScopes } = require('../app/discordSettings');
 
 class MockServer extends EventEmitter {
   constructor(handler) { super(); this.handler = handler; this.closed = false; }
@@ -51,6 +52,25 @@ test('public-client browser callback validates state and exchanges code with PKC
   assert.match(body, /redirect_uri=http%3A%2F%2F127\.0\.0\.1%3A51120%2Fcallback/);
   assert.doesNotMatch(body, /client_secret|secret/);
   assert.equal(stored.refreshToken, 'refresh');
+  assert.equal(stored.requestedScope, DISCORD_SCOPES.join(' '));
+  assert.equal(stored.clientId, 'client');
+});
+
+test('custom applications request Core only unless enhanced capability groups are explicitly enabled', async () => {
+  let server, opened;
+  const settings = { applicationIdOverride: 'custom' };
+  const oauth = new DiscordOAuth({
+    getClientId: () => 'custom', getRequestedScopes: () => discordRequestedScopes(settings),
+    randomBytes: size => Buffer.alloc(size, 6), createServer: handler => (server = new MockServer(handler)),
+    openExternal: async url => { opened = new URL(url); },
+    fetch: async () => ({ ok: true, text: async () => JSON.stringify({ access_token: 'access', refresh_token: 'refresh', scope: 'identify rpc' }) }),
+  });
+  const pending = oauth.authorize();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(opened.searchParams.get('scope'), 'identify rpc');
+  server.callback('/callback?code=ok&state=' + encodeURIComponent(opened.searchParams.get('state')));
+  assert.equal(await pending, 'access');
+  assert.deepEqual(discordRequestedScopes(Object.assign({}, settings, { customVoiceScopes: true, customMessageScopes: true, customNotificationScopes: true })), DISCORD_SCOPES);
 });
 
 test('callback listener accepts only GET on the exact registered path', async () => {
@@ -85,6 +105,22 @@ test('callback rejects a mismatched OAuth state before token exchange', async ()
   assert.equal(fetches, 0);
 });
 
+test('invalid_scope callback is classified and sanitized without token exchange or retry guessing', async () => {
+  let server, fetches = 0;
+  const oauth = new DiscordOAuth({
+    getClientId: () => 'client', randomBytes: size => Buffer.alloc(size, 5),
+    createServer: handler => (server = new MockServer(handler)), openExternal: async () => {},
+    fetch: async () => { fetches += 1; },
+  });
+  const pending = oauth.authorize();
+  await new Promise(resolve => setImmediate(resolve));
+  const response = server.callback('/callback?error=invalid_scope&error_description=' + encodeURIComponent('access_token=do-not-render'));
+  assert.equal(response.status, 400);
+  assert.doesNotMatch(response.body, /do-not-render|access_token/);
+  await assert.rejects(pending, error => error.code === 'DISCORD_AUTH_INVALID_SCOPE' && !/do-not-render|access_token/.test(error.message));
+  assert.equal(fetches, 0);
+});
+
 test('expired tokens refresh as a public client and rotate refresh tokens', async () => {
   let stored, deleted = 0, request;
   const tokens = { accessToken: 'old', refreshToken: 'refresh-old', expiresAt: 1, scope: DISCORD_SCOPES.join(' ') };
@@ -106,9 +142,19 @@ test('refresh failure deletes stored tokens so reconnect re-authorizes', async (
   assert.equal(deleted, 1);
 });
 
-test('legacy Discord grants require explicit reauthorization when required scopes change', async () => {
+test('legacy Discord grants remain usable while added scopes require explicit reauthorization', async () => {
   const oauth = new DiscordOAuth({ getTokens: () => ({ accessToken: 'old', refreshToken: 'refresh', scope: 'rpc identify' }) });
   assert.equal(oauth.requiresReauthorization(), true);
+  assert.equal(await oauth.accessToken(), 'old');
+  assert.deepEqual(DISCORD_SCOPES, ['identify', 'rpc', 'rpc.voice.read', 'rpc.voice.write', 'messages.read', 'rpc.notifications.read']);
+});
+
+test('switching Application ID rejects incompatible stored authorization without a Client Secret', async () => {
+  const oauth = new DiscordOAuth({
+    getClientId: () => 'new-client', getRequestedScopes: () => ['identify', 'rpc'],
+    getTokens: () => ({ accessToken: 'sensitive-access', refreshToken: 'sensitive-refresh', clientId: 'old-client', scope: 'identify rpc' }),
+  });
   assert.equal(await oauth.accessToken(), null);
-  assert.deepEqual(DISCORD_SCOPES, ['rpc', 'identify', 'rpc.voice.read', 'rpc.voice.write', 'messages.read', 'rpc.notifications.read']);
+  assert.equal(oauth.requiresReauthorization(), true);
+  assert.doesNotMatch(DiscordOAuth.toString(), /client_secret/);
 });

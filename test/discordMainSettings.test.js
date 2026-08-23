@@ -14,12 +14,11 @@ test('Discord app descriptor exposes integration settings only for Discord', () 
   const clock = manifest.find(app => app.id === 'clock');
   assert.equal(discord.settings.key, 'discord');
   assert.deepEqual(discord.settings.options.map(option => option.label), [
-    'Enable Discord integration', 'Your Discord Application ID', 'Automatic reconnect',
-    'Rich Presence enabled', 'Default Discord view', 'Show/hide unavailable controls',
+    'Enable Discord integration', 'Automatic reconnect', 'Rich Presence enabled',
+    'Default Discord view', 'Show/hide unavailable controls', 'Custom Discord Application ID',
+    'Custom app: Voice permissions', 'Custom app: Message permissions', 'Custom app: Notification permissions',
   ]);
-  // The Application ID is the primary bring-your-own-app setup field now -- unhidden (not tucked in
-  // the advanced disclosure) and surfaced right after the enable toggle.
-  assert.ok(!discord.settings.options.find(option => option.key === 'applicationIdOverride').advanced);
+  assert.ok(discord.settings.options.filter(option => option.key === 'applicationIdOverride' || option.key.startsWith('custom')).every(option => option.advanced));
   assert.equal(discord.settings.options.some(option => option.key === 'clientSecret'), false);
   assert.equal(clock.settings, undefined);
 });
@@ -40,6 +39,8 @@ test('configuration load and editor save normalize the existing Discord settings
   assert.match(migration, /c\.settings\.discord = normalizeDiscordSettings\(c\.settings\.discord\)/);
   const saveHandler = source.slice(source.indexOf("ipcMain.handle('saveConfigFromEditor'"), source.indexOf("ipcMain.handle('pickProgram'"));
   assert.match(saveHandler, /newCfg\.settings\.discord = normalizeDiscordSettings\(newCfg\.settings\.discord\)/);
+  assert.match(saveHandler, /previousDiscordApplicationId !== discordApplicationId[\s\S]*delete newCfg\.settings\.oauth\.tokens\.discord/);
+  assert.doesNotMatch(saveHandler, /customVoiceScopes[\s\S]*delete newCfg\.settings\.oauth\.tokens\.discord/);
 });
 
 test('Discord panel keeps Voice, Chat, and Activity and has no Settings view', () => {
@@ -62,14 +63,21 @@ test('Discord client secret is neither configured nor rendered, including legacy
   assert.doesNotMatch(read('secretStore.js'), /settings\.discord\.clientSecret|discord\.clientSecret/);
 });
 
-test('Settings Auth renders a Discord provider card with account, scopes, and lifecycle actions', () => {
+test('Discord app settings render account, permissions, and OAuth lifecycle actions', () => {
   const source = read('config.js');
-  assert.match(source, /p\.provider === 'discord'/);
-  assert.match(source, />Account<\/label>/);
-  assert.match(source, /oauthConnect[\s\S]*Reconnect[\s\S]*oauthDisconnect/);
+  const discordSettings = source.slice(source.indexOf('async function appendDiscordSetup'), source.indexOf('// Screensaver:'));
+  assert.match(discordSettings, /listOAuthProviders\(\)[\s\S]*provider === 'discord'/);
+  assert.match(discordSettings, />Account<\/label>/);
+  assert.match(discordSettings, />Permissions<\/label>/);
+  assert.match(discordSettings, /dcConnect[\s\S]*Reconnect[\s\S]*dcDisconnect/);
+  assert.match(discordSettings, /connectOAuthProvider\('discord',[\s\S]*disconnectOAuthProvider\('discord'\)/);
+  assert.match(discordSettings, /DISCORD_AUTH_INVALID_SCOPE/);
+  assert.match(source, /providers = providers\.filter\(value => value\.provider !== 'discord'\)/);
   assert.match(source, /requestedScopes = id === 'microsoft'[\s\S]*provider\.scopes/);
   const main = read('main.js');
   assert.match(main, /provider: 'discord', name: 'Discord'/);
   assert.match(main, /discordService\.authorize\(\)/);
   assert.match(main, /discordService\.disconnectAuthorization\(\)/);
+  assert.match(main, /requestedScopes: discordRequested/);
+  assert.match(main, /grantedScopes: discordGrantedScopes/);
 });
