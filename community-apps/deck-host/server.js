@@ -221,10 +221,17 @@ function scheduleSave(options) {
   saveTimer = setTimeout(() => { saveTimer = null; saveDeck(options); }, 500);
 }
 function activeProfile() { return deck.profiles.find(p => p.id === deck.activeProfileId) || deck.profiles[0]; }
-function layoutOf(options) {
-  const m = /^(\d+)x(\d+)$/.exec(String((options && options.layout) || '8x3'));
-  const cols = m ? Math.min(12, Math.max(1, +m[1])) : 8, rows = m ? Math.min(6, Math.max(1, +m[2])) : 3;
-  return { columns: cols, rows };
+// Layout matches the DEVICE form factor: the user picks how many keys HIGH (2 = jumbo, 3 = dense);
+// columns are whatever number of square keys fits the page's actual grid area, which the page
+// reports with its state polls (w/h in px). That computed size is also what plugins are told the
+// "device" is. Until the page reports, fall back to a 1920x480-ish estimate.
+function layoutOf(options, wpx, hpx) {
+  const rows = String((options && options.rows) || '3') === '2' ? 2 : 3;
+  const h = Number(hpx) > 0 ? Number(hpx) : 448;
+  const w = Number(wpx) > 0 ? Number(wpx) : 1650;
+  const side = Math.max(64, Math.floor((h - (rows - 1) * 8) / rows));
+  const columns = Math.max(1, Math.min(16, Math.floor((w - 32 + 8) / (side + 8))));
+  return { columns, rows };
 }
 
 // ---- plugin discovery -------------------------------------------------------------------------
@@ -446,9 +453,12 @@ function stopPlugin(p) {
 }
 process.on('exit', () => { for (const p of plugins.values()) { try { if (p.proc) p.proc.kill(); } catch (e) {} } });
 
-async function ensureStarted(options) {
+async function ensureStarted(options, wpx, hpx) {
   lastOptions = options;
-  lastLayout = layoutOf(options);
+  if (wpx || hpx || !lastLayout.reported) {
+    lastLayout = layoutOf(options, wpx, hpx);
+    if (wpx) lastLayout.reported = true;   // a real page measurement beats the estimate from then on
+  }
   loadDeck(options);   // ALWAYS, even with no folder set -- snapshot() needs a deck on the very first call
   const dir = pluginsDirOf(options);
   // While the folder is set but empty, keep looking -- the user is typically downloading plugins
@@ -529,7 +539,7 @@ async function handle(action, context) {
   const query = (context && context.query) || {};
   let body = null;
   if (context && context.body) { try { body = JSON.parse(context.body.toString('utf8')); } catch (e) { body = null; } }
-  await ensureStarted(options);
+  await ensureStarted(options, Number(query.w) || 0, Number(query.h) || 0);
 
   if (action === 'state') {
     const since = Number(query.since) || 0;
@@ -558,7 +568,7 @@ async function handle(action, context) {
     const act = String((body && body.action) || ''), plug = String((body && body.plugin) || '');
     const p = plugins.get(plug);
     if (!p || !p.actions.some(a => a.uuid === act)) return { ok: false, error: 'unknown action' };
-    const lay = layoutOf(options);
+    const lay = lastLayout;   // the live page-reported layout
     if (col < 0 || row < 0 || col >= lay.columns || row >= lay.rows) return { ok: false, error: 'slot out of range' };
     const prof = activeProfile();
     const pos = col + ',' + row;
@@ -585,7 +595,7 @@ async function handle(action, context) {
     const from = ((body && body.fromCol) | 0) + ',' + ((body && body.fromRow) | 0);
     const toCol = (body && body.toCol) | 0, toRow = (body && body.toRow) | 0;
     const to = toCol + ',' + toRow;
-    const lay = layoutOf(options);
+    const lay = lastLayout;   // the live page-reported layout
     if (toCol < 0 || toRow < 0 || toCol >= lay.columns || toRow >= lay.rows) return { ok: false, error: 'slot out of range' };
     const prof = activeProfile();
     const ctx = prof.keys[from];

@@ -8,21 +8,23 @@
 </head>
 <body>
   <aside id="left">
-    <div class="rail-label">Profiles</div>
-    <nav id="profiles" aria-label="Profiles"></nav>
-    <button id="addprofile" type="button" tabindex="-1">+ Profile</button>
-    <button id="editbtn" type="button" tabindex="-1">Edit</button>
+    <button id="profilebtn" type="button" tabindex="-1"><span class="bl">Profile</span><span class="bv" id="profilename">Main</span></button>
+    <button id="editbtn" type="button" tabindex="-1"><span class="bl">Edit</span><span class="bv" id="editstate">Off</span></button>
+    <button id="pluginsbtn" type="button" tabindex="-1"><span class="bl"><span class="dot" id="hostdot"></span> Plugins</span><span class="bv" id="plugcount"></span></button>
+    <div id="toast" hidden></div>
   </aside>
 
   <main id="grid" aria-label="Deck keys"></main>
 
-  <aside id="right">
-    <div class="rail-label">Deck host</div>
-    <div id="hostline"><span class="dot" id="hostdot"></span><span id="hoststatus">Starting…</span></div>
-    <div id="plugrail"></div>
-    <button id="pluginsbtn" type="button" tabindex="-1">Plugins</button>
-    <div id="toast" hidden></div>
-  </aside>
+  <div id="profilepane" hidden>
+    <div class="ov-head">
+      <span>Profiles</span>
+      <span class="ov-spacer"></span>
+      <button id="addprofile" type="button">+ Profile</button>
+      <button id="profileclose" type="button">Close</button>
+    </div>
+    <div id="profilelist" class="ov-body ov-list"></div>
+  </div>
 
   <div id="assign" hidden>
     <div class="ov-head">
@@ -46,7 +48,8 @@
 
   <div id="pluginspane" hidden>
     <div class="ov-head">
-      <span>Plugins</span>
+      <span class="dot" id="panedot"></span>
+      <span id="hoststatus">Starting…</span>
       <span class="ov-spacer"></span>
       <button id="rescanbtn" type="button">Rescan folder</button>
       <button id="pluginsclose" type="button">Close</button>

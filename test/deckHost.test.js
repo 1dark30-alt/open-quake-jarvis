@@ -49,7 +49,7 @@ fs.writeFileSync(path.join(PLUGDIR, 'icon.png'), Buffer.from('89504e470d0a1a0a',
 
 const server = require('../community-apps/deck-host/server.js');
 test.after(() => { server._shutdown(); });   // kill the fake plugin + close the WSS so the runner can exit
-const OPTS = { pluginsDir: TMP, layout: '5x3' };
+const OPTS = { pluginsDir: TMP, rows: '3' };
 const call = (action, { query, body } = {}) => server.handle(action, { appId: 'deck-host', query: query || {}, options: OPTS, body: body ? Buffer.from(JSON.stringify(body)) : null });
 const until = async (fn, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t0 > ms) throw new Error('timeout'); await new Promise(r => setTimeout(r, 120)); } };
 
@@ -57,7 +57,8 @@ test('scans, spawns, and registers the fake plugin (Encoder-only actions filtere
   const s = await until(async () => { const x = await call('state'); return x.plugins.length && x.plugins[0].status === 'running' ? x : null; });
   assert.equal(s.plugins[0].id, 'com.test.fake');
   assert.deepEqual(s.plugins[0].actions.map(a => a.uuid), ['com.test.fake.hello']);   // Keypad only
-  assert.deepEqual(s.layout, { columns: 5, rows: 3 });
+  assert.equal(s.layout.rows, 3);                                        // rows = the form-factor option
+  assert.ok(s.layout.columns >= 1 && s.layout.columns <= 16);            // columns derived from the reported/estimated width
 });
 
 test('assign -> willAppear -> plugin renders the key (setTitle + setImage)', async () => {
@@ -144,7 +145,7 @@ test('.streamDeckPlugin packages auto-extract (plain), encrypted ones are skippe
     OS: [{ Platform: 'windows', MinimumVersion: '10' }], Actions: [{ UUID: 'com.test.stub.a', Name: 'A', Controllers: ['Keypad'] }] }));
   fs.writeFileSync(path.join(stubDir, 'stub.exe'), 'not a real exe');
 
-  const call2 = (action, extra) => server.handle(action, Object.assign({ appId: 'deck-host', query: {}, options: { pluginsDir: TMP2, layout: '5x3' } }, extra));
+  const call2 = (action, extra) => server.handle(action, Object.assign({ appId: 'deck-host', query: {}, options: { pluginsDir: TMP2, rows: '3' } }, extra));
   const s = await until(async () => {
     const x = await call2('state');
     const pk = x.plugins.find(p => p.id === 'com.test.packaged');

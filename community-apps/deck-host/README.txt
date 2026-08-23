@@ -33,8 +33,13 @@ Using the deck
   twice -- stray-tap protection); in Edit mode a profile's X removes it.
   Rename/add/remove is also in the PC editor on this page's options.
   Turning the knob cycles profiles.
-- Key layout (5x3 / 8x3 / 10x4) is a page option; it is also the device
-  size reported to plugins.
+- Key size is a page option: 3 keys high (more keys) or 2 keys high
+  (jumbo). Keys are square, like the hardware; how many columns fit is
+  worked out from the screen automatically, and that computed size is the
+  device size reported to plugins.
+- Half quake / half deck: enable the page's "Buttons" strip in the editor
+  to put open-quake launcher tiles beside the deck -- the deck sits on its
+  own black bezel plate, so the two are impossible to confuse.
 - Assignments and settings persist in deck-host.json next to your plugins
   folder, so they survive app updates.
 

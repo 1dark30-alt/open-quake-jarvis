@@ -1,13 +1,12 @@
 {
   "id": "deck-host",
   "name": "Stream Deck Host",
-  "version": "1.1.5",
+  "version": "1.2.0",
   "description": "Run Elgato Stream Deck plugins on the panel — a key grid driven by real *.sdPlugin packages.",
   "entry": "index.html",
   "served": true,
   "server": "server.js",
   "knob": true,
-  "hideGridInEditor": true,
   "options": [
     {
       "key": "pluginsDir",
@@ -17,25 +16,12 @@
       "help": "Folder on this PC holding your *.sdPlugin packages (each a folder like com.example.name.sdPlugin with a manifest.json). Plugins are real programs that run on your PC — only add plugins you trust."
     },
     {
-      "key": "layout",
-      "label": "Key layout",
+      "key": "rows",
+      "label": "Key size",
       "type": "select",
-      "default": "8x3",
-      "choices": [
-        [
-          "5x3",
-          "5 × 3 — classic Stream Deck"
-        ],
-        [
-          "8x3",
-          "8 × 3 — wide"
-        ],
-        [
-          "10x4",
-          "10 × 4 — dense"
-        ]
-      ],
-      "help": "How many keys the on-screen deck shows. Matches the device size reported to plugins."
+      "default": "3",
+      "choices": [["3", "3 keys high — more keys"], ["2", "2 keys high — jumbo keys"]],
+      "help": "Keys are square; how many columns fit is worked out from the screen automatically. Tip: enable the Buttons strip below to split the panel — open-quake tiles on one side, the deck on the other."
     }
   ]
 }

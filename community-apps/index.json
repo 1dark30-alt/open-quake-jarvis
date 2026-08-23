@@ -52,7 +52,7 @@
       "id": "deck-host",
       "name": "Stream Deck Host",
       "description": "Run Elgato Stream Deck plugins on the panel — a key grid driven by real *.sdPlugin packages.",
-      "version": "1.1.5",
+      "version": "1.2.0",
       "zip": "deck-host.zip",
       "server": true
     }

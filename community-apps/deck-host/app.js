@@ -1,11 +1,11 @@
 'use strict';
-// Stream Deck Host page. Interaction model (post-review):
-//   Normal mode: touching a key sends keyDown on finger-down and keyUp on lift -- authentic Stream
-//     Deck semantics (plugins may time holds). Nothing else hides behind gestures.
-//   Edit mode (header toggle): tapping ANY key -- assigned or empty -- opens the assignment overlay;
-//     profile chips grow an X for removal. No hidden hold gesture anywhere.
-// Layout: three columns per the design system -- left rail = profiles, center = square key grid,
-// right rail = host status + plugins summary. Renders from server.js snapshots (long-poll).
+// Stream Deck Host page. Buttons-first design: one slim rail of three buttons (Profile / Edit /
+// Plugins) and the rest of the panel is deck keys on a hardware-style bezel plate. Everything
+// informational lives behind those buttons in overlays.
+//   Normal mode: touching a key sends keyDown on finger-down and keyUp on lift (authentic).
+//   Edit mode: tapping ANY key -- assigned or empty -- opens the assignment overlay.
+// The page reports its real grid area (w/h) with each poll; the server derives columns from it so
+// the layout matches the device (rows = the "Key size" option; columns = what fits).
 (function () {
   var q = new URLSearchParams(location.search);
   if (q.get('_dark') === '0') document.body.classList.add('light');
@@ -13,21 +13,22 @@
   if (/^#[0-9a-fA-F]{6}$/.test(ACCENT || '')) document.documentElement.style.setProperty('--accent', ACCENT);
 
   var el = function (id) { return document.getElementById(id); };
-  var grid = el('grid'), profilesNav = el('profiles');
+  var grid = el('grid');
   var snap = null, assignSlot = null, movePending = null;
-  var editing = false;              // Edit mode: taps configure instead of pressing
-  var confirmRemoveId = null;       // profile chip in remove-confirm state
-  var pollFails = 0;                // consecutive long-poll failures -> connection-lost state
-  var iconCache = {};               // "plugin|path" -> data URL
+  var editing = false;
+  var confirmRemoveId = null;
+  var pollFails = 0;
+  var iconCache = {};
 
   function post(action, body) {
     return fetch('/app-api/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
       .then(function (r) { return r.json(); }).catch(function () { return { ok: false, error: 'panel lost the deck host' }; });
   }
+  function gridArea() { return 'w=' + Math.max(0, grid.clientWidth) + '&h=' + Math.max(0, grid.clientHeight); }
 
   // ---- long-poll loop ---------------------------------------------------
   function poll(since) {
-    fetch('/app-api/state' + (since ? '?since=' + since : ''))
+    fetch('/app-api/state?' + gridArea() + (since ? '&since=' + since : ''))
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (j && j.ok) { pollFails = 0; snap = j; render(); poll(j.v); }
@@ -36,11 +37,7 @@
       .catch(function () { pollFails++; render(); setTimeout(function () { poll(0); }, 2000); });
   }
 
-  // ---- transient key feedback (no full re-render) -----------------------
-  function flashKey(d, cls, ms) {
-    d.classList.add(cls);
-    setTimeout(function () { d.classList.remove(cls); }, ms || 900);
-  }
+  function flashKey(d, cls, ms) { d.classList.add(cls); setTimeout(function () { if (d.isConnected) d.classList.remove(cls); }, ms || 900); }
   function toast(msg, bad) {
     var t = el('toast');
     t.textContent = msg; t.className = bad ? 'bad' : ''; t.hidden = false;
@@ -48,78 +45,38 @@
     toast._t = setTimeout(function () { t.hidden = true; }, 2600);
   }
 
-  // ---- status (right rail) ----------------------------------------------
-  function renderStatus() {
-    var dot = el('hostdot'), txt = el('hoststatus');
-    if (pollFails >= 2) { dot.className = 'dot bad'; txt.textContent = 'Panel lost the deck host — retrying…'; document.body.classList.add('lost'); return; }
-    document.body.classList.remove('lost');
-    if (movePending) { dot.className = 'dot warn'; txt.textContent = 'Moving key — tap a highlighted slot. Tap anything else to cancel.'; return; }
-    if (editing) { dot.className = 'dot warn'; txt.textContent = 'Edit mode — tap a key to assign or configure it; ✕ removes a profile.'; return; }
+  // ---- the rail (buttons only) ------------------------------------------
+  function activeProfileName() {
+    var pr = snap && (snap.profiles || []).find(function (p) { return p.id === snap.activeProfile; });
+    return pr ? pr.name : '—';
+  }
+  function renderRail() {
+    el('profilename').textContent = activeProfileName();
+    el('editstate').textContent = editing ? 'On' : 'Off';
+    el('editbtn').classList.toggle('on', editing);
+    var ps = (snap && snap.plugins) || [];
+    var skipped = (snap && snap.skipped) || [];
+    var running = ps.filter(function (p) { return p.status === 'running'; }).length;
+    var attention = ps.filter(function (p) { return p.status === 'crashed' || p.status === 'unsupported'; }).length + skipped.length;
+    var dot = el('hostdot');
+    if (pollFails >= 2) dot.className = 'dot bad';
+    else dot.className = 'dot ' + (attention ? 'bad' : (running ? 'ok' : 'warn'));
+    el('plugcount').textContent = ps.length ? (running + '/' + ps.length) : '—';
+  }
+  function statusText() {
+    if (pollFails >= 2) return 'Panel lost the deck host — retrying…';
     var ps = (snap && snap.plugins) || [];
     var skipped = (snap && snap.skipped) || [];
     if (!ps.length) {
-      dot.className = 'dot warn';
-      txt.textContent = !snap || !snap.folder ? 'Plugins folder not set' : (skipped.length ? skipped.length + ' package(s) can’t run — see Plugins' : 'No plugins found yet');
-      return;
+      if (!snap || !snap.folder) return 'Plugins folder not set — set it in this page’s options (and Save)';
+      return skipped.length ? skipped.length + ' package(s) can’t run' : 'No plugins in ' + snap.folder;
     }
     var running = ps.filter(function (p) { return p.status === 'running'; }).length;
     var attention = ps.filter(function (p) { return p.status === 'crashed' || p.status === 'unsupported'; }).length + skipped.length;
-    dot.className = 'dot ' + (attention ? 'bad' : running ? 'ok' : 'warn');
-    txt.textContent = running + '/' + ps.length + ' plugins running' + (attention ? ' · ' + attention + ' need attention' : '');
+    return running + '/' + ps.length + ' plugins running' + (attention ? ' · ' + attention + ' need attention' : '');
   }
 
-  // ---- profiles (left rail) ---------------------------------------------
-  function renderProfiles() {
-    profilesNav.innerHTML = '';
-    el('editbtn').textContent = editing ? 'Done' : 'Edit';
-    el('editbtn').classList.toggle('on', editing);
-    (snap.profiles || []).forEach(function (pr) {
-      if (pr.id === confirmRemoveId) {
-        var count = 0;
-        if (snap.keys && pr.id === snap.activeProfile) count = Object.keys(snap.keys).length;
-        var rm = document.createElement('button');
-        rm.type = 'button'; rm.tabIndex = -1; rm.className = 'removing';
-        rm.textContent = 'Remove "' + pr.name + '"' + (count ? ' + ' + count + ' key' + (count === 1 ? '' : 's') : '') + '?';
-        rm.addEventListener('click', function () { confirmRemoveId = null; post('profile-remove', { id: pr.id }).then(function (r) { if (!r.ok) toast(r.error, true); }); });
-        var keep = document.createElement('button');
-        keep.type = 'button'; keep.tabIndex = -1; keep.textContent = 'Keep';
-        keep.addEventListener('click', function () { confirmRemoveId = null; renderProfiles(); });
-        profilesNav.appendChild(rm); profilesNav.appendChild(keep);
-        return;
-      }
-      var b = document.createElement('button');
-      b.type = 'button'; b.tabIndex = -1;
-      b.className = pr.id === snap.activeProfile ? 'on' : '';
-      b.textContent = editing ? '✕ ' + pr.name : pr.name;
-      b.addEventListener('click', function () {
-        if (!editing) { post('profile-select', { id: pr.id }); return; }
-        if ((snap.profiles || []).length <= 1) { toast('The last profile can’t be removed.', true); return; }
-        confirmRemoveId = pr.id; renderProfiles();
-      });
-      profilesNav.appendChild(b);
-    });
-  }
-
-  // ---- plugins summary (right rail) -------------------------------------
-  function renderPluginsRail() {
-    var host = el('plugrail');
-    host.innerHTML = '';
-    var ps = (snap && snap.plugins) || [];
-    var skipped = (snap && snap.skipped) || [];
-    ps.forEach(function (p) {
-      var d = document.createElement('div'); d.className = 'prow';
-      var st = document.createElement('span'); st.className = 'pdot ' + p.status; d.appendChild(st);
-      var g = document.createElement('span'); g.className = 'grow'; g.textContent = p.name; d.appendChild(g);
-      host.appendChild(d);
-    });
-    if (skipped.length) {
-      var s = document.createElement('div'); s.className = 'prow skip';
-      s.textContent = skipped.length + ' skipped package' + (skipped.length === 1 ? '' : 's');
-      host.appendChild(s);
-    }
-  }
-
-  // ---- key grid (center) ------------------------------------------------
+  // ---- key grid ---------------------------------------------------------
   function actionIcon(plugin, iconPath, img) {
     if (!iconPath) return;
     var key = plugin + '|' + iconPath;
@@ -132,7 +89,7 @@
   }
   function normalizeImage(img) {
     if (!img) return '';
-    return /^data:/.test(img) ? img : 'data:image/png;base64,' + img;   // some SDKs send bare base64
+    return /^data:/.test(img) ? img : 'data:image/png;base64,' + img;
   }
   function shortName(k) {
     if (k.name && k.name.indexOf('.') < 0) return k.name;
@@ -140,12 +97,9 @@
     return parts[parts.length - 1] || 'key';
   }
   function render() {
-    if (!snap) { renderStatus(); return; }
-    renderStatus();
-    renderProfiles();
-    renderPluginsRail();
+    renderRail();
+    if (!snap) return;
     var ps = snap.plugins || [];
-    // First-run empty state: one clear instruction instead of 24 dashed boxes.
     if (!ps.length && !(snap.skipped || []).length) {
       grid.style.gridTemplateColumns = '1fr'; grid.style.gridTemplateRows = '1fr';
       grid.innerHTML = '';
@@ -158,7 +112,7 @@
     }
     var lay = snap.layout || { columns: 8, rows: 3 };
     var availW = grid.clientWidth - 32 - (lay.columns - 1) * 8;
-    var availH = grid.clientHeight - 16 - (lay.rows - 1) * 8;
+    var availH = grid.clientHeight - 32 - (lay.rows - 1) * 8;
     var ks = Math.max(64, Math.floor(Math.min(availW / lay.columns, availH / lay.rows)));
     grid.style.gridTemplateColumns = 'repeat(' + lay.columns + ', ' + ks + 'px)';
     grid.style.gridTemplateRows = 'repeat(' + lay.rows + ', ' + ks + 'px)';
@@ -172,7 +126,7 @@
         d.className = 'key' + (k ? '' : ' empty');
         if (k) {
           var plug = ps.find(function (p) { return p.id === k.plugin; });
-          if (!plug || plug.status !== 'running') d.classList.add('dead');   // missing plugin looks dead too
+          if (!plug || plug.status !== 'running') d.classList.add('dead');
           var img = normalizeImage(k.image);
           var t = document.createElement('span'); t.className = 'kt';
           t.textContent = k.title || (img ? '' : shortName(k));
@@ -205,8 +159,6 @@
       })(c, r);
     }
   }
-  // Assigned key: authentic press semantics -- keyDown on finger-down, keyUp on lift. Edit mode
-  // routes the tap to configuration instead. Press failures flash the key red (never silent).
   function wireAssigned(d, k, c, r) {
     var downSent = false;
     d.addEventListener('pointerdown', function (ev) {
@@ -227,8 +179,57 @@
     d.addEventListener('click', function () { if (editing) openAssign(c, r, k); });
   }
 
+  // ---- profile overlay ---------------------------------------------------
+  el('profilebtn').addEventListener('click', function () { confirmRemoveId = null; renderProfilePane(); el('profilepane').hidden = false; });
+  el('profileclose').addEventListener('click', function () { el('profilepane').hidden = true; });
+  function renderProfilePane() {
+    var list = el('profilelist');
+    list.innerHTML = '';
+    ((snap && snap.profiles) || []).forEach(function (pr) {
+      var row = document.createElement('div'); row.className = 'prof';
+      if (pr.id === confirmRemoveId) {
+        var count = (snap.keys && pr.id === snap.activeProfile) ? Object.keys(snap.keys).length : null;
+        var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'danger grow';
+        rm.textContent = 'Remove "' + pr.name + '"' + (count ? ' and its ' + count + ' key' + (count === 1 ? '' : 's') : ' and its keys') + '?';
+        rm.addEventListener('click', function () {
+          confirmRemoveId = null;
+          post('profile-remove', { id: pr.id }).then(function (r2) { if (!r2.ok) toast(r2.error, true); renderProfilePane(); });
+        });
+        var keep = document.createElement('button'); keep.type = 'button'; keep.textContent = 'Keep';
+        keep.addEventListener('click', function () { confirmRemoveId = null; renderProfilePane(); });
+        row.appendChild(rm); row.appendChild(keep);
+      } else {
+        var sel = document.createElement('button'); sel.type = 'button'; sel.className = 'grow' + (pr.id === snap.activeProfile ? ' on' : '');
+        sel.textContent = pr.name;
+        sel.addEventListener('click', function () { post('profile-select', { id: pr.id }).then(function () { el('profilepane').hidden = true; }); });
+        row.appendChild(sel);
+        var del = document.createElement('button'); del.type = 'button'; del.className = 'danger'; del.textContent = '✕';
+        del.addEventListener('click', function () {
+          if (((snap && snap.profiles) || []).length <= 1) { toast('The last profile can’t be removed.', true); return; }
+          confirmRemoveId = pr.id; renderProfilePane();
+        });
+        row.appendChild(del);
+      }
+      list.appendChild(row);
+    });
+    var hint = document.createElement('div'); hint.className = 'pk-empty';
+    hint.textContent = 'Profiles are separate key layouts. The knob cycles them. Rename them from the PC editor on this page’s options.';
+    list.appendChild(hint);
+  }
+  var addArm = null;
+  el('addprofile').addEventListener('click', function () {
+    var b = el('addprofile');
+    if (addArm) {
+      clearTimeout(addArm); addArm = null; b.textContent = '+ Profile';
+      post('profile-add', {}).then(function (r) { if (r.ok) post('profile-select', { id: r.id }).then(function () { renderProfilePane(); }); });
+      return;
+    }
+    b.textContent = 'Tap again to add';
+    addArm = setTimeout(function () { addArm = null; b.textContent = '+ Profile'; }, 3000);
+  });
+
   // ---- assignment overlay -----------------------------------------------
-  var armAssign = null;   // action row armed for the confirm-second-tap when reassigning
+  var armAssign = null;
   function openAssign(c, r, k) {
     assignSlot = { col: c, row: r, key: k, profile: snap.activeProfile };
     armAssign = null;
@@ -249,7 +250,7 @@
         var g = document.createElement('span'); g.className = 'grow'; g.textContent = a.name; b.appendChild(g);
         var s = document.createElement('span'); s.className = 'sub'; s.textContent = p.name; b.appendChild(s);
         b.addEventListener('click', function () {
-          if (assignSlot.key && armAssign !== b) {   // replacing an assigned key erases its settings -> second tap confirms
+          if (assignSlot.key && armAssign !== b) {
             [].forEach.call(list.children, function (x) { x.classList.remove('arming'); });
             armAssign = b; b.classList.add('arming');
             el('assignmsg').textContent = 'Tap again to replace this key with "' + a.name + '" (current settings will be erased).';
@@ -273,6 +274,7 @@
     if (!assignSlot) return;
     movePending = { col: assignSlot.col, row: assignSlot.row };
     el('assign').hidden = true; assignSlot = null;
+    toast('Tap a highlighted empty slot to move the key. Tap anything else to cancel.');
     render();
   });
   el('unassignbtn').addEventListener('click', function () {
@@ -302,6 +304,8 @@
     });
   });
   function renderPluginsPane() {
+    el('panedot').className = el('hostdot').className;
+    el('hoststatus').textContent = statusText();
     var list = el('pluginlist');
     list.innerHTML = '';
     var ps = (snap && snap.plugins) || [];
@@ -322,7 +326,7 @@
       head.appendChild(b);
       d.appendChild(head);
       if (p.error) { var er = document.createElement('div'); er.className = 'plugerr'; er.textContent = p.error; d.appendChild(er); }
-      (p.log || []).slice(-3).forEach(function (ln) { var lg = document.createElement('div'); lg.className = 'pluglog'; lg.textContent = ln; d.appendChild(lg); });
+      (p.log || []).forEach(function (ln) { var lg = document.createElement('div'); lg.className = 'pluglog'; lg.textContent = ln; d.appendChild(lg); });
       list.appendChild(d);
     });
     sk.forEach(function (s) {
@@ -337,28 +341,16 @@
     });
   }
 
-  // ---- header buttons ----------------------------------------------------
+  // ---- edit toggle -------------------------------------------------------
   el('editbtn').addEventListener('click', function () {
     editing = !editing;
     confirmRemoveId = null; movePending = null;
     render();
   });
-  var addArm = null;
-  el('addprofile').addEventListener('click', function () {
-    var b = el('addprofile');
-    if (addArm) {
-      clearTimeout(addArm); addArm = null; b.textContent = '+ Profile';
-      post('profile-add', {}).then(function (r) { if (r.ok) post('profile-select', { id: r.id }); });   // new profile becomes active
-      return;
-    }
-    b.textContent = 'Tap again to add';
-    addArm = setTimeout(function () { addArm = null; b.textContent = '+ Profile'; }, 3000);
-  });
 
   // ---- knob (generic drop-in capability) ---------------------------------
-  // Rotate cycles profiles -- but never while an overlay or move is in progress (declined -> panel default).
   window.oqKnob = function (ev) {
-    if (!el('assign').hidden || !el('pluginspane').hidden || movePending || editing) return false;
+    if (!el('assign').hidden || !el('pluginspane').hidden || !el('profilepane').hidden || movePending || editing) return false;
     if (ev && ev.type === 'rotate' && snap && snap.profiles && snap.profiles.length > 1) {
       var ids = snap.profiles.map(function (p) { return p.id; });
       var i = ids.indexOf(snap.activeProfile);
