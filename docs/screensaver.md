@@ -52,7 +52,10 @@ nothing reloaded, and the waking gesture is swallowed so it can't press anything
 
 This works on every console type. On a DK-QUAKE the panel reports its own touch; on consoles
 with a standard touchscreen (e.g. a knobless Bedrock build) system-wide mouse/keyboard/touch
-activity counts as presence, and a tap on the auto-started screensaver wakes it.
+activity counts as presence. On those touch-only consoles **every** tap on the screensaver
+page exits it — auto-started, visited manually, or reached by rotation — because there is no
+knob to leave with; tap-to-advance-the-scene and the on-panel ⚙ overlay are DK-QUAKE-only
+(the same settings all live in the editor's App options).
 
 Sensible guards, all automatic:
 

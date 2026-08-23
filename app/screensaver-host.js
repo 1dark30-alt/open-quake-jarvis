@@ -128,6 +128,9 @@ function createScreensaverHost({ appId = 'screensaver', log, deps, defaultPhotos
       // Did idle auto-start bring this page up? On native-touch devices the waking tap reaches
       // the page instead of main, so the page checks this on show and posts /wake for that tap.
       autoStarted: !!(deps.saverAutoStarted && deps.saverAutoStarted()),
+      // Touch-only console: EVERY tap exits the page (there's no knob to leave with), so the
+      // page routes all taps to /wake instead of advancing the scene.
+      tapExits: !!(deps.saverTapExits && deps.saverTapExits()),
     };
   }
 

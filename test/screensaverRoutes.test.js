@@ -19,6 +19,7 @@ let active = true;            // deps gate: is the screensaver page the active p
 const grid = { kind: 'app', app: 'screensaver', options: {} };
 let saves = 0;
 let saverAuto = false, wakes = 0;   // fake main-side auto-start state for /wake + state.autoStarted
+let tapExits = false;               // fake "touch-only console" flag surfaced via state.tapExits
 
 test.before(async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oqx-saver-'));
@@ -37,6 +38,7 @@ test.before(async () => {
       saveConfig: () => { saves++; },
       getDocumentsPath: () => root,
       saverAutoStarted: () => saverAuto,
+      saverTapExits: () => tapExits,
       wakeSaver: () => { if (!saverAuto) return false; saverAuto = false; wakes++; return true; },
     },
     defaultPhotosDir: defaultPhotos,
@@ -140,6 +142,13 @@ test('/state lists both folders with their files and custom-vs-default flags', a
   assert.deepEqual(s.videos, { dir: videosDir, usingDefault: false, files: ['clip.mp4'] });
   // Exclusion-list candidates: every non-screensaver page, unnamed ones labeled.
   assert.deepEqual(s.pages, [{ id: 'p1', name: 'Home' }, { id: 'p2', name: '(unnamed page)' }]);
+});
+
+test('/state mirrors the tapExits (touch-only console) flag', async () => {
+  assert.equal((await (await pageFetch('/screensaver/state')).json()).tapExits, false);
+  tapExits = true;
+  try { assert.equal((await (await pageFetch('/screensaver/state')).json()).tapExits, true); }
+  finally { tapExits = false; }
 });
 
 test('/state reports autoStarted; POST /wake wakes only an auto-started saver', async () => {

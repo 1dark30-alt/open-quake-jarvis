@@ -286,7 +286,25 @@ const screensaverHost = createScreensaverHost({
   // and posts the wake — see /screensaver/wake.
   deps: Object.assign(voicePanelDeps('screensaver'), {
     saverAutoStarted: () => saverActive,
-    wakeSaver: () => { if (!saverActive) return false; wakeFromSaver(); return true; },
+    // Touch-only consoles (no ARIS-68 panel): tapping is the ONLY input, so any tap on the saver
+    // page must leave it — auto-started or not (manual visit, rotation stop, boot-restore). On a
+    // DK-QUAKE the knob leaves manual visits, so there tap keeps its advance-the-scene meaning.
+    saverTapExits: () => dev.activeName() !== 'aris68',
+    wakeSaver: () => {
+      if (saverActive) { wakeFromSaver(); return true; }
+      const g = activeGrid();
+      if (!saverIdle.isScreensaverGrid(g)) return false;
+      // Manual visit: no snapshot to restore — land on home / first visible, never the saver.
+      let target = saverIdle.saverRestoreTarget(config, null);
+      if (target === g.id) {
+        const alt = (config.grids || []).find(x => !saverIdle.isScreensaverGrid(x) && !x.hidden);
+        target = alt ? alt.id : null;
+      }
+      if (!target || target === g.id) return false;
+      console.log('[screensaver] tap-exit from manual visit -> page ' + target);
+      gotoGrid(target, false);
+      return true;
+    },
   }),
   defaultPhotosDir: path.join(app.getPath('userData'), 'screensaver-media', 'photos'),
   defaultVideosDir: path.join(app.getPath('userData'), 'screensaver-media', 'videos'),
@@ -2766,6 +2784,7 @@ function saverTick() {
   if (d.enter) enterSaver(d.enter);
 }
 function enterSaver(id) {
+  console.log('[screensaver] idle auto-start (from page ' + config.activeGridId + ')');
   saverPrevGridId = config.activeGridId;
   gotoGrid(id, false);            // before setting saverActive, so gotoGrid's dissolve guard stays quiet
   saverActive = true;
@@ -2776,6 +2795,7 @@ function dissolveSaver() {
   scheduleRotation();
 }
 function wakeFromSaver() {
+  console.log('[screensaver] wake -> restoring page');
   saverActive = false;            // before gotoGrid, so the dissolve guard doesn't fire
   const target = saverIdle.saverRestoreTarget(config, saverPrevGridId);
   saverPrevGridId = null;

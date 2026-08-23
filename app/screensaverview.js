@@ -50,6 +50,10 @@
   // Bedrock consoles) it lands HERE — so an auto-started saver treats the first tap as "wake",
   // not "next scene". Refreshed from /state on load and every time the page is shown.
   var autoStarted = false;
+  // Touch-only console (no ARIS-68 panel): tapping is the only input there is, so EVERY tap
+  // leaves this page — auto-started, manual visit, or rotation stop alike. Advancing scenes by
+  // tap (and the on-panel ⚙) stays a DK-QUAKE-only affordance.
+  var tapExits = false;
   function mediaUrl(kind, name) { return '/screensaver/media?k=' + (kind === 'video' ? 'v' : 'p') + '&f=' + encodeURIComponent(name); }
 
   // =====================================================================================
@@ -566,6 +570,7 @@
       videosDirLabel = v.dir || ''; videosDefault = v.usingDefault !== false;
       pagesList = s.pages || [];
       autoStarted = s.autoStarted === true;
+      tapExits = s.tapExits === true;
       syncSettingsUI();
       if (cb) cb();
     }).catch(function () { photos = []; videos = []; if (cb) cb(); });
@@ -580,10 +585,11 @@
     if (gearTimer) clearTimeout(gearTimer);
     gearTimer = setTimeout(function () { $('gear').classList.remove('show'); }, 5000);
   }
-  // Auto-started: the tap is a wake, nothing else — main restores the previous page and this
-  // page goes back to hiding. Manual visit: the tap advances and reveals ⚙, as always.
+  // Auto-started (any console) or ANY tap on a touch-only console: the tap is a wake/exit,
+  // nothing else — main switches the page away. DK-QUAKE manual visit: tap advances and
+  // reveals ⚙, as always.
   function wakeTap() {
-    if (!autoStarted) return false;
+    if (!autoStarted && !tapExits) return false;
     autoStarted = false;                         // one tap = one wake; never double-post
     fetch('/screensaver/wake', { method: 'POST' }).catch(function () {});
     return true;
