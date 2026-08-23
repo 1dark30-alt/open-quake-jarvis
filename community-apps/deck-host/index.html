@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Stream Deck Host</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header id="bar">
+    <span class="dot" id="hostdot"></span>
+    <span id="hoststatus">Starting…</span>
+    <nav id="profiles" aria-label="Profiles"></nav>
+    <span id="spacer"></span>
+    <button id="addprofile" type="button" tabindex="-1">+ Profile</button>
+    <button id="pluginsbtn" type="button" tabindex="-1">Plugins</button>
+  </header>
+
+  <main id="grid" aria-label="Deck keys"></main>
+
+  <div id="assign" hidden>
+    <div class="ov-head">
+      <span id="assigntitle">Assign key</span>
+      <span class="ov-spacer"></span>
+      <button id="unassignbtn" class="danger" type="button">Clear key</button>
+      <button id="assignclose" type="button">Close</button>
+    </div>
+    <div class="ov-body">
+      <div id="actionlist" class="ov-col"></div>
+      <div class="ov-col">
+        <div class="ov-label">Key settings (JSON)</div>
+        <textarea id="settingsbox" spellcheck="false"></textarea>
+        <button id="settingssave" type="button">Save settings</button>
+        <div id="assignmsg" class="ov-msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="pluginspane" hidden>
+    <div class="ov-head">
+      <span>Plugins</span>
+      <span class="ov-spacer"></span>
+      <button id="pluginsclose" type="button">Close</button>
+    </div>
+    <div id="pluginlist" class="ov-body ov-list"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
