@@ -174,6 +174,19 @@ function setAppFolders(folders) {
     appFolders[id] = typeof value === 'string' ? { root: value, proxy: null } : Object.assign({}, value || {});
   });
 }
+// Drop a drop-in app's cached server module so the NEXT /app-api call loads the current file --
+// without this, updating an installed app keeps its OLD server.js running until a full host restart.
+// The module may export _shutdown() (close sockets, kill child processes); call it before purging,
+// and purge Node's require cache for everything under the app root (a server's own helper requires
+// are cached by absolute path too).
+function invalidateAppServer(id) {
+  const mod = appServers[id];
+  delete appServers[id];
+  if (mod && typeof mod._shutdown === 'function') { try { mod._shutdown(); } catch (e) {} }
+  const rec = appFolders[id];
+  const root = rec && rec.root ? path.resolve(rec.root) + path.sep : null;
+  if (root) Object.keys(require.cache).forEach(k => { if (k.startsWith(root)) delete require.cache[k]; });
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -1167,4 +1180,4 @@ function lucidBroadcast(payload) {
   for (const res of lucidSubscribers) { try { res.write(line); } catch (e) { lucidSubscribers.delete(res); } }
 }
 
-module.exports = { start, stop, setActivePage, setAppFolders, issueOfficeCapability, clearOfficeCapability, lucidBroadcast };
+module.exports = { start, stop, setActivePage, setAppFolders, invalidateAppServer, issueOfficeCapability, clearOfficeCapability, lucidBroadcast };

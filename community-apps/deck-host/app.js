@@ -34,7 +34,14 @@
   function hostStatus() {
     var dot = el('hostdot'), txt = el('hoststatus');
     var ps = (snap && snap.plugins) || [];
-    if (!ps.length) { dot.className = 'dot warn'; txt.textContent = 'No plugins — set the Plugins folder in this page’s options'; return; }
+    var skipped = (snap && snap.skipped) || [];
+    if (!ps.length) {
+      dot.className = 'dot warn';
+      if (!snap.folder) txt.textContent = 'Plugins folder not set — set it in this page’s options (and Save)';
+      else if (skipped.length) txt.textContent = 'No runnable plugins in ' + snap.folder + ' — ' + skipped.length + ' package(s) skipped, see Plugins';
+      else txt.textContent = 'No plugins in ' + snap.folder + ' — drop *.sdPlugin folders or downloaded .streamDeckPlugin files there';
+      return;
+    }
     var running = ps.filter(function (p) { return p.status === 'running'; }).length;
     var crashed = ps.filter(function (p) { return p.status === 'crashed' || p.status === 'unsupported'; }).length;
     dot.className = 'dot ' + (crashed ? 'bad' : running ? 'ok' : 'warn');
@@ -166,6 +173,9 @@
   // ---- plugins overlay -------------------------------------------------
   el('pluginsbtn').addEventListener('click', function () { renderPlugins(); el('pluginspane').hidden = false; });
   el('pluginsclose').addEventListener('click', function () { el('pluginspane').hidden = true; });
+  el('rescanbtn').addEventListener('click', function () {
+    post('rescan', {}).then(function (j) { if (j && j.ok) { snap = j; render(); renderPlugins(); } });
+  });
   function renderPlugins() {
     var list = el('pluginlist');
     list.innerHTML = '';

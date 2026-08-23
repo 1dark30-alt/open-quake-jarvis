@@ -696,6 +696,9 @@ async function importDropInApp(zipPath, forceId, confirmExec, replaceId) {
     if (finalId !== id0) { manifest.id = finalId; try { fs.writeFileSync(mp, JSON.stringify(manifest, null, 2)); } catch (e) { return { ok: false, error: 'could not rewrite the manifest id' }; } }
     ensureDropInDir();
     try { fs.renameSync(appRoot, destDir); } catch (e) { copyDirSync(appRoot, destDir); }
+    // Updated/installed files must actually run: drop the cached server module (its _shutdown is
+    // called) so the next /app-api call loads the fresh server.js instead of the pre-update one.
+    try { if (sysserver) sysserver.invalidateAppServer(finalId); } catch (e) {}
     return { ok: true, id: finalId, name: manifest.name || finalId };
   } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
   finally { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {} }
@@ -713,6 +716,7 @@ function deleteDropInApp(id) {
   if (!dir) return { ok: false, error: 'app not found' };
   const base = path.resolve(dropInDir());
   if (!path.resolve(dir).startsWith(base + path.sep)) return { ok: false, error: 'only user-installed drop-in apps can be deleted here' };
+  try { if (sysserver) sysserver.invalidateAppServer(id); } catch (e) {}   // shut down its server module (sockets/children)
   try { fs.rmSync(path.resolve(dir), { recursive: true, force: true }); setAppSource(id, null); return { ok: true }; }
   catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 }

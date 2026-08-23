@@ -267,6 +267,9 @@ async function ensureStarted(options) {
   lastOptions = options;
   lastLayout = layoutOf(options);
   const dir = pluginsDirOf(options);
+  // While the folder is set but empty, keep looking -- the user is typically downloading plugins
+  // into it right now; each state poll is one cheap readdir.
+  if (startedFor === dir && dir && plugins.size === 0) startedFor = '';
   if (startedFor === dir) return;
   // Plugins folder changed (or first call): stop everything from the old folder, rescan, start.
   for (const p of plugins.values()) stopPlugin(p);
@@ -298,6 +301,7 @@ function snapshot() {
   });
   return {
     v: version, layout: lastLayout,
+    folder: (startedFor && startedFor !== '__shutdown__') ? startedFor : '',
     profiles: deck.profiles.map(pr => ({ id: pr.id, name: pr.name })), activeProfile: deck.activeProfileId,
     keys,
     plugins: [...plugins.values()].map(p => ({ id: p.id, name: p.manifest.Name || p.id, status: p.status, error: p.error || '',
@@ -431,6 +435,12 @@ async function handle(action, context) {
   if (action === 'asset') {
     const a = readAsset(query.plugin, query.path);
     return a ? { ok: true, mime: a.mime, b64: a.b64 } : { ok: false, error: 'not found' };
+  }
+
+  if (action === 'rescan') {   // re-read the plugins folder (new drops / removals) without changing options
+    startedFor = '';
+    await ensureStarted(options);
+    return Object.assign({ ok: true }, snapshot());
   }
 
   if (action === 'restart') {
