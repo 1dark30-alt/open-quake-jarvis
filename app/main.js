@@ -84,6 +84,7 @@ const { DEFAULT_DISCORD_APPLICATION_ID, discordApplicationId, normalizeDiscordSe
 const { ObsService } = require('./obsService');                 // OBS Studio control (shared service)
 const { normalizeObsSettings, obsWsUrl } = require('./obsSettings');
 const appRepo = require('./appRepo');                            // pure helpers for repo install/update
+const { knobDefaultFor, parseCustomRing } = require('./knobRouting');   // generic drop-in knob capability
 const claudeVoiceApprovals = require('./claudevoice-approvals'); // required directly ONLY for the boot-time leftover-hook sweep below
 const HA_SCHEDULE_APPS = ['haschedule', 'agenda', 'events'];   // dev apps backed by the shared HA /haschedule-data snapshot
 
@@ -1405,12 +1406,16 @@ async function resolveTiles(tiles) {
   }));
 }
 // Knob behavior is configurable per page TYPE (grid / dashboard / app), with an optional per-page override.
-// turn: 'pages' | 'volume' | 'scroll' | 'select'   ·   click: 'rotation' | 'mute' | 'enter'
+// turn: 'pages' | 'volume' | 'scroll' | 'select' | 'app'   ·   click: 'rotation' | 'mute' | 'enter' | 'app'
+// 'app' routes the gesture into the served page's window.oqKnob (generic drop-in knob capability);
+// an app page whose manifest declares "knob": true defaults ALL gestures to 'app'. The user's
+// per-page-type settings and the per-page override remain the final word.
 const KNOB_DEFAULT = { turn: 'pages', click: 'rotation', dblclick: 'selector' };
 function pageTypeOf(g) { return g.kind === 'app' ? 'app' : g.kind === 'web' ? 'dashboard' : 'grid'; }
 function effectiveKnob(g) {
   const all = (config.settings && config.settings.knob) || {};
-  const base = Object.assign({}, KNOB_DEFAULT, all[pageTypeOf(g)] || {});
+  const appDef = (g.kind === 'app' && g.app) ? loadApps().find(a => a.id === g.app) : null;
+  const base = Object.assign({}, knobDefaultFor(g, appDef), all[pageTypeOf(g)] || {});
   if (g.knobOverride && g.knob) return { turn: g.knob.turn || base.turn, click: g.knob.click || base.click, dblclick: g.knob.dblclick || base.dblclick };
   return base;
 }
@@ -2463,9 +2468,9 @@ const RING_STATES = {
   speaking: { hue: 149, sat: 255, effect: 1, speed: 128 },    // solid blue — Claude is talking
   approval: { hue: 28, sat: 255, effect: 5, speed: 220 },     // breathing amber — needs a touch, mirrors --warn
 };
-let ringOverrideState = null;
+let ringOverrideState = null;   // a RING_STATES key, or a {hue,sat,effect,speed} object from OQX_RING::custom:
 function applyRingOverride() {
-  const s = RING_STATES[ringOverrideState];
+  const s = (ringOverrideState && typeof ringOverrideState === 'object') ? ringOverrideState : RING_STATES[ringOverrideState];
   if (!s) { ringOverrideState = null; applyKnobSettings(); return; }
   try { dev.setKnobLed(true); } catch (e) {}
   try { dev.setLedEffect(s.effect & 0xFF); } catch (e) {}
@@ -2475,6 +2480,10 @@ function applyRingOverride() {
 }
 function setRingState(state) {
   if (!state || state === 'idle') { clearRingOverride(); return; }
+  // Generic app ring: OQX_RING::custom:{"hue":..,"sat":..,"effect":..,"speed":..} — any served page
+  // can drive the full ring while it is active; gotoGrid's clearRingOverride() restores on page change.
+  const custom = parseCustomRing(state);
+  if (custom) { ringOverrideState = custom; applyRingOverride(); return; }
   if (!RING_STATES[state]) return;   // unrecognized state string — ignore rather than guess at a mapping
   ringOverrideState = state;
   applyRingOverride();

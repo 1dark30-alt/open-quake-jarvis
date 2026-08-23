@@ -42,6 +42,8 @@ Minimal `app.json`:
 
 Use `"served": true` when the app needs `/app-proxy`, `/app-api`, `/apptiles`, `/launch`, or other same-origin local server features.
 
+Declare `"knob": true` (served apps) to receive the panel's rotary knob: define `window.oqKnob(ev)` on the page — events are `{type:'rotate',dir:±1}`, `{type:'press',index:1|2}`, `{type:'hold',phase:'start'|'end'}`; return `false` to decline an event back to the panel's default handling. Drive the knob LED ring with `console.log('OQX_RING::custom:{"hue":0-255,"sat":0-255,"effect":0-43,"speed":0-255}')` (or the named states / `idle`). See docs/drop-in-spec.md §5.4.
+
 # Repository Rules
 
 - Future requests to add, create, or scaffold a normal drop-in app should only edit files under `apps/<app-id>/`.

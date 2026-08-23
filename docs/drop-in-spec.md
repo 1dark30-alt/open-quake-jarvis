@@ -76,6 +76,7 @@ uses all of them at once. See `apps/apps.json` or any `community-apps/` folder f
 | `options` | array | no | User-set option descriptors (§2.5). Default `[]`. |
 | `server` | string | served only | Relative path to a host-side Node module (§5.1). Triggers the exec-code warning on import. |
 | `proxy` | object | served only | Outbound-fetch allow-list for the app's page (§5.2). |
+| `knob` | bool | served only | `true` = the panel knob defaults to "App controlled" on this app's pages, delivering knob events to the page's `window.oqKnob` (§5.4). Default `false`. |
 | `grid` | object | served only | OPTIONAL embedded editable tile grid carried by the app: `{ cols, rows, defaults }` (column/row count + default tile contents). MAY be ignored by a host that doesn't support in-app grids. |
 | `hideGridInEditor` | bool | no | When `true`, the editor hides this app's embedded-grid controls (the app manages its own layout). Default `false`. |
 | `dev` | bool | no | Marks the app as developer-only; a conforming host MAY hide it from the normal app picker behind a "show developer apps" toggle. Purely a discoverability hint — carries no security meaning. |
@@ -250,6 +251,44 @@ app that needs its options server-trip-free.
 — including `secret` and `serverOnly` values and `bool` coercion. This route is **same-origin
 gated** (§6.2), so only the host's own served page can read it. This is the only channel by
 which secrets reach a served app; they are never in the URL.
+
+### 5.4 Panel knob (`knob`, `window.oqKnob`, `OQX_RING::`)
+
+An app that declares `"knob": true` gets the panel's rotary knob routed to its page by default:
+every gesture's mode resolves to **"App controlled"** for that app's pages (the user's Hardware-tab
+per-page-type settings and the per-page Advanced knob override still win). Users can also select
+"App controlled" manually for any page.
+
+**Receiving events.** The page defines a single global:
+
+```js
+window.oqKnob = function (ev) {
+  // ev is the VERBATIM hardware vocabulary:
+  //   { type:'rotate', dir: 1 | -1 }        one detent; clockwise = 1
+  //   { type:'press',  index: 1 | 2 }       single / double click (detected in hardware)
+  //   { type:'hold',   phase:'start'|'end' }
+  // Return false to DECLINE this event — the panel then performs its base default for the
+  // gesture (rotate -> page cycling, press -> rotation toggle / page selector, hold -> the
+  // push-to-talk injection). Any other return value counts as consumed.
+};
+```
+
+Only the **active** page ever receives events (the injection targets the foreground webview).
+If the page hasn't loaded yet or never defines `oqKnob`, the knob falls back to its normal
+behavior — the knob is never dead. `hold` is offered to `oqKnob` first on app-controlled pages;
+declined holds fall through to the `window.pttStart`/`window.pttStop` push-to-talk hooks.
+
+**Driving the knob LED ring.** Any served page may set the ring while it is active via the
+console-tag channel: `console.log('OQX_RING::<state>')` with a named state
+(`listening | thinking | speaking | approval`), `idle` to release it, or a custom value:
+
+```js
+console.log('OQX_RING::custom:' + JSON.stringify({ hue: 200, sat: 255, effect: 1, speed: 128 }));
+```
+
+`hue`/`sat`/`speed` are 0–255, `effect` is a QMK RGB-Matrix id 0–43; fields are optional and
+clamped; malformed payloads are ignored. Brightness always follows the user's setting, and the
+host restores the normal ring automatically when the page changes.
 
 ---
 

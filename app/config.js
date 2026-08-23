@@ -62,7 +62,9 @@
   // Step kinds inside a Macro tile (value semantics mirror the matching tile types).
   const STEP_KINDS = [['key', 'Keystroke'], ['text', 'Type text'], ['delay', 'Delay (ms)'], ['app', 'App / Program'], ['open', 'Open file/folder'], ['url', 'Website (URL)'], ['cmd', 'Shell command'], ['page', 'Go to page'], ['system', 'System'], ['ahk', 'AutoHotkey'], ['routine', 'AI Routine']];
   // Knob behavior options (per page-type, with per-page override). Defaults: turn=Scroll pages, click=Start/stop rotation.
-  const KNOB_TURN_OPTS = [['pages', 'Scroll pages'], ['volume', 'System volume'], ['scroll', 'Scroll in window'], ['select', 'Select button']];
+  // 'app' hands the gesture to the served page's window.oqKnob (generic drop-in knob capability);
+  // pages that don't handle it fall back to the base behavior, so it's always safe to pick.
+  const KNOB_TURN_OPTS = [['pages', 'Scroll pages'], ['volume', 'System volume'], ['scroll', 'Scroll in window'], ['select', 'Select button'], ['app', 'App controlled']];
   const KNOB_CLICK_OPTS = [
     ['rotation', 'Toggle rotation'],
     ['rotation_start', 'Start rotation'],
@@ -70,6 +72,7 @@
     ['mute', 'System audio toggle'],
     ['enter', 'Enter'],
     ['home', 'Go to home page'],
+    ['app', 'App controlled'],
   ];
   // Double-click has the same options as single-click, plus "Page selector" (default) which
   // preserves the historical "double-click opens page selector" behavior.
