@@ -120,3 +120,39 @@ test('deck persists to deck-host.json beside the plugins folder', () => {
   const saved = JSON.parse(fs.readFileSync(path.join(TMP, 'deck-host.json'), 'utf8'));
   assert.equal(saved.profiles.length, 2);
 });
+
+test('.streamDeckPlugin packages auto-extract (plain), encrypted ones are skipped, extensionless CodePath resolves', async () => {
+  const AdmZip = require('adm-zip');
+  const TMP2 = fs.mkdtempSync(path.join(os.tmpdir(), 'deckhost2-'));
+
+  // (a) plain package wrapping the fake plugin -> should extract + run
+  const zip = new AdmZip();
+  zip.addLocalFolder(PLUGDIR, 'com.test.packaged.sdPlugin');
+  const packed = JSON.parse(fs.readFileSync(path.join(PLUGDIR, 'manifest.json'), 'utf8'));
+  zip.updateFile('com.test.packaged.sdPlugin/manifest.json', Buffer.from(JSON.stringify(Object.assign({}, packed, { Name: 'Packaged Fake' }))));
+  zip.writeZip(path.join(TMP2, 'packaged.streamDeckPlugin'));
+
+  // (b) "encrypted" marketplace-style package -> skipped with a clear reason
+  const enc = new AdmZip();
+  enc.addFile('com.evil.enc.sdPlugin/manifest.json', Buffer.concat([Buffer.from('ELGATO\x01\x00'), Buffer.from([0xfd, 0x04])]));
+  enc.writeZip(path.join(TMP2, 'encrypted.streamDeckPlugin'));
+
+  // (c) extensionless CodePath: folder with CodePath "stub" + stub.exe present -> resolves (not 'unsupported')
+  const stubDir = path.join(TMP2, 'com.test.stub.sdPlugin');
+  fs.mkdirSync(stubDir, { recursive: true });
+  fs.writeFileSync(path.join(stubDir, 'manifest.json'), JSON.stringify({ Name: 'Stub', Version: '1.0', CodePath: 'stub',
+    OS: [{ Platform: 'windows', MinimumVersion: '10' }], Actions: [{ UUID: 'com.test.stub.a', Name: 'A', Controllers: ['Keypad'] }] }));
+  fs.writeFileSync(path.join(stubDir, 'stub.exe'), 'not a real exe');
+
+  const call2 = (action, extra) => server.handle(action, Object.assign({ appId: 'deck-host', query: {}, options: { pluginsDir: TMP2, layout: '5x3' } }, extra));
+  const s = await until(async () => {
+    const x = await call2('state');
+    const pk = x.plugins.find(p => p.id === 'com.test.packaged');
+    return pk && pk.status === 'running' ? x : null;
+  });
+  assert.ok(fs.existsSync(path.join(TMP2, 'com.test.packaged.sdPlugin', 'manifest.json')));   // auto-extracted
+  assert.equal(s.skipped.length, 1);
+  assert.match(s.skipped[0].reason, /encrypted/i);                                            // marketplace package surfaced, not run
+  const stub = s.plugins.find(p => p.id === 'com.test.stub');
+  assert.notEqual(stub.status, 'unsupported');                                                // "stub" resolved to stub.exe
+});

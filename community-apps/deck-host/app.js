@@ -181,6 +181,13 @@
       d.appendChild(b);
       list.appendChild(d);
     });
+    ((snap && snap.skipped) || []).forEach(function (s) {
+      var d = document.createElement('div');
+      d.className = 'plug';
+      var g = document.createElement('span'); g.className = 'grow'; g.textContent = s.file; d.appendChild(g);
+      var st = document.createElement('span'); st.className = 'st unsupported'; st.textContent = s.reason; d.appendChild(st);
+      list.appendChild(d);
+    });
   }
   el('addprofile').addEventListener('click', function () { post('profile-add', {}); });
 

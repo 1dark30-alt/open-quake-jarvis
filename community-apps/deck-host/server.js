@@ -24,6 +24,18 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 
+// Resolve an npm package against the HOST's node_modules. A drop-in installed under %APPDATA% is
+// outside the app's module tree, so a bare require('ws') only works in a repo checkout; fall back
+// to resolving from Electron's app path (works packaged, where node_modules live in the asar).
+function hostRequire(name) {
+  try { return require(name); } catch (e) {}
+  try {
+    const { createRequire } = require('module');
+    const electron = require('electron');
+    return createRequire(path.join(electron.app.getAppPath(), 'package.json'))(name);
+  } catch (e) { return null; }
+}
+
 const MAX_ASSET = 4 * 1024 * 1024;
 const LONGPOLL_MS = 25000;
 const RESTART_BACKOFF = [1000, 5000, 15000];
@@ -82,8 +94,38 @@ function layoutOf(options) {
 }
 
 // ---- plugin discovery -------------------------------------------------------------------------
+// A downloaded *.streamDeckPlugin is a plain zip wrapping one <id>.sdPlugin folder — extract any
+// found beside the folders so users can drop the file in as-is. Elgato Marketplace packages are
+// ENCRYPTED (payloads start with "ELGATO"); those are skipped and surfaced so the status is honest.
+const skippedPackages = [];   // [{ file, reason }] for the snapshot
+function extractPackages(dir) {
+  skippedPackages.length = 0;
+  let ents = []; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+  for (const ent of ents) {
+    if (!ent.isFile() || !/\.streamDeckPlugin$/i.test(ent.name)) continue;
+    const file = path.join(dir, ent.name);
+    const AdmZip = hostRequire('adm-zip');
+    if (!AdmZip) { skippedPackages.push({ file: ent.name, reason: 'zip support unavailable — extract it by hand (it is a plain zip)' }); continue; }
+    try {
+      const zip = new AdmZip(file);
+      const entries = zip.getEntries();
+      const roots = new Set(entries.map(e => e.entryName.split('/')[0]).filter(Boolean));
+      const root = [...roots].find(r => /\.sdPlugin$/i.test(r));
+      if (!root || roots.size !== 1) { skippedPackages.push({ file: ent.name, reason: 'not a plugin package (no single *.sdPlugin root)' }); continue; }
+      if (fs.existsSync(path.join(dir, root))) continue;   // already extracted
+      const manEntry = entries.find(e => e.entryName === root + '/manifest.json');
+      const manRaw = manEntry ? manEntry.getData() : null;
+      if (manRaw && manRaw.slice(0, 6).toString('latin1') === 'ELGATO') {
+        skippedPackages.push({ file: ent.name, reason: 'Elgato Marketplace package (encrypted) — only plain open-source packages can run here' });
+        continue;
+      }
+      zip.extractAllTo(dir, true);   // adm-zip 0.5+ rejects zip-slip entry names
+    } catch (e) { skippedPackages.push({ file: ent.name, reason: 'could not extract: ' + e.message }); }
+  }
+}
 function scanPlugins(dir) {
   const found = [];
+  extractPackages(dir);
   let ents = []; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return found; }
   for (const ent of ents) {
     if (!ent.isDirectory() || !/\.sdPlugin$/i.test(ent.name)) continue;
@@ -97,22 +139,28 @@ function scanPlugins(dir) {
   }
   return found;
 }
-// Resolve the executable this plugin runs. CodePathWin wins on Windows; a .html CodePath needs a
+// Resolve the executable this plugin runs. CodePathWin wins on Windows; an extensionless CodePath
+// is Elgato's convention for the compiled binary name (append .exe); a .html CodePath needs a
 // browser runtime we don't provide (deferred) -> unsupported.
 function codePathOf(p) {
   const man = p.manifest;
   const raw = String(man.CodePathWin || man.CodePath || '').trim();
   if (!raw) return null;
-  const full = path.resolve(p.dir, raw);
-  if (!full.startsWith(path.resolve(p.dir) + path.sep)) return null;   // confined to the plugin folder
   if (/\.html?$/i.test(raw)) return { unsupported: 'HTML plugin (needs a browser runtime)' };
-  return { path: full, node: /\.(js|mjs|cjs)$/i.test(raw) };
+  const base = path.resolve(p.dir);
+  for (const cand of (path.extname(raw) ? [raw] : [raw + '.exe', raw])) {
+    const full = path.resolve(base, cand);
+    if (!full.startsWith(base + path.sep)) return null;   // confined to the plugin folder
+    try { if (fs.statSync(full).isFile()) return { path: full, node: /\.(js|mjs|cjs)$/i.test(cand) }; } catch (e) {}
+  }
+  return { unsupported: 'CodePath "' + raw + '" not found in the plugin' };
 }
 
 // ---- the WebSocket host -----------------------------------------------------------------------
 function ensureWss() {
   if (wss) return Promise.resolve(wssPort);
-  const WebSocket = require('ws');
+  const WebSocket = hostRequire('ws');
+  if (!WebSocket) return Promise.reject(new Error('the ws module is unavailable in this host build'));
   return new Promise((resolve, reject) => {
     const server = new WebSocket.Server({ host: '127.0.0.1', port: 0 }, () => {
       wss = server; wssPort = server.address().port; resolve(wssPort);
@@ -181,7 +229,9 @@ let lastOptions = null;
 async function startPlugin(p) {
   const cp = codePathOf(p);
   if (!cp || cp.unsupported) { p.status = 'unsupported'; p.error = (cp && cp.unsupported) || 'no CodePath'; return; }
-  const port = await ensureWss();
+  let port;
+  try { port = await ensureWss(); }
+  catch (e) { p.status = 'crashed'; p.error = e.message; bump(); return; }
   p.uuid = crypto.randomUUID();
   const info = {
     application: { font: 'Segoe UI', language: 'en', platform: 'windows', platformVersion: '10', version: '6.5.0' },
@@ -252,6 +302,7 @@ function snapshot() {
     keys,
     plugins: [...plugins.values()].map(p => ({ id: p.id, name: p.manifest.Name || p.id, status: p.status, error: p.error || '',
       actions: p.actions })),
+    skipped: skippedPackages.slice(),
   };
 }
 
