@@ -532,6 +532,17 @@ async function handle(action, context) {
     return { ok: true, id };
   }
 
+  if (action === 'profile-rename') {
+    const id = String((body && body.id) || '');
+    const name = String((body && body.name) || '').trim().slice(0, 32);
+    const prof = deck.profiles.find(pr => pr.id === id);
+    if (!prof) return { ok: false, error: 'unknown profile' };
+    if (!name) return { ok: false, error: 'name required' };
+    prof.name = name;
+    saveDeck(options); bump();
+    return { ok: true };
+  }
+
   if (action === 'profile-remove') {
     const id = String((body && body.id) || '');
     if (deck.profiles.length <= 1) return { ok: false, error: 'the last profile cannot be removed' };

@@ -179,6 +179,18 @@ function setAppFolders(folders) {
 // The module may export _shutdown() (close sockets, kill child processes); call it before purging,
 // and purge Node's require cache for everything under the app root (a server's own helper requires
 // are cached by absolute path too).
+// Editor -> drop-in server bridge: run one /app-api-style action for the config window (which is not
+// a served page, so it can't hit /app-api itself). Same handle() contract and options resolution.
+async function callAppServer(appId, action, body) {
+  const mod = appServer(appId);
+  if (!mod || typeof mod.handle !== 'function') return { ok: false, error: 'app has no server' };
+  try {
+    return await mod.handle(String(action || ''), {
+      appId, query: {}, options: appOptions(appId),
+      body: body != null ? Buffer.from(JSON.stringify(body)) : null,
+    });
+  } catch (e) { return { ok: false, error: e.message || 'app server failed' }; }
+}
 function invalidateAppServer(id) {
   const mod = appServers[id];
   delete appServers[id];
@@ -1180,4 +1192,4 @@ function lucidBroadcast(payload) {
   for (const res of lucidSubscribers) { try { res.write(line); } catch (e) { lucidSubscribers.delete(res); } }
 }
 
-module.exports = { start, stop, setActivePage, setAppFolders, invalidateAppServer, issueOfficeCapability, clearOfficeCapability, lucidBroadcast };
+module.exports = { start, stop, setActivePage, setAppFolders, invalidateAppServer, callAppServer, issueOfficeCapability, clearOfficeCapability, lucidBroadcast };

@@ -47,9 +47,12 @@
     dot.className = 'dot ' + (crashed ? 'bad' : running ? 'ok' : 'warn');
     txt.textContent = running + '/' + ps.length + ' plugins running' + (crashed ? ' · ' + crashed + ' need attention' : '');
   }
-  var confirmRemoveId = null;   // profile chip in hold-to-remove confirm state
+  var confirmRemoveId = null;   // profile chip in remove-confirm state
+  var editingProfiles = false;  // header Edit mode: chips show ✕ and tap = remove (discoverable path)
   function renderProfiles() {
     profilesNav.innerHTML = '';
+    el('editprofiles').textContent = editingProfiles ? 'Done' : 'Edit';
+    el('editprofiles').classList.toggle('on', editingProfiles);
     (snap.profiles || []).forEach(function (pr) {
       if (pr.id === confirmRemoveId && (snap.profiles || []).length > 1) {
         // hold-to-remove confirm: the chip becomes an inline Remove / Keep pair (no popups on a panel)
@@ -66,7 +69,7 @@
       var b = document.createElement('button');
       b.type = 'button'; b.tabIndex = -1;
       b.className = pr.id === snap.activeProfile ? 'on' : '';
-      b.textContent = pr.name;
+      b.textContent = editingProfiles ? '✕ ' + pr.name : pr.name;
       var holdT = null, held = false;
       b.addEventListener('pointerdown', function () {
         held = false;
@@ -74,7 +77,11 @@
       });
       var up = function () { if (holdT) { clearTimeout(holdT); holdT = null; } };
       b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
-      b.addEventListener('click', function () { if (!held) post('profile-select', { id: pr.id }); });
+      b.addEventListener('click', function () {
+        if (held) return;
+        if (editingProfiles) { confirmRemoveId = pr.id; renderProfiles(); }
+        else post('profile-select', { id: pr.id });
+      });
       profilesNav.appendChild(b);
     });
   }
@@ -92,8 +99,13 @@
     hostStatus();
     renderProfiles();
     var lay = snap.layout || { columns: 8, rows: 3 };
-    grid.style.gridTemplateColumns = 'repeat(' + lay.columns + ', 1fr)';
-    grid.style.gridTemplateRows = 'repeat(' + lay.rows + ', 1fr)';
+    // Square keys, sized to fit both dimensions of the available grid area (real decks have square keys).
+    var availW = grid.clientWidth - 32 - (lay.columns - 1) * 8;
+    var availH = grid.clientHeight - 16 - (lay.rows - 1) * 8;
+    var ks = Math.max(64, Math.floor(Math.min(availW / lay.columns, availH / lay.rows)));
+    grid.style.gridTemplateColumns = 'repeat(' + lay.columns + ', ' + ks + 'px)';
+    grid.style.gridTemplateRows = 'repeat(' + lay.rows + ', ' + ks + 'px)';
+    document.documentElement.style.setProperty('--kt', Math.max(16, Math.round(ks / 4.6)) + 'px');   // title scales with the key
     grid.innerHTML = '';
     for (var r = 0; r < lay.rows; r++) {
       for (var c = 0; c < lay.columns; c++) (function (c, r) {
@@ -220,6 +232,11 @@
       list.appendChild(d);
     });
   }
+  el('editprofiles').addEventListener('click', function () {
+    editingProfiles = !editingProfiles;
+    confirmRemoveId = null;
+    renderProfiles();
+  });
   // Stray-tap-proof: first tap arms it, second tap (within 3s) creates. One accidental brush of the
   // header must never mint a profile the user then has to clean up.
   var addArm = null;
@@ -244,6 +261,7 @@
   };
 
   poll(0);
+  window.addEventListener('resize', function () { if (snap) render(); });
   // Refresh transient alert/ok flags even between snapshots.
   setInterval(function () { if (snap) render(); }, 2500);
 })();

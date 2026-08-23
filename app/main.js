@@ -3602,6 +3602,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('installRepoApp', (e, id, confirmExec, repoUrl) => isFrom(e, configWin) ? installRepoApp(id, confirmExec, repoUrl) : { ok: false });
   ipcMain.handle('checkDropInUpdate', (e, id) => isFrom(e, configWin) ? checkDropInUpdate(id) : { ok: false });
   ipcMain.handle('updateDropInApp', (e, id, confirmExec) => isFrom(e, configWin) ? updateDropInApp(id, confirmExec) : { ok: false });
+  // Editor -> drop-in app server bridge (generic): lets the editor host management UI for an app.
+  ipcMain.handle('appApiCall', (e, appId, action, body) => (isFrom(e, configWin) && sysserver) ? sysserver.callAppServer(appId, action, body) : { ok: false });
   ipcMain.handle('getAppIcon', (e, value) => isFrom(e, configWin) ? getAppIconDataUrl(value) : null);
   // Sync: editor preview reads a local image as a data: URL through main (the config preload is sandboxed,
   // so it can't touch fs). Same conversion the panel uses, so editor previews match the panel.

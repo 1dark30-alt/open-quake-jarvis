@@ -2561,7 +2561,45 @@
       if (inp) { inp.value = p; inp.dispatchEvent(new Event('change', { bubbles: true })); }
     });
     if (def.id === 'discord') appendDiscordSetup(el);
+    if (def.id === 'deck-host') appendDeckProfiles(el);
     enforceMusicCap(g);
+  }
+  // Stream Deck Host page: manage profiles from the editor (keyboard for names; the panel only
+  // offers quick select/remove). Talks to the app's server through the generic appApiCall bridge.
+  async function appendDeckProfiles(el) {
+    const box = document.createElement('div');
+    box.className = 'advsec';
+    box.style.cssText = 'margin-top:12px;padding:10px;border:1px solid #213145;border-radius:8px';
+    el.appendChild(box);
+    const draw = async () => {
+      let s = null;
+      try { s = await configApi.appApiCall('deck-host', 'state'); } catch (e) {}
+      if (!s || !s.ok) { box.innerHTML = '<p class="hint">Deck profiles unavailable' + (s && s.error ? ': ' + esc(s.error) : '') + '</p>'; return; }
+      box.innerHTML = `<div class="row"><label style="width:auto;font-weight:bold">Deck profiles</label><span class="hint" style="margin:0">separate key layouts; the knob cycles them on the panel</span></div>`
+        + s.profiles.map(p => `<div class="row" style="gap:8px;align-items:center">
+            <input class="dkName" data-id="${esc(p.id)}" value="${esc(p.name)}" style="width:220px">
+            ${p.id === s.activeProfile ? '<span class="hint" style="margin:0">active</span>' : ''}
+            <button class="dkDel danger" data-id="${esc(p.id)}" ${s.profiles.length <= 1 ? 'disabled' : ''} style="margin-left:auto">Remove</button>
+          </div>`).join('')
+        + `<div class="row" style="gap:8px"><input id="dkNewName" placeholder="New profile name" style="width:220px"><button id="dkAdd">Add profile</button><span id="dkMsg" class="hint" style="margin:0"></span></div>`;
+      box.querySelectorAll('.dkName').forEach(inp => inp.onchange = async e => {
+        const r = await configApi.appApiCall('deck-host', 'profile-rename', { id: e.target.dataset.id, name: e.target.value });
+        if (!(r && r.ok)) { document.getElementById('dkMsg').textContent = 'Rename failed: ' + ((r && r.error) || ''); } else draw();
+      });
+      box.querySelectorAll('.dkDel').forEach(b => b.onclick = async e => {
+        if (!window.confirm('Remove this deck profile and its key assignments?')) return;
+        const r = await configApi.appApiCall('deck-host', 'profile-remove', { id: e.currentTarget.dataset.id });
+        if (!(r && r.ok)) document.getElementById('dkMsg').textContent = 'Remove failed: ' + ((r && r.error) || '');
+        draw();
+      });
+      box.querySelector('#dkAdd').onclick = async () => {
+        const name = (document.getElementById('dkNewName').value || '').trim();
+        const r = await configApi.appApiCall('deck-host', 'profile-add', name ? { name } : {});
+        if (!(r && r.ok)) document.getElementById('dkMsg').textContent = 'Add failed: ' + ((r && r.error) || '');
+        draw();
+      };
+    };
+    draw();
   }
   // Discord app page: after the generic settings, a hand-rendered block with the setup-guide link
   // and a Connect/Disconnect button that reuses the same OAuth flow as Settings -> Auth, so the whole

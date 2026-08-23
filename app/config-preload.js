@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('openQuakeConfig', {
   listRepoApps(repoUrl) { return ipcRenderer.invoke('listRepoApps', repoUrl); },
   installRepoApp(id, confirmExec, repoUrl) { return ipcRenderer.invoke('installRepoApp', id, confirmExec, repoUrl); },
   checkDropInUpdate(id) { return ipcRenderer.invoke('checkDropInUpdate', id); },
+  appApiCall(appId, action, body) { return ipcRenderer.invoke('appApiCall', appId, action, body); },
   updateDropInApp(id, confirmExec) { return ipcRenderer.invoke('updateDropInApp', id, confirmExec); },
   pickImage() { return ipcRenderer.invoke('pickImage'); },
   getAppIcon(value) { return ipcRenderer.invoke('getAppIcon', value); },
