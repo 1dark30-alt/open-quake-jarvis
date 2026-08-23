@@ -180,7 +180,8 @@
     var list = el('pluginlist');
     list.innerHTML = '';
     var ps = (snap && snap.plugins) || [];
-    if (!ps.length) { var m = document.createElement('div'); m.className = 'pk-empty'; m.textContent = 'No plugins found. Set this page’s "Plugins folder" option to a folder holding *.sdPlugin packages. Plugins are real programs that run on your PC — only use plugins you trust.'; list.appendChild(m); return; }
+    var sk = (snap && snap.skipped) || [];
+    if (!ps.length && !sk.length) { var m = document.createElement('div'); m.className = 'pk-empty'; m.textContent = (snap && snap.folder ? 'Nothing in ' + snap.folder + ' yet. Drop *.sdPlugin folders or downloaded .streamDeckPlugin files there.' : 'Set this page’s "Plugins folder" option (and Save).') + ' Plugins are real programs that run on your PC — only use plugins you trust.'; list.appendChild(m); return; }
     ps.forEach(function (p) {
       var d = document.createElement('div');
       d.className = 'plug';

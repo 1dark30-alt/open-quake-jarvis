@@ -22,18 +22,132 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
+const http = require('http');
+const { EventEmitter } = require('events');
 const { spawn } = require('child_process');
 
-// Resolve an npm package against the HOST's node_modules. A drop-in installed under %APPDATA% is
-// outside the app's module tree, so a bare require('ws') only works in a repo checkout; fall back
-// to resolving from Electron's app path (works packaged, where node_modules live in the asar).
-function hostRequire(name) {
-  try { return require(name); } catch (e) {}
-  try {
-    const { createRequire } = require('module');
-    const electron = require('electron');
-    return createRequire(path.join(electron.app.getAppPath(), 'package.json'))(name);
-  } catch (e) { return null; }
+// ZERO npm dependencies. A drop-in installed under %APPDATA% is outside every node_modules tree, so
+// requiring ws/adm-zip is fragile there; this file uses only Node builtins -- a built-in zip reader
+// (zlib) and a minimal RFC6455 WebSocket server (http + crypto) below.
+
+// ---- built-in zip reader (store + deflate entries; enough for plugin packages) ----------------
+function unzipEntries(buf) {
+  // find the End Of Central Directory record (scan back over the trailing comment)
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65535); i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('not a zip');
+  const count = buf.readUInt16LE(eocd + 10);
+  let off = buf.readUInt32LE(eocd + 16);
+  const entries = [];
+  for (let n = 0; n < count; n++) {
+    if (buf.readUInt32LE(off) !== 0x02014b50) throw new Error('bad central directory');
+    const method = buf.readUInt16LE(off + 10);
+    const compSize = buf.readUInt32LE(off + 20);
+    const nameLen = buf.readUInt16LE(off + 28), extraLen = buf.readUInt16LE(off + 30), cmtLen = buf.readUInt16LE(off + 32);
+    const localOff = buf.readUInt32LE(off + 42);
+    // Some Windows-built zips (e.g. BarRaider releases) use backslash entry names, violating the
+    // zip spec; normalize so root detection, extraction, and lookups all see forward slashes.
+    const name = buf.subarray(off + 46, off + 46 + nameLen).toString('utf8').replace(/\\/g, '/');
+    entries.push({
+      name,
+      dir: name.endsWith('/'),
+      data() {
+        if (buf.readUInt32LE(localOff) !== 0x04034b50) throw new Error('bad local header');
+        const lNameLen = buf.readUInt16LE(localOff + 26), lExtraLen = buf.readUInt16LE(localOff + 28);
+        const start = localOff + 30 + lNameLen + lExtraLen;
+        const raw = buf.subarray(start, start + compSize);
+        if (method === 0) return Buffer.from(raw);
+        if (method === 8) return zlib.inflateRawSync(raw);
+        throw new Error('unsupported compression method ' + method);
+      },
+    });
+    off += 46 + nameLen + extraLen + cmtLen;
+  }
+  return entries;
+}
+// Extract a zip's entries under destDir, refusing anything that would escape it (zip-slip).
+function extractZip(buf, destDir) {
+  const base = path.resolve(destDir);
+  for (const e of unzipEntries(buf)) {
+    if (/^([a-zA-Z]:|\\\\|\/)/.test(e.name) || e.name.split(/[\\/]/).indexOf('..') >= 0) throw new Error('unsafe zip entry: ' + e.name);
+    const full = path.resolve(base, e.name);
+    if (full !== base && !full.startsWith(base + path.sep)) throw new Error('unsafe zip entry: ' + e.name);
+    if (e.dir) { fs.mkdirSync(full, { recursive: true }); continue; }
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, e.data());
+  }
+}
+
+// ---- built-in minimal WebSocket server (RFC 6455: handshake, text frames, ping, close) --------
+const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+class MiniSocket extends EventEmitter {
+  constructor(socket) {
+    super();
+    this.socket = socket;
+    this.readyState = 1;   // OPEN (mirrors the ws module's constant)
+    this._buf = Buffer.alloc(0);
+    this._frags = [];
+    socket.on('data', d => { this._buf = Buffer.concat([this._buf, d]); this._pump(); });
+    const closed = () => { if (this.readyState !== 3) { this.readyState = 3; this.emit('close'); } };
+    socket.on('close', closed); socket.on('error', closed); socket.on('end', closed);
+  }
+  _pump() {
+    for (;;) {
+      const b = this._buf;
+      if (b.length < 2) return;
+      const fin = (b[0] & 0x80) !== 0, op = b[0] & 0x0f, masked = (b[1] & 0x80) !== 0;
+      let len = b[1] & 0x7f, o = 2;
+      if (len === 126) { if (b.length < 4) return; len = b.readUInt16BE(2); o = 4; }
+      else if (len === 127) { if (b.length < 10) return; len = Number(b.readBigUInt64BE(2)); o = 10; }
+      const maskLen = masked ? 4 : 0;
+      if (b.length < o + maskLen + len) return;
+      let payload = Buffer.from(b.subarray(o + maskLen, o + maskLen + len));
+      if (masked) { const m = b.subarray(o, o + 4); for (let i = 0; i < payload.length; i++) payload[i] ^= m[i & 3]; }
+      this._buf = b.subarray(o + maskLen + len);
+      if (op === 8) { this.close(); continue; }                       // close
+      if (op === 9) { this._frame(0x0a, payload); continue; }         // ping -> pong
+      if (op === 0x0a) continue;                                       // pong
+      if (op === 1 || op === 2 || op === 0) {                          // text/binary/continuation
+        this._frags.push(payload);
+        if (fin) { const whole = Buffer.concat(this._frags); this._frags = []; this.emit('message', whole); }
+      }
+    }
+  }
+  _frame(op, payload) {
+    const len = payload.length;
+    let head;
+    if (len < 126) head = Buffer.from([0x80 | op, len]);
+    else if (len < 65536) { head = Buffer.alloc(4); head[0] = 0x80 | op; head[1] = 126; head.writeUInt16BE(len, 2); }
+    else { head = Buffer.alloc(10); head[0] = 0x80 | op; head[1] = 127; head.writeBigUInt64BE(BigInt(len), 2); }
+    try { this.socket.write(Buffer.concat([head, payload])); } catch (e) {}
+  }
+  send(data) { if (this.readyState === 1) this._frame(1, Buffer.from(String(data), 'utf8')); }
+  close() { if (this.readyState === 1) { this.readyState = 3; this._frame(8, Buffer.alloc(0)); try { this.socket.end(); } catch (e) {} this.emit('close'); } }
+  terminate() { this.readyState = 3; try { this.socket.destroy(); } catch (e) {} }
+}
+class MiniWss extends EventEmitter {
+  constructor(host, port, ready) {
+    super();
+    this.clients = new Set();
+    this.server = http.createServer((req, res) => { res.writeHead(426); res.end(); });
+    this.server.on('upgrade', (req, socket) => {
+      const key = req.headers['sec-websocket-key'];
+      if (!key || String(req.headers.upgrade || '').toLowerCase() !== 'websocket') { socket.destroy(); return; }
+      const accept = crypto.createHash('sha1').update(key + WS_GUID).digest('base64');
+      socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ' + accept + '\r\n\r\n');
+      const ws = new MiniSocket(socket);
+      this.clients.add(ws);
+      ws.on('close', () => this.clients.delete(ws));
+      this.emit('connection', ws);
+    });
+    this.server.on('error', e => this.emit('error', e));
+    this.server.listen(port, host, () => ready());
+  }
+  address() { return this.server.address(); }
+  close() { try { this.server.close(); } catch (e) {} for (const c of this.clients) c.terminate(); this.clients.clear(); }
 }
 
 const MAX_ASSET = 4 * 1024 * 1024;
@@ -103,23 +217,20 @@ function extractPackages(dir) {
   let ents = []; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
   for (const ent of ents) {
     if (!ent.isFile() || !/\.streamDeckPlugin$/i.test(ent.name)) continue;
-    const file = path.join(dir, ent.name);
-    const AdmZip = hostRequire('adm-zip');
-    if (!AdmZip) { skippedPackages.push({ file: ent.name, reason: 'zip support unavailable — extract it by hand (it is a plain zip)' }); continue; }
     try {
-      const zip = new AdmZip(file);
-      const entries = zip.getEntries();
-      const roots = new Set(entries.map(e => e.entryName.split('/')[0]).filter(Boolean));
+      const buf = fs.readFileSync(path.join(dir, ent.name));
+      const entries = unzipEntries(buf);
+      const roots = new Set(entries.map(e => e.name.split('/')[0]).filter(Boolean));
       const root = [...roots].find(r => /\.sdPlugin$/i.test(r));
       if (!root || roots.size !== 1) { skippedPackages.push({ file: ent.name, reason: 'not a plugin package (no single *.sdPlugin root)' }); continue; }
       if (fs.existsSync(path.join(dir, root))) continue;   // already extracted
-      const manEntry = entries.find(e => e.entryName === root + '/manifest.json');
-      const manRaw = manEntry ? manEntry.getData() : null;
-      if (manRaw && manRaw.slice(0, 6).toString('latin1') === 'ELGATO') {
+      const manEntry = entries.find(e => e.name === root + '/manifest.json');
+      const manRaw = manEntry ? manEntry.data() : null;
+      if (manRaw && manRaw.subarray(0, 6).toString('latin1') === 'ELGATO') {
         skippedPackages.push({ file: ent.name, reason: 'Elgato Marketplace package (encrypted) — only plain open-source packages can run here' });
         continue;
       }
-      zip.extractAllTo(dir, true);   // adm-zip 0.5+ rejects zip-slip entry names
+      extractZip(buf, dir);
     } catch (e) { skippedPackages.push({ file: ent.name, reason: 'could not extract: ' + e.message }); }
   }
 }
@@ -148,7 +259,9 @@ function codePathOf(p) {
   if (!raw) return null;
   if (/\.html?$/i.test(raw)) return { unsupported: 'HTML plugin (needs a browser runtime)' };
   const base = path.resolve(p.dir);
-  for (const cand of (path.extname(raw) ? [raw] : [raw + '.exe', raw])) {
+  // Reverse-DNS CodePaths ("com.barraider.stopwatch") make extname() useless -- always try the
+  // literal name first, then the Windows .exe convention.
+  for (const cand of [raw, raw + '.exe']) {
     const full = path.resolve(base, cand);
     if (!full.startsWith(base + path.sep)) return null;   // confined to the plugin folder
     try { if (fs.statSync(full).isFile()) return { path: full, node: /\.(js|mjs|cjs)$/i.test(cand) }; } catch (e) {}
@@ -159,10 +272,8 @@ function codePathOf(p) {
 // ---- the WebSocket host -----------------------------------------------------------------------
 function ensureWss() {
   if (wss) return Promise.resolve(wssPort);
-  const WebSocket = hostRequire('ws');
-  if (!WebSocket) return Promise.reject(new Error('the ws module is unavailable in this host build'));
   return new Promise((resolve, reject) => {
-    const server = new WebSocket.Server({ host: '127.0.0.1', port: 0 }, () => {
+    const server = new MiniWss('127.0.0.1', 0, () => {
       wss = server; wssPort = server.address().port; resolve(wssPort);
     });
     server.on('error', reject);
@@ -266,6 +377,7 @@ process.on('exit', () => { for (const p of plugins.values()) { try { if (p.proc)
 async function ensureStarted(options) {
   lastOptions = options;
   lastLayout = layoutOf(options);
+  loadDeck(options);   // ALWAYS, even with no folder set -- snapshot() needs a deck on the very first call
   const dir = pluginsDirOf(options);
   // While the folder is set but empty, keep looking -- the user is typically downloading plugins
   // into it right now; each state poll is one cheap readdir.
