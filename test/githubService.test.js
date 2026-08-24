@@ -108,6 +108,86 @@ test('fork upstreams already present in the authenticated repository list are no
   assert.equal(result.items[1].relationship, undefined);
 });
 
+test('Issues filters use documented read-only parameters and cache authenticated identity', async () => {
+  const calls = [];
+  const service = new GitHubService({
+    getSettings: () => ({ clientId:'Iv1.x', repository:'acme/repo', branch:'main' }), oauth:oauth(), openExternal:()=>true,
+    fetchImpl: async url => {
+      calls.push(url);
+      if (url.endsWith('/user')) return response(200,{login:'octocat'});
+      if (url.includes('page=1')) return response(200,[
+        {number:9,title:'Issue',state:'open',user:{login:'a'}},
+        {number:10,title:'PR',state:'open',pull_request:{url:'https://api.github.com/pulls/10'}},
+      ], {link:'<https://api.github.com/repos/acme/repo/issues?state=open&page=2>; rel="next"'});
+      return response(200,[]);
+    },
+  });
+  const open = await service.issues('open',1,'acme/repo');
+  const assigned = await service.issues('assigned',2,'acme/repo');
+  const closed = await service.issues('closed',2,'acme/repo');
+  assert.deepEqual(open.items.map(item => item.number), [9]);
+  assert.equal(open.hasMore, true);
+  assert.match(calls[0], /state=open/);
+  assert.match(calls.find(url => url.includes('assignee=')), /assignee=octocat/);
+  assert.match(calls.find(url => url.includes('state=closed')), /sort=updated/);
+  assert.equal(calls.filter(url => url.endsWith('/user')).length, 1);
+  assert.equal(assigned.filter, 'assigned');
+  assert.equal(closed.filter, 'closed');
+  assert.equal(closed.hasMore, false);
+});
+
+test('Issues list and detail caching respect manual refresh and derive trusted URLs', async () => {
+  let calls = 0;
+  const service = new GitHubService({
+    getSettings:()=>({repository:'acme/repo'}), oauth:oauth(), openExternal:()=>true,
+    fetchImpl:async url => {
+      calls += 1;
+      if (/\/issues\/7$/.test(url)) return response(200,{number:7,title:'Detail',state:'open',body_text:'Body',html_url:'https://evil.example/7'});
+      return response(200,[{number:7,title:'Summary',state:'open'}]);
+    },
+  });
+  assert.equal((await service.issues('open',1,'acme/repo')).cached, undefined);
+  assert.equal((await service.issues('open',1,'acme/repo')).cached, true);
+  await service.issues('open',1,'acme/repo',true);
+  const detail = await service.issueDetails(7,'acme/repo');
+  assert.equal((await service.issueDetails(7,'acme/repo')).cached, true);
+  assert.equal(detail.item.url,'https://github.com/acme/repo/issues/7');
+  assert.equal(calls,3);
+});
+
+test('Issues failures distinguish disabled, malformed, invalid, and removed resources', async () => {
+  let mode = 'disabled';
+  const service = new GitHubService({
+    getSettings:()=>({repository:'acme/repo'}), oauth:oauth(), openExternal:()=>true,
+    fetchImpl:async url => mode === 'disabled' ? response(410,{message:'Issues disabled'})
+      : mode === 'malformed' ? response(200,{items:[]})
+        : response(404,{message:'Not Found'}),
+  });
+  assert.equal((await service.issues('bad',1,'acme/repo')).code,'invalid_issue_filter');
+  assert.equal((await service.issues('open',0,'acme/repo')).code,'invalid_issue_page');
+  assert.equal((await service.issueDetails('../7','acme/repo')).code,'invalid_issue');
+  assert.equal((await service.issues('open',1,'acme/repo')).code,'issues_unavailable');
+  mode = 'malformed';
+  assert.equal((await service.issues('closed',1,'acme/repo')).code,'invalid_response');
+  mode = 'missing';
+  assert.equal((await service.issueDetails(7,'acme/repo')).code,'issue_unavailable');
+});
+
+test('Issues surface permission and rate-limit failures without discarding their meaning', async () => {
+  let mode = 'permission';
+  const service = new GitHubService({
+    getSettings:()=>({repository:'acme/repo'}), oauth:oauth(), openExternal:()=>true,
+    fetchImpl:async () => mode === 'permission'
+      ? response(403,{message:'Forbidden'},{'x-ratelimit-remaining':'12'})
+      : response(403,{message:'Rate limited'},{'x-ratelimit-remaining':'0','x-ratelimit-reset':'1787587200'}),
+  });
+  assert.equal((await service.issues('open',2,'acme/repo')).code,'insufficient_permissions');
+  mode = 'rate';
+  const limited = await service.issues('closed',2,'acme/repo');
+  assert.equal(limited.code,'rate_limited');
+  assert.match(limited.resetAt,/^2026-/);
+});
+
 test('public settings and failures never return OAuth tokens', async () => {
   const service = new GitHubService({ getSettings: () => ({ clientId:'Iv1.x', repository:'acme/repo', branch:'main' }), oauth: oauth('gho_do_not_return'), openExternal: () => true, fetchImpl: async () => response(401,{ message:'bad' }) });
   assert.doesNotMatch(JSON.stringify(service.publicSettings()), /gho_do_not_return/);

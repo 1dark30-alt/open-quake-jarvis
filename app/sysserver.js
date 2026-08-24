@@ -75,6 +75,7 @@ const STATIC_FILES = {
   '/office.js': 'application/javascript; charset=utf-8',
   '/officeCalendar.js': 'application/javascript; charset=utf-8',
   '/office.css': 'text/css; charset=utf-8',
+  '/touchDragScroll.js': 'application/javascript; charset=utf-8',
   '/githubPanelState.js': 'application/javascript; charset=utf-8',
   '/github.js': 'application/javascript; charset=utf-8',
   '/github.css': 'text/css; charset=utf-8',
@@ -633,6 +634,8 @@ async function serveGitHubApi(req, res, full, url) {
     else if (operation === 'overview' && req.method === 'GET') result = await githubApp.overview(payload.repository);
     else if (operation === 'pulls' && req.method === 'GET') result = await githubApp.pulls(payload.repository);
     else if (operation === 'pull' && req.method === 'GET') result = await githubApp.pullDetails(payload.number, payload.repository);
+    else if (operation === 'issues' && req.method === 'GET') result = await githubApp.issues(payload.filter, payload.page, payload.repository, payload.refresh === '1');
+    else if (operation === 'issue' && req.method === 'GET') result = await githubApp.issueDetails(payload.number, payload.repository, payload.refresh === '1');
     else if (operation === 'actions' && req.method === 'GET') result = await githubApp.actions(payload.repository);
     else if (operation === 'run' && req.method === 'GET') result = await githubApp.runDetails(payload.id, payload.repository);
     else if (operation === 'workflow' && req.method === 'GET') result = await githubApp.workflowDispatchInfo(payload.id, payload.ref, payload.repository);

@@ -10,12 +10,17 @@ const REPOSITORY_RE = /^([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,1
 const ACTIONS = new Set(['dispatch', 'rerun-failed', 'rerun', 'cancel', 'download-artifact']);
 const REPOSITORY_CACHE_MS = 60 * 1000;
 const PULL_INDICATOR_CACHE_MS = 2 * 60 * 1000;
+const ISSUE_LIST_CACHE_MS = 60 * 1000;
+const ISSUE_DETAIL_CACHE_MS = 2 * 60 * 1000;
+const ACCOUNT_CACHE_MS = 10 * 60 * 1000;
 const WORKFLOW_METADATA_CACHE_MS = 2 * 60 * 1000;
 const MAX_REPOSITORY_PAGES = 100;
 const FORK_DETAIL_CONCURRENCY = 4;
 const PULL_INDICATOR_LIMIT = 12;
 const MAX_WORKFLOW_BYTES = 256 * 1024;
 const MAX_DISPATCH_VALUE_LENGTH = 1024;
+const ISSUE_FILTERS = new Set(['open', 'assigned', 'closed']);
+const ISSUE_PAGE_SIZE = 30;
 
 function yamlLine(value) {
   const match = /^(\s*)(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_.-]+))\s*:\s*(.*)$/.exec(value);
@@ -233,6 +238,9 @@ class GitHubService {
     this.now = now;
     this.repositoryCache = null;
     this.pullIndicatorCache = new Map();
+    this.issueListCache = new Map();
+    this.issueDetailCache = new Map();
+    this.accountCache = null;
     this.workflowMetadataCache = new Map();
   }
 
@@ -266,10 +274,15 @@ class GitHubService {
       if (result.connected) {
         this.repositoryCache = null;
         this.pullIndicatorCache.clear();
+        this.issueListCache.clear();
+        this.issueDetailCache.clear();
         this.workflowMetadataCache.clear();
         try {
           const account = await this.request('/user');
-          result.account = { login: String(account && account.login || ''), avatarUrl: String(account && account.avatar_url || ''), url: String(account && account.html_url || '') };
+          const login = String(account && account.login || '').trim();
+          if (!login) throw Object.assign(new Error('GitHub did not return the authenticated account'), { code: 'invalid_response' });
+          this.accountCache = { login, expiresAt: this.now() + ACCOUNT_CACHE_MS };
+          result.account = { login, avatarUrl: String(account && account.avatar_url || ''), url: String(account && account.html_url || '') };
         } catch (error) {
           await this.oauth.revokeToken('github');
           throw error;
@@ -284,6 +297,9 @@ class GitHubService {
       await this.oauth.revokeToken('github');
       this.repositoryCache = null;
       this.pullIndicatorCache.clear();
+      this.issueListCache.clear();
+      this.issueDetailCache.clear();
+      this.accountCache = null;
       this.workflowMetadataCache.clear();
       return this.publicSettings();
     }
@@ -326,7 +342,7 @@ class GitHubService {
     if (!response.ok) {
       const remaining = response.headers && response.headers.get && response.headers.get('x-ratelimit-remaining');
       const reset = response.headers && response.headers.get && response.headers.get('x-ratelimit-reset');
-      const code = response.status === 401 ? 'authentication_failed' : response.status === 403 && remaining === '0' ? 'rate_limited' : response.status === 403 ? 'insufficient_permissions' : response.status === 404 ? 'repository_unavailable' : response.status === 409 ? 'actions_unavailable' : response.status === 422 ? 'invalid_request' : 'github_error';
+      const code = response.status === 401 ? 'authentication_failed' : response.status === 403 && remaining === '0' ? 'rate_limited' : response.status === 403 ? 'insufficient_permissions' : response.status === 404 ? 'repository_unavailable' : response.status === 409 ? 'actions_unavailable' : response.status === 410 ? 'resource_gone' : response.status === 422 ? 'invalid_request' : 'github_error';
       const message = code === 'rate_limited' ? 'GitHub API rate limit reached' : code === 'authentication_failed' ? 'GitHub authorization expired or was revoked' : code === 'insufficient_permissions' ? 'GitHub denied this operation; reconnect with the repo scope and verify repository access' : data && typeof data.message === 'string' ? data.message : 'GitHub request failed (HTTP ' + response.status + ')';
       const error = Object.assign(new Error(message), { code });
       if (reset && Number.isFinite(Number(reset))) error.resetAt = new Date(Number(reset) * 1000).toISOString();
@@ -467,6 +483,74 @@ class GitHubService {
       return { ok: true, items, indicatorsLimited: items.length > PULL_INDICATOR_LIMIT, fetchedAt: new Date(this.now()).toISOString() };
     }
     catch (error) { return resultError(error); }
+  }
+
+  async accountLogin(forceRefresh) {
+    if (!forceRefresh && this.accountCache && this.accountCache.login && this.accountCache.expiresAt > this.now()) return this.accountCache.login;
+    const account = await this.request('/user');
+    const login = String(account && account.login || '').trim();
+    if (!login) throw Object.assign(new Error('GitHub did not return the authenticated account'), { code: 'invalid_response' });
+    this.accountCache = { login, expiresAt: this.now() + ACCOUNT_CACHE_MS };
+    return login;
+  }
+
+  async issues(filterValue, pageValue, repositoryValue, forceRefresh) {
+    const filter = String(filterValue || 'open').toLowerCase();
+    if (!ISSUE_FILTERS.has(filter)) return { ok: false, error: 'Issue filter is invalid', code: 'invalid_issue_filter' };
+    const page = pageValue == null || pageValue === '' ? 1 : models.positiveInteger(pageValue);
+    if (!page || page > 1000) return { ok: false, error: 'Issue page is invalid', code: 'invalid_issue_page' };
+    try {
+      const repository = this.repository(repositoryValue).fullName;
+      const key = [repository.toLowerCase(), filter, page].join(':');
+      const cached = this.issueListCache.get(key);
+      if (!forceRefresh && cached && cached.expiresAt > this.now()) return Object.assign({}, cached.value, { items: cached.value.items.slice(), cached: true });
+      const query = new URLSearchParams({
+        state: filter === 'closed' ? 'closed' : 'open',
+        sort: 'updated', direction: 'desc', per_page: String(ISSUE_PAGE_SIZE), page: String(page),
+      });
+      if (filter === 'assigned') query.set('assignee', await this.accountLogin(false));
+      const response = await this.request(this.repoPath('/issues?' + query.toString(), repository), {
+        includeHeaders: true,
+        accept: 'application/vnd.github.text+json',
+      });
+      if (!Array.isArray(response.data)) throw Object.assign(new Error('GitHub returned an invalid Issues response'), { code: 'invalid_response' });
+      const value = {
+        ok: true,
+        filter,
+        page,
+        items: models.issuePage(response.data, 'https://github.com/' + repository),
+        hasMore: !!nextApiPath(response.link),
+        fetchedAt: new Date(this.now()).toISOString(),
+      };
+      this.issueListCache.set(key, { value, expiresAt: this.now() + ISSUE_LIST_CACHE_MS });
+      return Object.assign({}, value, { items: value.items.slice() });
+    } catch (error) {
+      if (error.code === 'resource_gone') return { ok: false, error: 'Issues are disabled for this repository', code: 'issues_unavailable' };
+      return resultError(error);
+    }
+  }
+
+  async issueDetails(numberValue, repositoryValue, forceRefresh) {
+    const number = models.positiveInteger(numberValue);
+    if (!number) return { ok: false, error: 'Issue number is invalid', code: 'invalid_issue' };
+    try {
+      const repository = this.repository(repositoryValue).fullName;
+      const key = repository.toLowerCase() + '#' + number;
+      const cached = this.issueDetailCache.get(key);
+      if (!forceRefresh && cached && cached.expiresAt > this.now()) return Object.assign({}, cached.value, { item: Object.assign({}, cached.value.item), cached: true });
+      const value = await this.request(this.repoPath('/issues/' + number, repository), { accept: 'application/vnd.github.text+json' });
+      const item = models.issueDetail(value, 'https://github.com/' + repository);
+      if (!item) {
+        const code = value && value.pull_request ? 'not_an_issue' : 'invalid_response';
+        throw Object.assign(new Error(code === 'not_an_issue' ? 'That number belongs to a pull request' : 'GitHub returned an invalid issue'), { code });
+      }
+      const result = { ok: true, item, fetchedAt: new Date(this.now()).toISOString() };
+      this.issueDetailCache.set(key, { value: result, expiresAt: this.now() + ISSUE_DETAIL_CACHE_MS });
+      return Object.assign({}, result, { item: Object.assign({}, item) });
+    } catch (error) {
+      if (error.code === 'repository_unavailable' || error.code === 'resource_gone') return { ok: false, error: 'This issue is no longer available', code: 'issue_unavailable' };
+      return resultError(error);
+    }
   }
 
   async pullDetails(numberValue, repositoryValue) {
