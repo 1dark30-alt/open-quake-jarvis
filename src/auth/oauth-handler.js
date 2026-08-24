@@ -45,11 +45,14 @@ function hasScopes(tokens, requested) {
 }
 
 class OAuthHandler {
-  constructor({ storage, openExternal, log = () => {} }) {
+  constructor({ storage, openExternal, log = () => {}, fetchImpl = fetch, now = Date.now }) {
     this.storage = storage;
     this.openExternal = openExternal;
     this.log = log;
+    this.fetchImpl = fetchImpl;
+    this.now = now;
     this.pending = new Map();
+    this.pendingDevices = new Map();
     this.callbackServer = null;
     this.refreshTimers = new Map();
   }
@@ -87,6 +90,8 @@ class OAuthHandler {
   }
 
   async connect(providerId, requestedScopes) {
+    const provider = this.provider(providerId);
+    if (provider.deviceFlow) return this.beginDeviceFlow(provider.id, requestedScopes);
     await this.ensureCallbackServer();
     const url = await this.generateAuthUrl(providerId, requestedScopes);
     if (!this.openExternal(url)) throw new Error('Could not open OAuth sign-in URL');
@@ -119,7 +124,7 @@ class OAuthHandler {
   }
 
   async fetchToken(provider, payload) {
-    const res = await fetch(provider.tokenUrl, {
+    const res = await this.fetchImpl(provider.tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
       body: formBody(payload),
@@ -134,46 +139,131 @@ class OAuthHandler {
   }
 
   normalizeToken(provider, token, requestedScopes) {
-    const now = Date.now();
-    const expiresIn = Number(token.expires_in || 3600);
+    const now = this.now();
+    const expiresIn = token.expires_in === undefined || token.expires_in === null ? null : Number(token.expires_in);
+    const refreshExpiresIn = token.refresh_token_expires_in === undefined || token.refresh_token_expires_in === null ? null : Number(token.refresh_token_expires_in);
     return {
       provider,
       tokenType: token.token_type || 'Bearer',
       accessToken: token.access_token || '',
       refreshToken: token.refresh_token || '',
-      expiresAt: now + Math.max(0, expiresIn) * 1000,
+      expiresAt: Number.isFinite(expiresIn) ? now + Math.max(0, expiresIn) * 1000 : null,
+      refreshExpiresAt: Number.isFinite(refreshExpiresIn) ? now + Math.max(0, refreshExpiresIn) * 1000 : null,
       scope: token.scope || scopeList(requestedScopes).join(' '),
+      authFlow: token.authFlow || '',
     };
+  }
+
+  async postForm(url, payload) {
+    const res = await this.fetchImpl(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+      body: formBody(payload),
+    });
+    const text = await res.text();
+    let data;
+    try { data = text ? JSON.parse(text) : {}; }
+    catch (error) { data = Object.fromEntries(new URLSearchParams(text)); }
+    if (!res.ok) throw new Error('OAuth request failed: HTTP ' + res.status);
+    return data && typeof data === 'object' ? data : {};
+  }
+
+  async beginDeviceFlow(providerId, requestedScopes) {
+    const provider = this.provider(providerId);
+    if (!provider.deviceFlow || !provider.deviceCodeUrl) throw new Error(provider.name + ' does not support device authorization');
+    const settings = this.storage.getProviderSettings(provider.id);
+    const clientId = String(provider.clientId || settings.clientId || '').trim();
+    if (!clientId) throw new Error(provider.name + ' OAuth App client ID is required');
+    const scopes = scopesFor(provider, requestedScopes);
+    const data = await this.postForm(provider.deviceCodeUrl, { client_id: clientId, scope: scopes.join(' ') });
+    if (data.error) throw Object.assign(new Error(data.error_description || data.error), { code: data.error });
+    const deviceCode = String(data.device_code || '');
+    const userCode = String(data.user_code || '');
+    const verificationUri = String(data.verification_uri || '');
+    let target;
+    try { target = new URL(verificationUri); } catch (error) {}
+    if (!deviceCode || !/^[A-Z0-9-]{8,12}$/i.test(userCode) || !target || target.protocol !== 'https:' || target.hostname !== 'github.com' || target.pathname !== '/login/device') {
+      throw new Error('GitHub returned an invalid device authorization response');
+    }
+    const intervalMs = Math.max(5000, Math.min(30000, Number(data.interval || 5) * 1000));
+    const expiresAt = this.now() + Math.max(60, Math.min(1800, Number(data.expires_in || 900))) * 1000;
+    this.pendingDevices.set(provider.id, { clientId, deviceCode, userCode, verificationUri: target.href, scopes, intervalMs, nextPollAt: this.now() + intervalMs, expiresAt });
+    if (this.openExternal && !await this.openExternal(target.href)) {
+      this.pendingDevices.delete(provider.id);
+      throw new Error('Could not open GitHub device sign-in');
+    }
+    return { ok: true, pending: true, provider: provider.id, userCode, verificationUri: target.href, expiresAt, retryAfterMs: intervalMs };
+  }
+
+  async pollDeviceFlow(providerId) {
+    const provider = this.provider(providerId);
+    const pending = this.pendingDevices.get(provider.id);
+    if (!pending) return { ok: false, pending: false, code: 'device_flow_not_started', error: 'GitHub sign-in has not been started' };
+    const now = this.now();
+    if (now >= pending.expiresAt) {
+      this.pendingDevices.delete(provider.id);
+      return { ok: false, pending: false, code: 'expired_token', error: 'GitHub sign-in code expired' };
+    }
+    if (now < pending.nextPollAt) return { ok: true, pending: true, userCode: pending.userCode, verificationUri: pending.verificationUri, expiresAt: pending.expiresAt, retryAfterMs: pending.nextPollAt - now };
+    pending.nextPollAt = now + pending.intervalMs;
+    const data = await this.postForm(provider.tokenUrl, {
+      client_id: pending.clientId,
+      device_code: pending.deviceCode,
+      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+    });
+    if (data.error === 'authorization_pending') return { ok: true, pending: true, userCode: pending.userCode, verificationUri: pending.verificationUri, expiresAt: pending.expiresAt, retryAfterMs: pending.intervalMs };
+    if (data.error === 'slow_down') {
+      pending.intervalMs = Math.min(60000, pending.intervalMs + 5000);
+      pending.nextPollAt = now + pending.intervalMs;
+      return { ok: true, pending: true, userCode: pending.userCode, verificationUri: pending.verificationUri, expiresAt: pending.expiresAt, retryAfterMs: pending.intervalMs };
+    }
+    if (data.error) {
+      this.pendingDevices.delete(provider.id);
+      throw Object.assign(new Error(data.error_description || data.error), { code: data.error });
+    }
+    if (!data.access_token) throw new Error('GitHub sign-in returned no access token');
+    this.pendingDevices.delete(provider.id);
+    const tokens = this.normalizeToken(provider.id, Object.assign({}, data, { authFlow: 'device' }), pending.scopes);
+    this.storage.setTokens(provider.id, tokens);
+    this.scheduleRefresh(provider.id);
+    return { ok: true, pending: false, connected: true, provider: provider.id };
   }
 
   async refreshTokenIfNeeded(providerId, force, requestedScopes) {
     const provider = this.provider(providerId);
     const requested = scopesFor(provider, requestedScopes);
     const tokens = this.storage.getTokens(provider.id);
-    if (!tokens || !tokens.refreshToken) return null;
+    if (!tokens) return null;
     if (!hasScopes(tokens, requested)) {
-      const err = new Error('Additional Microsoft consent is required for: ' + requested.filter(s => !hasScopes(tokens, [s])).join(' '));
+      const err = new Error('Additional ' + provider.name + ' consent is required for: ' + requested.filter(s => !hasScopes(tokens, [s])).join(' '));
       err.code = 'consent_required';
       err.provider = provider.id;
       err.scopes = requested;
       throw err;
     }
     const skew = provider.accessTokenExpiresSkewMs || 300000;
-    if (!force && tokens.accessToken && tokens.expiresAt && Date.now() < Number(tokens.expiresAt) - skew) {
+    if (!force && tokens.accessToken && !tokens.expiresAt) return tokens;
+    if (!force && tokens.accessToken && tokens.expiresAt && this.now() < Number(tokens.expiresAt) - skew) {
       return tokens;
     }
+    if (!tokens.refreshToken) return null;
+    if (tokens.refreshExpiresAt && this.now() >= Number(tokens.refreshExpiresAt)) return null;
     const settings = this.storage.getProviderSettings(provider.id);
-    const next = await this.fetchToken(provider, {
+    const refreshPayload = {
       grant_type: 'refresh_token',
       client_id: provider.clientId || settings.clientId,
-      client_secret: settings.clientSecret,
       refresh_token: tokens.refreshToken,
-      redirect_uri: provider.redirectUri,
-      scope: requested.join(' '),
-    });
+    };
+    if (tokens.authFlow !== 'device') {
+      refreshPayload.client_secret = settings.clientSecret;
+      refreshPayload.redirect_uri = provider.redirectUri;
+      refreshPayload.scope = requested.join(' ');
+    }
+    const next = await this.fetchToken(provider, refreshPayload);
     const merged = this.normalizeToken(provider.id, Object.assign({}, next, {
       refresh_token: next.refresh_token || tokens.refreshToken,
       scope: next.scope || tokens.scope || '',
+      authFlow: tokens.authFlow || '',
     }), requested);
     this.storage.setTokens(provider.id, merged);
     this.scheduleRefresh(provider.id);
@@ -195,10 +285,11 @@ class OAuthHandler {
 
   async revokeToken(providerId) {
     const provider = this.provider(providerId);
+    this.pendingDevices.delete(provider.id);
     const tokens = this.storage.getTokens(provider.id);
     if (provider.revokeUrl && tokens && (tokens.refreshToken || tokens.accessToken)) {
       try {
-        await fetch(provider.revokeUrl, {
+        await this.fetchImpl(provider.revokeUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: formBody({ token: tokens.refreshToken || tokens.accessToken }),
@@ -229,7 +320,7 @@ class OAuthHandler {
     const provider = this.provider(providerId);
     const tokens = this.storage.getTokens(provider.id);
     if (!tokens || !tokens.refreshToken || !tokens.expiresAt) return;
-    const delay = Math.max(30000, Number(tokens.expiresAt) - Date.now() - (provider.accessTokenExpiresSkewMs || 300000));
+    const delay = Math.max(30000, Number(tokens.expiresAt) - this.now() - (provider.accessTokenExpiresSkewMs || 300000));
     this.refreshTimers.set(provider.id, setTimeout(() => {
       this.refreshTokenIfNeeded(provider.id, true).catch(e => this.log('[oauth] refresh failed for ' + provider.id + ': ' + (e.message || e)));
     }, delay));
@@ -241,9 +332,14 @@ class OAuthHandler {
     this.refreshTimers.delete(providerId);
   }
 
+  cancelDeviceFlow(providerId) {
+    this.pendingDevices.delete(this.provider(providerId).id);
+  }
+
   stop() {
     for (const t of this.refreshTimers.values()) clearTimeout(t);
     this.refreshTimers.clear();
+    this.pendingDevices.clear();
     if (this.callbackServer) {
       try { this.callbackServer.close(); } catch (e) {}
       this.callbackServer = null;

@@ -244,6 +244,14 @@
     ]
   },
   {
+    "id": "github",
+    "name": "GitHub",
+    "file": "github.html",
+    "served": true,
+    "knob": true,
+    "options": []
+  },
+  {
     "id": "office",
     "name": "Office",
     "file": "office.html",

@@ -13,6 +13,7 @@
  *   GET /keyshortcuts -> Keyboard Shortcuts app page   GET /shortcuts -> system/page/custom shortcuts JSON
  *   GET /grid-tiles  -> the active app page's embedded grid (resolved icons) — Music/Agenda/Events
  *   GET /api/office/* -> capability-gated Microsoft 365 data/connect operations (tokens stay in main)
+ *   GET /api/github/* -> capability-gated GitHub OAuth/status/actions operations (tokens stay in main)
  *   GET /media/<cmd> -> transport (play/pause/next/prev) via onMedia
  *   GET /launch?i=N  -> launch the active app grid's tile N via onLaunch (runAction)
  *   GET /apps/<id>/… -> static files for discovered served drop-in apps  ·  /app-proxy /app-api
@@ -74,6 +75,9 @@ const STATIC_FILES = {
   '/office.js': 'application/javascript; charset=utf-8',
   '/officeCalendar.js': 'application/javascript; charset=utf-8',
   '/office.css': 'text/css; charset=utf-8',
+  '/githubPanelState.js': 'application/javascript; charset=utf-8',
+  '/github.js': 'application/javascript; charset=utf-8',
+  '/github.css': 'text/css; charset=utf-8',
   '/haschedule-ui.js': 'application/javascript; charset=utf-8',
   '/schedule.css': 'text/css; charset=utf-8',
   '/schedule-app.js': 'application/javascript; charset=utf-8',
@@ -96,6 +100,7 @@ for (const appId of ['teams', 'outlook', 'word', 'excel', 'powerpoint', 'onenote
 }
 
 let server = null, onMedia = null, onLaunch = null, getGridTiles = null, getAppConfig = null, getOfficeData = null, connectOffice = null, onOpenExternal = null, onMeetingAction = null, onOfficeAction = null, getShortcuts = null;
+let githubApp = null;
 let getMeetingState = null, onMeetingRecord = null;   // meeting recorder: panel poller + start/stop/setMic remote
 let onMeetingLibrary = null, resolveMeetingAudio = null;   // recordings library + transcription/analysis remotes
 let onSlide = null;   // slide capture: window list / select / start / stop / manual remote
@@ -106,7 +111,7 @@ let onLucidCleanup = null, onLucidRewrite = null, onLucidReview = null, onLucidS
 const lucidSubscribers = new Set();   // open SSE responses for the LucidType page (pushed by main via lucidBroadcast)
 let diagnosticsHtml = FALLBACK;
 let obsviewHtml = FALLBACK;
-let musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK, slideHtml = FALLBACK, lucidtypeHtml = FALLBACK, lucidtypeDictateHtml = FALLBACK;
+let musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, githubHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK, slideHtml = FALLBACK, lucidtypeHtml = FALLBACK, lucidtypeDictateHtml = FALLBACK;
 // Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
 // Voice-panel app registry: appId (also the URL path prefix) -> { handlers, voiceToken, htmlFile,
 // htmlContent }. `handlers` is a voicepanel-host.js handlers object; every voice app shares the
@@ -125,6 +130,9 @@ const appServers = {};      // app id -> required server module
 const DEFAULT_OFFICE_CAPABILITY_TTL_MS = 24 * 60 * 60 * 1000;
 let officeCapability = null;
 let officeCapabilityTtlMs = DEFAULT_OFFICE_CAPABILITY_TTL_MS;
+const DEFAULT_GITHUB_CAPABILITY_TTL_MS = 24 * 60 * 60 * 1000;
+let githubCapability = null;
+let githubCapabilityTtlMs = DEFAULT_GITHUB_CAPABILITY_TTL_MS;
 let currentTime = Date.now;
 
 function headers(type) { return { 'Content-Type': type, 'Cache-Control': 'no-store', 'Content-Security-Policy': LOCAL_APP_CSP }; }
@@ -132,6 +140,12 @@ function html(res, body) { res.writeHead(200, headers('text/html; charset=utf-8'
 function json(res, obj) { res.writeHead(200, headers('application/json; charset=utf-8')); res.end(JSON.stringify(obj)); }
 function done(res, ok) { res.writeHead(ok ? 200 : 400, headers('application/json')); res.end(JSON.stringify({ ok: !!ok })); }
 function officeJson(res, obj, nextCapability) {
+  const h = headers('application/json; charset=utf-8');
+  if (nextCapability) h['X-Open-Quake-Capability'] = nextCapability;
+  res.writeHead(200, h);
+  res.end(JSON.stringify(obj));
+}
+function githubJson(res, obj, nextCapability) {
   const h = headers('application/json; charset=utf-8');
   if (nextCapability) h['X-Open-Quake-Capability'] = nextCapability;
   res.writeHead(200, h);
@@ -167,6 +181,23 @@ function consumeOfficeCapability(req) {
   const expected = Buffer.from(officeCapability.token);
   if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return null;
   return newOfficeCapability();
+}
+function newGitHubCapability() {
+  githubCapability = { token: crypto.randomBytes(32).toString('base64url'), expiresAt: currentTime() + githubCapabilityTtlMs };
+  return githubCapability.token;
+}
+function issueGitHubCapability() {
+  if (githubCapability && githubCapability.expiresAt > currentTime()) return githubCapability.token;
+  return newGitHubCapability();
+}
+function clearGitHubCapability() { githubCapability = null; }
+function consumeGitHubCapability(req) {
+  const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(String(req.headers.authorization || ''));
+  if (!match || !githubCapability || githubCapability.expiresAt <= currentTime()) { if (githubCapability && githubCapability.expiresAt <= currentTime()) clearGitHubCapability(); return null; }
+  const supplied = Buffer.from(match[1]);
+  const expected = Buffer.from(githubCapability.token);
+  if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return null;
+  return newGitHubCapability();
 }
 function setAppFolders(folders) {
   appFolders = {};
@@ -595,6 +626,35 @@ const MEETING_LIBRARY_OPS = {
   '/meeting-analysis': 'analysisResult',
 };
 
+async function serveGitHubApi(req, res, full, url) {
+  const nextCapability = consumeGitHubCapability(req);
+  if (!nextCapability) { res.writeHead(403); res.end(); return; }
+  if (!githubApp) return githubJson(res, { ok: false, error: 'GitHub service unavailable', code: 'service_unavailable' }, nextCapability);
+  const operation = url.slice('/api/github/'.length);
+  let payload = queryObject(full);
+  if (req.method === 'POST') {
+    try { payload = await readJsonBody(req, 64 * 1024); }
+    catch (error) { return githubJson(res, { ok: false, error: 'Invalid request body', code: 'invalid_request' }, nextCapability); }
+  }
+  try {
+    let result;
+    if (operation === 'settings' && req.method === 'GET') result = githubApp.publicSettings();
+    else if (operation === 'repositories' && req.method === 'GET') result = await githubApp.repositories(payload.refresh === '1');
+    else if (operation === 'overview' && req.method === 'GET') result = await githubApp.overview(payload.repository);
+    else if (operation === 'pulls' && req.method === 'GET') result = await githubApp.pulls(payload.repository);
+    else if (operation === 'pull' && req.method === 'GET') result = await githubApp.pullDetails(payload.number, payload.repository);
+    else if (operation === 'actions' && req.method === 'GET') result = await githubApp.actions(payload.repository);
+    else if (operation === 'run' && req.method === 'GET') result = await githubApp.runDetails(payload.id, payload.repository);
+    else if (operation === 'workflow' && req.method === 'GET') result = await githubApp.workflowDispatchInfo(payload.id, payload.ref, payload.repository);
+    else if (operation === 'action' && req.method === 'POST') result = await githubApp.action(payload.action, payload);
+    else if (operation === 'open' && req.method === 'POST') result = await githubApp.open(payload.url, payload.repository);
+    else result = { ok: false, error: 'Unknown GitHub operation', code: 'invalid_operation' };
+    return githubJson(res, result == null ? { ok: true } : result, nextCapability);
+  } catch (error) {
+    return githubJson(res, { ok: false, error: error.message || 'GitHub operation failed', code: error.code || 'github_error' }, nextCapability);
+  }
+}
+
 async function handler(req, res) {
   if (!hostOk(req)) { res.writeHead(403); res.end(); return; }   // foreign / DNS-rebinding Host -> reject (all routes)
   const full = req.url || '/';
@@ -621,6 +681,7 @@ async function handler(req, res) {
   const isAllowedPost = (req.method === 'POST' && voiceApp && (VOICE_POST_SUFFIXES.has(voicePath) || voicePath === '/approval-request'))
     || (req.method === 'POST' && url === '/api/discord/action')
     || (req.method === 'POST' && url === '/api/obs/action')
+    || (req.method === 'POST' && url.indexOf('/api/github/') === 0)
     || (req.method === 'POST' && url.indexOf('/app-api/') === 0)   // drop-in app APIs: POST carries a body (e.g. captured audio) the query string can't
     || (req.method === 'POST' && (url === '/lucidtype-edit' || url === '/lucidtype-review/apply' || url === '/lucidtype-review/refine'));   // LucidType edit-sync + review apply/refine (same-origin gated below)
   if (req.method !== 'GET' && !isAllowedPost) { res.writeHead(405); res.end(); return; }
@@ -635,6 +696,7 @@ async function handler(req, res) {
   if (url === '/slidecapture') return html(res, slideHtml);  // hidden slide-capture window
   if (url === '/chat') return html(res, chatHtml);
   if (url === '/office') return html(res, officeHtml);
+  if (url === '/github') return html(res, githubHtml);
   if (url === '/haschedule') return html(res, hascheduleHtml);
   if (url === '/agenda') return html(res, agendaHtml);
   if (url === '/events') return html(res, eventsHtml);
@@ -708,6 +770,7 @@ async function handler(req, res) {
     try { return officeJson(res, await operation(), nextCapability); }
     catch (e) { return officeJson(res, { ok: false, error: e.message || 'Office request failed', code: e.code || '' }, nextCapability); }
   }
+  if (url.indexOf('/api/github/') === 0) return serveGitHubApi(req, res, full, url);
   if (url === '/app-proxy') return serveAppProxy(req, res, full);
   if (url.indexOf('/app-api/') === 0) return serveAppApi(req, res, full, url);
   if (url === '/metrics') return json(res, { retired: true });   // graceful null for any stale SystemView client
@@ -1087,6 +1150,9 @@ function start(opts) {
   currentTime = typeof opts.now === 'function' ? opts.now : Date.now;
   officeCapabilityTtlMs = Number.isFinite(opts.officeCapabilityTtlMs) && opts.officeCapabilityTtlMs > 0
     ? opts.officeCapabilityTtlMs : DEFAULT_OFFICE_CAPABILITY_TTL_MS;
+  githubCapabilityTtlMs = Number.isFinite(opts.githubCapabilityTtlMs) && opts.githubCapabilityTtlMs > 0
+    ? opts.githubCapabilityTtlMs : DEFAULT_GITHUB_CAPABILITY_TTL_MS;
+  githubApp = opts.githubApp || null;
   onOpenExternal = opts.onOpenExternal || null;
   onMeetingAction = opts.onMeetingAction || null;
   getMeetingState = opts.getMeetingState || null;
@@ -1146,6 +1212,7 @@ function start(opts) {
     try { slideHtml = fs.readFileSync(path.join(__dirname, 'slidecapture.html'), 'utf8'); } catch (e) {}
     try { chatHtml = fs.readFileSync(path.join(__dirname, 'chatview.html'), 'utf8'); } catch (e) {}
     try { officeHtml = fs.readFileSync(path.join(__dirname, 'office.html'), 'utf8'); } catch (e) {}
+    try { githubHtml = fs.readFileSync(path.join(__dirname, 'github.html'), 'utf8'); } catch (e) {}
     try { hascheduleHtml = fs.readFileSync(path.join(__dirname, 'haschedule.html'), 'utf8'); } catch (e) {}
     try { agendaHtml = fs.readFileSync(path.join(__dirname, 'agenda.html'), 'utf8'); } catch (e) {}
     try { eventsHtml = fs.readFileSync(path.join(__dirname, 'events.html'), 'utf8'); } catch (e) {}
@@ -1182,6 +1249,7 @@ function start(opts) {
 // start()/stop() are idempotent, so this is safe to call on every page push.
 function setActivePage(which) {
   if (which !== 'office') clearOfficeCapability();
+  if (which !== 'github') clearGitHubCapability();
   if (which === 'music') nowplaying.start();
   else nowplaying.stop();
 }
@@ -1190,6 +1258,7 @@ function stop() {
   nowplaying.stop();
   if (server) { try { server.close(); } catch (e) {} server = null; }
   clearOfficeCapability();
+  clearGitHubCapability();
   for (const res of discordSubscribers) { try { res.end(); } catch (e) {} }
   discordSubscribers.clear();
   if (discordApp) {
@@ -1200,8 +1269,10 @@ function stop() {
   getOfficeData = null;
   connectOffice = null;
   onOfficeAction = null;
+  githubApp = null;
   currentTime = Date.now;
   officeCapabilityTtlMs = DEFAULT_OFFICE_CAPABILITY_TTL_MS;
+  githubCapabilityTtlMs = DEFAULT_GITHUB_CAPABILITY_TTL_MS;
 }
 
 // Push a LucidType state payload to every open /lucidtype-events subscriber (called by main on each
@@ -1211,4 +1282,4 @@ function lucidBroadcast(payload) {
   for (const res of lucidSubscribers) { try { res.write(line); } catch (e) { lucidSubscribers.delete(res); } }
 }
 
-module.exports = { start, stop, setActivePage, setAppFolders, invalidateAppServer, callAppServer, issueOfficeCapability, clearOfficeCapability, lucidBroadcast };
+module.exports = { start, stop, setActivePage, setAppFolders, invalidateAppServer, callAppServer, issueOfficeCapability, clearOfficeCapability, issueGitHubCapability, clearGitHubCapability, lucidBroadcast };

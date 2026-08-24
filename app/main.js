@@ -44,6 +44,7 @@ const { providers: oauthProviders, providerFor: oauthProviderFor, registerAppPro
 const { createOfficeGraph } = require('./officeGraph');
 const { createOfficeActions } = require('./officeActions');
 const { officeShortcutImageDataUrl } = require('./officeShortcutIcons');
+const { GitHubService, normalizeClientId: normalizeGitHubClientId, normalizeSettings: normalizeGitHubSettings, parseRepository: parseGitHubRepository, validRef: validGitHubRef } = require('./githubService');
 const { configForRenderer } = require('./oauthConfigBoundary');
 const nowplaying = require('./nowplaying');   // same singleton sysserver polls — read its snapshot to target transport
 const haschedule = require('./haschedule');   // HA Schedule dev app — fed HA creds from .env, polled while shown
@@ -431,6 +432,7 @@ function loadConfig() {
 function migrateConfig(c) {
   if (!c.settings) c.settings = {};
   c.settings.discord = normalizeDiscordSettings(c.settings.discord);
+  c.settings.github = normalizeGitHubSettings(c.settings.github);
   (c.grids || []).forEach(g => {
     if (g.kind === 'web') {
       if (!g.auth) g.auth = g.haToken ? { type: 'ha', token: g.haToken } : { type: 'none' };
@@ -913,6 +915,11 @@ const dropInOAuth = {
   disconnect(appId) { return oauthHandler.revokeToken(OAUTH_APP_PID(appId)); },
   getAccessToken(appId, scopes) { return oauthHandler.getValidAccessToken(OAUTH_APP_PID(appId), scopes); },
 };
+const githubService = new GitHubService({
+  getSettings: () => Object.assign({}, (config.settings || {}).github, { clientId: oauthStorage.getProviderSettings('github').clientId || '' }),
+  oauth: oauthHandler,
+  openExternal: async value => openExternalUrl(value),
+});
 const officeGraph = createOfficeGraph({
   getAccessToken: (provider, scopes) => oauthHandler.getValidAccessToken(provider, scopes),
   connectOAuth: (provider, scopes) => oauthHandler.connect(provider, scopes),
@@ -973,7 +980,7 @@ function appPageUrl(page) {
     const opts = page.options || {};                                         // non-secret options only; secrets are served by /app-config
     const qs = [appOptionQuery(def, opts, o => o.type !== 'secret' && !o.serverOnly), themeParams(page)].filter(Boolean).join('&');
     if (def._folder) return 'http://127.0.0.1:' + serverPort + '/apps/' + encodeURIComponent(def.id) + '/' + appEntryUrlPath(def.entry || def.file) + (qs ? '?' + qs : '');
-    const capability = def.id === 'office' && sysserver ? sysserver.issueOfficeCapability() : '';
+    const capability = !sysserver ? '' : def.id === 'office' ? sysserver.issueOfficeCapability() : def.id === 'github' ? sysserver.issueGitHubCapability() : '';
     return 'http://127.0.0.1:' + serverPort + '/' + def.id + (qs ? '?' + qs : '') + (capability ? '#_cap=' + encodeURIComponent(capability) : '');
   }
   const file = def._folder ? path.join(def._dir, def.entry || def.file) : path.join(APPS_DIR, def.file);
@@ -1049,6 +1056,7 @@ function syncPollers(g) {
   const which = monitorMode ? null                                  // panel hidden (monitor mode) -> idle every page poller
     : (g && g.kind === 'app' && g.app === 'music') ? 'music'
     : (g && g.kind === 'app' && g.app === 'office') ? 'office'
+    : (g && g.kind === 'app' && g.app === 'github') ? 'github'
     : null;
   try { sysserver.setActivePage(which); } catch (e) {}
   // HA-backed dev apps (HA Schedule / Agenda / Events): poll HA only while one is shown, at the page's
@@ -3114,6 +3122,7 @@ app.whenReady().then(async () => {
       preferredPort, oauth: dropInOAuth,
       onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig,
       getOfficeData: officeGraph.getData, connectOffice: officeGraph.connect, onOfficeAction: officeActions.run,
+      githubApp: githubService,
       onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(),
       getMeetingState: meetingStateForPanel, onMeetingRecord: onMeetingRecordRequest,
       onMeetingLibrary: onMeetingLibraryRequest, resolveMeetingAudio: resolveMeetingAudioPath,
@@ -3420,8 +3429,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('connectOAuthProvider', async (e, provider, scopes) => {
     if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
     try {
-      if (String(provider || '').toLowerCase() === 'discord') await discordService.authorize();
-      else await oauthHandler.connect(provider, scopes);
+      const id = String(provider || '').toLowerCase();
+      if (id === 'discord') await discordService.authorize();
+      else if (id === 'microsoft') await oauthHandler.connect(id, scopes);
+      else return { ok: false, error: 'unsupported OAuth provider' };
       return { ok: true, providers: oauthProviderPayload() };
     }
     catch (err) { return { ok: false, error: err.message || String(err), code: err.code || '' }; }
@@ -3429,7 +3440,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('disconnectOAuthProvider', async (e, provider) => {
     if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
     try {
-      const isDiscord = String(provider || '').toLowerCase() === 'discord';
+      const id = String(provider || '').toLowerCase();
+      if (id !== 'discord' && id !== 'microsoft') return { ok: false, error: 'unsupported OAuth provider' };
+      const isDiscord = id === 'discord';
       const r = isDiscord ? (discordService.disconnectAuthorization(), { ok: true }) : await oauthHandler.revokeToken(provider);
       if (String(provider || '').toLowerCase() === 'microsoft' && sysserver) {
         sysserver.clearOfficeCapability();
@@ -3438,6 +3451,26 @@ app.whenReady().then(async () => {
       return Object.assign({}, r, { providers: oauthProviderPayload() });
     }
     catch (err) { return { ok: false, error: err.message || String(err) }; }
+  });
+  ipcMain.handle('getGitHubStatus', (e) => isFrom(e, configWin) ? githubService.publicSettings() : { ok: false, error: 'unauthorized' });
+  ipcMain.handle('connectGitHub', async e => isFrom(e, configWin) ? githubService.connect() : { ok: false, error: 'unauthorized' });
+  ipcMain.handle('pollGitHubConnect', async e => {
+    if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
+    const result = await githubService.pollConnect();
+    if (result && result.connected) {
+      try { sysserver.clearGitHubCapability(); } catch (error) {}
+      pushToPanel();
+    }
+    return result;
+  });
+  ipcMain.handle('disconnectGitHub', async e => {
+    if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
+    const result = await githubService.disconnect();
+    if (result && result.ok) {
+      try { sysserver.clearGitHubCapability(); } catch (error) {}
+      pushToPanel();
+    }
+    return result;
   });
   // HA cache: editor reads the registries + dashboards for picker UIs; refresh kicks a new fetchAll.
   // fetchHaEntityState is wired now for phase-2 features that assign an entity to a button.
@@ -3568,18 +3601,39 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('saveConfigFromEditor', (e, newCfg) => {
     if (!isFrom(e, configWin) || !newCfg || typeof newCfg !== 'object' || !Array.isArray(newCfg.grids)) return { ok: false, error: 'invalid configuration' };
+    if (!newCfg.settings) newCfg.settings = {};
+    const submittedGitHubProvider = newCfg.settings.oauth && newCfg.settings.oauth.providers && newCfg.settings.oauth.providers.github;
+    let nextGitHubClientId;
+    let nextGitHubSettings;
+    try {
+      nextGitHubClientId = normalizeGitHubClientId(submittedGitHubProvider && submittedGitHubProvider.clientId);
+      nextGitHubSettings = normalizeGitHubSettings(newCfg.settings.github);
+      if (nextGitHubSettings.repository) nextGitHubSettings.repository = parseGitHubRepository(nextGitHubSettings.repository).fullName;
+      if (nextGitHubSettings.branch) nextGitHubSettings.branch = validGitHubRef(nextGitHubSettings.branch);
+    } catch (error) {
+      return { ok: false, error: error.message || 'invalid GitHub settings' };
+    }
     const previousConfig = config;
     const previousDiscordApplicationId = discordApplicationId((config.settings || {}).discord);
+    const previousGitHubClientId = oauthStorage.getProviderSettings('github').clientId || '';
+    const previousGitHubSettings = normalizeGitHubSettings((config.settings || {}).github);
+    const githubClientChanged = previousGitHubClientId !== nextGitHubClientId;
+    const githubSettingsChanged = previousGitHubSettings.repository !== nextGitHubSettings.repository || previousGitHubSettings.branch !== nextGitHubSettings.branch;
     const active = config.activeGridId;                          // the knob owns the live page — editor edits never change it
     const wasRot = rotationCfg().enabled;                        // detect a fresh off->on to auto-start (else keep the runtime pause)
     const prevMode = runMode();                                  // detect a run-mode change to rebuild the window live
     const prevMeeting = meetingSettings();                       // recorder-affecting fields, read before config is swapped
     const oauth = config.settings && config.settings.oauth;
     if (oauth) {
-      if (!newCfg.settings) newCfg.settings = {};
       newCfg.settings.oauth = JSON.parse(JSON.stringify(oauth));
     }
-    if (!newCfg.settings) newCfg.settings = {};
+    if (!newCfg.settings.oauth || typeof newCfg.settings.oauth !== 'object') newCfg.settings.oauth = { providers: {}, tokens: {} };
+    if (!newCfg.settings.oauth.providers || typeof newCfg.settings.oauth.providers !== 'object') newCfg.settings.oauth.providers = {};
+    if (!newCfg.settings.oauth.tokens || typeof newCfg.settings.oauth.tokens !== 'object') newCfg.settings.oauth.tokens = {};
+    if (nextGitHubClientId) newCfg.settings.oauth.providers.github = { clientId: nextGitHubClientId };
+    else delete newCfg.settings.oauth.providers.github;
+    if (githubClientChanged) delete newCfg.settings.oauth.tokens.github;
+    newCfg.settings.github = nextGitHubSettings;
     newCfg.settings.discord = normalizeDiscordSettings(newCfg.settings.discord);
     if (previousDiscordApplicationId !== discordApplicationId(newCfg.settings.discord)
       && newCfg.settings.oauth && newCfg.settings.oauth.tokens) delete newCfg.settings.oauth.tokens.discord;
@@ -3591,6 +3645,8 @@ app.whenReady().then(async () => {
     const saved = saveConfig();
     editorSaveInFlight = false;
     if (!saved) { config = previousConfig; return { ok: false, error: 'secure persistence failed' }; }
+    if (githubClientChanged) { oauthHandler.clearRefresh('github'); oauthHandler.cancelDeviceFlow('github'); }
+    if (githubClientChanged || githubSettingsChanged) { try { sysserver.clearGitHubCapability(); } catch (error) {} }
     pushToPanel(); applyKnobSettings(); refreshTray(); applyRotationSettings(wasRot); applyFocusFollowSettings(); applyShortcuts(); applyTheme();
     reservedDisplay.setEnabled(reservedDisplayEnabled(appSettings()));   // stays off in software mode
     applyDisplayBlocker();                                               // keep-display-awake: only Panel mode + when enabled

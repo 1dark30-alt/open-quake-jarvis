@@ -11,6 +11,10 @@
       "autoReconnect": true,
       "showUnavailable": true,
       "richPresence": false
+    },
+    "github": {
+      "repository": "",
+      "branch": ""
     }
   },
   "grids": [
