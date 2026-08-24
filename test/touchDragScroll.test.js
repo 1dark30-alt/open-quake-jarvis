@@ -40,7 +40,22 @@ test('touch drag scrolls the list and suppresses the row click', () => {
   assert.deepEqual(element.handlers, {});
 });
 
-test('touch tap and mouse drag retain normal button behaviour', () => {
+test('mouse-compatible primary pointer drag also scrolls and suppresses its click', () => {
+  const element = fakeElement();
+  touchDragScroll.attach(element);
+  let prevented = 0, stopped = 0;
+
+  element.handlers.pointerdown({ pointerType: 'mouse', isPrimary: true, button: 0, pointerId: 5, clientY: 200 });
+  element.handlers.pointermove({ pointerId: 5, clientY: 100, cancelable: true, preventDefault() { prevented += 1; } });
+  element.handlers.pointerup({ pointerId: 5 });
+  element.handlers['click:capture']({ preventDefault() { prevented += 1; }, stopImmediatePropagation() { stopped += 1; } });
+
+  assert.equal(element.scrollTop, 220);
+  assert.equal(prevented, 2);
+  assert.equal(stopped, 1);
+});
+
+test('short taps and non-primary pointer buttons retain normal behaviour', () => {
   const element = fakeElement();
   touchDragScroll.attach(element);
   let stopped = 0;
@@ -52,7 +67,7 @@ test('touch tap and mouse drag retain normal button behaviour', () => {
   assert.equal(element.scrollTop, 120);
   assert.equal(stopped, 0);
 
-  element.handlers.pointerdown({ pointerType: 'mouse', isPrimary: true, pointerId: 5, clientY: 200 });
-  element.handlers.pointermove({ pointerId: 5, clientY: 100, cancelable: true, preventDefault() {} });
+  element.handlers.pointerdown({ pointerType: 'mouse', isPrimary: true, button: 2, pointerId: 6, clientY: 200 });
+  element.handlers.pointermove({ pointerId: 6, clientY: 100, cancelable: true, preventDefault() {} });
   assert.equal(element.scrollTop, 120);
 });

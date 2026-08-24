@@ -206,6 +206,56 @@
     const viewCheckRun = $('viewCheckRun'); if (viewCheckRun) viewCheckRun.onclick = () => loadRun(selectedCheck.runId, 'pulls');
   }
 
+  function renderIssueLabels(labels, limit) {
+    const values = Array.isArray(labels) ? labels : [];
+    const shown = values.slice(0, limit);
+    const rendered = shown.map(label => {
+      const color = /^[0-9a-f]{6}$/i.test(label && label.color || '') ? label.color : '6e7781';
+      const foreground = label && label.foreground === '#000000' ? '#000000' : '#ffffff';
+      return `<span class="issue-label" style="background:#${color};color:${foreground}">${esc(label && label.name || 'label')}</span>`;
+    }).join('');
+    return rendered + (values.length > shown.length ? `<span class="issue-label-more">+${values.length - shown.length}</span>` : '');
+  }
+
+  function issueStatus(item) {
+    return item.state === 'closed'
+      ? { key:'neutral', label:item.stateReason === 'not_planned' ? 'Not planned' : 'Closed' }
+      : { key:'success', label:'Open' };
+  }
+
+  function issueEmpty(filter) {
+    if (filter === 'assigned') return '<div class="empty"><div><strong>Nothing assigned to you</strong>There are no open issues assigned to your GitHub account.</div></div>';
+    if (filter === 'closed') return '<div class="empty"><div><strong>No recently closed issues</strong>No closed issues were returned for this repository.</div></div>';
+    return '<div class="empty"><div><strong>No open issues</strong>This repository currently has no open issues.</div></div>';
+  }
+
+  function renderIssueDetail(selected) {
+    if (state.issueDetailError) return `<div class="empty"><div><strong>Issue unavailable</strong>${esc(state.issueDetailError.error || 'This issue could not be loaded.')}</div></div>`;
+    if (!selected) return '<div class="empty"><div><strong>Select an issue</strong>Tap an issue to read its details.</div></div>';
+    if (state.selectedIssue && state.selectedIssue.loading) return '<div class="loading">Loading issue detail…</div>';
+    const assignees = selected.assignees && selected.assignees.length ? selected.assignees.join(', ') : 'Unassigned';
+    const milestone = selected.milestone ? selected.milestone.title : 'No milestone';
+    const body = selected.body ? esc(selected.body) : 'No description provided.';
+    return `<div class="issue-detail"><div class="issue-detail-header"><div><h2>#${selected.number} ${esc(selected.title)}</h2><div class="issue-detail-meta"><span>Opened by ${esc(selected.author)}</span><span>${esc(relative(selected.createdAt))}</span><span>Updated ${esc(relative(selected.updatedAt))}</span></div></div>${statusPill(issueStatus(selected))}</div><div class="issue-labels">${renderIssueLabels(selected.labels, 5)}</div><div class="issue-detail-meta"><span>Assignees · ${esc(assignees)}</span><span>Milestone · ${esc(milestone)}</span></div><div class="issue-body-scroll"><div class="issue-body">${body}</div></div><div class="issue-comments">${selected.comments} comment${selected.comments === 1 ? '' : 's'} · Open in GitHub to view discussion</div><div class="detail-actions"><button id="openIssue" type="button">Open Issue in GitHub</button></div></div>`;
+  }
+
+  function renderIssues(data) {
+    const items = data.items || [];
+    const selected = state.selectedIssue && state.selectedIssue.item;
+    state.currentUrl = selected && selected.url || repoUrl() + '/issues';
+    const filters = [['open','Open'],['assigned','Assigned to me'],['closed','Closed']].map(([key, label]) => `<button type="button" data-issue-filter="${key}" class="${state.issueFilter === key ? 'selected' : ''}"${state.issueFilter === key ? ' aria-pressed="true"' : ''}>${label}</button>`).join('');
+    const rows = items.map(item => `<button type="button" class="list-row issue-row ${selected && selected.number === item.number ? 'selected' : ''}" data-issue="${item.number}"${selected && selected.number === item.number ? ' aria-current="true"' : ''}><span><span class="row-title">#${item.number} ${esc(item.title)}</span><span class="row-meta"><span>${esc(item.author)}</span><span>◌ ${item.comments}</span><span>${item.assignees && item.assignees.length ? 'Assigned' : 'Unassigned'}</span><span>${esc(relative(item.updatedAt))}</span></span><span class="issue-labels">${renderIssueLabels(item.labels, 3)}</span></span>${statusPill(issueStatus(item))}</button>`).join('');
+    const more = data.hasMore ? '<button type="button" class="load-more" id="loadMoreIssues">Load More Issues</button>' : '';
+    const listContent = rows || (data.hasMore ? '<div class="small-empty">No issues on this page. Load more to continue.</div>' : issueEmpty(state.issueFilter));
+    content.innerHTML = `<div class="split-view"><section class="list-panel issues-list-panel"><div class="issues-toolbar"><div class="panel-title">Issues · ${items.length}${data.hasMore ? '+' : ''}</div><div class="issue-filters" role="group" aria-label="Issue filter">${filters}</div></div><div class="scroll-list issue-scroll-list">${listContent}${more}</div></section><section class="detail-panel">${renderIssueDetail(selected)}</section></div>`;
+    content.querySelectorAll('[data-issue-filter]').forEach(button => { button.onclick = () => setIssueFilter(button.dataset.issueFilter); });
+    content.querySelectorAll('[data-issue]').forEach(row => { row.onclick = () => loadIssue(row.dataset.issue, false); });
+    const loadMore = $('loadMoreIssues'); if (loadMore) loadMore.onclick = loadMoreIssues;
+    const openIssue = $('openIssue'); if (openIssue) openIssue.onclick = () => openExternal(selected.url);
+    const list = content.querySelector('.issue-scroll-list'); if (list) window.TouchDragScroll.attach(list);
+    const bodyScroll = content.querySelector('.issue-body-scroll'); if (bodyScroll) window.TouchDragScroll.attach(bodyScroll);
+  }
+
   function renderActions(data) {
     state.currentUrl = repoUrl() + '/actions';
     const workflows = (data.workflows || []).map(item => `<div class="list-row static-row"><div><div class="row-title">${esc(item.name)}</div><div class="row-meta"><span>${esc(item.state)}</span><span>${esc(item.path)}</span>${item.lastRun ? `<span>${statusIcon(item.lastRun.status)} ${esc(item.lastRun.status.label)} · ${esc(relative(item.lastRun.updatedAt))}</span>` : ''}</div></div><button class="compact-button" type="button" data-dispatch="${item.id}" data-name="${esc(item.name)}">Run</button></div>`).join('');
@@ -266,7 +316,7 @@
     } catch (error) { closeDispatch(); notify(error.message, true); }
   }
 
-  async function loadCurrent(silent) {
+  async function loadCurrent(silent, forceRefresh) {
     if (!state.settings || !state.settings.connected) { disconnectedView(); updateHeader(); return; }
     if (!state.settings.repository) { state.currentUrl = ''; content.innerHTML = '<div class="empty"><div><strong>Choose a repository</strong><br>Use the repository selector in the header to browse your accessible repositories.</div></div>'; updateHeader(); return; }
     if (state.view === 'run') return refreshRun(silent);
@@ -275,16 +325,20 @@
     const repository = state.settings.repository;
     const view = state.view;
     state.loading = true; state.stale = false; updateHeader();
-    if (!silent && !state.data) loading('Loading ' + (view === 'pulls' ? 'pull requests' : view === 'actions' ? 'workflows' : 'repository status') + '…');
+    if (!silent && !state.data) loading('Loading ' + (view === 'pulls' ? 'pull requests' : view === 'actions' ? 'workflows' : view === 'issues' ? 'issues' : 'repository status') + '…');
     $('refreshButton').disabled = true;
     try {
-      const operation = view === 'pulls' ? 'pulls' : view === 'actions' ? 'actions' : 'overview';
-      const result = await api(operation, { query:{ repository } });
+      const operation = view === 'pulls' ? 'pulls' : view === 'actions' ? 'actions' : view === 'issues' ? 'issues' : 'overview';
+      const query = { repository };
+      if (view === 'issues') { query.filter = state.issueFilter; query.page = 1; if (forceRefresh) query.refresh = '1'; }
+      const selectedIssueNumber = view === 'issues' && state.selectedIssue && state.selectedIssue.item && state.selectedIssue.item.number;
+      const result = await api(operation, { query });
       if (!currentRequest(version, repository) || state.view !== view) return;
       if (!result.ok) { if (silent || state.data) { state.stale = true; notify(result.error || 'GitHub refresh failed', true); } else errorView(result); return; }
       state.data = result; state.fetchedAt = result.fetchedAt || new Date().toISOString(); state.stale = false;
       if (result.selectedBranch) state.settings.branch = result.selectedBranch; else if (result.branch) state.settings.branch = result.branch;
-      if (view === 'overview') renderOverview(result); else if (view === 'pulls') renderPulls(result); else renderActions(result);
+      if (view === 'overview') renderOverview(result); else if (view === 'pulls') renderPulls(result); else if (view === 'issues') renderIssues(result); else renderActions(result);
+      if (view === 'issues' && selectedIssueNumber) await loadIssue(selectedIssueNumber, !!forceRefresh);
     } catch (error) {
       if (!currentRequest(version, repository)) return;
       if (silent || state.data) { state.stale = true; notify(error.message, true); } else errorView({ error:error.message, code:'panel_error' });
@@ -303,6 +357,56 @@
       state.selectedPull = result; state.selectedCheck = null; state.fetchedAt = result.fetchedAt; state.stale = false;
       renderPulls(state.data); updateHeader();
     } catch (error) { if (currentRequest(version, repository)) errorView({ error:error.message, code:'panel_error' }); }
+  }
+
+  async function loadIssue(number, forceRefresh) {
+    const version = state.requestVersion, repository = state.settings.repository, filter = state.issueFilter;
+    const summary = state.data && (state.data.items || []).find(item => item.number === Number(number));
+    state.selectedIssue = { item: summary || { number:Number(number), title:'Issue' }, loading:true };
+    state.issueDetailError = null;
+    if (state.data) renderIssues(state.data);
+    try {
+      const result = await api('issue', { query:{ number, repository, refresh:forceRefresh ? '1' : '0' } });
+      if (!currentRequest(version, repository) || state.view !== 'issues' || state.issueFilter !== filter) return;
+      if (!result.ok) {
+        state.selectedIssue = null;
+        state.issueDetailError = result;
+        state.stale = true;
+        renderIssues(state.data || { items:[], hasMore:false });
+        notify(result.error || 'Issue detail could not be loaded', true);
+        return;
+      }
+      state.selectedIssue = result; state.issueDetailError = null; state.fetchedAt = result.fetchedAt; state.stale = false;
+      renderIssues(state.data); updateHeader();
+    } catch (error) {
+      if (currentRequest(version, repository) && state.view === 'issues' && state.issueFilter === filter) {
+        state.selectedIssue = null; state.issueDetailError = { error:error.message }; state.stale = true;
+        renderIssues(state.data || { items:[], hasMore:false }); updateHeader();
+      }
+    }
+  }
+
+  function setIssueFilter(filter) {
+    if (!['open', 'assigned', 'closed'].includes(filter) || filter === state.issueFilter) return;
+    state.requestVersion += 1; state.loading = false; state.data = null; state.issueFilter = filter;
+    state.selectedIssue = null; state.issueDetailError = null; loadCurrent();
+  }
+
+  async function loadMoreIssues() {
+    if (state.loading || !state.data || !state.data.hasMore) return;
+    const version = state.requestVersion, repository = state.settings.repository, filter = state.issueFilter;
+    state.loading = true; $('refreshButton').disabled = true; updateHeader();
+    try {
+      const result = await api('issues', { query:{ repository, filter, page:(state.data.page || 1) + 1 } });
+      if (!currentRequest(version, repository) || state.view !== 'issues' || state.issueFilter !== filter) return;
+      if (!result.ok) { state.stale = true; notify(result.error || 'Could not load more issues', true); return; }
+      state.data = window.GitHubPanelState.mergeIssuePage(state.data, result);
+      state.fetchedAt = result.fetchedAt; state.stale = false; renderIssues(state.data);
+    } catch (error) {
+      if (currentRequest(version, repository)) { state.stale = true; notify(error.message, true); }
+    } finally {
+      if (currentRequest(version, repository)) { state.loading = false; $('refreshButton').disabled = false; updateHeader(); schedulePoll(); }
+    }
   }
 
   async function loadRun(id, back) {
@@ -347,14 +451,14 @@
   }
   async function openExternal(url) { if (!url) return; try { const result = await api('open', { method:'POST', body:{ url, repository:state.settings.repository } }); if (!result.ok) notify(result.error || 'That GitHub link was blocked', true); } catch (error) { notify(error.message, true); } }
   function confirmAction(title, message, label) { $('confirmTitle').textContent = title; $('confirmMessage').textContent = message; $('confirmAccept').textContent = label || 'Confirm'; $('confirmOverlay').hidden = false; return new Promise(resolve => { const finish = value => { $('confirmOverlay').hidden = true; $('confirmAccept').onclick = null; $('confirmCancel').onclick = null; resolve(value); }; $('confirmAccept').onclick = () => finish(true); $('confirmCancel').onclick = () => finish(false); }); }
-  function switchView(view) { state.requestVersion += 1; state.loading = false; state.view = view; state.data = null; state.selectedPull = null; state.selectedCheck = null; state.selectedRun = null; state.runBack = view; loadCurrent(); }
+  function switchView(view) { state.requestVersion += 1; state.loading = false; state.view = view; state.data = null; state.selectedPull = null; state.selectedCheck = null; state.selectedRun = null; state.selectedIssue = null; state.issueDetailError = null; state.runBack = view; loadCurrent(); }
   function backFromRun() {
     state.view = state.runBack;
     state.selectedRun = null;
     if (state.data) { if (state.view === 'pulls') renderPulls(state.data); else renderActions(state.data); updateHeader(); schedulePoll(); }
     else loadCurrent();
   }
-  function schedulePoll() { clearTimeout(state.timer); state.timer = null; if (document.hidden || !state.settings || !state.settings.connected) return; const running = state.view === 'run' && state.selectedRun && state.selectedRun.item.status.key === 'running'; const delay = running ? 10000 : state.view === 'actions' ? 20000 : 30000; state.timer = setTimeout(() => loadCurrent(true), delay); }
+  function schedulePoll() { clearTimeout(state.timer); state.timer = null; if (document.hidden || !state.settings || !state.settings.connected) return; const running = state.view === 'run' && state.selectedRun && state.selectedRun.item.status.key === 'running'; const delay = running ? 10000 : state.view === 'actions' ? 20000 : state.view === 'issues' ? 60000 : 30000; state.timer = setTimeout(() => loadCurrent(true), delay); }
 
   document.querySelectorAll('.bottom-nav [data-view]').forEach(button => { button.onclick = () => switchView(button.dataset.view); });
   $('repositoryButton').onclick = () => openRepositoryBrowser(false);
@@ -375,7 +479,7 @@
     const workflowId = Number(event.currentTarget.dataset.workflowId), ref = event.currentTarget.dataset.ref;
     closeDispatch(); performAction('dispatch', { workflowId, ref, inputs });
   };
-  $('refreshButton').onclick = () => state.settings && state.settings.connected ? loadCurrent() : boot();
+  $('refreshButton').onclick = () => state.settings && state.settings.connected ? loadCurrent(false, true) : boot();
   $('openButton').onclick = () => openExternal(state.currentUrl);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadCurrent(true); else schedulePoll(); });
   window.oqKnob = event => {

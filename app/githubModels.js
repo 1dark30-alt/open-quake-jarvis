@@ -3,6 +3,73 @@
 function text(value, fallback = '') { return typeof value === 'string' ? value : fallback; }
 function iso(value) { const date = new Date(value || ''); return Number.isNaN(date.getTime()) ? null : date.toISOString(); }
 function positiveInteger(value) { const number = Number(value); return Number.isSafeInteger(number) && number > 0 ? number : null; }
+function boundedText(value, limit, fallback = '') { return text(value, fallback).slice(0, limit); }
+
+function issueLabel(value) {
+  value = value && typeof value === 'object' ? value : {};
+  const color = /^[0-9a-f]{6}$/i.test(value.color || '') ? value.color.toLowerCase() : '6e7781';
+  const channels = [0, 2, 4].map(offset => parseInt(color.slice(offset, offset + 2), 16) / 255)
+    .map(channel => channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4));
+  const luminance = 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  const whiteContrast = 1.05 / (luminance + 0.05);
+  const blackContrast = (luminance + 0.05) / 0.05;
+  return {
+    name: boundedText(value.name, 100, 'label'),
+    color,
+    foreground: whiteContrast >= blackContrast ? '#ffffff' : '#000000',
+  };
+}
+
+function issueUrl(repositoryUrl, number) {
+  try {
+    const parsed = new URL(String(repositoryUrl || ''));
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com' || parsed.username || parsed.password || parsed.search || parsed.hash) return '';
+    if (parsed.pathname.split('/').filter(Boolean).length !== 2) return '';
+    return parsed.origin + parsed.pathname.replace(/\/$/, '') + '/issues/' + number;
+  } catch (error) { return ''; }
+}
+
+function issueSummary(issueValue, repositoryUrl) {
+  const value = issueValue && typeof issueValue === 'object' ? issueValue : {};
+  if (value.pull_request) return null;
+  const number = positiveInteger(value.number);
+  if (!number) return null;
+  const state = value.state === 'closed' ? 'closed' : 'open';
+  return {
+    number,
+    title: boundedText(value.title, 300, 'Untitled issue'),
+    state,
+    stateReason: boundedText(value.state_reason, 40),
+    author: boundedText(value.user && value.user.login, 100, 'unknown'),
+    labels: (Array.isArray(value.labels) ? value.labels : []).slice(0, 20).map(issueLabel),
+    assignees: (Array.isArray(value.assignees) ? value.assignees : []).slice(0, 20)
+      .map(item => boundedText(item && item.login, 100)).filter(Boolean),
+    comments: Math.max(0, Math.floor(Number(value.comments) || 0)),
+    createdAt: iso(value.created_at),
+    updatedAt: iso(value.updated_at),
+    closedAt: iso(value.closed_at),
+    url: issueUrl(repositoryUrl, number),
+  };
+}
+
+function issueDetail(issueValue, repositoryUrl) {
+  const mapped = issueSummary(issueValue, repositoryUrl);
+  if (!mapped) return null;
+  const value = issueValue && typeof issueValue === 'object' ? issueValue : {};
+  mapped.body = boundedText(value.body_text || value.body, 12000);
+  mapped.milestone = value.milestone && typeof value.milestone === 'object'
+    ? { number: positiveInteger(value.milestone.number), title: boundedText(value.milestone.title, 200, 'Milestone') } : null;
+  return mapped;
+}
+
+function issuePage(values, repositoryUrl) {
+  const seen = new Set();
+  return (Array.isArray(values) ? values : []).map(value => issueSummary(value, repositoryUrl)).filter(value => {
+    if (!value || seen.has(value.number)) return false;
+    seen.add(value.number);
+    return true;
+  });
+}
 
 function status(statusValue, conclusionValue) {
   const current = text(statusValue).toLowerCase();
@@ -230,6 +297,6 @@ function overview(repo, commit, release, tag, comparison, pullsValue, runsValue,
 }
 
 module.exports = {
-  artifact, checkDetails, checkSummary, durationMs, overview, positiveInteger, pull, pullDetails, reviewSummary,
+  artifact, checkDetails, checkSummary, durationMs, issueDetail, issueLabel, issuePage, issueSummary, overview, positiveInteger, pull, pullDetails, reviewSummary,
   run, runControls, runDetails, status, workflow,
 };

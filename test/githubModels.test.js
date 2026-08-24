@@ -97,3 +97,42 @@ test('partial GitHub responses produce safe empty domain models', () => {
   assert.deepEqual(run.jobs, []);
   assert.deepEqual(run.artifacts, []);
 });
+
+test('issue summary and detail map bounded labels, assignees, milestone, and plain text safely', () => {
+  const raw = {
+    number:42, title:'<img src=x onerror=alert(1)>', state:'open', user:{login:'octocat'},
+    labels:[{name:'bug',color:'d73a4a'},{name:'invalid',color:'url(javascript:bad)'}],
+    assignees:[{login:'alice'},{login:'bob'}], comments:4,
+    created_at:'2026-08-20T10:00:00Z', updated_at:'2026-08-24T10:00:00Z',
+    body_text:'<script>alert(1)</script> **plain text**', milestone:{number:3,title:'v0.7.0'},
+    html_url:'https://evil.example/issues/42',
+  };
+  const summary = models.issueSummary(raw, 'https://github.com/acme/repo');
+  const detail = models.issueDetail(raw, 'https://github.com/acme/repo');
+  assert.equal(summary.url, 'https://github.com/acme/repo/issues/42');
+  assert.deepEqual(summary.assignees, ['alice','bob']);
+  assert.match(summary.labels[0].foreground, /^#(?:000000|ffffff)$/);
+  assert.equal(summary.labels[1].color, '6e7781');
+  assert.equal(models.issueLabel({name:'dark',color:'000000'}).foreground, '#ffffff');
+  assert.equal(models.issueLabel({name:'light',color:'ffffff'}).foreground, '#000000');
+  assert.equal(detail.body, '<script>alert(1)</script> **plain text**');
+  assert.deepEqual(detail.milestone, {number:3,title:'v0.7.0'});
+});
+
+test('issue pages exclude pull requests represented as issue resources', () => {
+  const items = models.issuePage([
+    {number:1,title:'Real issue',state:'open'},
+    {number:2,title:'Pull request',state:'open',pull_request:{url:'https://api.github.com/repos/acme/repo/pulls/2'}},
+    {number:'bad',title:'Malformed'},
+  ], 'https://github.com/acme/repo');
+  assert.deepEqual(items.map(item => item.number), [1]);
+});
+
+test('issue detail tolerates missing optional metadata and rejects unsafe repository URLs', () => {
+  const detail = models.issueDetail({number:7,title:'Minimal'}, 'https://evil.example/acme/repo');
+  assert.deepEqual(detail.labels, []);
+  assert.deepEqual(detail.assignees, []);
+  assert.equal(detail.milestone, null);
+  assert.equal(detail.body, '');
+  assert.equal(detail.url, '');
+});

@@ -74,6 +74,15 @@ test('GitHub panel uses large semantic touch controls and contained scrolling', 
   const script = read('github.js');
   const css = read('github.css');
   assert.match(html, /grid|GitHub views/);
+  assert.match(html, /data-view="issues"/);
+  assert.match(script, /\[\['open','Open'\],\['assigned','Assigned to me'\],\['closed','Closed'\]\]/);
+  assert.match(script, /api\('issues'/);
+  assert.match(script, /api\('issue'/);
+  assert.match(script, /esc\(selected\.body\)/);
+  assert.match(script, /openExternal\(selected\.url\)/);
+  assert.match(script, /state\.view !== 'issues' \|\| state\.issueFilter !== filter/);
+  assert.match(script, /if \(silent \|\| state\.data\) \{ state\.stale = true/);
+  assert.doesNotMatch(script, /createIssue|closeIssue|editIssue|commentIssue/);
   assert.match(script, /<button type="button" class="list-row/);
   assert.match(script, /role="button" tabindex="0" data-go=/);
   assert.match(script, /\.content button:not\(:disabled\)/);
@@ -88,6 +97,8 @@ test('GitHub panel uses large semantic touch controls and contained scrolling', 
   assert.match(script, /TouchDragScroll\.attach\(\$\('repositoryList'\)\)/);
   assert.match(css, /button:focus-visible/);
   assert.match(css, /prefers-reduced-motion:reduce/);
+  assert.match(css, /\.issue-row \{[^}]*min-height:88px/);
+  assert.match(css, /\.issue-body-scroll \{[^}]*overflow-y:auto/);
   assert.match(html, /class="dialog-actions"/);
   assert.doesNotMatch(css, /\.dialog > div:last-child/);
 });

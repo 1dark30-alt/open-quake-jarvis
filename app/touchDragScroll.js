@@ -12,12 +12,12 @@
     let suppressClick = false;
     let clearSuppression = null;
 
-    function isTouch(event) {
-      return event.pointerType === 'touch' && event.isPrimary !== false;
+    function canStartDrag(event) {
+      return event.isPrimary !== false && (event.button === undefined || event.button === 0);
     }
 
     function onPointerDown(event) {
-      if (!isTouch(event)) return;
+      if (!canStartDrag(event)) return;
       gesture = {
         pointerId: event.pointerId,
         startY: event.clientY,

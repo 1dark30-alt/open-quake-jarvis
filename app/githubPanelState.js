@@ -9,6 +9,7 @@
     return {
       view: 'overview', settings: null, configuredRepository: '', repositories: [], repositoriesLoaded: false,
       favourites: [], recents: [], data: null, selectedPull: null, selectedCheck: null, selectedRun: null,
+      issueFilter: 'open', selectedIssue: null, issueDetailError: null,
       selectedJob: 0, currentUrl: '', fetchedAt: null, loading: false, timer: null, focusIndex: 0,
       requestVersion: 0, stale: false,
     };
@@ -22,6 +23,9 @@
     state.selectedPull = null;
     state.selectedCheck = null;
     state.selectedRun = null;
+    state.issueFilter = 'open';
+    state.selectedIssue = null;
+    state.issueDetailError = null;
     state.selectedJob = 0;
     state.currentUrl = '';
     state.fetchedAt = null;
@@ -33,5 +37,19 @@
     return state;
   }
 
-  return { create, selectRepository };
+  function mergeIssuePage(current, next) {
+    const seen = new Set();
+    const items = [];
+    [current, next].forEach(page => {
+      (page && Array.isArray(page.items) ? page.items : []).forEach(item => {
+        const number = Number(item && item.number);
+        if (!Number.isSafeInteger(number) || number <= 0 || seen.has(number)) return;
+        seen.add(number);
+        items.push(item);
+      });
+    });
+    return Object.assign({}, next || {}, { items });
+  }
+
+  return { create, mergeIssuePage, selectRepository };
 });
