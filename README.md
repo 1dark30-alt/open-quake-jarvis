@@ -117,13 +117,23 @@ Detailed guides live in **[docs/](docs/README.md)**:
 - [Music controller](docs/music.md) · [System monitor](docs/system-monitor.md) · [Open WebUI chat + voice](docs/ai-chat.md) · [AI Voice](docs/ai-voice.md) · [Live Translate](docs/live-translate.md) · [Screensaver](docs/screensaver.md)
 - [Home Assistant integration](docs/home-assistant.md) · [Settings & knob lighting](docs/settings.md) · [Reserved Display](docs/reserved-display.md) · [Building & how it works](docs/building.md) · [Device protocol](docs/DEVICE_PROTOCOL.md)
 
-## Companion project
+## Companion projects
 
 **[Bedrock open desk console](https://github.com/TeeJS/bedrock-console)** — an open-source
 hardware project to build your own 1920×480 touchscreen + knob console for use with open-quake.
 Generic parts, 3D-printable enclosure, RP2040 firmware for the knob. Firmware is built,
 flashed, and verified against real hardware; enclosure parts are printable. Still early —
 full assembly/wiring docs are in progress.
+
+**[tts-stt-windows](https://github.com/TeeJS/tts-stt-windows)** — local speech-to-text and
+text-to-speech for Windows, served over the [Wyoming protocol](https://github.com/rhasspy/wyoming)
+on `127.0.0.1` with no Docker, no Python, no cloud, and no account. This is the easiest way to
+power open-quake's voice features: run the tray app, point **Settings → TTS/STT** at `127.0.0.1`,
+and the AI Voice apps, meeting dictation, and the Interactive Fiction player's narration and spoken
+commands all work — the default ports match (STT on `10300`, TTS on `10200`), so it connects out of
+the box. A ~11 MB tray app that runs entirely on the CPU: 200+ Piper and Coqui voices plus Whisper /
+Parakeet / SenseVoice / Moonshine / Dolphin speech models across 53 languages, all downloaded on
+demand.
 
 ## Download
 
