@@ -361,6 +361,7 @@
   $('repositoryClose').onclick = closeRepositoryBrowser;
   $('repositoryRefresh').onclick = () => openRepositoryBrowser(true);
   $('repositorySearch').oninput = renderRepositoryList;
+  window.TouchDragScroll.attach($('repositoryList'));
   $('repositoryOverlay').onclick = event => { if (event.target === $('repositoryOverlay')) closeRepositoryBrowser(); };
   $('commitClose').onclick = () => { $('commitOverlay').hidden = true; };
   $('commitOverlay').onclick = event => { if (event.target === $('commitOverlay')) $('commitOverlay').hidden = true; };

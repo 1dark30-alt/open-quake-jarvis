@@ -37,6 +37,7 @@ test('integrated GitHub API is same-origin and rotating-capability gated', async
 
   const page = await pageRequest(port,'/github'); assert.equal(page.status,200); assert.match(page.headers.get('content-type'),/text\/html/);
   const script = await pageRequest(port,'/github.js'); assert.equal(script.status,200); assert.match(script.headers.get('content-type'),/javascript/);
+  const touchScript = await pageRequest(port,'/touchDragScroll.js'); assert.equal(touchScript.status,200); assert.match(touchScript.headers.get('content-type'),/javascript/);
   const stateScript = await pageRequest(port,'/githubPanelState.js'); assert.equal(stateScript.status,200); assert.match(stateScript.headers.get('content-type'),/javascript/);
 });
 

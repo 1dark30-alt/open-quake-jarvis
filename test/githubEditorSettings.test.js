@@ -83,7 +83,9 @@ test('GitHub panel uses large semantic touch controls and contained scrolling', 
   assert.match(css, /\.list-row \{[\s\S]*min-height:72px/);
   assert.match(css, /\.repository-dialog \.repository-row \{[\s\S]*min-height:76px/);
   assert.match(css, /touch-action:manipulation/);
-  assert.match(css, /touch-action:pan-y/);
+  assert.match(css, /\.repository-dialog \.repository-list \{[^}]*touch-action:none/);
+  assert.match(html, /<script src="touchDragScroll\.js"><\/script>/);
+  assert.match(script, /TouchDragScroll\.attach\(\$\('repositoryList'\)\)/);
   assert.match(css, /button:focus-visible/);
   assert.match(css, /prefers-reduced-motion:reduce/);
   assert.match(html, /class="dialog-actions"/);

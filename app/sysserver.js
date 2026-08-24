@@ -75,6 +75,7 @@ const STATIC_FILES = {
   '/office.js': 'application/javascript; charset=utf-8',
   '/officeCalendar.js': 'application/javascript; charset=utf-8',
   '/office.css': 'text/css; charset=utf-8',
+  '/touchDragScroll.js': 'application/javascript; charset=utf-8',
   '/githubPanelState.js': 'application/javascript; charset=utf-8',
   '/github.js': 'application/javascript; charset=utf-8',
   '/github.css': 'text/css; charset=utf-8',
