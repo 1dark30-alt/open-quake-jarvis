@@ -3548,12 +3548,15 @@
         markDirty(); renderGrids();
         return true;
       };
+      // Which repository (R0, R1, …) an installed app came from — matches its stored source against the
+      // repos list. R? means the source repo is no longer in the list; no tag for non-repo apps.
+      const repoTag = src => { if (!src) return ''; const i = repos.indexOf(src); return ' · ' + (i >= 0 ? 'R' + i : 'R?'); };
       const renderList = async () => {
         const host = document.getElementById('diList'); if (!host) return;
         let apps = []; try { apps = (await configApi.listDropInApps()) || []; } catch (e) {}
         if (!apps.length) { host.innerHTML = '<p class="hint">No drop-in apps installed yet.</p>'; return; }
         host.innerHTML = apps.map(a => `<div class="row" style="gap:8px;align-items:center">
-            <span style="flex:1">${esc(a.name)} <span class="hint">(${esc(a.id)}${a.version ? ' · v' + esc(a.version) : ''}${a.served ? ' · served' : ''}${a.hasServer ? ' · server' : ''}${a.managed ? '' : ' · read-only'})</span></span>
+            <span style="flex:1">${esc(a.name)} <span class="hint">(${esc(a.id)}${a.version ? ' · v' + esc(a.version) : ''}${a.served ? ' · served' : ''}${a.hasServer ? ' · server' : ''}${a.managed ? '' : ' · read-only'}${repoTag(a.source)})</span></span>
             ${a.source ? `<button class="diUpdate" data-id="${esc(a.id)}">Check for updates</button>` : ''}
             <button class="diExport" data-id="${esc(a.id)}">Export…</button>
             <button class="diDelete danger" data-id="${esc(a.id)}" ${a.managed ? '' : 'disabled'}>Delete</button>
@@ -3622,6 +3625,7 @@
         const host = document.getElementById('diRepos'); if (!host) return;
         const shown = multi ? repos : repos.slice(0, 1);
         host.innerHTML = shown.map((u, i) => `<div class="row" style="gap:8px;align-items:center;margin:2px 0">
+            <span class="hint" style="flex:none;width:24px;text-align:right">R${i}</span>
             <input class="diRepoUrl" data-i="${i}" style="flex:1" value="${esc(u)}" placeholder="${esc(DEFAULT_APP_REPO)}">
             <button class="diRepoBrowse" data-i="${i}">Browse…</button>
             <button class="diRepoCheck" data-i="${i}">Check for updates</button>
