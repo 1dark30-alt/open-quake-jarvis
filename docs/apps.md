@@ -8,6 +8,10 @@ In the editor, **+ App** adds an app page: pick the app and set its options, and
 open-quake loads it full-screen on the panel with no hand-typed URLs.
 
 Included apps:
+- **[GitHub](github.md)** — a first-party repository and GitHub Actions panel with
+  pull-request checks, workflow runs, jobs, steps, and confirmed rerun/cancel/dispatch controls.
+  It signs in through GitHub OAuth Device Flow; tokens remain encrypted in the main process and
+  are never exposed to the panel page.
 - **Flip Clock** — split-flap animation, 12/24-hour, optional seconds, and a corner
   date/day. (12-hour shows a single hour card with an AM/PM badge; 24-hour shows two hour
   cards.) Follows the global light/dark theme and accent. Ships **enabled by default** (12-hour).

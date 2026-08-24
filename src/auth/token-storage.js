@@ -97,10 +97,10 @@ class TokenStorage {
     return {
       provider,
       configured: !!settings.clientId,
-      connected: !!(tokens && tokens.refreshToken),
+      connected: !!(tokens && (tokens.accessToken || tokens.refreshToken)),
       expiresAt: tokens && tokens.expiresAt || null,
       updatedAt: tokens && tokens.updatedAt || null,
-      scopes: tokens && tokens.scope ? String(tokens.scope).split(/\s+/).filter(Boolean) : [],
+      scopes: tokens && tokens.scope ? String(tokens.scope).split(/[,\s]+/).filter(Boolean) : [],
     };
   }
 }

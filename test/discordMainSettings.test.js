@@ -72,7 +72,7 @@ test('Discord app settings render account, permissions, and OAuth lifecycle acti
   assert.match(discordSettings, /dcConnect[\s\S]*Reconnect[\s\S]*dcDisconnect/);
   assert.match(discordSettings, /connectOAuthProvider\('discord',[\s\S]*disconnectOAuthProvider\('discord'\)/);
   assert.match(discordSettings, /DISCORD_AUTH_INVALID_SCOPE/);
-  assert.match(source, /providers = providers\.filter\(value => value\.provider !== 'discord'\)/);
+  assert.match(source, /providers = providers\.filter\(value => value\.provider !== 'discord' && value\.provider !== 'github'\)/);
   assert.match(source, /requestedScopes = id === 'microsoft'[\s\S]*provider\.scopes/);
   const main = read('main.js');
   assert.match(main, /provider: 'discord', name: 'Discord'/);
