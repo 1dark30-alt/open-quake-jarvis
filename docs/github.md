@@ -60,6 +60,11 @@ Repositories other than that fallback use their own default branch.
 - Open pull requests with author, draft state, comments, requested/latest review state, change
   counts, mergeability metadata, Checks, and legacy commit statuses. Failed and running checks are
   prioritised. A check backed by GitHub Actions opens the same run detail used by the Actions view.
+- Read-only Issues with Open, Assigned to me, and Closed filters; compact labels, assignees,
+  milestone, comment count, and a bounded plain-text body; deliberate Load More paging; and exact
+  issue links through the existing trusted external-navigation boundary. GitHub's issue-shaped pull
+  request resources are excluded using the documented `pull_request` response field. Inline comment
+  previews are deliberately deferred; the panel shows the count and opens GitHub for discussion.
 - Workflows and recent runs with last-run state, plus selectable run details containing jobs,
   individual timed steps, conclusions, actor/branch/commit context, and automatic failed or active
   job selection.
@@ -85,7 +90,8 @@ stale data is never presented as current.
 ## Deliberately omitted from V2
 
 - Pull-request creation, editing, closing, merging, and review submission.
-- Issue, release, file, or branch management.
+- Issue mutation, release, file, or branch management. Issues are browse-only: the panel cannot
+  create, edit, close, assign, label, milestone, or comment on an issue.
 - GitHub Notifications and a separate Activity screen, which would require unrelated access.
 - Local checkout inspection or Git operations. The panel never claims a working tree is clean.
 - Full Actions log display. Job and failed-step metadata is shown, but complete logs remain in GitHub
@@ -98,10 +104,13 @@ stale data is never presented as current.
 
 ## API permissions
 
-V2 does not add an OAuth scope. The existing `repo` scope covers private-repository pull-request,
-contents, Checks, Actions, workflow-dispatch, artifact, and comparison endpoints for OAuth App
-tokens. Public repository reads can be less permissive at the API level, but open-quake keeps one
-consistent grant because its deliberate workflow dispatch/rerun/cancel operations require `repo`.
+V2 and the read-only Issues screen do not add an OAuth scope. The existing `repo` scope covers
+private-repository Issues, pull-request, contents, Checks, Actions, workflow-dispatch, artifact, and
+comparison endpoints for OAuth App tokens. The Assigned filter reads the authenticated account's
+public login from `/user` and caches it; it does not require an added `user` scope. Inline comments
+are deferred, so this pass adds neither a comments endpoint nor a related permission. Public
+repository reads can be less permissive at the API level, but open-quake keeps one consistent grant
+because its deliberate workflow dispatch/rerun/cancel operations require `repo`.
 `offline_access` remains a token-lifetime option and does not grant repository access.
 
 Relevant GitHub documentation: [OAuth Device Flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps),
@@ -115,6 +124,8 @@ Relevant GitHub documentation: [OAuth Device Flow](https://docs.github.com/en/ap
 [workflow artifacts](https://docs.github.com/en/rest/actions/artifacts),
 [pull-request reviews](https://docs.github.com/en/rest/pulls/reviews),
 [pull requests](https://docs.github.com/en/rest/pulls/pulls),
+[issues](https://docs.github.com/en/rest/issues/issues),
+[authenticated user](https://docs.github.com/en/rest/users/users#get-the-authenticated-user),
 [commits and associated pull requests](https://docs.github.com/en/rest/commits/commits),
 [repository contents](https://docs.github.com/en/rest/repos/contents),
 [check runs](https://docs.github.com/en/rest/checks/runs), and
