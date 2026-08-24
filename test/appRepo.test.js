@@ -1,7 +1,16 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { repoRawBase, indexUrl, zipUrl, cmpVersion, parseIndex } = require('../app/appRepo');
+const { repoRawBase, indexUrl, zipUrl, cmpVersion, parseIndex, isAllowedRepoUrl } = require('../app/appRepo');
+
+test('isAllowedRepoUrl accepts only github hosts', () => {
+  assert.equal(isAllowedRepoUrl('https://github.com/TeeJS/open-quake/tree/main/community-apps'), true);
+  assert.equal(isAllowedRepoUrl('https://raw.githubusercontent.com/o/r/main/apps'), true);
+  assert.equal(isAllowedRepoUrl('https://gitlab.com/o/r/-/tree/main/apps'), false);
+  assert.equal(isAllowedRepoUrl('https://evil.example.com/apps'), false);
+  assert.equal(isAllowedRepoUrl('https://github.com.evil.com/x'), false);
+  assert.equal(isAllowedRepoUrl(''), false);
+});
 
 test('repoRawBase normalizes a github tree URL to the raw base', () => {
   assert.equal(repoRawBase('https://github.com/TeeJS/open-quake/tree/main/community-apps'),

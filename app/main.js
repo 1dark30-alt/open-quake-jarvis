@@ -803,6 +803,7 @@ function downloadToFile(url, dest, maxBytes) {
 // check/download fetch fresh, so a just-pushed version bump is installable immediately.
 function bustCache(url) { return url + (url.indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now(); }
 async function fetchRepoIndex(settingUrl) {
+  if (!appRepo.isAllowedRepoUrl(settingUrl)) return { error: 'Only github.com app repositories are allowed for now.' };
   const base = appRepo.repoRawBase(settingUrl);
   if (!base) return { error: 'The app-repository URL is not a valid http(s) URL.' };
   try { return { base, apps: appRepo.parseIndex(await fetchJson(bustCache(appRepo.indexUrl(base)))) }; }
@@ -3717,12 +3718,6 @@ app.whenReady().then(async () => {
   });
   // Drop-in app manager (Settings → Drop-In Apps)
   ipcMain.handle('listDropInApps', (e) => isFrom(e, configWin) ? listDropInApps() : []);
-  ipcMain.handle('pickZip', async (e) => {
-    if (!isFrom(e, configWin)) return null;
-    const r = await dialog.showOpenDialog(configWin, { properties: ['openFile'], filters: [{ name: 'Zip archive', extensions: ['zip'] }] });
-    return (r.canceled || !r.filePaths.length) ? null : r.filePaths[0];
-  });
-  ipcMain.handle('importDropInApp', (e, zipPath, forceId, confirmExec) => isFrom(e, configWin) ? importDropInApp(zipPath, forceId, confirmExec) : { ok: false });
   ipcMain.handle('exportDropInApp', (e, id) => isFrom(e, configWin) ? exportDropInApp(id) : { ok: false });
   ipcMain.handle('deleteDropInApp', (e, id) => isFrom(e, configWin) ? deleteDropInApp(id) : { ok: false });
   ipcMain.handle('getDropInInfo', (e) => isFrom(e, configWin) ? { location: (config.settings && config.settings.dropInLocation) || 'appdata', dir: dropInDir() } : null);

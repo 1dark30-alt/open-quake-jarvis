@@ -3049,7 +3049,7 @@
 
   // ---- settings page ----
   const DEFAULT_APP_REPO = 'https://github.com/TeeJS/open-quake/tree/main/community-apps';
-  const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false, reservedDisplay: false, keepDisplayAwake: false, offlineIcons: false, appRepo: DEFAULT_APP_REPO, autoPageOnImport: true };
+  const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false, reservedDisplay: false, keepDisplayAwake: false, offlineIcons: false, appRepo: DEFAULT_APP_REPO, appRepos: [], multiRepo: false, autoPageOnImport: true };
   function appSettings() { return Object.assign({}, DEFAULT_SETTINGS, config.settings || {}); }
   function renderSettings() {
     ['tilegrid', 'mergebar', 'tileform', 'iconpane'].forEach(id => { const e = document.getElementById(id); if (e) e.innerHTML = ''; });
@@ -3429,16 +3429,18 @@
     // Drop-In Apps tab — manage user-installed app folders (import/export/delete) + storage location
     const diHtml = `
       <p class="sectitle">Drop-In Apps</p>
-      <p class="hint">Self-contained app folders — install from the app repository, import a .zip, then update, export, or delete. Bundled / built-in apps aren't listed here.</p>
-      <div class="row" style="gap:8px;align-items:center"><label style="width:auto">App repository</label><input id="diRepo" style="flex:1" placeholder="${esc(DEFAULT_APP_REPO)}"><button id="diBrowse">Browse…</button></div>
-      <p class="hint" style="margin:2px 0 0">A GitHub folder (or any host) serving an <code>index.json</code> + app <code>.zip</code>s. Change it to install from your own fork.</p>
+      <p class="hint">Self-contained app folders — install from a GitHub app repository, then update, export, or delete. Bundled / built-in apps aren't listed here.</p>
+      <label style="width:auto;display:block;margin-bottom:4px">App repositories</label>
+      <div id="diRepos"></div>
+      <p class="hint" style="margin:2px 0 0">A GitHub folder serving an <code>index.json</code> + app <code>.zip</code>s. Point it at your own fork to install from there.</p>
       <label class="row" style="gap:8px;align-items:center;width:auto;margin-top:6px"><input type="checkbox" id="diAutoPage" style="width:auto"> Add a page for newly installed apps</label>
-      <div id="diRepoList" style="margin:8px 0"></div>
-      <div class="row" style="gap:8px"><button id="diAdd">Add (import .zip)…</button><button id="diRefresh">Refresh</button><button id="diCheckAll" style="margin-left:auto">Check all for updates</button></div>
+      <div class="row" style="gap:8px;margin-top:6px"><button id="diRefresh">Refresh</button><button id="diCheckAll" style="margin-left:auto">Check all for updates</button></div>
       <div id="diMsg" class="hint" style="margin:6px 0;min-height:18px"></div>
       <div id="diList"><p class="hint">Loading…</p></div>
       <details class="advsec" style="margin-top:16px"><summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Advanced settings</summary>
-        <div class="row" style="margin-top:8px"><label style="width:auto">Storage location</label>
+        <label class="row" style="gap:8px;align-items:center;width:auto;margin-top:8px"><input type="checkbox" id="diMulti" style="width:auto"> Allow multiple drop-in app repositories</label>
+        <p class="hint" style="margin:2px 0 0;color:#c98">Drop-in apps can access your filesystem and saved open-quake credentials. Please make sure you trust the owner of the repositories you add.</p>
+        <div class="row" style="margin-top:12px"><label style="width:auto">Storage location</label>
           <select id="diLoc" style="width:auto">
             <option value="appdata">%APPDATA%\\open-quake</option>
             <option value="localappdata">%LOCALAPPDATA%\\open-quake</option>
@@ -3527,7 +3529,13 @@
     }
 
     if (tab === 'dropin') {
-      let importZipPath = null;   // held across an id-conflict rename retry
+      // Repositories the user can browse/install from. Migrate the legacy single `appRepo` into the array.
+      const repos = (Array.isArray(config.settings && config.settings.appRepos) && config.settings.appRepos.length)
+        ? config.settings.appRepos.slice()
+        : [(config.settings && config.settings.appRepo) || DEFAULT_APP_REPO];
+      let multi = !!(config.settings && config.settings.multiRepo);
+      const isGithubRepo = u => /^https?:\/\/(github\.com|raw\.githubusercontent\.com)\//i.test(String(u || '').trim());
+      const persistRepos = () => { setS('appRepos', repos.slice()); setS('appRepo', repos[0] || DEFAULT_APP_REPO); };
       const diMsg = (t, bad) => { const m = document.getElementById('diMsg'); if (m) { m.textContent = t || ''; m.style.color = bad ? '#c98' : '#7e93ab'; } };
       // Optionally add a ready-to-use page for a freshly installed app (same grid shape as the "Add app
       // page" button). Skipped on updates and when a page for that app already exists; marks dirty so it
@@ -3559,35 +3567,14 @@
           if (r && r.ok) { diMsg('Deleted ' + id); appDefs = await configApi.getApps(); renderList(); } else diMsg('Delete failed: ' + ((r && r.error) || ''), true);
         });
       };
-      const promptId = (suggested) => new Promise(resolve => {
-        const m = document.getElementById('diMsg'); m.style.color = '#c98';
-        m.innerHTML = 'App id "' + esc(suggested) + '" already exists — pick a new id: <input id="diNewId" value="' + esc(suggested) + '" style="width:150px"> <button id="diNewOk">Import</button> <button id="diNewCancel">Cancel</button>';
-        const inp = document.getElementById('diNewId'); inp.focus(); inp.select();
-        const fin = v => { m.innerHTML = ''; m.style.color = ''; resolve(v); };
-        document.getElementById('diNewOk').onclick = () => fin((inp.value || '').trim() || null);
-        document.getElementById('diNewCancel').onclick = () => fin(null);
-        inp.onkeydown = ev => { if (ev.key === 'Enter') document.getElementById('diNewOk').click(); else if (ev.key === 'Escape') fin(null); };
-      });
-      const doImport = async (forceId, confirmExec) => {
-        if (!importZipPath) importZipPath = await configApi.pickZip();
-        if (!importZipPath) return;
-        const r = await configApi.importDropInApp(importZipPath, forceId, confirmExec);
-        if (r && r.ok) { importZipPath = null; appDefs = await configApi.getApps(); renderList(); const added = maybeAddAppPage(r.id, r.name); diMsg('Imported "' + r.name + '" (' + r.id + ')' + (added ? ' — added a page' : '')); }
-        else if (r && r.warnExec && !confirmExec) {
-          if (window.confirm('This drop-in app contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC with full access. Only import it if you trust the source.\n\nImport anyway?')) doImport(forceId, true);
-          else importZipPath = null;
-        }
-        else if (r && r.conflict) { const newId = await promptId(r.id); if (newId) doImport(newId, confirmExec); else importZipPath = null; }
-        else { importZipPath = null; diMsg('Import failed: ' + ((r && r.error) || 'unknown error'), true); }
-      };
       // ---- install / update from the repository ----
-      const repoField = () => (document.getElementById('diRepo').value || '').trim();
-      const doInstall = async (id, confirmExec) => {
+      const doInstall = async (id, confirmExec, repoUrl) => {
+        const repo = (repoUrl || '').trim() || repos[0];
         diMsg('Installing "' + id + '"…');
-        const r = await configApi.installRepoApp(id, confirmExec, repoField());
-        if (r && r.ok) { appDefs = await configApi.getApps(); renderList(); renderRepo(); const added = maybeAddAppPage(r.id, r.name); diMsg('Installed "' + r.name + '" (' + r.id + ')' + (added ? ' — added a page' : '')); }
+        const r = await configApi.installRepoApp(id, confirmExec, repo);
+        if (r && r.ok) { appDefs = await configApi.getApps(); renderList(); const added = maybeAddAppPage(r.id, r.name); diMsg('Installed "' + r.name + '" (' + r.id + ')' + (added ? ' — added a page' : '')); }
         else if (r && r.warnExec && !confirmExec) {
-          if (window.confirm('This app contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC with full access. Only install it if you trust the repository.\n\nInstall anyway?')) doInstall(id, true);
+          if (window.confirm('This app contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC with full access. Only install it if you trust the repository.\n\nInstall anyway?')) doInstall(id, true, repo);
           else diMsg('');
         }
         else if (r && r.conflict) diMsg('"' + id + '" is already installed — use Update instead.', true);
@@ -3611,10 +3598,13 @@
         }
         else diMsg('Update failed: ' + ((r && r.error) || 'unknown error'), true);
       };
-      const renderRepo = async () => {
-        const host = document.getElementById('diRepoList'); if (!host) return;
+      const renderRepo = async (url, host) => {
+        if (!host) return;
+        url = (url || '').trim();
+        if (!url) { host.innerHTML = '<p class="hint" style="color:#c98">Enter a repository URL.</p>'; return; }
+        if (!isGithubRepo(url)) { host.innerHTML = '<p class="hint" style="color:#c98">Only github.com repositories are allowed for now.</p>'; return; }
         host.innerHTML = '<p class="hint">Loading apps from the repository…</p>';
-        let r; try { r = await configApi.listRepoApps(repoField()); } catch (e) { r = { ok: false, error: String(e) }; }
+        let r; try { r = await configApi.listRepoApps(url); } catch (e) { r = { ok: false, error: String(e) }; }
         if (!r || !r.ok) { host.innerHTML = '<p class="hint" style="color:#c98">' + esc((r && r.error) || 'Could not load the repository.') + '</p>'; return; }
         if (!r.apps.length) { host.innerHTML = '<p class="hint">No apps found in the repository.</p>'; return; }
         host.innerHTML = r.apps.map(a => `<div class="row" style="gap:8px;align-items:flex-start;margin:4px 0">
@@ -3623,19 +3613,34 @@
               : a.state === 'update' ? `<button class="diRepoUpd" data-id="${esc(a.id)}">Update →</button>`
               : `<button class="diRepoInst" data-id="${esc(a.id)}">Install</button>`}
           </div>`).join('');
-        host.querySelectorAll('.diRepoInst').forEach(b => b.onclick = e => doInstall(e.currentTarget.dataset.id));
+        host.querySelectorAll('.diRepoInst').forEach(b => b.onclick = e => doInstall(e.currentTarget.dataset.id, false, url));
         host.querySelectorAll('.diRepoUpd').forEach(b => b.onclick = e => doUpdate(e.currentTarget.dataset.id));
       };
-      { const rf = document.getElementById('diRepo'); if (rf) { rf.value = (config.settings && config.settings.appRepo) || DEFAULT_APP_REPO; rf.oninput = () => setS('appRepo', repoField()); } }
+      // Editable list of repositories (single row unless "allow multiple" is on). Each row browses/checks
+      // its own repo; a per-row catalog div below it holds the Browse results.
+      const renderRepos = () => {
+        const host = document.getElementById('diRepos'); if (!host) return;
+        const shown = multi ? repos : repos.slice(0, 1);
+        host.innerHTML = shown.map((u, i) => `<div class="row" style="gap:8px;align-items:center;margin:2px 0">
+            <input class="diRepoUrl" data-i="${i}" style="flex:1" value="${esc(u)}" placeholder="${esc(DEFAULT_APP_REPO)}">
+            <button class="diRepoBrowse" data-i="${i}">Browse…</button>
+            <button class="diRepoCheck" data-i="${i}">Check for updates</button>
+            ${multi && repos.length > 1 ? `<button class="diRepoRemove danger" data-i="${i}">Remove</button>` : ''}
+          </div>
+          <div class="diRepoCat" id="diRepoCat${i}"></div>`).join('')
+          + (multi ? '<button id="diRepoAdd" style="margin-top:4px">Add repository</button>' : '');
+        host.querySelectorAll('.diRepoUrl').forEach(inp => inp.oninput = e => { repos[+e.target.dataset.i] = e.target.value.trim(); persistRepos(); });
+        host.querySelectorAll('.diRepoBrowse').forEach(b => b.onclick = e => { const i = +e.currentTarget.dataset.i; renderRepo(repos[i], document.getElementById('diRepoCat' + i)); });
+        host.querySelectorAll('.diRepoCheck').forEach(b => b.onclick = e => checkRepoUpdates(repos[+e.currentTarget.dataset.i]));
+        host.querySelectorAll('.diRepoRemove').forEach(b => b.onclick = e => { repos.splice(+e.currentTarget.dataset.i, 1); persistRepos(); renderRepos(); });
+        const add = document.getElementById('diRepoAdd'); if (add) add.onclick = () => { repos.push(''); persistRepos(); renderRepos(); };
+      };
       { const ap = document.getElementById('diAutoPage'); if (ap) { ap.checked = !!appSettings().autoPageOnImport; ap.onchange = () => setS('autoPageOnImport', ap.checked); } }
-      document.getElementById('diBrowse').onclick = () => renderRepo();
-      document.getElementById('diAdd').onclick = () => { importZipPath = null; doImport(); };
+      { const mb = document.getElementById('diMulti'); if (mb) { mb.checked = multi; mb.onchange = () => { multi = mb.checked; setS('multiRepo', multi); renderRepos(); }; } }
       document.getElementById('diRefresh').onclick = () => renderList();
-      // Check every repo-installed app at once, then offer to update the ones with a newer version.
-      const checkAllUpdates = async () => {
-        let apps = []; try { apps = (await configApi.listDropInApps()) || []; } catch (e) {}
-        const repoApps = apps.filter(a => a.source);
-        if (!repoApps.length) return diMsg('No apps installed from a repository to check.');
+      // Check a set of installed repo apps for updates, then offer to update the ones with a newer version.
+      const runUpdates = async (repoApps, noneMsg) => {
+        if (!repoApps.length) return diMsg(noneMsg);
         diMsg('Checking ' + repoApps.length + ' app(s) for updates…');
         const updates = [];
         for (const a of repoApps) { const c = await configApi.checkDropInUpdate(a.id); if (c && c.ok && c.updateAvailable) updates.push({ id: a.id, from: c.installedVersion, to: c.remoteVersion }); }
@@ -3647,7 +3652,17 @@
         appDefs = await configApi.getApps(); renderList();
         diMsg('Updated ' + done + ' of ' + updates.length + ' app(s).', done < updates.length);
       };
+      const checkAllUpdates = async () => {
+        let apps = []; try { apps = (await configApi.listDropInApps()) || []; } catch (e) {}
+        return runUpdates(apps.filter(a => a.source), 'No apps installed from a repository to check.');
+      };
+      const checkRepoUpdates = async (url) => {
+        url = (url || '').trim();
+        let apps = []; try { apps = (await configApi.listDropInApps()) || []; } catch (e) {}
+        return runUpdates(apps.filter(a => a.source === url), 'No apps installed from this repository to check.');
+      };
       document.getElementById('diCheckAll').onclick = () => checkAllUpdates();
+      renderRepos();
       configApi.getDropInInfo().then(info => { if (!info) return; const s2 = document.getElementById('diLoc'); if (s2) s2.value = info.location; const p = document.getElementById('diLocPath'); if (p) p.textContent = info.dir; });
       document.getElementById('diLoc').onchange = async e => {
         const info = await configApi.setDropInLocation(e.target.value);

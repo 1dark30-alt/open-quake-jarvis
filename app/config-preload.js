@@ -21,8 +21,6 @@ contextBridge.exposeInMainWorld('openQuakeConfig', {
   pickFile() { return ipcRenderer.invoke('pickFile'); },
   pickFolder() { return ipcRenderer.invoke('pickFolder'); },
   listDropInApps() { return ipcRenderer.invoke('listDropInApps'); },
-  pickZip() { return ipcRenderer.invoke('pickZip'); },
-  importDropInApp(zipPath, forceId, confirmExec) { return ipcRenderer.invoke('importDropInApp', zipPath, forceId, confirmExec); },
   openExternal(url) { ipcRenderer.send('openExternal', url); },
   exportDropInApp(id) { return ipcRenderer.invoke('exportDropInApp', id); },
   deleteDropInApp(id) { return ipcRenderer.invoke('deleteDropInApp', id); },

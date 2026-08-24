@@ -22,6 +22,14 @@ function repoRawBase(url) {
 
 function indexUrl(base) { return repoRawBase(base) + '/index.json'; }
 
+// Only GitHub-hosted repositories are allowed for now (github.com tree/blob URLs and the
+// raw.githubusercontent.com bases they resolve to). Blocks pointing the installer at an arbitrary host.
+function isAllowedRepoUrl(url) {
+  var m = String(url || '').trim().match(/^https?:\/\/([^/]+)/i);
+  var host = m ? m[1].toLowerCase() : '';
+  return host === 'github.com' || host === 'raw.githubusercontent.com';
+}
+
 // Resolve an index entry's zip to an absolute URL. An entry.zip may be an absolute http(s) URL
 // (custom hosting) or a bare filename resolved against the repo base.
 function zipUrl(base, entry) {
@@ -65,4 +73,4 @@ function parseIndex(json) {
   return out;
 }
 
-module.exports = { repoRawBase, indexUrl, zipUrl, cmpVersion, parseIndex };
+module.exports = { repoRawBase, indexUrl, zipUrl, cmpVersion, parseIndex, isAllowedRepoUrl };
