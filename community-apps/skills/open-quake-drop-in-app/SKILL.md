@@ -131,6 +131,39 @@ The active app can call `GET /app-api/<action>`. Keep integration-specific serve
 
 Avoid adding routes named for a single integration, such as `/api/qnap/...`, unless the user asks for a built-in one-off integration.
 
+### OAuth (per-app)
+
+A served app can integrate with one OAuth 2.0 + PKCE provider. Declare it in `app.json`, and the user supplies the client credentials via app options:
+
+```json
+"oauth": { "name": "Spotify", "authUrl": "https://accounts.spotify.com/authorize",
+  "tokenUrl": "https://accounts.spotify.com/api/token", "scopes": ["playlist-read-private"] },
+"options": [
+  { "key": "oauthClientId", "label": "Client ID", "type": "text" },
+  { "key": "oauthClientSecret", "label": "Client secret", "type": "secret" }
+]
+```
+
+The provider registers as `app:<your-app-id>`; the redirect URI is always `http://localhost:5173/oauth/callback` (register that with the provider). `handle()` receives `context.oauth`, already scoped to your app — you cannot reach another app's or a built-in provider:
+
+```js
+async function handle(action, context) {
+  const o = context.oauth, opt = context.options;
+  if (action === 'auth-status') return o.status();                       // { connected, configured, scopes }
+  if (action === 'connect') return o.connect(['playlist-read-private'],  // opens the browser to sign in
+    { clientId: opt.oauthClientId, clientSecret: opt.oauthClientSecret });
+  if (action === 'disconnect') return o.disconnect();
+  if (action === 'my-playlists') {                                       // use the token HERE, in main:
+    const t = await o.getAccessToken();                                 // { accessToken, ... } or null
+    if (!t) return { ok: false, error: 'not connected' };
+    const r = await fetch('https://api.spotify.com/v1/me/playlists', { headers: { Authorization: 'Bearer ' + t.accessToken } });
+    return { ok: true, playlists: await r.json() };                     // return RESULTS to the page, not the token
+  }
+}
+```
+
+`getAccessToken()` auto-refreshes. **Never return the token to your page** — make the API call in `server.js` and hand back only the data. Tokens/secrets are stored encrypted by the host.
+
 ## Platform Work
 
 Only touch host/runtime code when the user explicitly asks to change the platform itself.

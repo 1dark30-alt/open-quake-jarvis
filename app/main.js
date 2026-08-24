@@ -40,7 +40,7 @@ const { createMediaKeys } = require('./mediaKeys');
 const { createSecretStore } = require('./secretStore');
 const { OAuthHandler } = require('../src/auth/oauth-handler');
 const { TokenStorage } = require('../src/auth/token-storage');
-const { providers: oauthProviders } = require('../src/auth/providers');
+const { providers: oauthProviders, providerFor: oauthProviderFor, registerAppProvider, clearAppProviders, REDIRECT_URI: OAUTH_REDIRECT_URI } = require('../src/auth/providers');
 const { createOfficeGraph } = require('./officeGraph');
 const { createOfficeActions } = require('./officeActions');
 const { officeShortcutImageDataUrl } = require('./officeShortcutIcons');
@@ -881,6 +881,38 @@ const secretStore = createSecretStore({
 });
 const oauthStorage = new TokenStorage({ getConfig: () => config, saveConfig });
 const oauthHandler = new OAuthHandler({ storage: oauthStorage, openExternal: openExternalUrl, log: m => console.log(m) });
+
+// Drop-in OAuth: a served app can declare an `oauth` block in its app.json ({ name, authUrl, tokenUrl,
+// revokeUrl?, scopes[] }); we register it as an `app:<appid>` provider so the shared handler drives the
+// whole PKCE/callback/refresh flow. sysserver hands each app's server.js a `context.oauth` bound to its
+// OWN app id, so it can never name another app's or a built-in provider. The token is used in the main
+// process (server.js), never returned to the renderer.
+const OAUTH_APP_PID = id => 'app:' + String(id).toLowerCase();
+function syncAppOAuthProviders() {
+  clearAppProviders();
+  loadApps().forEach(a => {
+    const o = a && a._folder && a.served && a.oauth;
+    if (!o || typeof o !== 'object') return;
+    if (!/^https:\/\//i.test(o.authUrl || '') || !/^https:\/\//i.test(o.tokenUrl || '')) return;   // https endpoints only
+    registerAppProvider({
+      id: OAUTH_APP_PID(a.id), name: String(o.name || a.name || a.id),
+      authUrl: o.authUrl, tokenUrl: o.tokenUrl, revokeUrl: /^https:\/\//i.test(o.revokeUrl || '') ? o.revokeUrl : '',
+      scopes: Array.isArray(o.scopes) ? o.scopes : [], redirectUri: OAUTH_REDIRECT_URI, usesPkce: true,
+      accessTokenExpiresSkewMs: 5 * 60 * 1000,
+    });
+  });
+}
+const dropInOAuth = {
+  status(appId) { const pid = OAUTH_APP_PID(appId); return oauthProviderFor(pid) ? oauthHandler.status(pid) : { provider: pid, configured: false, connected: false, scopes: [] }; },
+  async connect(appId, scopes, creds) {
+    const pid = OAUTH_APP_PID(appId);
+    if (!oauthProviderFor(pid)) throw new Error('This app declares no OAuth provider');
+    if (creds && creds.clientId) oauthStorage.setProviderSettings(pid, { clientId: String(creds.clientId), clientSecret: String(creds.clientSecret || '') });
+    return oauthHandler.connect(pid, scopes);
+  },
+  disconnect(appId) { return oauthHandler.revokeToken(OAUTH_APP_PID(appId)); },
+  getAccessToken(appId, scopes) { return oauthHandler.getValidAccessToken(OAUTH_APP_PID(appId), scopes); },
+};
 const officeGraph = createOfficeGraph({
   getAccessToken: (provider, scopes) => oauthHandler.getValidAccessToken(provider, scopes),
   connectOAuth: (provider, scopes) => oauthHandler.connect(provider, scopes),
@@ -3077,8 +3109,9 @@ app.whenReady().then(async () => {
     const portFile = path.join(USER_DIR, 'server-port');
     let preferredPort = 0;
     try { const n = parseInt(fs.readFileSync(portFile, 'utf8'), 10); if (n >= 1024 && n <= 65535) preferredPort = n; } catch (e) {}
+    syncAppOAuthProviders();                                  // register drop-in apps' declared OAuth providers
     serverPort = await sysserver.start({
-      preferredPort,
+      preferredPort, oauth: dropInOAuth,
       onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig,
       getOfficeData: officeGraph.getData, connectOffice: officeGraph.connect, onOfficeAction: officeActions.run,
       onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(),

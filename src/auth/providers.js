@@ -47,9 +47,15 @@ const aliases = {
   graph: 'microsoft',
 };
 
+// Drop-in apps register their own OAuth providers at runtime, always under an `app:<appid>` id so
+// they can never collide with or shadow a built-in (the static table is consulted first below).
+const appProviders = new Map();
+function registerAppProvider(def) { if (def && def.id) appProviders.set(String(def.id).toLowerCase(), def); }
+function clearAppProviders() { appProviders.clear(); }
+
 function providerFor(id) {
   const key = String(id || '').toLowerCase();
-  return providers[aliases[key] || key] || null;
+  return providers[aliases[key] || key] || appProviders.get(key) || null;   // built-ins win
 }
 
 function canonicalProviderId(id) {
@@ -57,4 +63,4 @@ function canonicalProviderId(id) {
   return provider ? provider.id : String(id || '').toLowerCase();
 }
 
-module.exports = { MICROSOFT_CLIENT_ID, REDIRECT_URI, providers, providerFor, canonicalProviderId };
+module.exports = { MICROSOFT_CLIENT_ID, REDIRECT_URI, providers, providerFor, canonicalProviderId, registerAppProvider, clearAppProviders };

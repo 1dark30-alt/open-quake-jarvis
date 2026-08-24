@@ -120,6 +120,7 @@ let obsApp = null;                      // OBS control service (main.js provides
 const obsSubscribers = new Set();       // open SSE responses for the served /obs switcher page
 const staticAssets = {};   // request path -> { body, type }; populated at start()
 let appFolders = {};        // drop-in served app id -> { root, proxy }; supplied by main.js
+let appOAuth = null;        // drop-in OAuth capability (main.js) -> scoped per app in serveAppApi
 const appServers = {};      // app id -> required server module
 const DEFAULT_OFFICE_CAPABILITY_TTL_MS = 24 * 60 * 60 * 1000;
 let officeCapability = null;
@@ -438,7 +439,16 @@ async function serveAppApi(req, res, full, url) {
       // a query string can't hold, e.g. captured PCM audio. GET requests leave body null.
       let body = null;
       if (req.method === 'POST') { try { body = await readRawBody(req); } catch (e) { return done(res, false); } }
-      const result = await mod.handle(action, { appId, query: queryObject(full), options: appOptions(appId), body });
+      // Drop-in OAuth, scoped to THIS app: the wrapper bakes in the trusted appId (from the referer, not
+      // forgeable), so an app can only touch its own `app:<id>` provider. Tokens are used here in main;
+      // the app's server.js should return results to its page, never the token itself.
+      const oauth = appOAuth ? {
+        status: () => appOAuth.status(appId),
+        connect: (scopes, creds) => appOAuth.connect(appId, scopes, creds),
+        disconnect: () => appOAuth.disconnect(appId),
+        getAccessToken: (scopes) => appOAuth.getAccessToken(appId, scopes),
+      } : null;
+      const result = await mod.handle(action, { appId, query: queryObject(full), options: appOptions(appId), body, oauth });
       const status = result && result.ok === false && result.error === 'unknown action' ? 400 : 200;
       res.writeHead(status, headers('application/json; charset=utf-8'));
       res.end(JSON.stringify(result == null ? { ok: true } : result));
@@ -1071,6 +1081,7 @@ function start(opts) {
   onLaunch = opts.onLaunch || null;
   getGridTiles = opts.getGridTiles || null;
   getAppConfig = opts.getAppConfig || null;
+  appOAuth = opts.oauth || null;
   getOfficeData = opts.getOfficeData || null;
   connectOffice = opts.connectOffice || null;
   currentTime = typeof opts.now === 'function' ? opts.now : Date.now;
