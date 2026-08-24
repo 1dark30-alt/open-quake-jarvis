@@ -3334,6 +3334,7 @@ app.whenReady().then(async () => {
     try {
       meetingLibrary = require('./meetingLibrary').createMeetingLibrary({
         resolveFolders: resolveMeetingFolders,
+        organizeByDate: () => !!meetingSettings().processedByDate,
         log: msg => console.log('[meeting] ' + msg),
       });
       meetingTranscriber = require('./meetingTranscribe').createMeetingTranscriber({

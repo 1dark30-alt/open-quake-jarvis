@@ -76,7 +76,7 @@ test('listFiles returns WAV metadata with duration, newest first; missing folder
   assert.equal(r.files.find(f => f.name === 'a.wav').durationMs, 2000);
 
   const empty = createMeetingLibrary({ resolveFolders: () => ({ unprocessed: path.join(dirs.root, 'nope'), processed: dirs.processed }) });
-  assert.deepEqual(empty.listFiles('unprocessed'), { ok: true, dirs: [], files: [] });
+  assert.deepEqual(empty.listFiles('unprocessed'), { ok: true, dirs: [], files: [], byDate: false });
   assert.equal(lib.listFiles('bogus').ok, false);
 });
 
@@ -87,6 +87,15 @@ test('listFiles(processed) includes transcripts and analysis markdown', () => {
   fs.writeFileSync(path.join(dirs.processed, 'm.json'), '{}');
   fs.writeFileSync(path.join(dirs.processed, 'm.md'), '# notes');
   assert.deepEqual(lib.listFiles('processed').files.map(f => f.name).sort(), ['m.json', 'm.md', 'm.wav']);
+});
+
+test('listFiles reports byDate from organizeByDate, processed only', () => {
+  const dirs = tempDirs();
+  const on = createMeetingLibrary({ resolveFolders: () => ({ unprocessed: dirs.unprocessed, processed: dirs.processed }), organizeByDate: () => true });
+  assert.equal(on.listFiles('processed').byDate, true);      // panel auto-opens the current YYYY/MM
+  assert.equal(on.listFiles('unprocessed').byDate, false);   // unprocessed is always flat
+  const off = createMeetingLibrary({ resolveFolders: () => ({ unprocessed: dirs.unprocessed, processed: dirs.processed }) });
+  assert.equal(off.listFiles('processed').byDate, false);
 });
 
 test('deleteFile removes only from unprocessed and only validated names', () => {
@@ -172,5 +181,5 @@ test('listFiles(processed) shows one folder at a time with navigable subdirs', (
   // unprocessed stays flat: dir param ignored, subfolders invisible
   fs.mkdirSync(path.join(dirs.unprocessed, 'sub'));
   fs.writeFileSync(path.join(dirs.unprocessed, 'sub', 'x.wav'), makeWav(1));
-  assert.deepEqual(lib.listFiles('unprocessed', 'sub'), { ok: true, dirs: [], files: [] });
+  assert.deepEqual(lib.listFiles('unprocessed', 'sub'), { ok: true, dirs: [], files: [], byDate: false });
 });

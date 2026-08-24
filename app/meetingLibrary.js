@@ -80,6 +80,7 @@ function wavDurationMs(buf) {
 function createMeetingLibrary(deps) {
   const fsMod = deps.fs || require('fs');
   const resolveFolders = deps.resolveFolders;   // () => { unprocessed, processed }
+  const organizeByDate = deps.organizeByDate || (() => false);   // () => bool: processed files live in YYYY/MM
   const log = deps.log || (() => {});
 
   function folderFor(kind) {
@@ -114,8 +115,9 @@ function createMeetingLibrary(deps) {
     }
     const depth = rel ? rel.split('/').length : 0;
     let entries = [];
+    const byDate = kind === 'processed' && !!organizeByDate();   // panel auto-opens the current YYYY/MM
     try { entries = fsMod.readdirSync(rel ? path.join(base, rel) : base, { withFileTypes: true }); }
-    catch (e) { return { ok: true, dirs: [], files: [] }; }   // folder not created yet = empty
+    catch (e) { return { ok: true, dirs: [], files: [], byDate }; }   // folder not created yet = empty
     const dirs = [];
     const files = [];
     for (const ent of entries) {
@@ -154,7 +156,7 @@ function createMeetingLibrary(deps) {
     }
     dirs.sort();
     files.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    return { ok: true, dirs, files };
+    return { ok: true, dirs, files, byDate };
   }
 
   // Deletion is only offered for unprocessed recordings — processed WAVs and their transcripts are

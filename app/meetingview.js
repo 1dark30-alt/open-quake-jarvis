@@ -634,10 +634,19 @@ function anPoll() {
 }
 var anSel = selMake('anSelAll', 'anGoSel');
 var anDir = '';   // current subfolder inside processed ('' = root); one folder shown at a time
+var anAutoDate = false;   // set on Analysis-overlay open: auto-descend to the current YYYY/MM when Organize-by-date is on
 function renderAnList() {
   var url = '/meeting-files?kind=processed' + (anDir ? '&dir=' + encodeURIComponent(anDir) : '');
   var keepScroll = $('anList').scrollTop;   // batch completions re-render every so often — don't yank the view
   fetchJson(url).then(function (r) {
+    if (anAutoDate && !anDir && r && r.byDate) {   // Organize-by-date: open straight into <processed>/YYYY/MM
+      anAutoDate = false;
+      var now = new Date();
+      anDir = now.getFullYear() + '/' + ('0' + (now.getMonth() + 1)).slice(-2);
+      renderAnList();
+      return;
+    }
+    anAutoDate = false;
     var el = $('anList'); el.innerHTML = ''; anRows = {};
     $('anPath').textContent = 'Processed' + (anDir ? ' › ' + anDir.split('/').join(' › ') : '');
     $('anUp').disabled = !anDir;
@@ -744,6 +753,7 @@ $('anUp').onclick = function () {
 };
 $('btnAnalysis').onclick = function () {
   $('anOverlay').classList.add('show');
+  anDir = ''; anAutoDate = true;   // reopen lands on the current month's folder when Organize-by-date is on
   renderAnList(); anPoll();
   if (!anTimer) anTimer = setInterval(anPoll, 1000);
 };
