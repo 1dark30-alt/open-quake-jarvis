@@ -1,8 +1,8 @@
-# Community drop-in apps — downloads
+# Community drop-in apps — catalog
 
-Install these straight from the panel: **Settings → Drop-In Apps → Browse…** lists every app here
-and installs (and later updates) it in one tap. Or grab an app's **`.zip`** below and import it with
-**Add (import .zip)**.
+Install these straight from the panel: **Settings → Drop-In Apps → Browse…** lists every app in
+this folder and installs (and later updates) it in one tap. This folder is the default app
+repository; point the repository field at your own GitHub fork to install from there instead.
 
 > **Maintainers:** each app declares a `version` in its `app.json`. When you add an app or bump a
 > version, rebuild that app's `<id>.zip` **and** regenerate the catalog the panel reads:
@@ -18,38 +18,29 @@ For how to install or submit an app — and a safety note — see the docs:
   with the story **read aloud** through your TTS voice and **spoken commands** transcribed by
   your STT — both picked up automatically from Settings → TTS/STT. Keyboard play works
   normally; drop story files into the app's `stories/` folder. Bundles the
-  [Parchment](https://github.com/curiousdannii/parchment) interpreter (MIT). Download
-  [`if-player.zip`](if-player.zip) and import via **Settings → Drop-In Apps → Add**.
+  [Parchment](https://github.com/curiousdannii/parchment) interpreter (MIT).
 - **[jarvis](jarvis)** — JARVIS voice-assistant client: pairs with a JARVIS server over a
-  PIN, and talks to Gemini Live, Ollama, or an OpenAI-compatible endpoint. Download
-  [`jarvis.zip`](jarvis.zip) and import via **Settings → Drop-In Apps → Add**.
+  PIN, and talks to Gemini Live, Ollama, or an OpenAI-compatible endpoint.
 - **[kitten-cannon](kitten-cannon)** — a remake of the classic Kitten Cannon flash game,
   ported for the panel with touch controls: drag or hold the arrow buttons to aim, tap
   FIRE to launch, bounce off trampolines and TNT for distance. Optional shared
   high-score server (configurable Server URL; works fully offline too) and a
-  persistent mute button. Download [`kitten-cannon.zip`](kitten-cannon.zip) and import
-  via **Settings → Drop-In Apps → Add**.
+  persistent mute button.
 - **[news-spotlight](news-spotlight)** — full-screen rotating RSS feed reader. Defaults
   to BBC / Sky / The Verge / Ars Technica; configurable feeds, story duration, Ken
-  Burns motion, breaking-news mode, and an SSRF-safe proxy. Download
-  [`news-spotlight.zip`](news-spotlight.zip) and import via
-  **Settings → Drop-In Apps → Add**.
+  Burns motion, breaking-news mode, and an SSRF-safe proxy.
 - **[quake-bird](quake-bird)** — a flappy-style arcade game: tap to flap, thread the pipe
   gaps, chase your best score. Original canvas artwork; pipes follow your accent color and
   the page theme. Optional shared high scores on the same score server as kitten-cannon
-  (player initials + configurable Server URL; fully playable offline). Download
-  [`quake-bird.zip`](quake-bird.zip) and import via **Settings → Drop-In Apps → Add**.
+  (player initials + configurable Server URL; fully playable offline).
 - **[deck-host](deck-host)** — run **Elgato Stream Deck plugins** on the panel: point it at a
   folder of `*.sdPlugin` packages and it launches them against Elgato's documented plugin
   protocol; the on-screen key grid shows each plugin's live images/titles, taps press keys,
   and the knob cycles profiles. Keypad actions from native/Node plugins (no property
-  inspectors or dials yet). Plugins are real programs — only use ones you trust. Download
-  [`deck-host.zip`](deck-host.zip) and import via **Settings → Drop-In Apps → Add**.
+  inspectors or dials yet). Plugins are real programs — only use ones you trust.
 - **[spotify-volume](spotify-volume)** — per-app Windows volume control for the knob (Spotify
   by default, configurable to any process). Uses a bundled native helper against the Core
   Audio session APIs — no admin, no Spotify login/Premium, no Web API. By **J Last**.
-  Download [`spotify-volume.zip`](spotify-volume.zip) and import via
-  **Settings → Drop-In Apps → Add**.
 
 To add one, open a pull request — see
 [docs/community-apps.md](../docs/community-apps.md#submitting-one).

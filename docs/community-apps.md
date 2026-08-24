@@ -1,21 +1,22 @@
 # Community drop-in apps
 
-How to **install** a community drop-in app, and how to **submit** your own. The apps
-themselves live in a separate download area — the
-[`community-apps/`](../community-apps) folder — and the editor links straight to it
-(**Settings → Drop-In Apps → Community apps ↗**). This page is the documentation; that
-folder is the download.
+How to **install** a community drop-in app, and how to **submit** your own. The apps are
+served from a GitHub **app repository** — the [`community-apps/`](../community-apps) folder —
+that open-quake browses and installs from directly. This page is the documentation; that
+folder is the catalog.
 
 ## Installing one
 
-1. Open the [`community-apps/`](../community-apps) folder and pick an app.
-2. Download its `.zip` (open the `.zip`, then **Download**).
-3. In open-quake: **Settings → Drop-In Apps → Add (import .zip)** and choose the file.
-   If its id already exists you'll be prompted to rename it, and if it bundles
-   executable code you'll be asked to confirm you trust the source.
+1. In open-quake: **Settings → Drop-In Apps**. The default app repository points at this
+   `community-apps/` folder; **Browse…** lists every app in it.
+2. Click **Install** on the app you want. If it bundles executable code you'll be asked to
+   confirm you trust the repository first.
 
-Installed apps land in your user-data folder (`%APPDATA%\open-quake\apps` by default), so
-they survive app updates. See [Apps & drop-ins](apps.md) for the full manager.
+To install from your own fork instead, change the repository URL to your
+`github.com/<owner>/<repo>/tree/<branch>/<path>` folder (only GitHub repositories are
+supported). Installed apps land in your user-data folder (`%APPDATA%\open-quake\apps` by
+default), so they survive app updates, and **Check for updates** compares each against its
+repository. See [Apps & drop-ins](apps.md) for the full manager.
 
 ## Submitting one
 
@@ -23,7 +24,9 @@ Open a pull request that adds **both**:
 
 - `community-apps/<your-app-id>/` — your app's source folder (an `app.json` or
   `manifest.json` manifest plus its files), so others can review the code; and
-- `community-apps/<your-app-id>.zip` — the same folder zipped, ready to import.
+- `community-apps/<your-app-id>.zip` — the same folder zipped, which the panel downloads
+  on install. Run `node tools/build-community-index.js` to regenerate `index.json`, and
+  commit the zip + index together.
 
 Rules:
 

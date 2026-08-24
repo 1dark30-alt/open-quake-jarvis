@@ -3,7 +3,8 @@
 Bundled apps are listed in `apps/apps.json`. Additional **drop-in apps** are
 self-contained folders (a manifest plus their files) that live in your user-data
 folder — **`%APPDATA%\open-quake\apps`** by default (see *Storage location* below) — so
-they survive app updates. The easiest way to add one is **Settings → Drop-In Apps → Add**.
+they survive app updates. The easiest way to add one is **Settings → Drop-In Apps → Browse…**
+and install from the app repository.
 In the editor, **+ App** adds an app page: pick the app and set its options, and
 open-quake loads it full-screen on the panel with no hand-typed URLs.
 
@@ -70,8 +71,8 @@ Included apps:
 
 ## Drop-in folder apps
 
-A drop-in app is a self-contained folder. Install it the easy way with
-**Settings → Drop-In Apps → Add (import .zip)**, or place the folder by hand in your
+A drop-in app is a self-contained folder. Install one from a GitHub app repository with
+**Settings → Drop-In Apps → Browse…**, or place the folder by hand in your
 drop-in apps folder (**`%APPDATA%\open-quake\apps`** by default — see *Storage location*
 below):
 
@@ -116,16 +117,19 @@ in the editor to reload manifests.
 
 The editor's **Settings → Drop-In Apps** tab manages app folders for you:
 
-- **Add (import .zip)** — pick a `.zip`; it's unzipped into your drop-in folder. If its `id`
-  already exists you're prompted to rename it, and if the app bundles **executable code** (a
-  `server` module or programs/scripts) you're warned to confirm you trust the source first.
+- **App repositories** — one or more GitHub folders serving an `index.json` catalog plus
+  app `.zip`s. **Browse…** lists a repository's apps; **Install** downloads and unzips one
+  into your drop-in folder — you're warned first if the app bundles **executable code** (a
+  `server` module or programs/scripts). Only `github.com` repositories are accepted. Enable
+  **Allow multiple drop-in app repositories** (Advanced) to add more than one source.
+- **Check for updates** — per repository, or **Check all for updates** across every installed
+  app; compares the catalog version against what's installed and offers to update.
 - **Export** — zip an installed drop-in app to share it.
 - **Delete** — remove an app's folder.
-- **Refresh** — re-scan for changes (import and delete refresh automatically).
-- **Community apps ↗** — opens the
-  [community-apps](https://github.com/TeeJS/open-quake/tree/main/community-apps) download
-  folder, where you can grab an app's `.zip` and import it. See
-  [Community apps](community-apps.md) for installing and submitting.
+- **Refresh** — re-scan for changes.
+- **Community apps ↗** — the default source: the
+  [community-apps](https://github.com/TeeJS/open-quake/tree/main/community-apps) repository.
+  See [Community apps](community-apps.md) for installing and submitting.
 
 **Storage location** (Advanced) — drop-in apps live in **`%APPDATA%\open-quake\apps`** by default
 (switchable to `%LOCALAPPDATA%\open-quake\apps`). This is the **only** place open-quake looks for
