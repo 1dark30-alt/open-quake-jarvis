@@ -17,6 +17,7 @@
   // checkbox inside it (which calls render()) doesn't collapse the section out from under the user.
   let advOpen = false;
   let ltMeterStop = null;   // teardown for the LucidType mic test meter (getUserMedia); stopped on any editor re-render
+  let githubAuthPollTimer = null;   // device-flow poll while the GitHub app's editor setup is visible
   // QMK RGB-Matrix effect names — index is the value written to the device (0 = ring off).
   const LED_EFFECTS = ['All Off (ring off)', 'Solid Color', 'Alphas Mods', 'Gradient Up/Down', 'Gradient Left/Right', 'Breathing', 'Band Sat.', 'Band Val.', 'Pinwheel Sat.', 'Pinwheel Val.', 'Spiral Sat.', 'Spiral Val.', 'Cycle All', 'Cycle Left/Right', 'Cycle Up/Down', 'Rainbow Moving Chevron', 'Cycle Out/In', 'Cycle Out/In Dual', 'Cycle Pinwheel', 'Cycle Spiral', 'Dual Beacon', 'Rainbow Beacon', 'Rainbow Pinwheels', 'Raindrops', 'Jellybean Raindrops', 'Hue Breathing', 'Hue Pendulum', 'Hue Wave', 'Pixel Rain', 'Pixel Flow', 'Pixel Fractal', 'Typing Heatmap', 'Digital Rain', 'Solid Reactive Simple', 'Solid Reactive', 'Solid Reactive Wide', 'Solid Reactive Multi Wide', 'Solid Reactive Cross', 'Solid Reactive Multi Cross', 'Solid Reactive Nexus', 'Solid Reactive Multi Nexus', 'Splash', 'Multi Splash', 'Solid Splash', 'Solid Multi Splash'];
   const LED_DEFAULT = { effect: 1, brightness: 200, speed: 128, hue: 128, sat: 255 };
@@ -1067,7 +1068,11 @@
     } catch (e) {
       dirty = true;
       document.getElementById('saveBtn').disabled = false;
-      setState('save failed: secrets could not be stored securely', 'dirty');
+      const detail = e && typeof e.message === 'string' ? e.message.trim() : '';
+      const reason = !detail || detail === 'secure persistence failed'
+        ? 'secrets could not be stored securely'
+        : detail.slice(0, 180);
+      setState('save failed: ' + reason, 'dirty');
       return false;
     }
   }
@@ -2562,6 +2567,7 @@
       if (inp) { inp.value = p; inp.dispatchEvent(new Event('change', { bubbles: true })); }
     });
     if (def.id === 'discord') appendDiscordSetup(el);
+    if (def.id === 'github') appendGitHubSetup(el);
     if (def.id === 'deck-host') appendDeckProfiles(el);
     enforceMusicCap(g);
   }
@@ -2668,6 +2674,96 @@
         catch (error) { result = { ok: false, error: error.message || String(error) }; }
         if (!result || !result.ok) { message('Disconnect failed: ' + ((result && result.error) || ''), true); disconnect.disabled = false; return; }
         await draw();
+      };
+    };
+    await draw();
+  }
+  // GitHub mirrors Discord's app-page setup: configuration and OAuth lifecycle stay in the desktop
+  // editor, while the touchscreen page remains an operations surface. Device codes are safe DTOs;
+  // access and refresh tokens never cross this renderer boundary.
+  async function appendGitHubSetup(el) {
+    if (githubAuthPollTimer) { clearTimeout(githubAuthPollTimer); githubAuthPollTimer = null; }
+    if (!config.settings) config.settings = {};
+    if (!config.settings.github || typeof config.settings.github !== 'object') config.settings.github = { repository: '', branch: '' };
+    if (!config.settings.oauth || typeof config.settings.oauth !== 'object') config.settings.oauth = { providers: {}, tokens: {} };
+    if (!config.settings.oauth.providers || typeof config.settings.oauth.providers !== 'object') config.settings.oauth.providers = {};
+    if (!config.settings.oauth.providers.github || typeof config.settings.oauth.providers.github !== 'object') config.settings.oauth.providers.github = {};
+
+    const box = document.createElement('div');
+    box.className = 'advsec';
+    box.style.cssText = 'margin-top:12px;padding:10px;border:1px solid #213145;border-radius:8px';
+    el.appendChild(box);
+    const guideUrl = 'https://github.com/TeeJS/open-quake/blob/main/docs/github.md';
+    const createUrl = 'https://github.com/settings/applications/new';
+
+    const draw = async notice => {
+      if (!box.isConnected) return;
+      if (githubAuthPollTimer) { clearTimeout(githubAuthPollTimer); githubAuthPollTimer = null; }
+      let status = null;
+      try { status = await configApi.getGitHubStatus(); } catch (error) {}
+      const connected = !!(status && status.connected);
+      const local = config.settings.github;
+      const localProvider = config.settings.oauth.providers.github;
+      box.innerHTML = `<div class="row" style="gap:8px;align-items:center">
+          <label style="width:auto;font-weight:bold">GitHub account</label>
+          <span class="hint" style="margin:0">${connected ? 'Connected' : status && status.configured ? 'Ready to connect' : 'Not configured'}</span>
+          <span id="ghMsg" class="hint" style="margin:0 0 0 auto">${esc(notice || '')}</span>
+        </div>
+        <div class="row"><label>OAuth Client ID</label><input id="ghClientId" value="${esc(localProvider.clientId || '')}" placeholder="Iv1…" autocomplete="off" style="flex:1"></div>
+        <p class="hint">Create a GitHub OAuth App, enable <b>Device Flow</b>, and paste its public Client ID. For GitHub's required callback field, use <code>http://127.0.0.1:53682/callback</code>; Device Flow never contacts it and open-quake does not listen on that port. No client secret is used or stored.</p>
+        <div class="row"><label>Starting repository</label><input id="ghRepository" value="${esc(local.repository || '')}" placeholder="optional owner/repository" autocomplete="off" style="flex:1"></div>
+        <div class="row"><label>Starting branch</label><input id="ghBranch" value="${esc(local.branch || '')}" placeholder="optional; blank uses each repository's default" autocomplete="off" style="flex:1"></div>
+        <p class="hint">These are optional. The touchscreen GitHub page lists every repository your account can access and remembers the last one selected on this device.</p>
+        <div class="row"><label>Permissions</label><span class="hint" style="margin:0">repo · offline_access</span></div>
+        <div id="ghDevice" class="row" style="display:none"><label>Device code</label><strong id="ghDeviceCode" style="font:700 20px Consolas,monospace;letter-spacing:.12em;color:#9b7cff"></strong><span class="hint" style="margin:0">Enter this in the GitHub page opened in your browser.</span></div>
+        <p class="hint" style="margin:4px 0 8px"><a href="#" id="ghGuide">GitHub connection guide ↗</a> · <a href="#" id="ghCreate">Create OAuth App ↗</a> · Save changes before connecting or reconnecting.</p>
+        <div class="row" style="gap:8px">
+          <button id="ghConnect">${connected ? 'Reconnect' : 'Connect'}</button>
+          <button class="danger" id="ghDisconnect"${connected ? '' : ' disabled'}>Disconnect</button>
+        </div>`;
+
+      const message = (text, bad) => { const target = box.querySelector('#ghMsg'); if (target) { target.textContent = text || ''; target.style.color = bad ? '#c98' : '#7e93ab'; } };
+      box.querySelector('#ghClientId').oninput = event => { localProvider.clientId = event.target.value; markDirty(); };
+      box.querySelector('#ghRepository').oninput = event => { local.repository = event.target.value; markDirty(); };
+      box.querySelector('#ghBranch').oninput = event => { local.branch = event.target.value; markDirty(); };
+      box.querySelector('#ghGuide').onclick = event => { event.preventDefault(); configApi.openExternal(guideUrl); };
+      box.querySelector('#ghCreate').onclick = event => { event.preventDefault(); configApi.openExternal(createUrl); };
+
+      const showDevice = result => {
+        const row = box.querySelector('#ghDevice'); const code = box.querySelector('#ghDeviceCode');
+        if (row && code) { code.textContent = result.userCode || ''; row.style.display = 'flex'; }
+      };
+      const poll = result => {
+        showDevice(result);
+        githubAuthPollTimer = setTimeout(async () => {
+          githubAuthPollTimer = null;
+          if (!box.isConnected) return;
+          let next;
+          try { next = await configApi.pollGitHubConnect(); }
+          catch (error) { next = { ok:false, error:error.message || String(error) }; }
+          if (!next || !next.ok) { message('Connect failed: ' + ((next && next.error) || ''), true); return; }
+          if (next.pending) { message('Waiting for GitHub approval…'); poll(next); return; }
+          const account = next.account && next.account.login ? ' as ' + next.account.login : '';
+          await draw('Connected' + account);
+        }, Math.max(1000, Number(result.retryAfterMs) || 5000));
+      };
+      box.querySelector('#ghConnect').onclick = async event => {
+        if (dirty) { message('Save your changes first, then connect.', true); return; }
+        event.currentTarget.disabled = true; message('Opening browser…');
+        let result;
+        try { result = await configApi.connectGitHub(); }
+        catch (error) { result = { ok:false, error:error.message || String(error) }; }
+        if (!result || !result.ok) { message('Connect failed: ' + ((result && result.error) || ''), true); event.currentTarget.disabled = false; return; }
+        message('Enter the device code in GitHub…'); poll(result);
+      };
+      box.querySelector('#ghDisconnect').onclick = async event => {
+        if (!window.confirm('Disconnect GitHub and remove the stored OAuth tokens?')) return;
+        event.currentTarget.disabled = true; message('Disconnecting…');
+        let result;
+        try { result = await configApi.disconnectGitHub(); }
+        catch (error) { result = { ok:false, error:error.message || String(error) }; }
+        if (!result || !result.ok) { message('Disconnect failed: ' + ((result && result.error) || ''), true); event.currentTarget.disabled = false; return; }
+        await draw('Disconnected');
       };
     };
     await draw();
@@ -2828,6 +2924,7 @@
 
   function render() {
     if (ltMeterStop) { try { ltMeterStop(); } catch (e) {} ltMeterStop = null; }   // stop the LucidType mic test meter on any re-render
+    if (githubAuthPollTimer) { clearTimeout(githubAuthPollTimer); githubAuthPollTimer = null; }
     renderGrids();
     renderGroups();
     // Sidebar: which list is visible + which + buttons row + which tab is highlighted.
@@ -3689,7 +3786,8 @@
         const host = document.getElementById('sOauthList'); if (!host) return;
         let providers = [];
         try { providers = await configApi.listOAuthProviders(); } catch (e) {}
-        providers = providers.filter(value => value.provider !== 'discord');
+        // Discord and GitHub own their authentication UI inside their built-in apps.
+        providers = providers.filter(value => value.provider !== 'discord' && value.provider !== 'github');
         if (!providers.length) { host.innerHTML = '<p class="hint">No OAuth providers available.</p>'; return; }
         const authState = p => p.connected ? 'Connected, ' + fmtExpiry(p.expiresAt) : (p.configured ? 'Ready to connect' : 'Not configured');
         const identity = p => p.identity && (p.identity.global_name || p.identity.username)
