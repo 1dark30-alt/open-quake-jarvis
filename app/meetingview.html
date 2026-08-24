@@ -74,6 +74,12 @@
   .ctl.accept .btn { color:var(--accept); }
   .ctl.decline .btn { color:var(--danger); }
   .ctl.end .btn { background:var(--danger); color:#1a0505; }
+  /* Optional big Record button beside Hang Up (Settings → Meeting → Large record button). Idle = a red
+     record dot on the surface circle; live = solid red with a dark stop square. Independent of the
+     top-right record indicator. */
+  .ctl.rec .btn .dot { width:44px; height:44px; border-radius:50%; background:var(--danger); }
+  .ctl.rec.on .btn { background:var(--danger); }
+  .ctl.rec.on .btn .sq { width:40px; height:40px; border-radius:8px; background:#1a0505; }
   .ctl.foc:focus-visible .btn { box-shadow:0 0 0 4px var(--accent); }
   /* Only with all three columns open is the deck tight; pull 72px out of its whitespace (separator
      margins 48->24 = 48px, control gaps 34->28 = 24px across the Teams layout's 4 gaps). Measured

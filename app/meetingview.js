@@ -83,9 +83,28 @@ function buildCtl(a) {
   b.onclick = function () { fireAction(platform, a.action, a.label); };
   return b;
 }
+// Optional big Record button, shown beside Hang Up only when Settings → Meeting → "Large record button"
+// is on. Toggles the recording directly; the top-right record indicator is separate and untouched.
+var bigRecBtn = document.createElement('button');
+bigRecBtn.type = 'button';
+bigRecBtn.id = 'bigRec';
+bigRecBtn.className = 'ctl press foc rec';
+bigRecBtn.onclick = function () { if (curState.recording) doStop(); else doStart(); };
+function syncBigRec() {
+  var on = !!(curState && curState.largeRecord);
+  bigRecBtn.style.display = on ? '' : 'none';
+  if (!on) return;
+  var live = !!(curState && curState.recording);
+  bigRecBtn.classList.toggle('on', live);
+  bigRecBtn.innerHTML = live
+    ? '<span class="btn"><span class="sq"></span></span><span class="lab">Stop</span>'
+    : '<span class="btn"><span class="dot"></span></span><span class="lab">Record</span>';
+}
 function renderDeck() {
   var av = $('avRow'); av.innerHTML = ''; AV.forEach(function (a) { av.appendChild(buildCtl(a)); });
   var call = $('callRow'); call.innerHTML = ''; (CALL[platform] || []).forEach(function (a) { call.appendChild(buildCtl(a)); });
+  call.appendChild(bigRecBtn);   // right of Hang Up; syncBigRec hides it unless enabled
+  syncBigRec();
   document.querySelectorAll('.seg').forEach(function (b) { b.classList.toggle('active', b.dataset.platform === platform); });
 }
 document.querySelectorAll('.seg').forEach(function (b) {
@@ -196,9 +215,10 @@ function applyState(st) {
   $('volPct').classList.toggle('unknown', !known);
   $('volTrack').style.display = known ? '' : 'none';
   $('volFill').style.width = (known ? Math.max(0, Math.min(100, v)) : 0) + '%';
-  // header: Record button vs live pill
+  // header: Record button vs live pill (top-right indicator — unchanged by the big button)
   $('recToggle').style.display = live ? 'none' : 'flex';
   $('pill').style.display = live ? 'flex' : 'none';
+  syncBigRec();   // optional big Record button beside Hang Up mirrors the same live state
   // popover open + mode
   wrap.classList.toggle('drawer-open', drawerManual);
   $('recPanel').classList.toggle('details', live);
@@ -223,11 +243,12 @@ $('recClose').onclick = function () { drawerManual = false; applyState(curState)
 $('pill').onclick = function (e) { if (e.target.closest('#pillStop')) return; drawerManual = true; applyState(curState); };
 $('pillStop').onclick = function () { doStop(); };
 $('recStopBig').onclick = function () { doStop(); };
-$('recStart').onclick = function () {
+function doStart() {
   fetch('/meeting-record/start', { cache: 'no-store' }).then(function (r) { return r.json(); })
     .then(function (r) { if (r && r.error) statusShow(r.error, true); drawerManual = false; if (r && r.state) applyState(r.state); pollState(); })
     .catch(function () { statusShow('Could not start recording', true); });
-};
+}
+$('recStart').onclick = function () { doStart(); };
 function doStop() {
   fetch('/meeting-record/stop', { cache: 'no-store' }).then(function (r) { return r.json(); })
     .then(function (r) { drawerManual = false; if (r && r.state) applyState(r.state); pollState(); })

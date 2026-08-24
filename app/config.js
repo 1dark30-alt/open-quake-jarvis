@@ -3068,7 +3068,7 @@
     const th = currentTheme();
     // Meeting recording settings (config.settings.meeting) — global so auto-record works regardless of
     // which app the panel is showing. Same shape as MEETING_DEFAULTS in main.js.
-    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '', joplinEnabled: false, joplinUrl: '', joplinToken: '', joplinNotebook: 'NW Pipe', slideCaptureEnabled: false, slideAutoStartOnSelect: false, slideNotifications: true, slideHotkeyToggle: 'Ctrl+Alt+S', slideHotkeySelect: 'Ctrl+Alt+W', slideHotkeyManual: 'Ctrl+Alt+C', slideAppFilter: '', slideIdleStopMin: 30, highlightEnabled: false, panelsOpen: '' }, (config.settings || {}).meeting || {});
+    const currentMe = () => Object.assign({ folder: '', processedFolder: '', processedByDate: false, transcribeUrl: '', analysisAi: 'claude', micDevice: '', echoGate: false, silenceStopMin: 0, autoRecord: false, recordApps: 'Zoom.exe,Teams.exe,ms-teams.exe', outlookEnabled: false, meetingInfoSource: 'classic', outlookAccount: '', outlookCalendar: 'Calendar', outlookSkipPrefixes: 'Canceled:', transcribeThreshold: '', myName: '', separateRecurring: false, appendMeetingName: false, separateTranscript: false, useDetailsFolder: false, transcribeHooksEnabled: false, preTranscribeCmd: '', postTranscribeCmd: '', taskListEnabled: false, taskListFolder: '', joplinEnabled: false, joplinUrl: '', joplinToken: '', joplinNotebook: 'NW Pipe', slideCaptureEnabled: false, slideAutoStartOnSelect: false, slideNotifications: true, slideHotkeyToggle: 'Ctrl+Alt+S', slideHotkeySelect: 'Ctrl+Alt+W', slideHotkeyManual: 'Ctrl+Alt+C', slideAppFilter: '', slideIdleStopMin: 30, highlightEnabled: false, panelsOpen: '', largeRecordButton: false }, (config.settings || {}).meeting || {});
     const me = currentMe();
     // Global TTS/STT (Wyoming) endpoints (config.settings.voice) — same shape as VOICE_DEFAULTS in
     // voiceConfig.js. Each service has its own host+port so STT and TTS can live on different servers.
@@ -3269,6 +3269,9 @@
 
       <div class="row" style="margin-top:16px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meHighlight" ${me.highlightEnabled ? 'checked' : ''}> Enable Meeting Highlights</label></div>
       <p class="hint">Adds a Highlight column to the meeting panel: tap to start flagging a moment, tap again to end it. The flagged spans are saved with the recording and handed to the analysis AI, which calls them out in a <b>Highlights</b> section of the meeting notes.</p>
+
+      <div class="row" style="margin-top:16px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meLargeRec" ${me.largeRecordButton ? 'checked' : ''}> Large record button</label></div>
+      <p class="hint">Adds a big Record button to the meeting panel, beside the Hang&nbsp;Up button, for one-tap start/stop. The small Record indicator in the top-right corner is unchanged.</p>
 
       <details class="advsec" style="margin-top:22px">
       <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Meeting Slide Capture</summary>
@@ -3992,6 +3995,7 @@
         if (p) { document.getElementById('meProcessed').value = p; saveMe({ processedFolder: p }); }
       };
       document.getElementById('meByDate').onchange = e => saveMe({ processedByDate: e.target.checked });
+      document.getElementById('meLargeRec').onchange = e => saveMe({ largeRecordButton: e.target.checked });
       document.getElementById('meEditPrompt').onclick = () => configApi.editMeetingAnalysisPrompt();
       document.getElementById('meOutlook').onchange = e => {
         saveMe({ outlookEnabled: e.target.checked });
