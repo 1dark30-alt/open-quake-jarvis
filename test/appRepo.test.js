@@ -1,7 +1,25 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { repoRawBase, indexUrl, zipUrl, cmpVersion, parseIndex, isAllowedRepoUrl } = require('../app/appRepo');
+const { repoRawBase, indexUrl, zipUrl, cmpVersion, parseIndex, isAllowedRepoUrl, githubContentsCoords, githubContentsUrl } = require('../app/appRepo');
+
+test('githubContentsCoords parses tree, blob, and raw URLs', () => {
+  assert.deepEqual(githubContentsCoords('https://github.com/TeeJS/open-quake-apps-private/tree/main/community-apps'),
+    { owner: 'TeeJS', repo: 'open-quake-apps-private', ref: 'main', path: 'community-apps' });
+  assert.deepEqual(githubContentsCoords('https://github.com/o/r/blob/dev/a/b/'),
+    { owner: 'o', repo: 'r', ref: 'dev', path: 'a/b' });
+  assert.deepEqual(githubContentsCoords('https://raw.githubusercontent.com/o/r/main/apps'),
+    { owner: 'o', repo: 'r', ref: 'main', path: 'apps' });
+  assert.equal(githubContentsCoords('https://example.com/x'), null);
+});
+
+test('githubContentsUrl builds an authenticated Contents API URL', () => {
+  const c = githubContentsCoords('https://github.com/TeeJS/open-quake-apps-private/tree/main/community-apps');
+  assert.equal(githubContentsUrl(c, 'index.json'),
+    'https://api.github.com/repos/TeeJS/open-quake-apps-private/contents/community-apps/index.json?ref=main');
+  assert.equal(githubContentsUrl(c, 'quake-bird.zip'),
+    'https://api.github.com/repos/TeeJS/open-quake-apps-private/contents/community-apps/quake-bird.zip?ref=main');
+});
 
 test('isAllowedRepoUrl accepts only github hosts', () => {
   assert.equal(isAllowedRepoUrl('https://github.com/TeeJS/open-quake/tree/main/community-apps'), true);

@@ -22,6 +22,23 @@ function repoRawBase(url) {
 
 function indexUrl(base) { return repoRawBase(base) + '/index.json'; }
 
+// Parse a github.com tree/blob URL (or a raw.githubusercontent base) into Contents-API coordinates
+// { owner, repo, ref, path }, used to read PRIVATE repos with an OAuth token. Returns null otherwise.
+function githubContentsCoords(url) {
+  var s = String(url || '').trim();
+  var m = s.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/(?:tree|blob)\/([^/]+)(?:\/(.*))?$/i);
+  if (!m) m = s.match(/^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)(?:\/(.*))?$/i);
+  if (!m) return null;
+  return { owner: m[1], repo: m[2], ref: m[3], path: (m[4] || '').replace(/\/+$/, '') };
+}
+
+// GitHub Contents API URL for a file inside the repo path (fetch with Accept: application/vnd.github.raw).
+function githubContentsUrl(coords, file) {
+  if (!coords) return '';
+  var p = (coords.path ? coords.path + '/' : '') + String(file || '').replace(/^\/+/, '');
+  return 'https://api.github.com/repos/' + coords.owner + '/' + coords.repo + '/contents/' + p + '?ref=' + encodeURIComponent(coords.ref);
+}
+
 // Only GitHub-hosted repositories are allowed for now (github.com tree/blob URLs and the
 // raw.githubusercontent.com bases they resolve to). Blocks pointing the installer at an arbitrary host.
 function isAllowedRepoUrl(url) {
@@ -73,4 +90,4 @@ function parseIndex(json) {
   return out;
 }
 
-module.exports = { repoRawBase, indexUrl, zipUrl, cmpVersion, parseIndex, isAllowedRepoUrl };
+module.exports = { repoRawBase, indexUrl, zipUrl, cmpVersion, parseIndex, isAllowedRepoUrl, githubContentsCoords, githubContentsUrl };

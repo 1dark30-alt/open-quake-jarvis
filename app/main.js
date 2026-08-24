@@ -44,7 +44,7 @@ const { providers: oauthProviders, providerFor: oauthProviderFor, registerAppPro
 const { createOfficeGraph } = require('./officeGraph');
 const { createOfficeActions } = require('./officeActions');
 const { officeShortcutImageDataUrl } = require('./officeShortcutIcons');
-const { GitHubService, normalizeClientId: normalizeGitHubClientId, normalizeSettings: normalizeGitHubSettings, parseRepository: parseGitHubRepository, validRef: validGitHubRef } = require('./githubService');
+const { GitHubService, GITHUB_ACCESS_SCOPES, normalizeClientId: normalizeGitHubClientId, normalizeSettings: normalizeGitHubSettings, parseRepository: parseGitHubRepository, validRef: validGitHubRef } = require('./githubService');
 const { configForRenderer } = require('./oauthConfigBoundary');
 const nowplaying = require('./nowplaying');   // same singleton sysserver polls — read its snapshot to target transport
 const haschedule = require('./haschedule');   // HA Schedule dev app — fed HA creds from .env, polled while shown
@@ -774,12 +774,13 @@ async function fetchJson(url) {
   return JSON.parse(await r.text());
 }
 // Download a URL to a file, size-capped, http(s)-only, redirect-following (modeled on fetchIconToCache).
-function downloadToFile(url, dest, maxBytes) {
+function downloadToFile(url, dest, maxBytes, headers) {
   url = String(url || '').trim();
   return new Promise(resolve => {
     if (!/^https?:\/\//i.test(url)) return resolve({ ok: false, error: 'Only http(s) URLs are allowed.' });
     let req; try { req = net.request({ url, redirect: 'follow' }); } catch (e) { return resolve({ ok: false, error: 'That URL is not valid.' }); }
     req.setHeader('User-Agent', 'open-quake/' + app.getVersion() + ' (+https://github.com/TeeJS/open-quake)');
+    if (headers) Object.keys(headers).forEach(k => req.setHeader(k, headers[k]));
     let done = false;
     const fail = msg => { if (done) return; done = true; try { req.abort(); } catch (e) {} resolve({ ok: false, error: msg }); };
     req.on('error', () => fail('Could not reach the repository.'));
@@ -802,12 +803,38 @@ function downloadToFile(url, dest, maxBytes) {
 // raw.githubusercontent.com sits behind a ~5-minute CDN cache; a unique query param makes every
 // check/download fetch fresh, so a just-pushed version bump is installable immediately.
 function bustCache(url) { return url + (url.indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now(); }
+// The connected GitHub app's access token (repo scope), or '' if not connected. Used to read PRIVATE
+// app repositories through the authenticated Contents API — the token never leaves the main process.
+async function githubRepoToken() {
+  try { const t = await oauthHandler.getValidAccessToken('github', GITHUB_ACCESS_SCOPES); return (t && t.accessToken) || ''; }
+  catch (e) { return ''; }
+}
+function githubApiHeaders(token) {
+  return { Accept: 'application/vnd.github.raw', Authorization: 'Bearer ' + token, 'X-GitHub-Api-Version': '2022-11-28' };
+}
+async function fetchGithubRawJson(url, token) {
+  const r = await net.fetch(url, { method: 'GET', headers: Object.assign({ 'User-Agent': 'open-quake/' + app.getVersion() }, githubApiHeaders(token)) });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return JSON.parse(await r.text());
+}
 async function fetchRepoIndex(settingUrl) {
   if (!appRepo.isAllowedRepoUrl(settingUrl)) return { error: 'Only github.com app repositories are allowed for now.' };
   const base = appRepo.repoRawBase(settingUrl);
   if (!base) return { error: 'The app-repository URL is not a valid http(s) URL.' };
+  // Public repos: anonymous raw fetch.
   try { return { base, apps: appRepo.parseIndex(await fetchJson(bustCache(appRepo.indexUrl(base)))) }; }
-  catch (e) { return { base, error: 'Could not load the repository catalog: ' + (e.message || e) }; }
+  catch (e) {
+    // raw.githubusercontent 404s for a private repo when unauthenticated. Retry through the Contents API
+    // with the connected GitHub app's token; if it works, downloads use the same authenticated path.
+    const coords = appRepo.githubContentsCoords(settingUrl);
+    const token = coords ? await githubRepoToken() : '';
+    if (coords && token) {
+      try { return { base, coords, authed: true, apps: appRepo.parseIndex(await fetchGithubRawJson(bustCache(appRepo.githubContentsUrl(coords, 'index.json')), token)) }; }
+      catch (e2) { return { base, error: 'Could not load the private repository catalog (HTTP ' + (e2.message || e2) + '). Confirm the GitHub app is connected and has access to this repository.' }; }
+    }
+    const hint = coords ? ' If it is private, connect the GitHub app first (Settings → the GitHub page).' : '';
+    return { base, error: 'Could not load the repository catalog: ' + (e.message || e) + '.' + hint };
+  }
 }
 
 // List repo apps, annotated against what's installed (available / installed / update). `repoUrl` is the
@@ -826,11 +853,20 @@ async function listRepoApps(repoUrl) {
   return { ok: true, base: idx.base, apps };
 }
 
-async function downloadAndInstall(base, entry, settingUrl, replaceId, confirmExec) {
-  const url = appRepo.zipUrl(base, entry);
-  if (!url) return { ok: false, error: 'no download URL for "' + entry.id + '".' };
+async function downloadAndInstall(idx, entry, settingUrl, replaceId, confirmExec) {
   const tmpZip = path.join(USER_DIR, 'repo-dl-' + Date.now() + '.zip');
-  const dl = await downloadToFile(bustCache(url), tmpZip);
+  let dl;
+  if (idx.authed && idx.coords) {   // private repo: fetch the zip through the authenticated Contents API
+    if (/^https?:\/\//i.test(entry.zip || '')) return { ok: false, error: 'A private repository must host each app zip in-repo, not at an external URL.' };
+    const token = await githubRepoToken();
+    if (!token) return { ok: false, error: 'The GitHub app is not connected.' };
+    const zipName = String(entry.zip || (entry.id + '.zip')).replace(/^\/+/, '');
+    dl = await downloadToFile(bustCache(appRepo.githubContentsUrl(idx.coords, zipName)), tmpZip, undefined, githubApiHeaders(token));
+  } else {
+    const url = appRepo.zipUrl(idx.base, entry);
+    if (!url) return { ok: false, error: 'no download URL for "' + entry.id + '".' };
+    dl = await downloadToFile(bustCache(url), tmpZip);
+  }
   if (!dl.ok) return dl;
   try {
     const r = await importDropInApp(tmpZip, null, confirmExec, replaceId);
@@ -845,7 +881,7 @@ async function installRepoApp(id, confirmExec, repoUrl) {
   if (idx.error) return { ok: false, error: idx.error };
   const entry = idx.apps.find(a => a.id === id);
   if (!entry) return { ok: false, error: '"' + id + '" is not in the repository.' };
-  return downloadAndInstall(idx.base, entry, setting, null, confirmExec);
+  return downloadAndInstall(idx, entry, setting, null, confirmExec);
 }
 
 async function checkDropInUpdate(id) {
@@ -866,7 +902,7 @@ async function updateDropInApp(id, confirmExec) {
   const entry = idx.apps.find(a => a.id === id);
   if (!entry) return { ok: false, error: '"' + id + '" is no longer in the repository.' };
   if (appRepo.cmpVersion(entry.version, src.version) <= 0) return { ok: true, upToDate: true, version: src.version };
-  const r = await downloadAndInstall(idx.base, entry, src.url, id, confirmExec);
+  const r = await downloadAndInstall(idx, entry, src.url, id, confirmExec);
   return (r && r.ok) ? { ok: true, updated: true, id: r.id, name: r.name, version: entry.version } : r;
 }
 // Secret-at-rest store: encrypts the secret-typed config fields (dashboard tokens / Basic passwords /
