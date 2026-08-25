@@ -24,16 +24,27 @@
         startScrollTop: element.scrollTop,
         dragged: false,
       };
-      try { element.setPointerCapture(event.pointerId); } catch (error) {}
     }
 
     function onPointerMove(event) {
       if (!gesture || event.pointerId !== gesture.pointerId) return;
       const delta = event.clientY - gesture.startY;
       if (!gesture.dragged && Math.abs(delta) < threshold) return;
-      gesture.dragged = true;
+      if (!gesture.dragged) {
+        gesture.dragged = true;
+        try { element.setPointerCapture(event.pointerId); } catch (error) {}
+      }
       element.scrollTop = gesture.startScrollTop - delta;
       if (event.cancelable) event.preventDefault();
+    }
+
+    function abandon(event) {
+      if (!gesture || event.pointerId !== gesture.pointerId) return;
+      gesture = null;
+    }
+
+    function onPointerLeave(event) {
+      if (gesture && !gesture.dragged) abandon(event);
     }
 
     function finish(event) {
@@ -59,6 +70,8 @@
     element.addEventListener('pointermove', onPointerMove);
     element.addEventListener('pointerup', finish);
     element.addEventListener('pointercancel', finish);
+    element.addEventListener('pointerleave', onPointerLeave);
+    element.addEventListener('lostpointercapture', abandon);
     element.addEventListener('click', onClick, true);
 
     return function detach() {
@@ -67,6 +80,8 @@
       element.removeEventListener('pointermove', onPointerMove);
       element.removeEventListener('pointerup', finish);
       element.removeEventListener('pointercancel', finish);
+      element.removeEventListener('pointerleave', onPointerLeave);
+      element.removeEventListener('lostpointercapture', abandon);
       element.removeEventListener('click', onClick, true);
     };
   }
