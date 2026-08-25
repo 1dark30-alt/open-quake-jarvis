@@ -1,0 +1,47 @@
+{
+  "id": "vlc-remote",
+  "name": "VLC Desktop Remote",
+  "version": "1.0.5",
+  "description": "Control a local or network VLC player with transport, seek, volume, status, and playlist controls.",
+  "entry": "index.html",
+  "served": true,
+  "server": "server.js",
+  "options": [
+    {
+      "key": "host",
+      "label": "VLC HTTP URL",
+      "type": "text",
+      "default": "http://127.0.0.1:8080",
+      "serverOnly": true,
+      "help": "Enable VLC Web Interface in the desktop app. Use http://127.0.0.1:8080 for VLC on this PC."
+    },
+    {
+      "key": "password",
+      "label": "VLC password",
+      "type": "secret",
+      "default": "",
+      "serverOnly": true,
+      "help": "The password set in VLC Preferences > Main interfaces > Lua."
+    },
+    {
+      "key": "refreshSeconds",
+      "label": "Refresh interval",
+      "type": "select",
+      "default": "2",
+      "choices": [
+        ["1", "1 second"],
+        ["2", "2 seconds"],
+        ["5", "5 seconds"],
+        ["10", "10 seconds"],
+        ["30", "30 seconds"]
+      ],
+      "help": "How often the panel refreshes VLC status and playlist data."
+    },
+    {
+      "key": "mock",
+      "label": "Demo data",
+      "type": "bool",
+      "default": false
+    }
+  ]
+}

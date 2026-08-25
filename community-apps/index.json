@@ -55,6 +55,14 @@
       "version": "1.4.0",
       "zip": "deck-host.zip",
       "server": true
+    },
+    {
+      "id": "vlc-remote",
+      "name": "VLC Desktop Remote",
+      "description": "Control a local or network VLC player with transport, seek, volume, status, and playlist controls.",
+      "version": "1.0.5",
+      "zip": "vlc-remote.zip",
+      "server": true
     }
   ]
 }
