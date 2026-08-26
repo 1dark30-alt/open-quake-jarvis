@@ -264,6 +264,20 @@ button:focus:not(:focus-visible) { outline: none; }
   overflow: hidden;
 }
 
+.open-btn {
+  width: 100%;
+  min-height: 64px;
+  border: none;
+  border-radius: 12px;
+  background: var(--surface-raised);
+  color: var(--accent);
+  font: inherit;
+  font-size: 22px;
+  font-weight: 600;
+  padding: 0 var(--space-2);
+}
+.open-btn:active { background: var(--surface-control); }
+
 .ok-pill {
   display: flex;
   align-items: center;

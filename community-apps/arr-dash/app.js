@@ -181,6 +181,11 @@ function render(services) {
     ? items.map(itemRow).join('')
     : '<div class="empty">No active downloads</div>';
 
+  const focused = state.selected && SERVICES.find(s => s.key === state.selected);
+  $('#open-row').innerHTML = focused
+    ? '<button type="button" class="open-btn" id="open-web">Open ' + focused.name + ' web UI&nbsp;&nbsp;&#8599;</button>'
+    : '';
+
   $('#health').innerHTML = healthHtml(services);
   $('#disks').innerHTML = disksHtml(services);
   if (state.selected === 'sabnzbd') {
@@ -288,6 +293,19 @@ function mockSummary() {
     lidatube: { configured: true, up: true },
   } };
 }
+
+$('#open-row').addEventListener('click', async event => {
+  if (!event.target.closest('#open-web') || !state.selected) return;
+  try {
+    if (!mockMode) {
+      const response = await fetch('/app-api/open?svc=' + encodeURIComponent(state.selected), { cache: 'no-store' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ok === false) throw new Error(payload.error || 'Could not open');
+    }
+  } catch (error) {
+    renderError(error.message || 'Could not open');
+  }
+});
 
 $('#rail').addEventListener('click', event => {
   const row = event.target.closest('.svc[data-svc]');

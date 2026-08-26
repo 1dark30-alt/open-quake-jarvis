@@ -224,10 +224,24 @@ async function summary(options) {
   return { ok: true, services: { sonarr, radarr, lidarr, sabnzbd, youtarr, lidatube } };
 }
 
+const OPENABLE = new Set(['sonarr', 'radarr', 'lidarr', 'sabnzbd', 'youtarr', 'lidatube']);
+
+function openWebUi(options, query) {
+  const svc = String(query.svc || '');
+  if (!OPENABLE.has(svc)) throw new Error('unknown service');
+  const base = baseUrl(options, svc + 'Url');
+  if (!base) throw new Error(svc + ' is not configured');
+  const shell = require('electron').shell;
+  if (!shell || typeof shell.openExternal !== 'function') throw new Error('opening a browser is only available on the panel');
+  shell.openExternal(base);
+  return { ok: true };
+}
+
 async function handle(action, context) {
   const options = context && context.options || {};
   try {
     if (action === 'summary') return await summary(options);
+    if (action === 'open') return openWebUi(options, context && context.query || {});
     return { ok: false, error: 'unknown action' };
   } catch (error) {
     return { ok: false, error: safeError(error) };
