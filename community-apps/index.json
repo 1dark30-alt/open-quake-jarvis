@@ -41,6 +41,14 @@
       "server": false
     },
     {
+      "id": "music-assistant",
+      "name": "Music Assistant",
+      "description": "Full Music Assistant controller: now playing, queue, players and grouping, library browse and search.",
+      "version": "1.0.1",
+      "zip": "music-assistant.zip",
+      "server": false
+    },
+    {
       "id": "news-spotlight",
       "name": "News Spotlight",
       "description": "Full-screen rotating RSS news reader with Ken Burns motion and breaking-news mode.",

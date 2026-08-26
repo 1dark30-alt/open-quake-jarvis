@@ -112,11 +112,11 @@ body.idle .cover { transform: scale(0.6); }
 
 /* Center zone */
 .zone-center { width: 728px; flex: none; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
-.meta { height: 120px; min-height: 120px; }
+.meta { height: 120px; min-height: 120px; overflow: hidden; }
 .title-line { display: flex; align-items: center; gap: var(--space-2); }
 .track-title {
   flex: 1; min-width: 0;
-  font-size: 40px; font-weight: 800; line-height: 1.15;
+  font-size: 40px; font-weight: 800; line-height: 1.1;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   margin: 0;
 }
@@ -127,9 +127,9 @@ body.idle .cover { transform: scale(0.6); }
   display: flex; align-items: center; justify-content: center;
 }
 .fav-btn svg { width: 26px; height: 26px; }
-.track-artist { font-size: 30px; font-weight: 600; color: var(--muted); margin-top: 4px;
+.track-artist { font-size: 30px; font-weight: 600; color: var(--muted); margin-top: 2px; line-height: 1.2;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.track-album { font-size: 24px; font-weight: 500; color: var(--muted); opacity: 0.75; margin-top: 2px;
+.track-album { font-size: 24px; font-weight: 500; color: var(--muted); opacity: 0.75; line-height: 1.2;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* idle favorites strip lives inside .meta so nothing below moves */

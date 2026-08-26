@@ -1,7 +1,7 @@
 {
   "id": "music-assistant",
   "name": "Music Assistant",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Full Music Assistant controller: now playing, queue, players and grouping, library browse and search.",
   "entry": "index.html",
   "served": true,
@@ -27,13 +27,6 @@
       "type": "text",
       "default": "",
       "help": "Optional player name to control when the page opens. Blank remembers the last-used player."
-    },
-    {
-      "key": "mock",
-      "label": "Demo data",
-      "type": "bool",
-      "default": false,
-      "help": "Try the UI without a Music Assistant connection."
     }
   ]
 }

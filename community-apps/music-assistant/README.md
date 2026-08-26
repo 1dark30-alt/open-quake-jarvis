@@ -17,7 +17,6 @@ every change instantly.
    - **API token** — paste the long-lived token (stored encrypted).
    - **Default player** — optional player name to control on open; blank remembers
      the last-used player.
-   - **Demo data** — try the UI with no server.
 
 MA servers older than 2.7 (no authentication) work without a token.
 

@@ -153,7 +153,9 @@
   renderers.now = function renderNow() {
     const queue = activeQueue();
     const item = queue && queue.current_item;
-    const idle = !item || !queue || queue.state === 'idle';
+    // "idle" (scaled art + recently-played strip) only when NO track is loaded.
+    // A stopped queue with a current item keeps the normal metadata layout.
+    const idle = !item;
     document.body.classList.toggle('idle', idle);
 
     const cover = $('#cover');
