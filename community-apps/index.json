@@ -12,7 +12,7 @@
       "id": "duplicati-dash",
       "name": "Duplicati Dashboard",
       "description": "Backup status board for a Duplicati server — every job with a green/red result dot, live progress while running, and one tap to open the web UI on the PC.",
-      "version": "1.0.0",
+      "version": "1.0.2",
       "zip": "duplicati-dash.zip",
       "server": true
     },

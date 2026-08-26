@@ -1,7 +1,7 @@
 {
   "id": "duplicati-dash",
   "name": "Duplicati Dashboard",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Backup status board for a Duplicati server — every job with a green/red result dot, live progress while running, and one tap to open the web UI on the PC.",
   "entry": "index.html",
   "served": true,
@@ -42,13 +42,6 @@
         ["60", "60 seconds"]
       ],
       "help": "How often the dashboard polls Duplicati."
-    },
-    {
-      "key": "mock",
-      "label": "Demo data",
-      "type": "bool",
-      "default": false,
-      "help": "Show sample data without contacting any server."
     }
   ]
 }

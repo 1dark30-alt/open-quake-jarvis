@@ -1,7 +1,6 @@
 'use strict';
 
 const query = new URLSearchParams(location.search);
-const mockMode = query.get('mock') === '1' || query.get('mock') === 'true';
 const refreshSeconds = Math.max(10, Math.min(120, parseInt(query.get('refreshSeconds'), 10) || 30));
 
 const $ = selector => document.querySelector(selector);
@@ -196,7 +195,7 @@ function wireScrollbar() {
 // ── Data loop ────────────────────────────────────────────────────────────────
 async function refresh() {
   try {
-    const payload = mockMode ? mockSummary() : await fetchSummary();
+    const payload = await fetchSummary();
     render(payload);
   } catch (error) {
     renderDown(error.message || 'Refresh failed');
@@ -214,33 +213,11 @@ async function fetchSummary() {
   return payload;
 }
 
-function mockSummary() {
-  const hoursAgo = h => new Date(Date.now() - h * 3600e3).toISOString();
-  const hoursAhead = h => new Date(Date.now() + h * 3600e3).toISOString();
-  return {
-    ok: true, configured: true,
-    state: { paused: false, activeBackupId: null, activeName: null, phase: null, progress: null, speed: null },
-    backups: [
-      { id: '3', name: 'Documents → OneDrive', status: 'error', lastRun: hoursAgo(72), duration: null, sourceSize: '12 GB', targetSize: '9 GB', versions: 8, nextRun: hoursAhead(6), lastError: 'The remote server returned 401 Unauthorized', warningCount: 0 },
-      { id: '4', name: 'Media Metadata', status: 'warning', lastRun: hoursAgo(5), duration: '00:02:11', sourceSize: '4.2 GB', targetSize: '3.1 GB', versions: 21, nextRun: hoursAhead(19), lastError: '', warningCount: 2 },
-      { id: '1', name: 'Appdata Backup', status: 'ok', lastRun: hoursAgo(7), duration: '00:04:12', sourceSize: '182 GB', targetSize: '121 GB', versions: 14, nextRun: hoursAhead(17), lastError: '', warningCount: 0 },
-      { id: '2', name: 'Photos → B2', status: 'ok', lastRun: hoursAgo(8), duration: '00:12:40', sourceSize: '1.4 TB', targetSize: '1.1 TB', versions: 30, nextRun: hoursAhead(16), lastError: '', warningCount: 0 },
-      { id: '5', name: 'New VM Backup', status: 'never', lastRun: null, duration: null, sourceSize: null, targetSize: null, versions: 0, nextRun: hoursAhead(4), lastError: '', warningCount: 0 },
-    ],
-    notifications: [
-      { type: 'Error', backup: 'Documents → OneDrive', message: 'Error while running: 401 Unauthorized from remote' },
-      { type: 'Warning', backup: 'Media Metadata', message: 'Warning: 2 files could not be read' },
-    ],
-  };
-}
-
 $('#open-web').addEventListener('click', async () => {
   try {
-    if (!mockMode) {
-      const response = await fetch('/app-api/open', { cache: 'no-store' });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload.ok === false) throw new Error(payload.error || 'Could not open');
-    }
+    const response = await fetch('/app-api/open', { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) throw new Error(payload.error || 'Could not open');
   } catch (error) {
     renderDown(error.message || 'Could not open');
   }

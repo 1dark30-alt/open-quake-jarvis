@@ -19,8 +19,7 @@ without scrolling.
 - **Web UI password** — stored as an encrypted secret, never reaches the page.
 - **Pre-auth token (optional)** — used instead of the password when set;
   requires Duplicati started with `--webservice-pre-auth-tokens=<token>`.
-- **Refresh interval** — 10/30/60 s (default 30). **Demo data** tries the UI
-  without a server.
+- **Refresh interval** — 10/30/60 s (default 30).
 
 ## Duplicati-side requirements
 

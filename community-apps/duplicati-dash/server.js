@@ -105,11 +105,9 @@ function parseDupTime(value) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-const SEVERITY = { error: 0, warning: 1, ok: 2, never: 3 };
-
-function backupStatus(meta, notificationTypes) {
-  if (notificationTypes.includes('Error')) return 'error';
-  if (notificationTypes.includes('Warning')) return 'warning';
+function backupStatus(meta, freshNotificationTypes) {
+  if (freshNotificationTypes.includes('Error')) return 'error';
+  if (freshNotificationTypes.includes('Warning')) return 'warning';
   const lastBackup = parseDupTime(meta.LastBackupDate || meta.LastBackupFinished);
   const lastError = parseDupTime(meta.LastErrorDate);
   if (lastError && meta.LastErrorMessage && (!lastBackup || lastError > lastBackup)) return 'error';
@@ -135,6 +133,7 @@ async function summary(options) {
 
   const notes = Array.isArray(notifications) ? notifications : [];
   const nameById = {};
+  const freshNotes = [];
 
   const jobs = (Array.isArray(backups) ? backups : []).map(entry => {
     const backup = entry.Backup || {};
@@ -142,7 +141,16 @@ async function summary(options) {
     const schedule = entry.Schedule || null;
     const id = String(backup.ID);
     nameById[id] = backup.Name;
-    const types = notes.filter(n => String(n.BackupID) === id).map(n => n.Type);
+    // Some servers never auto-dismiss old notifications, so only evidence NEWER than
+    // the job's last successful run may color its dot — freshest data wins.
+    const lastRunIso = parseDupTime(meta.LastBackupFinished || meta.LastBackupDate);
+    const fresh = notes.filter(n => {
+      if (String(n.BackupID) !== id) return false;
+      const when = parseDupTime(n.Timestamp);
+      return !lastRunIso || !when || when > lastRunIso;
+    });
+    freshNotes.push(...fresh);
+    const types = fresh.map(n => n.Type);
     const status = backupStatus(meta, types);
     return {
       id,
@@ -158,7 +166,7 @@ async function summary(options) {
       warningCount: types.filter(t => t === 'Warning').length,
     };
   });
-  jobs.sort((a, b) => (SEVERITY[a.status] - SEVERITY[b.status]) || a.name.localeCompare(b.name));
+  jobs.sort((a, b) => (parseInt(a.id, 10) || 0) - (parseInt(b.id, 10) || 0)); // pure Duplicati ID order
 
   return {
     ok: true,
@@ -172,7 +180,7 @@ async function summary(options) {
       speed: progress && progress.BackendSpeed > 0 ? progress.BackendSpeed : null,
     },
     backups: jobs,
-    notifications: notes.slice(0, 4).map(n => ({
+    notifications: freshNotes.slice(0, 4).map(n => ({
       type: n.Type,
       backup: nameById[String(n.BackupID)] || n.Title || '',
       message: n.Message || n.Title || '',
