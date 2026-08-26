@@ -1,0 +1,42 @@
+{
+  "id": "azure-devops",
+  "name": "Azure DevOps",
+  "version": "1.0.2",
+  "description": "Project-focused Azure DevOps repositories, pipelines, pull requests, and work items.",
+  "entry": "index.html",
+  "served": true,
+  "server": "server.js",
+  "knob": true,
+  "oauth": {
+    "name": "Microsoft Entra ID for Azure DevOps",
+    "authUrl": "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize",
+    "tokenUrl": "https://login.microsoftonline.com/organizations/oauth2/v2.0/token",
+    "scopes": [
+      "499b84ac-1321-427f-aa17-267ca6975798/.default",
+      "offline_access"
+    ]
+  },
+  "options": [
+    {
+      "key": "oauthClientId",
+      "label": "Microsoft Entra application (client) ID",
+      "type": "text",
+      "default": "",
+      "serverOnly": true
+    },
+    {
+      "key": "oauthClientSecret",
+      "label": "Client secret (confidential clients only)",
+      "type": "secret",
+      "default": "",
+      "serverOnly": true
+    },
+    {
+      "key": "enablePipelineActions",
+      "label": "Enable pipeline run and cancel controls",
+      "type": "bool",
+      "default": false,
+      "serverOnly": true
+    }
+  ]
+}

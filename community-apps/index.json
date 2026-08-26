@@ -17,6 +17,22 @@
       "server": true
     },
     {
+      "id": "azure-devops",
+      "name": "Azure DevOps",
+      "description": "Project-focused Azure DevOps repositories, pipelines, pull requests, and work items.",
+      "version": "1.0.2",
+      "zip": "azure-devops.zip",
+      "server": true
+    },
+    {
+      "id": "azure",
+      "name": "Azure Operations",
+      "description": "Touch-first Azure operations dashboard with subscription health, resources, deployments, alerts, costs, and contextual controls.",
+      "version": "1.0.0",
+      "zip": "azure.zip",
+      "server": true
+    },
+    {
       "id": "duplicati-dash",
       "name": "Duplicati Dashboard",
       "description": "Backup status board for a Duplicati server — every job with a green/red result dot, live progress while running, and one tap to open the web UI on the PC.",
@@ -31,14 +47,6 @@
       "version": "1.0.5",
       "zip": "frigate-cams.zip",
       "server": false
-    },
-    {
-      "id": "azure",
-      "name": "Azure Operations",
-      "description": "Touch-first Azure operations dashboard with subscription health, resources, deployments, alerts, costs, and contextual controls.",
-      "version": "1.0.0",
-      "zip": "azure.zip",
-      "server": true
     },
     {
       "id": "if-player",

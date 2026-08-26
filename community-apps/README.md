@@ -26,6 +26,9 @@ For how to install or submit an app — and a safety note — see the docs:
 - **[azure](azure)** — touch-first Azure operations dashboard with configurable overview cards,
   subscription health, resources, deployments, alerts, costs, and contextual App Service / VM
   controls. Uses Microsoft Entra OAuth and an app-local server module.
+- **[azure-devops](azure-devops)** — project-focused Azure DevOps control panel for repositories,
+  pipelines and runs, pull requests, and work items. Uses Microsoft Entra OAuth with optional,
+  disabled-by-default pipeline run and cancel controls.
 - **[if-player](if-player)** — play Inform / Z-machine text adventures (Z-code and Glulx),
   with the story **read aloud** through your TTS voice and **spoken commands** transcribed by
   your STT — both picked up automatically from Settings → TTS/STT. Keyboard play works
