@@ -139,6 +139,50 @@
   footer .state.dirty { color: #ffb454; }
   footer .state.saved { color: #7CFFB2; }
   footer button.primary { padding: 9px 30px; font-size: 14px; }
+
+  /* Drop-In Apps management table */
+  .diToolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .diSearch { position: relative; flex: 1; min-width: 180px; max-width: 280px; }
+  .diSearch input { width: 100%; padding-left: 32px; background: #0a111a; }
+  .diSearch .diMag { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #6f8298; font-size: 13px; pointer-events: none; }
+  .diChips { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+  .diChip { display: inline-flex; align-items: center; gap: 6px; background: #141d29; border: 1px solid #2a3a4e; border-radius: 999px; padding: 5px 12px; font-size: 12px; color: #91a4ba; cursor: pointer; user-select: none; }
+  .diChip:hover { border-color: #3a5068; color: #cfe0f2; }
+  .diChip.on { background: #16314f; border-color: #2b6fb0; color: #fff; }
+  .diChipN { color: #6f8298; font-size: 11px; }
+  .diChip.on .diChipN { color: #bcd4ee; }
+  .diCount { color: #6f8298; font-size: 12px; margin: 14px 0 6px; }
+  .diTbl { width: 100%; border-collapse: collapse; }
+  .diTbl thead th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: #6f8298; font-weight: 600; padding: 6px 10px; border-bottom: 1px solid #1e2733; }
+  .diTbl tbody tr { border-bottom: 1px solid #141c27; }
+  .diTbl tbody tr:hover { background: #182230; }
+  .diTbl td { padding: 9px 10px; vertical-align: middle; }
+  .diAppName { font-size: 14px; font-weight: 600; color: #dbe5f0; }
+  .diAppMeta { font-size: 11.5px; color: #6f8298; margin-top: 2px; }
+  .diVer { color: #91a4ba; font-variant-numeric: tabular-nums; }
+  .diRepoPill { display: inline-block; font-size: 11px; color: #bcd4ee; background: #13243a; border: 1px solid #274a72; border-radius: 5px; padding: 2px 7px; line-height: 1.4; }
+  .diRepoPill.r1 { color: #d9c7f0; background: #241a33; border-color: #4a3a6a; }
+  .diSt { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; }
+  .diSt .diDot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .diOk { color: #6f8298; } .diOk .diDot { background: #3f7d5a; }
+  .diUpd { color: #e8b04b; font-variant-numeric: tabular-nums; } .diUpd .diDot { background: #e8b04b; }
+  .diErr { color: #c98; } .diErr .diDot { background: #8a5a2a; }
+  .diNone { color: #41566b; }
+  button.diUp { background: #1f7a44; border-color: #2f9d57; color: #eafff2; padding: 4px 10px; font-size: 12px; margin-left: 8px; }
+  button.diUp:hover { background: #248a4e; }
+  .diKebab { position: relative; text-align: right; }
+  button.diKb { background: transparent; border: 1px solid transparent; color: #91a4ba; font-size: 18px; line-height: 1; padding: 2px 8px; }
+  .diTbl tbody tr:hover button.diKb { border-color: #2a3a4e; }
+  .diMenu { display: none; position: absolute; right: 6px; top: 34px; z-index: 50; background: #141d29; border: 1px solid #2a3a4e; border-radius: 8px; padding: 4px; min-width: 148px; box-shadow: 0 8px 24px rgba(0,0,0,.5); text-align: left; }
+  .diMenu.open { display: block; }
+  .diMenu button { display: block; width: 100%; text-align: left; background: transparent; border: none; padding: 7px 10px; border-radius: 5px; font-size: 13px; }
+  .diMenu button:hover { background: #243246; }
+  .diMenu button:disabled { color: #5b6b7e; cursor: default; }
+  .diMenu button.del { color: #e88; }
+  .diMSep { height: 1px; background: #1e2733; margin: 3px 2px; }
+  .diSrcRow { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+  .diSrcLab { color: #6f8298; width: 22px; text-align: right; flex: none; font-size: 12px; }
+  .diSrcRow input { flex: 1; background: #0a111a; }
 </style>
 </head>
 <body>
