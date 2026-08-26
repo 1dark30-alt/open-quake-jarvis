@@ -1,7 +1,7 @@
 {
   "id": "ai-usage",
   "name": "AI Usage",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "At-a-glance usage monitor for Claude (Claude Code & Cowork), ChatGPT/Codex, and GitHub Copilot. Reads local Claude/Codex session logs and the GitHub billing API.",
   "entry": "index.html",
   "served": true,
@@ -30,6 +30,14 @@
       "default": "300",
       "choices": [["300", "Pro / Business — 300"], ["1500", "Pro+ — 1500"], ["1000", "Enterprise — 1000"], ["0", "Unknown / hide gauge"]],
       "help": "Included premium requests per month for your Copilot plan — sets the gauge denominator."
+    },
+    {
+      "key": "claudeLimits",
+      "label": "Show Claude 5-hour & weekly limits",
+      "type": "bool",
+      "default": true,
+      "serverOnly": true,
+      "help": "Reads your live Claude usage via your local Claude sign-in (~/.claude/.credentials.json, backed up before any token refresh) and polls api.anthropic.com at most every 5 min. Account-wide — matches on every machine. Turn off to show only local token stats."
     },
     {
       "key": "claudePath",

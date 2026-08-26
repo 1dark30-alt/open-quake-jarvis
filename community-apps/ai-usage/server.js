@@ -320,6 +320,95 @@ async function copilotUsage(options) {
   };
 }
 
+// ── Claude plan limits (5-hour + weekly) via the OAuth usage endpoint ──────────
+// Ref: github.com/trickv/hass-claude-usage. Reads the Claude login token from
+// ~/.claude/.credentials.json, refreshes it when expired, GETs /api/oauth/usage.
+// This is ACCOUNT-GLOBAL data (identical on every machine) — unlike the local logs.
+// The endpoint 429s hard (up to ~24h) if polled fast, so we call it at most every 5 min.
+const CLAUDE_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
+const CLAUDE_TOKEN_URL = 'https://console.anthropic.com/v1/oauth/token';
+const CLAUDE_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
+const CLAUDE_BETA = 'oauth-2025-04-20';
+const CLAUDE_UA = 'claude-code/2.1.229';
+const CLAUDE_MIN_INTERVAL = 300000;
+let claudeUsageCache = { at: 0, data: null, error: null };
+let credBackupDone = false;
+
+function backupCredsOnce(file) {
+  if (credBackupDone) return;
+  credBackupDone = true;
+  try { fs.copyFileSync(file, path.join(os.tmpdir(), 'oq-ai-usage-credentials-backup-' + Date.now() + '.json')); } catch (e) {}
+}
+async function refreshClaudeToken(file, creds) {
+  const o = creds.claudeAiOauth;
+  const res = await fetch(CLAUDE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ grant_type: 'refresh_token', refresh_token: o.refreshToken, client_id: CLAUDE_CLIENT_ID }),
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) throw new Error('token refresh ' + res.status);
+  const t = await res.json();
+  if (!t.access_token) throw new Error('token refresh: no access_token');
+  backupCredsOnce(file);                       // back up before the first write
+  o.accessToken = t.access_token;
+  if (t.refresh_token) o.refreshToken = t.refresh_token;
+  o.expiresAt = Date.now() + (Number(t.expires_in) || 3600) * 1000;
+  fs.writeFileSync(file, JSON.stringify(creds, null, 2));  // preserve all other keys
+  return o.accessToken;
+}
+function pctOf(x) { if (x == null) return null; const n = Number(x); if (!isFinite(n)) return null; return n <= 1 ? n * 100 : n; }
+function toEpoch(v) { if (v == null) return null; if (typeof v === 'number') return v > 1e12 ? Math.floor(v / 1000) : v; const d = Date.parse(v); return isNaN(d) ? null : Math.floor(d / 1000); }
+function parseClaudeUsage(j, plan) {
+  const fh = j.five_hour || {}, sd = j.seven_day || {};
+  return {
+    plan: plan || null,
+    limit: {
+      fiveHourPct: pctOf(fh.utilization), fiveHourResetsAt: toEpoch(fh.resets_at),
+      weeklyPct: pctOf(sd.utilization), weeklyResetsAt: toEpoch(sd.resets_at),
+    },
+  };
+}
+async function claudeLimits(options) {
+  const file = path.join(homeSub('.claude', options.claudePath), '.credentials.json');
+  const now = Date.now();
+  if (now - claudeUsageCache.at < CLAUDE_MIN_INTERVAL && (claudeUsageCache.data || claudeUsageCache.error)) {
+    return claudeUsageCache.data || { limitError: claudeUsageCache.error };
+  }
+  let creds;
+  try { creds = JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (e) { return { limitError: 'not signed in to Claude on this machine' }; }
+  const o = creds && creds.claudeAiOauth;
+  if (!o || !o.accessToken) return { limitError: 'not signed in to Claude on this machine' };
+  let token = o.accessToken;
+  if (!o.expiresAt || o.expiresAt < now + 60000) {
+    try { token = await refreshClaudeToken(file, creds); }
+    catch (e) {
+      try {                                    // Claude Code may have refreshed it already
+        const fresh = JSON.parse(fs.readFileSync(file, 'utf8')).claudeAiOauth;
+        if (fresh && fresh.expiresAt > now + 60000) token = fresh.accessToken; else throw e;
+      } catch (e2) {
+        claudeUsageCache = { at: now, data: null, error: 'Claude sign-in expired — run any claude command to refresh' };
+        return { limitError: claudeUsageCache.error };
+      }
+    }
+  }
+  let res;
+  try {
+    res = await fetch(CLAUDE_USAGE_URL, {
+      headers: { Authorization: 'Bearer ' + token, 'anthropic-beta': CLAUDE_BETA, 'User-Agent': CLAUDE_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (e) { return { limitError: 'Claude usage request failed' }; }
+  if (res.status === 429) { claudeUsageCache.at = now; return claudeUsageCache.data || { limitError: 'Claude usage rate-limited — retry shortly' }; }
+  if (res.status === 401) { claudeUsageCache = { at: now, data: null, error: 'Claude sign-in expired — run any claude command' }; return { limitError: claudeUsageCache.error }; }
+  if (res.status < 200 || res.status >= 300) return { limitError: 'Claude usage HTTP ' + res.status };
+  let j; try { j = await res.json(); } catch (e) { return { limitError: 'Claude usage: bad response' }; }
+  const data = parseClaudeUsage(j, o.subscriptionType);
+  claudeUsageCache = { at: now, data, error: null };
+  return data;
+}
+
 // ── Dispatch ───────────────────────────────────────────────────────────────────
 function homeSub(sub, override) {
   const o = String(override || '').trim();
@@ -335,7 +424,11 @@ async function handle(action, context) {
       const dir = homeSub('.claude', options.claudePath);
       const s = scan([path.join(dir, 'projects')], claudeCache, parseClaudeFile);
       const summary = claudeSummary(s.days, period);
-      return { ok: true, period, sessions: s.sessions, files: s.files, ...summary, dir: fs.existsSync(dir) };
+      let extra = {};
+      if (String(options.claudeLimits) !== 'false') {
+        try { extra = await claudeLimits(options); } catch (e) { extra = { limitError: String(e && e.message || e) }; }
+      }
+      return { ok: true, period, sessions: s.sessions, files: s.files, ...summary, ...extra, dir: fs.existsSync(dir) };
     }
     if (action === 'codex') {
       const dir = homeSub('.codex', options.codexPath);

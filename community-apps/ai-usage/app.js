@@ -1,6 +1,6 @@
 'use strict';
 
-const RUNNING_VERSION = '1.0.2';
+const RUNNING_VERSION = '1.0.3';
 const params = new URLSearchParams(location.search);
 const refreshSeconds = Math.max(15, Math.min(300, parseInt(params.get('refreshSeconds'), 10) || 30));
 const PERIODS = ['today', '7d', '30d', 'all'];
@@ -34,6 +34,13 @@ function resetIn(sec) {
   if (d > 0) return d + 'd ' + h + 'h';
   if (h > 0) return h + 'h ' + m + 'm';
   return m + 'm';
+}
+function ago(ms) {
+  const m = Math.floor(ms / 60000);
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  return Math.floor(h / 24) + 'd ago';
 }
 function shortModel(m) { return String(m || '').replace(/^claude-/, ''); }
 function cap(s) { s = String(s || ''); return s ? s[0].toUpperCase() + s.slice(1) : ''; }
@@ -77,13 +84,17 @@ function claudeCard(d) {
     + bigstat(num(d.inp + d.out + d.cacheRead + d.cacheWrite), 'Tokens')
     + bigstat(intc(d.sessions), 'Sessions')
     + bigstat(esc(top), 'Top model') + '</div>'
-    + '<div class="foot">5-hour &amp; weekly limits need Claude sign-in &mdash; enable in options</div>');
+    + '<div class="foot">' + (d.limitError ? esc(d.limitError) : '5-hour &amp; weekly limits &mdash; enable in options') + '</div>');
 }
 
 function codexCard(d) {
   if (!d.ok) return card(ACCENT.codex, head('ChatGPT', 'Codex CLI', '') + errState(d.error));
   const lim = d.limit;
   const chip = lim && lim.model ? esc(lim.model) : '';
+  // The rate-limit % is account-global but read from this machine's newest local
+  // snapshot — flag its age so a stale machine's gauge is self-explanatory.
+  const stale = lim && lim.at && (Date.now() - lim.at > 600000);
+  const sub = stale ? 'Codex CLI &middot; as of ' + ago(Date.now() - lim.at) : 'Codex CLI';
   let gauges;
   if (lim && (typeof lim.weeklyPct === 'number' || typeof lim.shortPct === 'number')) {
     const parts = [];
@@ -93,7 +104,7 @@ function codexCard(d) {
   } else {
     gauges = '<div class="hero"><div class="hnum">' + intc(d.msgs) + '</div><div class="hlbl">Messages &middot; ' + PERIOD_LABEL[period] + '</div></div>';
   }
-  return card(ACCENT.codex, head('ChatGPT', 'Codex CLI', chip) + gauges + statRow(d.msgs, d.tokens, d.sessions));
+  return card(ACCENT.codex, head('ChatGPT', sub, chip) + gauges + statRow(d.msgs, d.tokens, d.sessions));
 }
 
 function copilotCard(d) {
