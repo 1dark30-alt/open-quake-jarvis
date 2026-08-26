@@ -108,7 +108,7 @@
       "id": "unraid-mgmt",
       "name": "Unraid Manager",
       "description": "Monitor and manage several Unraid servers — Docker control (start/stop/restart/update) built for 60+ containers, plus array, disks, parity, UPS, VMs, and notifications. Needs Unraid 7.2+ (built-in GraphQL API).",
-      "version": "1.0.12",
+      "version": "1.0.13",
       "zip": "unraid-mgmt.zip",
       "server": true
     },
