@@ -31,7 +31,7 @@ function createSlideCapture(deps) {
   let saveFolder = null, saveBase = null;        // resolved once per capture start; where slides land
   let prevThumb = null, lastSavedThumb = null;   // Uint8ClampedArray thumbnails
   let detector = null;
-  let awaitingFrame = false, frameIsManual = false, pendingThumb = null;
+  let awaitingFrame = false, frameIsManual = false, pendingThumb = null, stopAfterManual = false;
   let idleTimer = null, warnedBlank = false, pickerRequested = false;
 
   function settings() { try { return deps.resolveSettings() || {}; } catch (e) { return {}; } }
@@ -141,9 +141,10 @@ function createSlideCapture(deps) {
     if (!enabled()) return { ok: false, error: 'Slide capture is disabled' };
     if (!targetId) return { ok: false, error: 'No window selected' };
     if (!activeRecording()) return { ok: false, error: 'Start a recording first — slides file into it' };
-    if (!capturing) {   // manual works standalone: spin capture up so the page has a live stream
+    if (!capturing) {   // manual works standalone: spin capture up so the page has a live stream...
       const r = start();
       if (!r.ok) return r;
+      stopAfterManual = true;   // ...but tear it down after the one grab — Manual is a single shot, not auto-capture
     }
     frameIsManual = true; awaitingFrame = true;
     if (!sendCmd({ type: 'grab' })) return { ok: false, error: 'Capture window not ready' };
@@ -180,7 +181,9 @@ function createSlideCapture(deps) {
 
   function onFrame(buf) {
     const manualSave = frameIsManual;
+    const teardown = stopAfterManual; stopAfterManual = false;
     awaitingFrame = false; frameIsManual = false;
+    if (teardown) stop('manual (single shot)');   // Manual spun capture up just for this frame — don't leave auto-capture running
     if (!buf) { pendingThumb = null; return; }
     const rec = activeRecording();
     if (!rec) { pendingThumb = null; return; }   // recording ended mid-grab — drop it, nowhere to file
