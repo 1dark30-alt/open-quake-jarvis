@@ -224,16 +224,16 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 /* Brand colors sampled from each app's official logo */
 .b-sonarr { color: #00c8f5; }
-.b-radarr { color: #ffc230; }
+.b-radarr { color: #ff8c1a; }
 .b-lidarr { color: #00b566; }
-.b-sabnzbd { color: #ffb300; }
-.b-youtarr { color: #00f0d0; }
+.b-sabnzbd { color: #ffe234; }
+.b-youtarr { color: #b388ff; }
 .b-lidatube { color: #f03030; }
 :root[data-theme="light"] .b-sonarr { color: #0087b3; }
-:root[data-theme="light"] .b-radarr { color: #a67c00; }
+:root[data-theme="light"] .b-radarr { color: #c25e00; }
 :root[data-theme="light"] .b-lidarr { color: #009252; }
-:root[data-theme="light"] .b-sabnzbd { color: #996b00; }
-:root[data-theme="light"] .b-youtarr { color: #008f7c; }
+:root[data-theme="light"] .b-sabnzbd { color: #a08c00; }
+:root[data-theme="light"] .b-youtarr { color: #6a3bcf; }
 :root[data-theme="light"] .b-lidatube { color: #c22a2a; }
 
 .dl .ttl {
