@@ -1,6 +1,14 @@
 {
   "apps": [
     {
+      "id": "arr-dash",
+      "name": "*arr Dashboard",
+      "description": "At-a-glance dashboard for Sonarr, Radarr, Lidarr, SABnzbd, Youtarr, and LidaTube — downloads, health, disk space, and upcoming releases.",
+      "version": "1.0.0",
+      "zip": "arr-dash.zip",
+      "server": true
+    },
+    {
       "id": "if-player",
       "name": "Interactive Fiction",
       "description": "Play Inform / Z-machine & Glulx text adventures with TTS narration and voice commands.",
