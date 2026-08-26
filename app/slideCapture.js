@@ -28,6 +28,7 @@ function createSlideCapture(deps) {
   let targetId = null, targetName = '';         // the picked window
   let capturing = false;
   let stopAfterManual = false;                   // a standalone Manual grab spun the stream up just for one frame
+  let pendingGrab = false;                       // Manual grab queued behind pendingStart (capture window still loading)
   let slideCount = 0;
   let saveFolder = null, saveBase = null;        // resolved once per capture start; where slides land
   let prevThumb = null, lastSavedThumb = null;   // Uint8ClampedArray thumbnails
@@ -44,7 +45,9 @@ function createSlideCapture(deps) {
     return {
       enabled: enabled(),
       target: targetName || '',
-      capturing: capturing,
+      // A standalone Manual one-shot briefly has the stream up; don't show it as "capturing" —
+      // the panel toggle would flash "Stop capture" as if Manual had started auto-capture.
+      capturing: capturing && !stopAfterManual,
       slides: slideCount,
       // the panel greys Start/Manual unless a recording is live
       canCapture: !!activeRecording(),
@@ -65,7 +68,7 @@ function createSlideCapture(deps) {
     if (win && !win.isDestroyed()) return win;
     win = deps.createWindow();      // main wires the session + display-media handler; see main.js
     ready = false;
-    win.on('closed', () => { win = null; ready = false; capturing = false; });
+    win.on('closed', () => { win = null; ready = false; capturing = false; pendingStart = null; pendingGrab = false; stopAfterManual = false; });
     return win;
   }
   function sendCmd(msg) {
@@ -73,7 +76,13 @@ function createSlideCapture(deps) {
     return false;
   }
   function isSender(wc) { return win && !win.isDestroyed() && wc === win.webContents; }
-  function onReady() { ready = true; if (pendingStart) { const s = pendingStart; pendingStart = null; beginCapture(s); } }
+  function onReady() {
+    ready = true;
+    if (pendingStart) { const s = pendingStart; pendingStart = null; beginCapture(s); }
+    // A Manual grab that was waiting on the window load rides right behind the start; the page
+    // parks it until the stream is live, so ordering is safe.
+    if (pendingGrab) { pendingGrab = false; sendCmd({ type: 'grab' }); }
+  }
 
   // main hands the capture window the source id it should capture (set right before 'start')
   function currentSourceId() { return targetId; }
@@ -120,6 +129,7 @@ function createSlideCapture(deps) {
     saveBase = rec.base;
     detector = new engine.SettleDetector();
     prevThumb = null; lastSavedThumb = null; awaitingFrame = false; warnedBlank = false;
+    stopAfterManual = false; pendingGrab = false; frameIsManual = false;   // no stale one-shot state from an aborted Manual
     ensureWindow();
     const cmd = { type: 'start', sourceId: targetId };
     if (!sendCmd(cmd)) { pendingStart = cmd; }   // window still loading; beginCapture on ready
@@ -129,8 +139,11 @@ function createSlideCapture(deps) {
   function beginCapture(cmd) { sendCmd(cmd); capturing = true; resetIdle(); fireState(); log('slide capture started -> ' + targetName); }
 
   function stop(reason) {
+    // Always kill queued work — a leftover pendingStart would ghost-start capture when the
+    // window finishes loading (the original "Manual started auto-capture" bug).
+    pendingStart = null; pendingGrab = false; stopAfterManual = false;
     if (!capturing) { sendCmd({ type: 'stop' }); return { ok: true, state: getState() }; }
-    capturing = false; stopAfterManual = false;
+    capturing = false;
     if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
     sendCmd({ type: 'stop' });
     fireState();
@@ -148,10 +161,17 @@ function createSlideCapture(deps) {
     if (!capturing) {
       const r = start();
       if (!r.ok) return r;
-      stopAfterManual = true;   // spun up just for this one grab
+      stopAfterManual = true;   // spun up just for this one grab (set AFTER start(), which clears it)
     }
     frameIsManual = true; awaitingFrame = true;
-    if (!sendCmd({ type: 'grab' })) { awaitingFrame = false; if (stopAfterManual) stop('manual'); return { ok: false, error: 'Capture window not ready' }; }
+    if (!sendCmd({ type: 'grab' })) {
+      // Capture window still loading (start() parked pendingStart): queue the grab to ride
+      // behind it in onReady. Any other send failure is a real error — undo the one-shot state.
+      if (win && !win.isDestroyed() && !ready) { pendingGrab = true; return { ok: true, state: getState() }; }
+      awaitingFrame = false; frameIsManual = false;
+      if (stopAfterManual) stop('manual');
+      return { ok: false, error: 'Capture window not ready' };
+    }
     return { ok: true, state: getState() };
   }
 
@@ -199,7 +219,7 @@ function createSlideCapture(deps) {
       if (manualSave) { detector.noteManualSave(); } else if (pendingThumb) { lastSavedThumb = pendingThumb; }
       if (manualSave && prevThumb) lastSavedThumb = prevThumb;
       pendingThumb = null;
-      resetIdle();
+      if (capturing) resetIdle();   // a one-shot Manual already tore down — don't re-arm the idle timer
       notify('Slide captured', 'Slide ' + slideCount + (targetName ? ' — ' + targetName : ''));
       fireState();
     } catch (e) { log('slide save failed: ' + e.message); if (deps.onError) try { deps.onError(e.message); } catch (e2) {} }

@@ -12,6 +12,7 @@ var THUMB_W = 384, THUMB_H = 216;   // must match slideCaptureEngine THUMB_W/THU
 var POLL_MS = 1000;
 
 var stream = null, video = null, timer = null;
+var pendingGrab = false;   // a 'grab' that arrived before the stream was live; fired once it is
 var thumbCanvas = null, thumbCtx = null, fullCanvas = null, fullCtx = null;
 
 function api() { return window.slideAPI; }
@@ -20,6 +21,7 @@ function stop() {
   if (timer) { clearInterval(timer); timer = null; }
   if (stream) { try { stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} stream = null; }
   video = null;
+  pendingGrab = false;
 }
 
 // getDisplayMedia on a fabricated window source flakes on some apps (new Teams: NotReadableError
@@ -53,7 +55,12 @@ function start(sourceId) {
     }
     api().sendStatus('capturing', '');
     timer = setInterval(poll, POLL_MS);
+    // A Manual grab sent right behind 'start' arrived before the stream was live — take it now.
+    // play() resolves only once playback began, so videoWidth is valid here.
+    if (pendingGrab) { pendingGrab = false; grab(); }
   }).catch(function (err) {
+    // The waiting Manual grab can never complete — tell main (null frame) so it cleans up.
+    if (pendingGrab) { pendingGrab = false; api().sendFrame(null); }
     api().sendStatus('error', (err && (err.name + ': ' + err.message)) || 'getDisplayMedia failed');
   });
 }
@@ -72,9 +79,10 @@ function poll() {
   api().sendThumb(buf, { meanLuma: sum / px, nonBlack: nonBlack / px });
 }
 
-// One full-resolution PNG of the current frame, for a save.
+// One full-resolution PNG of the current frame, for a save. If the stream isn't live yet (a Manual
+// grab races the async getDisplayMedia in start), park it — start's success path fires it.
 function grab() {
-  if (!video || !video.videoWidth) { api().sendFrame(null); return; }
+  if (!video || !video.videoWidth) { pendingGrab = true; return; }
   fullCanvas.width = video.videoWidth; fullCanvas.height = video.videoHeight;
   fullCtx.drawImage(video, 0, 0);
   fullCanvas.toBlob(function (blob) {
