@@ -282,7 +282,7 @@ function notice(title, body) {
 async function boot() {
   applyTheme();
   if (!baseUrl && !mockMode) {
-    notice('Set your Frigate URL', 'Open this page\'s App options and enter Frigate\'s internal address, e.g. <code>http://192.168.1.25:5000</code>. Port 5000 is Frigate\'s unauthenticated internal port &mdash; the login port (8971) is not supported yet.');
+    notice('Set your Frigate URL', 'Open this page\'s App options and enter Frigate\'s internal address, e.g. <code>http://&lt;your-frigate-ip&gt;:5000</code>. Port 5000 is Frigate\'s unauthenticated internal port &mdash; the login port (8971) is not supported yet.');
     return;
   }
   try {

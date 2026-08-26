@@ -15,7 +15,7 @@
       "label": "Frigate URL",
       "type": "text",
       "default": "",
-      "help": "Frigate's internal (unauthenticated) address, e.g. http://192.168.1.25:5000 — not the login port 8971."
+      "help": "Frigate's internal (unauthenticated) address, e.g. http://<your-frigate-ip>:5000 — not the login port 8971."
     },
     {
       "key": "mode",
