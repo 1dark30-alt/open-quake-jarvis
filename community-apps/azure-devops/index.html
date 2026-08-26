@@ -14,22 +14,24 @@
         <span><strong>Azure DevOps</strong><small id="connectionStatus">Connecting</small></span>
       </div>
       <button class="context-button" id="organizationButton" type="button" aria-label="Choose organization">
-        <small>Organization</small><strong id="organizationLabel">Choose organization</strong>
+        <span class="selector-copy"><small>Organization</small><strong id="organizationLabel">Choose organization</strong></span>
+        <svg class="selector-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg>
       </button>
       <button class="context-button" id="projectButton" type="button" aria-label="Choose project">
-        <small>Project</small><strong id="projectLabel">Choose project</strong>
+        <span class="selector-copy"><small>Project</small><strong id="projectLabel">Choose project</strong></span>
+        <svg class="selector-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg>
       </button>
-      <button class="icon-button" id="refreshButton" type="button" aria-label="Refresh">↻</button>
+      <button class="icon-button" id="refreshButton" type="button" aria-label="Refresh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg></button>
     </header>
 
     <section class="content" id="content" aria-live="polite"></section>
 
     <nav class="bottom-nav" aria-label="Azure DevOps sections">
-      <button class="nav-button active" data-view="overview" type="button"><span>⌂</span>Overview</button>
-      <button class="nav-button" data-view="repositories" type="button"><span>⑂</span>Repos</button>
-      <button class="nav-button" data-view="pipelines" type="button"><span>▷</span>Pipelines</button>
-      <button class="nav-button" data-view="work-items" type="button"><span>✓</span>Work Items</button>
-      <button class="nav-button" id="openDevOpsButton" type="button"><span>↗</span>Open DevOps</button>
+      <button class="nav-button active" data-view="overview" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/></svg><span>Overview</span></button>
+      <button class="nav-button" data-view="repositories" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 7v10M8 7h4a6 6 0 0 1 6 6"/></svg><span>Repos</span></button>
+      <button class="nav-button" data-view="pipelines" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4Z"/></svg><span>Pipelines</span></button>
+      <button class="nav-button" data-view="work-items" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.6 2.6L16.5 9"/></svg><span>Work Items</span></button>
+      <button class="nav-button" id="openDevOpsButton" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6m0-6-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg><span>Open DevOps</span></button>
     </nav>
   </main>
 

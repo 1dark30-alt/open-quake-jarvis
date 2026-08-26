@@ -391,23 +391,86 @@ function cacheEnvelope(result) {
 function metricFor(type, datasets) {
   if (type === 'repositories') {
     const items = datasets.repositories.repositories;
-    return { type, label: 'Repositories', value: items.length, detail: items[0] ? `${items[0].name} · ${items[0].defaultBranch || 'no default branch'}` : 'No repositories', icon: '⑂', view: 'repositories' };
+    const openPullRequests = datasets.pullRequests.pullRequests.length;
+    const primary = items[0];
+    return {
+      type,
+      label: 'Repositories',
+      value: items.length,
+      unit: items.length === 1 ? 'Repository' : 'Repositories',
+      metrics: [{ value: openPullRequests, label: openPullRequests === 1 ? 'open PR' : 'open PRs' }],
+      tone: items.length ? 'info' : 'neutral',
+      status: items.length ? 'Source ready' : 'No repositories',
+      message: primary ? `${primary.name} · ${primary.defaultBranch || 'no default branch'}` : 'No repositories in this project',
+      view: 'repositories'
+    };
   }
   if (type === 'pipelines') {
     const items = datasets.pipelines.pipelines;
     const runs = datasets.pipelines.runs;
     const failing = runs.filter(run => run.result === 'failed').length;
     const running = runs.filter(run => run.status === 'inProgress' || run.status === 'notStarted').length;
-    return { type, label: 'Pipelines', value: items.length, detail: `${running} running · ${failing} recent failures`, icon: '▷', view: 'pipelines' };
+    const succeeded = runs.filter(run => run.result === 'succeeded').length;
+    const tone = failing ? 'danger' : running ? 'warning' : runs.length ? 'healthy' : 'neutral';
+    return {
+      type,
+      label: 'Pipelines',
+      value: items.length,
+      unit: items.length === 1 ? 'Pipeline' : 'Pipelines',
+      metrics: [
+        { value: running, label: 'running' },
+        { value: failing, label: 'failed' },
+        { value: succeeded, label: 'succeeded' }
+      ],
+      tone,
+      status: failing ? 'Attention' : running ? 'Running' : runs.length ? 'Healthy' : 'No recent runs',
+      message: failing
+        ? `${failing} recent pipeline ${failing === 1 ? 'failure' : 'failures'}`
+        : running
+          ? `${running} ${running === 1 ? 'pipeline is' : 'pipelines are'} active`
+          : runs.length ? 'No recent pipeline failures' : 'No recent pipeline activity',
+      view: 'pipelines'
+    };
   }
   if (type === 'pull-requests') {
     const items = datasets.pullRequests.pullRequests;
     const drafts = items.filter(item => item.isDraft).length;
-    return { type, label: 'Pull Requests', value: items.length, detail: `${drafts} drafts · active`, icon: '⇄', view: 'pull-requests' };
+    const ready = items.length - drafts;
+    return {
+      type,
+      label: 'Pull Requests',
+      value: items.length,
+      unit: 'Open',
+      metrics: [{ value: ready, label: 'ready' }, { value: drafts, label: drafts === 1 ? 'draft' : 'drafts' }],
+      tone: !items.length ? 'healthy' : drafts ? 'warning' : 'info',
+      status: !items.length ? 'Clear' : drafts ? 'In progress' : 'Review queue',
+      message: !items.length
+        ? 'No PRs need attention'
+        : drafts ? `${drafts} draft ${drafts === 1 ? 'PR is' : 'PRs are'} in progress` : `${ready} ${ready === 1 ? 'PR is' : 'PRs are'} ready to review`,
+      view: 'pull-requests'
+    };
   }
   const items = datasets.workItems.workItems;
   const assigned = items.filter(item => item.assignedTo).length;
-  return { type: 'work-items', label: 'Work Items', value: items.length, detail: `${assigned} assigned · active`, icon: '✓', view: 'work-items' };
+  const bugs = items.filter(item => item.type.toLowerCase() === 'bug').length;
+  const tasks = items.filter(item => item.type.toLowerCase() === 'task').length;
+  return {
+    type: 'work-items',
+    label: 'Work Items',
+    value: items.length,
+    unit: 'Active',
+    metrics: [
+      { value: assigned, label: 'assigned' },
+      { value: bugs, label: bugs === 1 ? 'bug' : 'bugs' },
+      { value: tasks, label: tasks === 1 ? 'task' : 'tasks' }
+    ],
+    tone: !items.length ? 'healthy' : bugs ? 'warning' : 'info',
+    status: !items.length ? 'Clear' : bugs ? 'Attention' : 'In progress',
+    message: !items.length
+      ? 'No active work items'
+      : bugs ? `${bugs} active ${bugs === 1 ? 'bug needs' : 'bugs need'} attention` : `${items.length} work ${items.length === 1 ? 'item is' : 'items are'} in progress`,
+    view: 'work-items'
+  };
 }
 
 function configuredCards(options) {
@@ -660,6 +723,7 @@ module.exports = {
     OAUTH_SCOPES,
     cache,
     configuredCards,
+    metricFor,
     safeExternalUrl,
     setFetch(value) { fetchImpl = value; },
     reset() { cache.clear(); inFlight.clear(); fetchImpl = (...args) => fetch(...args); }

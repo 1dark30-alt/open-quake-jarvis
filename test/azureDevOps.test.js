@@ -60,7 +60,7 @@ test('community catalog and importable zip contain the Azure DevOps drop-in', ()
     id: 'azure-devops',
     name: 'Azure DevOps',
     description: 'Project-focused Azure DevOps repositories, pipelines, pull requests, and work items.',
-    version: '1.0.0',
+    version: '1.0.1',
     zip: 'azure-devops.zip',
     server: true
   });
@@ -75,8 +75,37 @@ test('app assets are relative and the panel defines exactly four overview slots'
   const data = manifest();
   assert.match(html, /href="style\.css"/);
   assert.match(html, /src="app\.js"/);
+  assert.match(html, /<svg[^>]*viewBox="0 0 24 24"/);
   assert.doesNotMatch(html, /(?:src|href)="\//);
   assert.equal(data.options.filter(option => /^card[1-4]$/.test(option.key)).length, 4);
+});
+
+test('overview cards present healthy, warning, and failure states from existing datasets', () => {
+  const datasets = {
+    repositories: { repositories: [{ name: 'open-quake', defaultBranch: 'main' }] },
+    pipelines: { pipelines: [{ id: 1 }], runs: [{ result: 'succeeded', status: 'completed' }] },
+    pullRequests: { pullRequests: [] },
+    workItems: { workItems: [] }
+  };
+  const repository = server._test.metricFor('repositories', datasets);
+  const pipeline = server._test.metricFor('pipelines', datasets);
+  const pullRequests = server._test.metricFor('pull-requests', datasets);
+  const workItems = server._test.metricFor('work-items', datasets);
+  assert.equal(repository.message, 'open-quake · main');
+  assert.equal(repository.unit, 'Repository');
+  assert.equal(pipeline.tone, 'healthy');
+  assert.equal(pipeline.message, 'No recent pipeline failures');
+  assert.equal(pullRequests.tone, 'healthy');
+  assert.equal(pullRequests.message, 'No PRs need attention');
+  assert.equal(workItems.tone, 'healthy');
+  assert.equal(workItems.message, 'No active work items');
+
+  datasets.pipelines.runs.push({ result: 'failed', status: 'completed' });
+  datasets.pullRequests.pullRequests.push({ isDraft: true });
+  datasets.workItems.workItems.push({ type: 'Bug', assignedTo: 'Alex' });
+  assert.equal(server._test.metricFor('pipelines', datasets).tone, 'danger');
+  assert.equal(server._test.metricFor('pull-requests', datasets).tone, 'warning');
+  assert.equal(server._test.metricFor('work-items', datasets).tone, 'warning');
 });
 
 test('renderer persists project context and guards against stale project responses', () => {

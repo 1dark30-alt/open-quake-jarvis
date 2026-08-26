@@ -41,7 +41,19 @@ const state = {
   confirmResolve: null
 };
 
-const ICONS = { repositories: '⑂', pipelines: '▷', 'pull-requests': '⇄', 'work-items': '✓' };
+const CARD_ICONS = {
+  repositories: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 7v10M8 7h4a6 6 0 0 1 6 6"/></svg>',
+  pipelines: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4Z"/></svg>',
+  'pull-requests': '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="18" cy="19" r="2"/><path d="M6 7v10a2 2 0 0 0 2 2h3M18 17V9a4 4 0 0 0-4-4h-3m0 0 3-3m-3 3 3 3"/></svg>',
+  'work-items': '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.6 2.6L16.5 9"/></svg>'
+};
+const STATE_ICONS = {
+  healthy: '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"/><path d="m6.5 10 2.2 2.2 4.8-4.8"/></svg>',
+  warning: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 18 17H2Z"/><path d="M10 7v4m0 3h.01"/></svg>',
+  danger: '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"/><path d="m7 7 6 6m0-6-6 6"/></svg>',
+  info: '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"/><path d="M10 9v5m0-8h.01"/></svg>',
+  neutral: '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"/><path d="M6.5 10h7"/></svg>'
+};
 const VIEW_LABELS = { overview: 'Overview', repositories: 'Repositories', pipelines: 'Pipelines', 'pull-requests': 'Pull Requests', 'work-items': 'Work Items' };
 
 function escapeHtml(value) {
@@ -73,6 +85,8 @@ function tone(value) {
 
 function setStatus(message) {
   els.connectionStatus.textContent = message;
+  els.connectionStatus.classList.toggle('connected', /^Connected/.test(message));
+  els.connectionStatus.classList.toggle('warning', /cached|problem|expired|required/i.test(message));
 }
 
 function contextMatches(version, organization, projectId) {
@@ -183,12 +197,22 @@ function requestIsCurrent(ticket) {
 }
 
 function renderOverview(data) {
+  const tones = new Set(['healthy', 'warning', 'danger', 'info', 'neutral']);
   els.content.innerHTML = `<div class="overview-grid">
-    ${data.cards.map(card => `<button class="overview-card" type="button" data-view-target="${escapeHtml(card.view)}">
-      <div class="card-top"><span class="card-label">${escapeHtml(card.label)}</span><span class="card-icon">${escapeHtml(card.icon || ICONS[card.type] || '•')}</span></div>
-      <div><div class="card-value">${escapeHtml(card.value)}</div><div class="card-detail">${escapeHtml(card.detail)}</div></div>
-      <div class="card-detail">Updated ${escapeHtml(fmtDate(data.fetchedAt))}${data.stale ? ' · cached' : ''}</div>
-    </button>`).join('')}
+    ${data.cards.map(card => {
+      const tone = tones.has(card.tone) ? card.tone : 'neutral';
+      const metrics = Array.isArray(card.metrics) ? card.metrics.slice(0, 3) : [];
+      return `<button class="overview-card tone-${tone}" type="button" data-view-target="${escapeHtml(card.view)}">
+        <div class="card-top">
+          <span class="card-heading"><span class="card-icon">${CARD_ICONS[card.type] || CARD_ICONS.repositories}</span><span class="card-label">${escapeHtml(card.label)}</span></span>
+          <span class="card-state">${STATE_ICONS[tone]}<span>${escapeHtml(card.status || 'Status')}</span></span>
+        </div>
+        <div class="card-primary"><strong>${escapeHtml(card.value)}</strong><span>${escapeHtml(card.unit || '')}</span></div>
+        <div class="card-metrics">${metrics.map(metric => `<span class="card-metric"><strong>${escapeHtml(metric.value)}</strong><span>${escapeHtml(metric.label)}</span></span>`).join('')}</div>
+        <div class="card-message">${STATE_ICONS[tone]}<span>${escapeHtml(card.message || '')}</span></div>
+        <div class="card-footer"><span>Updated ${escapeHtml(fmtDate(data.fetchedAt))}${data.stale ? ' · cached' : ''}</span><span class="card-affordance">View <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11m-4-4 4 4-4 4"/></svg></span></div>
+      </button>`;
+    }).join('')}
   </div>`;
   if (data.stale) showToast(data.warning || 'Showing cached Azure DevOps data.', false);
 }
