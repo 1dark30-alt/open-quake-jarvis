@@ -409,6 +409,49 @@ async function claudeLimits(options) {
   return data;
 }
 
+// ── Codex live limits (account-global) via the ChatGPT usage endpoint ──────────
+// The exact call codex's `/status` makes: GET chatgpt.com/backend-api/wham/usage with
+// the Codex login token from ~/.codex/auth.json. Account-wide, so identical on every
+// machine — unlike the per-machine snapshot we scrape from the local logs. Read-only:
+// we never refresh or write auth.json; if the token's stale we fall back to the log snapshot.
+const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage';
+const CODEX_MIN_INTERVAL = 120000;
+let codexUsageCache = { at: 0, data: null };
+
+async function codexLiveLimits(options) {
+  const authFile = path.join(homeSub('.codex', options.codexPath), 'auth.json');
+  const now = Date.now();
+  if (now - codexUsageCache.at < CODEX_MIN_INTERVAL && codexUsageCache.data) return codexUsageCache.data;
+  let auth;
+  try { auth = JSON.parse(fs.readFileSync(authFile, 'utf8')); } catch (e) { return null; }
+  const t = auth && auth.tokens;
+  if (!t || !t.access_token) return null;
+  let res;
+  try {
+    res = await fetch(CODEX_USAGE_URL, {
+      headers: { Authorization: 'Bearer ' + t.access_token, 'ChatGPT-Account-Id': t.account_id || '', 'User-Agent': 'codex-cli', Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (e) { return null; }
+  if (res.status < 200 || res.status >= 300) return null;   // 401 etc → fall back to local snapshot
+  let j; try { j = await res.json(); } catch (e) { return null; }
+  const rl = j.rate_limit || {};
+  const windows = [rl.primary_window, rl.secondary_window]
+    .filter(w => w && typeof w.used_percent === 'number' && typeof w.limit_window_seconds === 'number')
+    .map(w => ({ pct: w.used_percent, window: Math.round(w.limit_window_seconds / 60), resetsAt: w.reset_at }));
+  if (!windows.length) return null;
+  const sorted = [...windows].sort((a, b) => a.window - b.window);
+  const short = sorted[0], weekly = sorted[sorted.length - 1];
+  const data = {
+    live: true, plan: j.plan_type || null,
+    weeklyPct: weekly.pct, weeklyResetsAt: weekly.resetsAt, weeklyWindow: weekly.window,
+    shortPct: short.pct, shortResetsAt: short.resetsAt, shortWindow: short.window,
+    hasShort: sorted.length > 1 && short.window !== weekly.window,
+  };
+  codexUsageCache = { at: now, data };
+  return data;
+}
+
 // ── Dispatch ───────────────────────────────────────────────────────────────────
 function homeSub(sub, override) {
   const o = String(override || '').trim();
@@ -434,7 +477,11 @@ async function handle(action, context) {
       const dir = homeSub('.codex', options.codexPath);
       const s = scan([path.join(dir, 'sessions'), path.join(dir, 'archived_sessions')], codexCache, parseCodexFile);
       const summary = codexSummary(s.days, period);
-      return { ok: true, period, sessions: s.sessions, files: s.files, limit: classifyLimit(s.latest), ...summary, dir: fs.existsSync(dir) };
+      let limit = classifyLimit(s.latest);
+      if (String(options.codexLimits) !== 'false') {
+        try { const live = await codexLiveLimits(options); if (live) limit = Object.assign({}, live, { model: limit && limit.model }); } catch (e) {}
+      }
+      return { ok: true, period, sessions: s.sessions, files: s.files, limit, ...summary, dir: fs.existsSync(dir) };
     }
     if (action === 'copilot') return await copilotUsage(options);
     return { ok: false, error: 'unknown action' };

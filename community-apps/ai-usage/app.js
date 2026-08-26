@@ -1,6 +1,6 @@
 'use strict';
 
-const RUNNING_VERSION = '1.0.3';
+const RUNNING_VERSION = '1.0.4';
 const params = new URLSearchParams(location.search);
 const refreshSeconds = Math.max(15, Math.min(300, parseInt(params.get('refreshSeconds'), 10) || 30));
 const PERIODS = ['today', '7d', '30d', 'all'];
@@ -93,7 +93,7 @@ function codexCard(d) {
   const chip = lim && lim.model ? esc(lim.model) : '';
   // The rate-limit % is account-global but read from this machine's newest local
   // snapshot — flag its age so a stale machine's gauge is self-explanatory.
-  const stale = lim && lim.at && (Date.now() - lim.at > 600000);
+  const stale = lim && !lim.live && lim.at && (Date.now() - lim.at > 600000);
   const sub = stale ? 'Codex CLI &middot; as of ' + ago(Date.now() - lim.at) : 'Codex CLI';
   let gauges;
   if (lim && (typeof lim.weeklyPct === 'number' || typeof lim.shortPct === 'number')) {
@@ -157,8 +157,8 @@ async function refreshAll() {
   ]);
   const cards = [];
   // Show a service only when it has real data (or errored) — never an empty/placeholder panel.
-  if (c.ok ? c.files > 0 : true) cards.push(claudeCard(c));
-  if (x.ok ? x.files > 0 : true) cards.push(codexCard(x));
+  if (c.ok ? (c.files > 0 || c.limit) : true) cards.push(claudeCard(c));
+  if (x.ok ? (x.files > 0 || x.limit) : true) cards.push(codexCard(x));
   if (p.configured) cards.push(copilotCard(p));       // hidden entirely when GitHub isn't set up
   if (!cards.length) {
     cards.push(card('#7f8c8b', '<div class="state"><h3>No AI usage found</h3><p>No Claude&nbsp;Code or Codex logs on this machine yet, and Copilot isn&rsquo;t connected.</p></div>'));
