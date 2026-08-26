@@ -33,7 +33,6 @@ Browsers and reverse proxies cap concurrent streams (HTTP/1.1 allows ~6 per host
 | Still refresh rate | 2 s | 1–10 s |
 | Cycle dwell time | 10 s | 5–30 s |
 | Cameras | all | comma-separated names, in display order |
-| Demo data | off | simulated cameras, no Frigate needed |
 
 ## Not in v1
 

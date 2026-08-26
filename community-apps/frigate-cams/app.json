@@ -65,13 +65,6 @@
       "type": "text",
       "default": "",
       "help": "Comma-separated camera names to show, in order — blank shows every camera Frigate reports."
-    },
-    {
-      "key": "mock",
-      "label": "Demo data",
-      "type": "bool",
-      "default": false,
-      "help": "Show simulated cameras without contacting Frigate."
     }
   ]
 }

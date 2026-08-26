@@ -1,7 +1,6 @@
 'use strict';
 
 const query = new URLSearchParams(location.search);
-const mockMode = query.get('mock') === '1' || query.get('mock') === 'true';
 const baseUrl = String(query.get('frigateUrl') || '').trim().replace(/\/+$/, '');
 const refreshSeconds = Math.max(1, Math.min(60, parseInt(query.get('refreshSeconds'), 10) || 2));
 const cycleSeconds = Math.max(3, Math.min(120, parseInt(query.get('cycleSeconds'), 10) || 10));
@@ -46,10 +45,6 @@ function stamp() {
 
 // ── Discovery ────────────────────────────────────────────────────────────────
 async function discover() {
-  if (mockMode) {
-    const names = ['front_door', 'driveway', 'backyard', 'garage', 'side_gate', 'porch', 'shed', 'doorbell'];
-    return names.map((name, i) => ({ name, label: prettyName(name), down: i === 4, mockHue: (i * 43 + 30) % 360 }));
-  }
   // JSON goes through the panel's same-origin /app-proxy (Frigate sends no CORS headers);
   // image/MJPEG tags are CORS-exempt and load straight from Frigate.
   const response = await fetch('/app-proxy?url=' + encodeURIComponent(baseUrl + '/api/config'), { cache: 'no-store' });
@@ -80,11 +75,6 @@ function feedSrc(cam, tileHeight, railTile) {
 }
 
 function feedMarkup(cam, tileHeight, railTile) {
-  if (mockMode) {
-    if (cam.down) return '<div class="sim" style="background:#07080b"></div>';
-    const h = cam.mockHue;
-    return '<div class="sim" style="background:radial-gradient(140% 120% at 30% 15%,hsla(' + h + ',22%,26%,1),transparent 60%),linear-gradient(190deg,hsl(' + h + ',16%,15%),hsl(' + h + ',18%,10%) 46%,hsl(' + ((h + 18) % 360) + ',14%,7%) 47%,hsl(' + ((h + 18) % 360) + ',12%,5%))"></div>';
-  }
   return '<img class="feed" alt="" data-cam="' + esc(cam.name) + '"' + (tileWantsStills(cam, railTile) ? ' data-still="1"' : '') + ' src="' + esc(feedSrc(cam, tileHeight, railTile)) + '">';
 }
 
@@ -194,23 +184,20 @@ setInterval(() => {
   if (!state.cams.length) return;
   document.querySelectorAll('.cstamp').forEach(el => { el.textContent = stamp(); });
 
-  if (!mockMode) {
-    state.stillTick += 1;
-    if (state.stillTick % refreshSeconds === 0) {
-      document.querySelectorAll('img.feed[data-still]').forEach(img => {
-        if (!img.complete) return;   // last refresh still downloading — don't restart it
-        const cam = state.cams.find(c => c.name === img.dataset.cam);
-        if (cam && !cam.down) img.src = feedSrc(cam, img.clientHeight, img.closest('.rail'));
-      });
-    }
+  state.stillTick += 1;
+  if (state.stillTick % refreshSeconds === 0) {
+    document.querySelectorAll('img.feed[data-still]').forEach(img => {
+      if (!img.complete) return;   // last refresh still downloading — don't restart it
+      const cam = state.cams.find(c => c.name === img.dataset.cam);
+      if (cam && !cam.down) img.src = feedSrc(cam, img.clientHeight, img.closest('.rail'));
+    });
   }
 
   // Live-stream watchdog: a starved MJPEG connection never fires onerror and never paints
   // (seen behind reverse proxies that cap concurrent streams). Kick it with a fresh
   // connection after 10s; after 2 dead kicks probe latest.jpg — reachable camera falls
   // back to stills for this session, unreachable camera goes offline.
-  if (!mockMode) {
-    document.querySelectorAll('img.feed:not([data-still])').forEach(img => {
+  document.querySelectorAll('img.feed:not([data-still])').forEach(img => {
       if (img.naturalWidth > 0) { img.dataset.stall = 0; img.dataset.kicks = 0; return; }
       const stall = (parseInt(img.dataset.stall, 10) || 0) + 1;
       img.dataset.stall = stall;
@@ -228,8 +215,7 @@ setInterval(() => {
         return;
       }
       img.src = feedSrc(cam, img.clientHeight) + '&r=' + Date.now();
-    });
-  }
+  });
 
   if (state.mode === 'cycle') {
     const bar = document.getElementById('cprog-i');
@@ -252,7 +238,7 @@ document.addEventListener('error', event => {
 }, true);
 
 setInterval(() => {
-  if (mockMode || !state.cams.some(c => c.down)) return;
+  if (!state.cams.some(c => c.down)) return;
   state.cams.forEach(cam => {
     if (!cam.down) return;
     const probe = new Image();
@@ -281,7 +267,7 @@ function notice(title, body) {
 
 async function boot() {
   applyTheme();
-  if (!baseUrl && !mockMode) {
+  if (!baseUrl) {
     notice('Set your Frigate URL', 'Open this page\'s App options and enter Frigate\'s internal address, e.g. <code>http://&lt;your-frigate-ip&gt;:5000</code>. Port 5000 is Frigate\'s unauthenticated internal port &mdash; the login port (8971) is not supported yet.');
     return;
   }

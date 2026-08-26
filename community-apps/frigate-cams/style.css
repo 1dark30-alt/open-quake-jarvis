@@ -99,7 +99,6 @@ html, body {
   object-fit: cover;
   display: block;
 }
-.tile .sim { position: absolute; inset: 0; }
 .vig {
   position: absolute;
   inset: 0;
