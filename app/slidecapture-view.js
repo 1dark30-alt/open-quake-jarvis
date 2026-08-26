@@ -22,12 +22,22 @@ function stop() {
   video = null;
 }
 
-function start(sourceId) {
-  stop();
-  navigator.mediaDevices.getDisplayMedia({
+// getDisplayMedia on a fabricated window source flakes on some apps (new Teams: NotReadableError
+// "Could not start video source") but usually succeeds a moment later, so retry a few times before
+// surfacing the error. Constraints are identical each attempt.
+function acquire(tries) {
+  return navigator.mediaDevices.getDisplayMedia({
     audio: false,
     video: { frameRate: { ideal: 2, max: 5 }, width: { max: 1920 }, height: { max: 1080 } },
-  }).then(function (s) {
+  }).catch(function (err) {
+    if (tries > 0) return new Promise(function (r) { setTimeout(r, 400); }).then(function () { return acquire(tries - 1); });
+    throw err;
+  });
+}
+
+function start(sourceId) {
+  stop();
+  acquire(3).then(function (s) {
     stream = s;
     video = document.createElement('video');
     video.srcObject = s;

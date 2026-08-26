@@ -26,8 +26,8 @@ function createSlideCapture(deps) {
   let win = null, ready = false, pendingStart = null;
 
   let targetId = null, targetName = '';         // the picked window
-  let capturing = false;                         // getDisplayMedia stream is live in the capture page
-  let autoSave = false;                          // run settle-detection + auto-save (Start capture); Manual leaves this off
+  let capturing = false;
+  let stopAfterManual = false;                   // a standalone Manual grab spun the stream up just for one frame
   let slideCount = 0;
   let saveFolder = null, saveBase = null;        // resolved once per capture start; where slides land
   let prevThumb = null, lastSavedThumb = null;   // Uint8ClampedArray thumbnails
@@ -44,8 +44,7 @@ function createSlideCapture(deps) {
     return {
       enabled: enabled(),
       target: targetName || '',
-      // The panel's Start/Stop toggle tracks AUTO capture, not the hidden stream a Manual grab leaves live.
-      capturing: autoSave,
+      capturing: capturing,
       slides: slideCount,
       // the panel greys Start/Manual unless a recording is live
       canCapture: !!activeRecording(),
@@ -111,13 +110,12 @@ function createSlideCapture(deps) {
   }
 
   // ---- capture lifecycle ----
-  // Bring the getDisplayMedia stream up (idempotent). Acquiring the window source is racy and slow
-  // on some apps (Teams throws NotReadableError if you re-acquire too soon), so we acquire ONCE and
-  // keep the stream alive for both auto-capture and repeated Manual grabs. Does NOT touch autoSave.
-  function ensureStream() {
+  function start() {
+    if (!enabled()) return { ok: false, error: 'Slide capture is disabled' };
+    if (!targetId) return { ok: false, error: 'No window selected' };
     const rec = activeRecording();
     if (!rec) return { ok: false, error: 'Start a recording first — slides file into it' };
-    if (capturing) return { ok: true };   // stream already live
+    if (capturing) return { ok: true, state: getState() };
     saveFolder = path.join(rec.folder, engine.screenshotsFolderName(rec.base));
     saveBase = rec.base;
     detector = new engine.SettleDetector();
@@ -126,23 +124,13 @@ function createSlideCapture(deps) {
     const cmd = { type: 'start', sourceId: targetId };
     if (!sendCmd(cmd)) { pendingStart = cmd; }   // window still loading; beginCapture on ready
     else beginCapture(cmd);
-    return { ok: true };
-  }
-  function start() {
-    if (!enabled()) return { ok: false, error: 'Slide capture is disabled' };
-    if (!targetId) return { ok: false, error: 'No window selected' };
-    const r = ensureStream();
-    if (!r.ok) return r;
-    autoSave = true;
-    fireState();
     return { ok: true, state: getState() };
   }
   function beginCapture(cmd) { sendCmd(cmd); capturing = true; resetIdle(); fireState(); log('slide capture started -> ' + targetName); }
 
   function stop(reason) {
-    autoSave = false;
     if (!capturing) { sendCmd({ type: 'stop' }); return { ok: true, state: getState() }; }
-    capturing = false;
+    capturing = false; stopAfterManual = false;
     if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
     sendCmd({ type: 'stop' });
     fireState();
@@ -150,15 +138,20 @@ function createSlideCapture(deps) {
     return { ok: true, state: getState() };
   }
 
-  // Manual capture: one slide, now. It shares the live stream (spinning it up if needed) but never
-  // enables autoSave, so it grabs a single frame without kicking off the automatic settle-capture.
+  // Manual capture is a SINGLE shot: grab one frame and leave nothing running. If auto-capture is
+  // already live we just piggyback a grab on it; otherwise we spin the stream up ONLY for this frame
+  // and tear it down again in onFrame — Manual must never start the continuous auto-capture process.
   function manual() {
     if (!enabled()) return { ok: false, error: 'Slide capture is disabled' };
     if (!targetId) return { ok: false, error: 'No window selected' };
-    const r = ensureStream();
-    if (!r.ok) return r;
+    if (!activeRecording()) return { ok: false, error: 'Start a recording first — slides file into it' };
+    if (!capturing) {
+      const r = start();
+      if (!r.ok) return r;
+      stopAfterManual = true;   // spun up just for this one grab
+    }
     frameIsManual = true; awaitingFrame = true;
-    if (!sendCmd({ type: 'grab' })) { awaitingFrame = false; return { ok: false, error: 'Capture window not ready' }; }
+    if (!sendCmd({ type: 'grab' })) { awaitingFrame = false; if (stopAfterManual) stop('manual'); return { ok: false, error: 'Capture window not ready' }; }
     return { ok: true, state: getState() };
   }
 
@@ -173,8 +166,7 @@ function createSlideCapture(deps) {
 
   // ---- IPC from the capture page ----
   function onThumb(buf, meta) {
-    if (!capturing || awaitingFrame) return;   // ignore polls while we're waiting on a full-res PNG
-    if (!autoSave) { prevThumb = new Uint8ClampedArray(buf); return; }   // stream live for Manual only — never auto-save
+    if (!capturing || awaitingFrame) return;   // ignore polls while we're waiting on a full-res PNG (incl. a standalone Manual grab)
     const thumb = new Uint8ClampedArray(buf);
     // Minimized/blank target: getDisplayMedia hands back an all-black surface for iconic windows.
     if (engine.looksBlank(meta && meta.meanLuma, meta && meta.nonBlack)) {
@@ -193,7 +185,9 @@ function createSlideCapture(deps) {
 
   function onFrame(buf) {
     const manualSave = frameIsManual;
+    const teardown = stopAfterManual; stopAfterManual = false;
     awaitingFrame = false; frameIsManual = false;
+    if (teardown) stop('manual');   // Manual spun the stream up for this one frame — don't leave capture running
     if (!buf) { pendingThumb = null; return; }
     const rec = activeRecording();
     if (!rec) { pendingThumb = null; return; }   // recording ended mid-grab — drop it, nowhere to file
