@@ -1,0 +1,116 @@
+{
+  "id": "azure-devops",
+  "name": "Azure DevOps",
+  "version": "1.0.0",
+  "description": "Project-focused Azure DevOps repositories, pipelines, pull requests, and work items.",
+  "entry": "index.html",
+  "served": true,
+  "server": "server.js",
+  "knob": true,
+  "oauth": {
+    "name": "Microsoft Entra ID for Azure DevOps",
+    "authUrl": "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize",
+    "tokenUrl": "https://login.microsoftonline.com/organizations/oauth2/v2.0/token",
+    "scopes": [
+      "499b84ac-1321-427f-aa17-267ca6975798/.default",
+      "offline_access"
+    ]
+  },
+  "options": [
+    {
+      "key": "oauthClientId",
+      "label": "Microsoft Entra application (client) ID",
+      "type": "text",
+      "default": "",
+      "serverOnly": true
+    },
+    {
+      "key": "oauthClientSecret",
+      "label": "Client secret (confidential clients only)",
+      "type": "secret",
+      "default": "",
+      "serverOnly": true
+    },
+    {
+      "key": "organization",
+      "label": "Default Azure DevOps organization",
+      "type": "text",
+      "default": "",
+      "serverOnly": true
+    },
+    {
+      "key": "defaultProject",
+      "label": "Default project",
+      "type": "text",
+      "default": "",
+      "serverOnly": true
+    },
+    {
+      "key": "enablePipelineActions",
+      "label": "Enable pipeline run and cancel controls",
+      "type": "bool",
+      "default": false,
+      "serverOnly": true
+    },
+    {
+      "key": "refreshMinutes",
+      "label": "Refresh interval",
+      "type": "select",
+      "default": "5",
+      "choices": [
+        ["1", "1 minute"],
+        ["5", "5 minutes"],
+        ["10", "10 minutes"],
+        ["15", "15 minutes"]
+      ]
+    },
+    {
+      "key": "card1",
+      "label": "Overview card 1",
+      "type": "select",
+      "default": "repositories",
+      "choices": [
+        ["repositories", "Repositories"],
+        ["pipelines", "Pipelines"],
+        ["pull-requests", "Pull Requests"],
+        ["work-items", "Work Items"]
+      ]
+    },
+    {
+      "key": "card2",
+      "label": "Overview card 2",
+      "type": "select",
+      "default": "pipelines",
+      "choices": [
+        ["repositories", "Repositories"],
+        ["pipelines", "Pipelines"],
+        ["pull-requests", "Pull Requests"],
+        ["work-items", "Work Items"]
+      ]
+    },
+    {
+      "key": "card3",
+      "label": "Overview card 3",
+      "type": "select",
+      "default": "pull-requests",
+      "choices": [
+        ["repositories", "Repositories"],
+        ["pipelines", "Pipelines"],
+        ["pull-requests", "Pull Requests"],
+        ["work-items", "Work Items"]
+      ]
+    },
+    {
+      "key": "card4",
+      "label": "Overview card 4",
+      "type": "select",
+      "default": "work-items",
+      "choices": [
+        ["repositories", "Repositories"],
+        ["pipelines", "Pipelines"],
+        ["pull-requests", "Pull Requests"],
+        ["work-items", "Work Items"]
+      ]
+    }
+  ]
+}
