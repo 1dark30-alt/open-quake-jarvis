@@ -35,6 +35,11 @@ For how to install or submit an app — and a safety note — see the docs:
   FIRE to launch, bounce off trampolines and TNT for distance. Optional shared
   high-score server (configurable Server URL; works fully offline too) and a
   persistent mute button.
+- **[music-assistant](music-assistant)** — full **Music Assistant** controller: now playing
+  with album art, transport and scrubbing, live queue (reorder, play-from-here, transfer),
+  player selection and grouping with per-member volume, and a library browser with search
+  on an on-screen keyboard. Talks to MA's WebSocket API directly for real-time updates;
+  the API token is stored encrypted. Knob = volume, press = play/pause.
 - **[news-spotlight](news-spotlight)** — full-screen rotating RSS feed reader. Defaults
   to BBC / Sky / The Verge / Ars Technica; configurable feeds, story duration, Ken
   Burns motion, breaking-news mode, and an SSRF-safe proxy.

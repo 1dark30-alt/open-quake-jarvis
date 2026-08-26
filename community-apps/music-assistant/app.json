@@ -1,0 +1,39 @@
+{
+  "id": "music-assistant",
+  "name": "Music Assistant",
+  "version": "1.0.0",
+  "description": "Full Music Assistant controller: now playing, queue, players and grouping, library browse and search.",
+  "entry": "index.html",
+  "served": true,
+  "knob": true,
+  "options": [
+    {
+      "key": "host",
+      "label": "Music Assistant URL",
+      "type": "text",
+      "default": "",
+      "help": "Address of the Music Assistant server, e.g. http://192.168.1.25:8095 or https://music.example.com."
+    },
+    {
+      "key": "token",
+      "label": "API token",
+      "type": "secret",
+      "default": "",
+      "help": "Create a long-lived token in Music Assistant under Settings > Profile and paste it here."
+    },
+    {
+      "key": "defaultPlayer",
+      "label": "Default player",
+      "type": "text",
+      "default": "",
+      "help": "Optional player name to control when the page opens. Blank remembers the last-used player."
+    },
+    {
+      "key": "mock",
+      "label": "Demo data",
+      "type": "bool",
+      "default": false,
+      "help": "Try the UI without a Music Assistant connection."
+    }
+  ]
+}
