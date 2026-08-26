@@ -162,13 +162,16 @@ input { font: inherit; }
 .gauges .stat { padding: 12px var(--s2); }
 .gauges .v { font-size: 34px; }
 .stat.net { display: flex; flex-direction: column; justify-content: center; }
-.stat.net .l { margin-bottom: 4px; }
-.netrow { display: flex; align-items: baseline; gap: 10px; margin: 4px 0; }
-.netrow .na { font-size: 22px; font-weight: 700; line-height: 1; }
+.stat.net .l { margin-bottom: 6px; }
+.netrow { display: flex; align-items: center; gap: 10px; margin: 7px 0; }
+.netrow .na { font-size: 20px; font-weight: 700; line-height: 1; width: 16px; flex: none; text-align: center; }
 .netrow .na.down { color: var(--success); }
 .netrow .na.up { color: var(--accent); }
-.netrow .nv { font-size: 26px; font-weight: 700; color: var(--ink); }
-.netrow .nl { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-left: auto; }
+.netrow .nv { font-size: 22px; font-weight: 700; color: var(--ink); min-width: 96px; }
+.netrow .nbar { flex: 1; height: 8px; border-radius: 4px; background: var(--control); overflow: hidden; }
+.netrow .nbar i { display: block; height: 100%; border-radius: 4px; }
+.netrow .nbar i.down { background: var(--success); }
+.netrow .nbar i.up { background: var(--accent); }
 .cards { flex: 1; min-height: 0; display: flex; gap: var(--s2); }
 .card { flex: 1; background: var(--surface); border-radius: 12px; padding: var(--s2); display: flex; flex-direction: column; min-width: 0; }
 .card .hd { display: flex; align-items: center; gap: 10px; margin-bottom: var(--s1); font-size: 20px; font-weight: 700; }

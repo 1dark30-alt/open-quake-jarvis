@@ -1,6 +1,6 @@
 'use strict';
 
-const RUNNING_VERSION = '1.0.9';
+const RUNNING_VERSION = '1.0.10';
 const query = new URLSearchParams(location.search);
 const refreshSeconds = Math.max(5, Math.min(60, parseInt(query.get('refreshSeconds'), 10) || 10));
 const controlsAllowed = query.get('allowControls') !== 'false' && query.get('allowControls') !== '0';
@@ -370,12 +370,21 @@ function fmtRate(bytesPerSec) {
   return Math.round(bits) + ' bps';
 }
 function netTile(net) {
-  const inRate = net ? fmtRate(net.rxSec) : '—';
-  const outRate = net ? fmtRate(net.txSec) : '—';
+  const rx = net ? Number(net.rxSec) || 0 : 0;
+  const tx = net ? Number(net.txSec) || 0 : 0;
+  const max = Math.max(rx, tx, 1);
   return '<div class="stat net">'
     + '<span class="l">Network</span>'
-    + '<div class="netrow"><span class="na down">&#8595;</span><span class="nv">' + inRate + '</span><span class="nl">in</span></div>'
-    + '<div class="netrow"><span class="na up">&#8593;</span><span class="nv">' + outRate + '</span><span class="nl">out</span></div>'
+    + netRow('down', net ? fmtRate(rx) : '—', net ? (rx / max) * 100 : 0)
+    + netRow('up', net ? fmtRate(tx) : '—', net ? (tx / max) * 100 : 0)
+    + '</div>';
+}
+function netRow(dir, rate, pct) {
+  const w = Math.max(0, Math.min(100, pct));
+  return '<div class="netrow">'
+    + '<span class="na ' + dir + '">' + (dir === 'down' ? '&#8595;' : '&#8593;') + '</span>'
+    + '<span class="nv">' + rate + '</span>'
+    + '<div class="nbar"><i class="' + dir + '" style="width:' + w + '%"></i></div>'
     + '</div>';
 }
 function kv(k, v) { return '<div class="kv"><span>' + k + '</span><b>' + v + '</b></div>'; }
