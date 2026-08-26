@@ -3432,35 +3432,10 @@
     // Drop-In Apps tab — manage user-installed app folders (import/export/delete) + storage location
     const diHtml = `
       <p class="sectitle">Drop-In Apps</p>
-      <p class="hint" style="margin-bottom:14px">Self-contained app folders installed from a repository — update, export, or delete. Bundled / built-in apps aren't listed here.</p>
-      <div class="diToolbar">
-        <div class="diSearch"><span class="diMag">🔍</span><input id="diSearch" placeholder="Search apps…"></div>
-        <div id="diChips" class="diChips"></div>
-        <span style="flex:1"></span>
-        <button id="diCheckAll">Check updates</button>
-        <button id="diInstall" class="primary">+ Install app</button>
-      </div>
-      <div id="diMsg" class="hint" style="margin:8px 0 0;min-height:16px"></div>
-      <div id="diCount" class="diCount"></div>
-      <div id="diList"><p class="hint">Loading…</p></div>
-      <details id="diSources" class="advsec" style="margin-top:16px">
-        <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Sources <span class="hint" style="font-weight:400">— repositories apps install from</span></summary>
-        <p class="hint" style="margin:8px 0 0;color:#c98">Drop-in apps can access your filesystem and saved open-quake credentials. Only add repositories you trust.</p>
-        <div id="diRepos" style="margin-top:6px"></div>
-        <p class="hint" style="margin:6px 0 0">A GitHub folder serving an <code>index.json</code> + app <code>.zip</code>s. Point it at your own fork to install from there.</p>
-        <label class="row" style="gap:8px;align-items:center;width:auto;margin-top:8px"><input type="checkbox" id="diAutoPage" style="width:auto"> Add a page for newly installed apps</label>
-      </details>
-      <details class="advsec" style="margin-top:12px">
-        <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Advanced settings</summary>
-        <label class="row" style="gap:8px;align-items:center;width:auto;margin-top:8px"><input type="checkbox" id="diMulti" style="width:auto"> Allow multiple drop-in app repositories</label>
-        <div class="row" style="margin-top:12px"><label style="width:auto">Storage location</label>
-          <select id="diLoc" style="width:auto">
-            <option value="appdata">%APPDATA%\\open-quake</option>
-            <option value="localappdata">%LOCALAPPDATA%\\open-quake</option>
-          </select></div>
-        <p class="hint" id="diLocPath" style="margin:2px 0 0"></p>
-        <p class="hint">Where imported drop-in apps are stored — this folder survives app updates (the install folder doesn't).</p>
-      </details>`;
+      <p class="hint" style="margin-bottom:2px">Self-contained app folders. Manage installed apps, get updates, discover new ones, and configure repositories.</p>
+      <div id="diSubbar" class="diSubbar"></div>
+      <div id="diMsg" class="hint" style="margin:0 0 10px;min-height:16px"></div>
+      <div id="diPane"></div>`;
 
     const ttsHtml = `
       <p class="sectitle">Speech-to-text (Whisper / STT)</p>
@@ -3550,9 +3525,10 @@
       const isGithubRepo = u => /^https?:\/\/(github\.com|raw\.githubusercontent\.com)\//i.test(String(u || '').trim());
       const persistRepos = () => { setS('appRepos', repos.slice()); setS('appRepo', repos[0] || DEFAULT_APP_REPO); };
       const diMsg = (t, bad) => { const m = document.getElementById('diMsg'); if (m) { m.textContent = t || ''; m.style.color = bad ? '#c98' : '#7e93ab'; } };
-      // Optionally add a ready-to-use page for a freshly installed app (same grid shape as the "Add app
-      // page" button). Skipped on updates and when a page for that app already exists; marks dirty so it
-      // persists on the next Save without force-saving other edits or jumping off this tab.
+      const repoIndexOf = src => (src ? repos.indexOf(src) : -1);
+      const metaOf = a => [a.id, a.served ? 'served' : null, a.hasServer ? 'server' : null, a.managed ? null : 'read-only'].filter(Boolean).join(' · ');
+      const fmtAgo = ts => { const s = Math.max(0, Math.round((Date.now() - ts) / 1000)); if (s < 60) return 'just now'; if (s < 3600) return Math.round(s / 60) + ' min ago'; return Math.round(s / 3600) + ' h ago'; };
+      // Optionally add a ready-to-use page for a freshly installed app. Skipped when a page already exists.
       const maybeAddAppPage = (id, name) => {
         if (!appSettings().autoPageOnImport) return false;
         if ((config.grids || []).some(g => g && g.kind === 'app' && g.app === id)) return false;
@@ -3561,126 +3537,40 @@
         markDirty(); renderGrids();
         return true;
       };
-      // Which repository (R0, R1, …) an installed app came from — index into the repos list, or -1.
-      const repoIndexOf = src => (src ? repos.indexOf(src) : -1);
 
-      // Per-app update status, filled by "Check updates" (or a row's Check). id -> {state:'ok'|'upd'|'err', from, to}.
-      // Empty until the user checks, so opening the tab never hammers GitHub.
-      const diStatus = {};
-      let diSearch = '', diFilter = 'all';
-      const closeDiMenus = () => document.querySelectorAll('#diList .diMenu.open').forEach(m => m.classList.remove('open'));
+      // ---- state (persists while the Drop-In Apps settings tab stays open) ----
+      let diTab = 'installed';
+      let diSearchI = '', diSearchD = '', diDiscoverScope = 'available';
+      const diFilter = { src: new Set(), rt: new Set() };
+      const diStatus = {};      // id -> {state:'ok'|'upd'|'err', from, to}, filled by the Updates tab
+      let diLastChecked = null;
+      let diCatalog = null;     // merged repo catalog for Discover (lazy, cached)
+      let diInstalled = [];
+      const refreshInstalled = async () => { try { diInstalled = (await configApi.listDropInApps()) || []; } catch (e) { diInstalled = []; } };
+      const loadCatalog = async (force) => {
+        if (diCatalog && !force) return diCatalog;
+        const seen = {};
+        for (let i = 0; i < repos.length; i++) {
+          const url = (repos[i] || '').trim();
+          if (!url || !isGithubRepo(url)) continue;
+          let r; try { r = await configApi.listRepoApps(url); } catch (e) { continue; }
+          if (!r || !r.ok) continue;
+          for (const a of r.apps) if (!seen[a.id]) seen[a.id] = Object.assign({}, a, { repoIndex: i });
+        }
+        diCatalog = Object.values(seen);
+        return diCatalog;
+      };
+
+      const closeDiMenus = () => document.querySelectorAll('#diPane .diMenu.open, #diPane .diFmenu.open').forEach(m => m.classList.remove('open'));
       if (!window.__diMenuClose) { document.addEventListener('click', closeDiMenus); window.__diMenuClose = true; }
 
-      const statusCellHtml = a => {
-        const s = diStatus[a.id];
-        if (!a.source || !s) return '<span class="diNone">—</span>';
-        if (s.state === 'upd') return '<span class="diSt diUpd"><i class="diDot"></i>v' + esc(s.from) + ' → v' + esc(s.to) + '</span><button class="diUp" data-id="' + esc(a.id) + '">Update</button>';
-        if (s.state === 'err') return '<span class="diSt diErr"><i class="diDot"></i>Unable to check</span>';
-        return '<span class="diSt diOk"><i class="diDot"></i>Up to date</span>';
-      };
-      const metaOf = a => [a.id, a.served ? 'served' : null, a.hasServer ? 'server' : null, a.managed ? null : 'read-only'].filter(Boolean).join(' · ');
-      const passesFilter = (a, idx) => {
-        if (diFilter === 'updates') return !!(diStatus[a.id] && diStatus[a.id].state === 'upd');
-        if (diFilter === 'served') return !!a.served;
-        if (diFilter === 'static') return !a.served;
-        if (/^r\d+$/.test(diFilter)) return idx === +diFilter.slice(1);
-        return true;
-      };
-      const renderChips = apps => {
-        const host = document.getElementById('diChips'); if (!host) return;
-        const upd = apps.filter(a => diStatus[a.id] && diStatus[a.id].state === 'upd').length;
-        const idxs = Array.from(new Set(apps.map(a => repoIndexOf(a.source)).filter(i => i >= 0))).sort((a, b) => a - b);
-        const chip = (key, label, n) => `<span class="diChip${diFilter === key ? ' on' : ''}" data-f="${key}">${esc(label)}${n != null ? ` <span class="diChipN">${n}</span>` : ''}</span>`;
-        host.innerHTML = chip('all', 'All', apps.length) + chip('updates', 'Updates', upd)
-          + idxs.map(i => chip('r' + i, 'R' + i)).join('') + chip('served', 'Served') + chip('static', 'Static');
-        host.querySelectorAll('.diChip').forEach(c => c.onclick = () => { diFilter = c.dataset.f; renderList(); });
-      };
-      const renderList = async () => {
-        const host = document.getElementById('diList'); if (!host) return;
-        let apps = []; try { apps = (await configApi.listDropInApps()) || []; } catch (e) {}
-        renderChips(apps);
-        const cnt = document.getElementById('diCount');
-        if (!apps.length) { host.innerHTML = '<p class="hint">No drop-in apps installed yet — use <b>+ Install app</b>.</p>'; if (cnt) cnt.textContent = ''; return; }
-        const q = diSearch.trim().toLowerCase();
-        const rows = apps.filter(a => {
-          if (!passesFilter(a, repoIndexOf(a.source))) return false;
-          if (q && !((a.name || '').toLowerCase().includes(q) || (a.id || '').toLowerCase().includes(q))) return false;
-          return true;
-        });
-        if (cnt) cnt.textContent = 'Installed apps · ' + rows.length + (rows.length !== apps.length ? ' of ' + apps.length : '');
-        if (!rows.length) { host.innerHTML = '<p class="hint">No apps match.</p>'; return; }
-        host.innerHTML = `<table class="diTbl"><thead><tr>
-            <th style="width:40%">App</th><th style="width:88px">Version</th><th style="width:64px">Repo</th><th>Status</th><th style="width:40px"></th>
-          </tr></thead><tbody>` + rows.map(a => {
-            const idx = repoIndexOf(a.source);
-            const pill = a.source ? `<span class="diRepoPill${idx === 1 ? ' r1' : ''}">R${idx >= 0 ? idx : '?'}</span>` : '';
-            return `<tr>
-              <td><div class="diAppName">${esc(a.name)}</div><div class="diAppMeta">${esc(metaOf(a))}</div></td>
-              <td class="diVer">${a.version ? 'v' + esc(a.version) : ''}</td>
-              <td>${pill}</td>
-              <td>${statusCellHtml(a)}</td>
-              <td class="diKebab"><button class="diKb" title="More" data-id="${esc(a.id)}">⋯</button>
-                <div class="diMenu">
-                  ${a.source ? `<button class="diMChk" data-id="${esc(a.id)}">Check for updates</button>` : ''}
-                  <button class="diExport" data-id="${esc(a.id)}">Export…</button>
-                  <div class="diMSep"></div>
-                  <button class="diDel${a.managed ? ' del' : ''}" data-id="${esc(a.id)}" ${a.managed ? '' : 'disabled title="Built-in location — cannot delete"'}>Delete</button>
-                </div>
-              </td></tr>`;
-          }).join('') + '</tbody></table>';
-        host.querySelectorAll('.diKb').forEach(b => b.onclick = e => {
-          e.stopPropagation();
-          const menu = e.currentTarget.parentElement.querySelector('.diMenu');
-          const wasOpen = menu.classList.contains('open');
-          closeDiMenus();
-          if (!wasOpen) menu.classList.add('open');
-        });
-        host.querySelectorAll('.diMenu').forEach(m => m.onclick = e => e.stopPropagation());
-        host.querySelectorAll('.diUp').forEach(b => b.onclick = e => doUpdate(e.currentTarget.dataset.id));
-        host.querySelectorAll('.diMChk').forEach(b => b.onclick = e => { closeDiMenus(); checkOne(e.currentTarget.dataset.id); });
-        host.querySelectorAll('.diExport').forEach(b => b.onclick = async e => { closeDiMenus(); const r = await configApi.exportDropInApp(e.currentTarget.dataset.id); diMsg(r && r.ok ? 'Exported to ' + r.path : (r && r.canceled ? '' : 'Export failed: ' + ((r && r.error) || '')), !(r && r.ok)); });
-        host.querySelectorAll('.diDel').forEach(b => b.onclick = async e => {
-          closeDiMenus();
-          const id = e.currentTarget.dataset.id;
-          if (!window.confirm('Delete drop-in app "' + id + '" and its folder?')) return;
-          const r = await configApi.deleteDropInApp(id);
-          if (r && r.ok) { delete diStatus[id]; diMsg('Deleted ' + id); appDefs = await configApi.getApps(); renderList(); } else diMsg('Delete failed: ' + ((r && r.error) || ''), true);
-        });
-      };
-      const checkOne = async id => {
-        diMsg('Checking "' + id + '" for updates…');
-        const c = await configApi.checkDropInUpdate(id);
-        if (!c || !c.ok) { diStatus[id] = { state: 'err' }; diMsg('Update check failed: ' + ((c && c.error) || ''), true); }
-        else if (c.updateAvailable) { diStatus[id] = { state: 'upd', from: c.installedVersion, to: c.remoteVersion }; diMsg(''); }
-        else { diStatus[id] = { state: 'ok' }; diMsg('"' + id + '" is up to date (v' + c.installedVersion + ').'); }
-        renderList();
-      };
-      // Global "Check updates": check every repo-installed app, filling the Status column as it goes.
-      const checkAll = async () => {
-        let apps = []; try { apps = (await configApi.listDropInApps()) || []; } catch (e) {}
-        const withSrc = apps.filter(a => a.source);
-        if (!withSrc.length) return diMsg('No apps installed from a repository to check.');
-        let upd = 0, done = 0;
-        for (const a of withSrc) {
-          diMsg('Checking for updates… (' + (++done) + '/' + withSrc.length + ')');
-          const c = await configApi.checkDropInUpdate(a.id);
-          if (!c || !c.ok) diStatus[a.id] = { state: 'err' };
-          else if (c.updateAvailable) { diStatus[a.id] = { state: 'upd', from: c.installedVersion, to: c.remoteVersion }; upd++; }
-          else diStatus[a.id] = { state: 'ok' };
-          renderList();
-        }
-        diMsg(upd ? upd + ' update(s) available.' : 'All ' + withSrc.length + ' app(s) are up to date.');
-      };
-      // ---- install / update from the repository ----
+      // ---- actions ----
       const doInstall = async (id, confirmExec, repoUrl) => {
         const repo = (repoUrl || '').trim() || repos[0];
         diMsg('Installing "' + id + '"…');
         const r = await configApi.installRepoApp(id, confirmExec, repo);
-        if (r && r.ok) { appDefs = await configApi.getApps(); renderList(); const added = maybeAddAppPage(r.id, r.name); diMsg('Installed "' + r.name + '" (' + r.id + ')' + (added ? ' — added a page' : '')); }
-        else if (r && r.warnExec && !confirmExec) {
-          if (window.confirm('This app contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC with full access. Only install it if you trust the repository.\n\nInstall anyway?')) doInstall(id, true, repo);
-          else diMsg('');
-        }
+        if (r && r.ok) { appDefs = await configApi.getApps(); const added = maybeAddAppPage(r.id, r.name); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); diMsg('Installed "' + r.name + '" (' + r.id + ')' + (added ? ' — added a page' : '')); }
+        else if (r && r.warnExec && !confirmExec) { if (window.confirm('This app contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC with full access. Only install it if you trust the repository.\n\nInstall anyway?')) doInstall(id, true, repo); else diMsg(''); }
         else if (r && r.conflict) diMsg('"' + id + '" is already installed — use Update instead.', true);
         else diMsg('Install failed: ' + ((r && r.error) || 'unknown error'), true);
       };
@@ -3689,69 +3579,272 @@
           diMsg('Checking "' + id + '" for updates…');
           const c = await configApi.checkDropInUpdate(id);
           if (!c || !c.ok) return diMsg('Update check failed: ' + ((c && c.error) || ''), true);
-          if (!c.updateAvailable) { diStatus[id] = { state: 'ok' }; renderList(); return diMsg('"' + id + '" is up to date (v' + c.installedVersion + ').'); }
+          if (!c.updateAvailable) { diStatus[id] = { state: 'ok' }; renderSubtabs(); renderPane(); return diMsg('"' + id + '" is up to date (v' + c.installedVersion + ').'); }
           if (!window.confirm('Update "' + id + '" from v' + c.installedVersion + ' to v' + c.remoteVersion + '?')) return diMsg('');
         }
         diMsg('Updating "' + id + '"…');
         const r = await configApi.updateDropInApp(id, confirmExec);
-        if (r && r.ok && r.updated) { diStatus[id] = { state: 'ok' }; appDefs = await configApi.getApps(); renderList(); diMsg('Updated "' + (r.name || id) + '" to v' + r.version); }
-        else if (r && r.ok && r.upToDate) { diStatus[id] = { state: 'ok' }; renderList(); diMsg('"' + id + '" is up to date.'); }
-        else if (r && r.warnExec && !confirmExec) {
-          if (window.confirm('This update contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC. Update anyway?')) doUpdate(id, true);
-          else diMsg('');
-        }
+        if (r && r.ok && r.updated) { diStatus[id] = { state: 'ok' }; appDefs = await configApi.getApps(); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); diMsg('Updated "' + (r.name || id) + '" to v' + r.version); }
+        else if (r && r.ok && r.upToDate) { diStatus[id] = { state: 'ok' }; renderSubtabs(); renderPane(); diMsg('"' + id + '" is up to date.'); }
+        else if (r && r.warnExec && !confirmExec) { if (window.confirm('This update contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC. Update anyway?')) doUpdate(id, true); else diMsg(''); }
         else diMsg('Update failed: ' + ((r && r.error) || 'unknown error'), true);
       };
-      const renderRepo = async (url, host) => {
-        if (!host) return;
-        url = (url || '').trim();
-        if (!url) { host.innerHTML = '<p class="hint" style="color:#c98">Enter a repository URL.</p>'; return; }
-        if (!isGithubRepo(url)) { host.innerHTML = '<p class="hint" style="color:#c98">Only github.com repositories are allowed for now.</p>'; return; }
-        host.innerHTML = '<p class="hint">Loading apps from the repository…</p>';
-        let r; try { r = await configApi.listRepoApps(url); } catch (e) { r = { ok: false, error: String(e) }; }
-        if (!r || !r.ok) { host.innerHTML = '<p class="hint" style="color:#c98">' + esc((r && r.error) || 'Could not load the repository.') + '</p>'; return; }
-        if (!r.apps.length) { host.innerHTML = '<p class="hint">No apps found in the repository.</p>'; return; }
-        host.innerHTML = r.apps.map(a => `<div class="row" style="gap:8px;align-items:flex-start;margin:4px 0">
-            <span style="flex:1"><b>${esc(a.name)}</b> <span class="hint">v${esc(a.version)}${a.server ? ' · server' : ''}</span>${a.description ? '<br><span class="hint">' + esc(a.description) + '</span>' : ''}</span>
-            ${a.state === 'installed' ? '<button disabled>Installed</button>'
-              : a.state === 'update' ? `<button class="diRepoUpd" data-id="${esc(a.id)}">Update →</button>`
-              : `<button class="primary diRepoInst" data-id="${esc(a.id)}">Install</button>`}
-          </div>`).join('');
-        host.querySelectorAll('.diRepoInst').forEach(b => b.onclick = e => doInstall(e.currentTarget.dataset.id, false, url));
+      const doReinstall = async (id, confirmExec) => {
+        if (!confirmExec) { if (!window.confirm('Reinstall "' + id + '"? This re-downloads and overwrites its files.')) return diMsg(''); }
+        diMsg('Reinstalling "' + id + '"…');
+        const r = await configApi.reinstallDropInApp(id, confirmExec);
+        if (r && r.ok && r.reinstalled) { delete diStatus[id]; appDefs = await configApi.getApps(); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); diMsg('Reinstalled "' + (r.name || id) + '" (v' + r.version + ').'); }
+        else if (r && r.warnExec && !confirmExec) { if (window.confirm('This app contains executable code that runs on your PC. Reinstall anyway?')) doReinstall(id, true); else diMsg(''); }
+        else diMsg('Reinstall failed: ' + ((r && r.error) || 'unknown error'), true);
+      };
+      const doExport = async id => { const r = await configApi.exportDropInApp(id); diMsg(r && r.ok ? 'Exported to ' + r.path : (r && r.canceled ? '' : 'Export failed: ' + ((r && r.error) || '')), !(r && r.ok)); };
+      const doDelete = async id => {
+        if (!window.confirm('Delete drop-in app "' + id + '" and its folder?')) return;
+        const r = await configApi.deleteDropInApp(id);
+        if (r && r.ok) { delete diStatus[id]; diMsg('Deleted ' + id); appDefs = await configApi.getApps(); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); }
+        else diMsg('Delete failed: ' + ((r && r.error) || ''), true);
+      };
+      const checkAll = async () => {
+        await refreshInstalled();
+        const withSrc = diInstalled.filter(a => a.source);
+        if (!withSrc.length) return diMsg('No apps installed from a repository to check.');
+        let upd = 0, done = 0;
+        for (const a of withSrc) {
+          diMsg('Checking for updates… (' + (++done) + '/' + withSrc.length + ')');
+          const c = await configApi.checkDropInUpdate(a.id);
+          if (!c || !c.ok) diStatus[a.id] = { state: 'err' };
+          else if (c.updateAvailable) { diStatus[a.id] = { state: 'upd', from: c.installedVersion, to: c.remoteVersion }; upd++; }
+          else diStatus[a.id] = { state: 'ok' };
+        }
+        diLastChecked = Date.now();
+        renderSubtabs(); if (diTab === 'updates') renderPane();
+        diMsg(upd ? upd + ' update(s) available.' : 'All ' + withSrc.length + ' app(s) are up to date.');
+      };
+      const updateAll = async ids => {
+        if (!ids.length) return;
+        if (!window.confirm('Update all ' + ids.length + ' app(s) now?')) return;
+        let done = 0;
+        for (const id of ids) { diMsg('Updating "' + id + '"…'); const r = await configApi.updateDropInApp(id, true); if (r && r.ok && r.updated) { done++; diStatus[id] = { state: 'ok' }; } }
+        appDefs = await configApi.getApps(); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane();
+        diMsg('Updated ' + done + ' of ' + ids.length + ' app(s).', done < ids.length);
+      };
+
+      // ---- sub-tab bar ----
+      const renderSubtabs = () => {
+        const host = document.getElementById('diSubbar'); if (!host) return;
+        const updN = diInstalled.filter(a => diStatus[a.id] && diStatus[a.id].state === 'upd').length;
+        const btn = (key, label, badge, amber) => `<button class="diSubtab${diTab === key ? ' on' : ''}" data-t="${key}">${label}${badge != null ? `<span class="diSubBadge${amber ? ' amber' : ''}">${badge}</span>` : ''}</button>`;
+        host.innerHTML = btn('installed', 'Installed', diInstalled.length)
+          + btn('updates', 'Updates', updN > 0 ? updN : null, true)
+          + btn('discover', 'Discover')
+          + btn('sources', 'Sources');
+        host.querySelectorAll('.diSubtab').forEach(b => b.onclick = () => { diTab = b.dataset.t; diMsg(''); renderSubtabs(); renderPane(); });
+      };
+      const renderPane = () => {
+        const pane = document.getElementById('diPane'); if (!pane) return;
+        if (diTab === 'installed') return renderInstalledPane(pane);
+        if (diTab === 'updates') return renderUpdatesPane(pane);
+        if (diTab === 'discover') return renderDiscoverPane(pane);
+        return renderSourcesPane(pane);
+      };
+
+      // ---- Installed pane ----
+      const renderInstalledPane = pane => {
+        pane.innerHTML = `
+          <div class="diToolbar">
+            <div class="diSearch"><span class="diMag">\u{1F50D}</span><input id="diSearchI" placeholder="Search installed apps…"></div>
+            <span id="diActiveFilters"></span>
+            <span style="flex:1"></span>
+            <div class="diFilterWrap"><button id="diFilterBtn">Filter</button><div id="diFmenu" class="diFmenu"></div></div>
+          </div>
+          <div id="diCount" class="diCount"></div>
+          <div id="diIList"></div>`;
+        const se = document.getElementById('diSearchI'); se.value = diSearchI; se.oninput = () => { diSearchI = se.value; renderInstalledList(); };
+        document.getElementById('diFilterBtn').onclick = e => { e.stopPropagation(); document.getElementById('diFmenu').classList.toggle('open'); };
+        document.getElementById('diFmenu').onclick = e => e.stopPropagation();
+        renderFilterMenu();
+        renderInstalledList();
+      };
+      const renderFilterMenu = () => {
+        const m = document.getElementById('diFmenu'); if (!m) return;
+        const idxs = Array.from(new Set(diInstalled.map(a => repoIndexOf(a.source)).filter(i => i >= 0))).sort((a, b) => a - b);
+        m.innerHTML = (idxs.length ? '<div class="diFh">Source</div>' + idxs.map(i => `<label><input type="checkbox" data-k="src" data-v="${i}" ${diFilter.src.has(i) ? 'checked' : ''}> R${i}</label>`).join('') : '')
+          + '<div class="diFh">Runtime</div>'
+          + `<label><input type="checkbox" data-k="rt" data-v="served" ${diFilter.rt.has('served') ? 'checked' : ''}> Served</label>`
+          + `<label><input type="checkbox" data-k="rt" data-v="static" ${diFilter.rt.has('static') ? 'checked' : ''}> Static</label>`;
+        m.querySelectorAll('input').forEach(inp => inp.onchange = () => { const set = inp.dataset.k === 'src' ? diFilter.src : diFilter.rt; const val = inp.dataset.k === 'src' ? +inp.dataset.v : inp.dataset.v; if (inp.checked) set.add(val); else set.delete(val); renderActiveChips(); renderInstalledList(); });
+        renderActiveChips();
+      };
+      const renderActiveChips = () => {
+        const host = document.getElementById('diActiveFilters'); if (!host) return;
+        const chips = [];
+        diFilter.src.forEach(i => chips.push({ k: 'src', v: i, label: 'Source R' + i }));
+        diFilter.rt.forEach(v => chips.push({ k: 'rt', v: v, label: v.charAt(0).toUpperCase() + v.slice(1) }));
+        host.innerHTML = chips.map(c => `<span class="diFchip" data-k="${c.k}" data-v="${c.v}">${esc(c.label)}<span class="x">×</span></span>`).join('');
+        host.querySelectorAll('.diFchip .x').forEach(x => x.onclick = e => { const c = e.currentTarget.parentElement; (c.dataset.k === 'src' ? diFilter.src : diFilter.rt).delete(c.dataset.k === 'src' ? +c.dataset.v : c.dataset.v); renderFilterMenu(); renderInstalledList(); });
+      };
+      const renderInstalledList = () => {
+        const host = document.getElementById('diIList'); if (!host) return;
+        const q = diSearchI.trim().toLowerCase();
+        const rows = diInstalled.filter(a => {
+          const idx = repoIndexOf(a.source);
+          if (diFilter.src.size && !diFilter.src.has(idx)) return false;
+          if (diFilter.rt.size && !diFilter.rt.has(a.served ? 'served' : 'static')) return false;
+          if (q && !((a.name || '').toLowerCase().includes(q) || (a.id || '').toLowerCase().includes(q))) return false;
+          return true;
+        });
+        const cnt = document.getElementById('diCount'); if (cnt) cnt.textContent = rows.length + ' app' + (rows.length === 1 ? '' : 's') + (rows.length !== diInstalled.length ? ' of ' + diInstalled.length : '');
+        if (!diInstalled.length) { host.innerHTML = '<p class="hint">No drop-in apps installed yet — see the <b>Discover</b> tab.</p>'; return; }
+        if (!rows.length) { host.innerHTML = '<p class="hint">No apps match.</p>'; return; }
+        host.innerHTML = `<table class="diTbl"><thead><tr>
+            <th style="width:42%">App</th><th style="width:90px">Version</th><th style="width:70px">Source</th><th>Status</th><th style="width:40px"></th>
+          </tr></thead><tbody>` + rows.map(a => {
+            const idx = repoIndexOf(a.source);
+            const pill = a.source ? `<span class="diRepoPill${idx === 1 ? ' r1' : ''}">R${idx >= 0 ? idx : '?'}</span>` : '';
+            const canReinstall = a.source && a.managed;
+            return `<tr>
+              <td><div class="diAppName">${esc(a.name)}</div><div class="diAppMeta">${esc(metaOf(a))}</div></td>
+              <td class="diVer">${a.version ? 'v' + esc(a.version) : ''}</td>
+              <td>${pill}</td>
+              <td><span class="diSt diReady"><i class="diDot"></i>Ready</span></td>
+              <td class="diKebab"><button class="diKb" title="More" data-id="${esc(a.id)}">⋯</button>
+                <div class="diMenu">
+                  <button class="diExport" data-id="${esc(a.id)}">Export…</button>
+                  ${canReinstall ? `<button class="diReinstall" data-id="${esc(a.id)}">Reinstall</button>` : ''}
+                  <div class="diMSep"></div>
+                  <button class="diDel${a.managed ? ' del' : ''}" data-id="${esc(a.id)}" ${a.managed ? '' : 'disabled'}>Delete</button>
+                </div>
+              </td></tr>`;
+          }).join('') + '</tbody></table>';
+        host.querySelectorAll('.diKb').forEach(b => b.onclick = e => { e.stopPropagation(); const menu = e.currentTarget.parentElement.querySelector('.diMenu'); const wasOpen = menu.classList.contains('open'); closeDiMenus(); if (!wasOpen) menu.classList.add('open'); });
+        host.querySelectorAll('.diMenu').forEach(m => m.onclick = e => e.stopPropagation());
+        host.querySelectorAll('.diExport').forEach(b => b.onclick = e => { closeDiMenus(); doExport(e.currentTarget.dataset.id); });
+        host.querySelectorAll('.diReinstall').forEach(b => b.onclick = e => { closeDiMenus(); doReinstall(e.currentTarget.dataset.id); });
+        host.querySelectorAll('.diDel').forEach(b => b.onclick = e => { closeDiMenus(); doDelete(e.currentTarget.dataset.id); });
+      };
+
+      // ---- Updates pane ----
+      const renderUpdatesPane = pane => {
+        const updRows = diInstalled.filter(a => diStatus[a.id] && diStatus[a.id].state === 'upd');
+        pane.innerHTML = `
+          <div class="diToolbar">
+            <button id="diCheckAll" class="primary">Check for updates</button>
+            ${updRows.length ? `<button id="diUpdateAll">Update all (${updRows.length})</button>` : ''}
+            <span style="flex:1"></span>
+            <span class="hint">${diLastChecked ? 'Last checked ' + esc(fmtAgo(diLastChecked)) : 'Not checked yet'}</span>
+          </div>
+          <div id="diUList"></div>`;
+        document.getElementById('diCheckAll').onclick = () => checkAll();
+        const ua = document.getElementById('diUpdateAll'); if (ua) ua.onclick = () => updateAll(updRows.map(a => a.id));
+        const list = document.getElementById('diUList');
+        if (!updRows.length) {
+          list.innerHTML = diLastChecked
+            ? `<div class="diEmpty"><div class="chk">✓</div><div class="big">All ${diInstalled.length} apps are up to date</div>Last checked ${esc(fmtAgo(diLastChecked))}</div>`
+            : `<div class="diEmpty"><div class="big">Check for updates</div>See which installed apps have a newer version in their repository.</div>`;
+          return;
+        }
+        list.innerHTML = `<div class="diCount">${updRows.length} update${updRows.length === 1 ? '' : 's'} available</div>
+          <table class="diTbl"><thead><tr><th style="width:42%">App</th><th>Update</th><th style="width:70px">Source</th><th style="width:110px"></th></tr></thead><tbody>`
+          + updRows.map(a => { const s = diStatus[a.id]; const idx = repoIndexOf(a.source); return `<tr>
+              <td><div class="diAppName">${esc(a.name)}</div><div class="diAppMeta">${esc(metaOf(a))}</div></td>
+              <td><span class="diSt diUpd"><i class="diDot"></i>v${esc(s.from)} → v${esc(s.to)}</span></td>
+              <td><span class="diRepoPill${idx === 1 ? ' r1' : ''}">R${idx >= 0 ? idx : '?'}</span></td>
+              <td><button class="diUp" data-id="${esc(a.id)}">Update</button></td></tr>`; }).join('') + '</tbody></table>';
+        list.querySelectorAll('.diUp').forEach(b => b.onclick = e => doUpdate(e.currentTarget.dataset.id));
+      };
+
+      // ---- Discover pane ----
+      const renderDiscoverPane = pane => {
+        pane.innerHTML = `
+          <div class="diToolbar">
+            <div class="diSearch"><span class="diMag">\u{1F50D}</span><input id="diSearchD" placeholder="Search available apps…"></div>
+            <span style="flex:1"></span>
+            <div id="diScopePills" class="diPills"></div>
+          </div>
+          <div id="diDList"><p class="hint">Loading apps from your repositories…</p></div>`;
+        const se = document.getElementById('diSearchD'); se.value = diSearchD; se.oninput = () => { diSearchD = se.value; renderDiscoverList(); };
+        loadCatalog().then(() => { renderScopePills(); renderDiscoverList(); });
+      };
+      const renderScopePills = () => {
+        const host = document.getElementById('diScopePills'); if (!host || !diCatalog) return;
+        const installedIds = new Set(diInstalled.map(a => a.id));
+        const avail = diCatalog.filter(a => !installedIds.has(a.id)).length;
+        const all = new Set([...diCatalog.map(a => a.id), ...installedIds]).size;
+        const pill = (k, label, n) => `<span class="diPill${diDiscoverScope === k ? ' on' : ''}" data-s="${k}">${label} <span class="n">${n}</span></span>`;
+        host.innerHTML = pill('available', 'Available', avail) + pill('installed', 'Installed', diInstalled.length) + pill('all', 'All', all);
+        host.querySelectorAll('.diPill').forEach(p => p.onclick = () => { diDiscoverScope = p.dataset.s; renderScopePills(); renderDiscoverList(); });
+      };
+      const renderDiscoverList = () => {
+        const host = document.getElementById('diDList'); if (!host) return;
+        if (!diCatalog) { host.innerHTML = '<p class="hint">Loading…</p>'; return; }
+        if (!diCatalog.length) { host.innerHTML = '<p class="hint">No apps found in your repositories — check the <b>Sources</b> tab.</p>'; return; }
+        const installedIds = new Set(diInstalled.map(a => a.id));
+        const q = diSearchD.trim().toLowerCase();
+        let items = diCatalog.slice();
+        if (diDiscoverScope === 'available') items = items.filter(a => !installedIds.has(a.id));
+        else if (diDiscoverScope === 'installed') items = items.filter(a => installedIds.has(a.id));
+        if (q) items = items.filter(a => (a.name || '').toLowerCase().includes(q) || (a.id || '').toLowerCase().includes(q) || (a.description || '').toLowerCase().includes(q));
+        if (!items.length) { host.innerHTML = '<p class="hint">No apps match.</p>'; return; }
+        host.innerHTML = items.map(a => {
+          const idx = a.repoIndex;
+          const pill = `<span class="diRepoPill${idx === 1 ? ' r1' : ''}">R${idx >= 0 ? idx : '?'}</span>`;
+          const btn = a.state === 'installed' ? '<button disabled>Installed</button>'
+            : a.state === 'update' ? `<button class="diRepoUpd" data-id="${esc(a.id)}">Update →</button>`
+            : `<button class="primary diRepoInst" data-id="${esc(a.id)}" data-i="${idx}">Install</button>`;
+          return `<div class="diCatRow"><div class="body"><div class="diCatNm">${esc(a.name)}<span class="v">v${esc(a.version)}${a.server ? ' · server' : ''}</span></div>${a.description ? `<div class="diCatDs">${esc(a.description)}</div>` : ''}${pill}</div>${btn}</div>`;
+        }).join('');
+        host.querySelectorAll('.diRepoInst').forEach(b => b.onclick = e => doInstall(e.currentTarget.dataset.id, false, repos[+e.currentTarget.dataset.i]));
         host.querySelectorAll('.diRepoUpd').forEach(b => b.onclick = e => doUpdate(e.currentTarget.dataset.id));
       };
-      // Editable list of source repositories (single row unless "allow multiple" is on). Each row browses
-      // its own repo; a per-row catalog div below it holds the Browse results. Updates use the global button.
+
+      // ---- Sources pane ----
       const renderRepos = () => {
         const host = document.getElementById('diRepos'); if (!host) return;
         const shown = multi ? repos : repos.slice(0, 1);
         host.innerHTML = shown.map((u, i) => `<div class="diSrcRow">
             <span class="diSrcLab">R${i}</span>
             <input class="diRepoUrl" data-i="${i}" value="${esc(u)}" placeholder="${esc(DEFAULT_APP_REPO)}">
+            <button class="diRepoRefresh" data-i="${i}">Refresh</button>
             <button class="diRepoBrowse" data-i="${i}">Browse…</button>
             ${multi && repos.length > 1 ? `<button class="diRepoRemove danger" data-i="${i}">Remove</button>` : ''}
-          </div>
-          <div class="diRepoCat" id="diRepoCat${i}"></div>`).join('')
+          </div>`).join('')
           + (multi ? '<button id="diRepoAdd" style="margin-top:6px">+ Add source</button>' : '');
-        host.querySelectorAll('.diRepoUrl').forEach(inp => inp.oninput = e => { repos[+e.target.dataset.i] = e.target.value.trim(); persistRepos(); });
-        host.querySelectorAll('.diRepoBrowse').forEach(b => b.onclick = e => { const i = +e.currentTarget.dataset.i; renderRepo(repos[i], document.getElementById('diRepoCat' + i)); });
-        host.querySelectorAll('.diRepoRemove').forEach(b => b.onclick = e => { repos.splice(+e.currentTarget.dataset.i, 1); persistRepos(); renderRepos(); });
+        host.querySelectorAll('.diRepoUrl').forEach(inp => inp.oninput = e => { repos[+e.target.dataset.i] = e.target.value.trim(); persistRepos(); diCatalog = null; });
+        host.querySelectorAll('.diRepoRefresh').forEach(b => b.onclick = async () => { diMsg('Refreshing sources…'); diCatalog = null; await loadCatalog(true); diMsg('Sources refreshed.'); });
+        host.querySelectorAll('.diRepoBrowse').forEach(b => b.onclick = () => { diTab = 'discover'; renderSubtabs(); renderPane(); });
+        host.querySelectorAll('.diRepoRemove').forEach(b => b.onclick = e => { repos.splice(+e.currentTarget.dataset.i, 1); persistRepos(); diCatalog = null; renderRepos(); });
         const add = document.getElementById('diRepoAdd'); if (add) add.onclick = () => { repos.push(''); persistRepos(); renderRepos(); };
       };
-      { const ap = document.getElementById('diAutoPage'); if (ap) { ap.checked = !!appSettings().autoPageOnImport; ap.onchange = () => setS('autoPageOnImport', ap.checked); } }
-      { const mb = document.getElementById('diMulti'); if (mb) { mb.checked = multi; mb.onchange = () => { multi = mb.checked; setS('multiRepo', multi); renderRepos(); }; } }
-      { const se = document.getElementById('diSearch'); if (se) { se.value = diSearch; se.oninput = () => { diSearch = se.value; renderList(); }; } }
-      document.getElementById('diCheckAll').onclick = () => checkAll();
-      { const ib = document.getElementById('diInstall'); if (ib) ib.onclick = () => { const s = document.getElementById('diSources'); if (s) s.open = true; renderRepo(repos[0], document.getElementById('diRepoCat0')); const c = document.getElementById('diRepoCat0'); if (c) c.scrollIntoView({ block: 'nearest' }); }; }
-      renderRepos();
-      configApi.getDropInInfo().then(info => { if (!info) return; const s2 = document.getElementById('diLoc'); if (s2) s2.value = info.location; const p = document.getElementById('diLocPath'); if (p) p.textContent = info.dir; });
-      document.getElementById('diLoc').onchange = async e => {
-        const info = await configApi.setDropInLocation(e.target.value);
-        if (!config.settings) config.settings = {}; config.settings.dropInLocation = e.target.value;   // keep the editor copy in sync so a full Save won't revert it
-        const p = document.getElementById('diLocPath'); if (info && p) p.textContent = info.dir;
-        renderList();
+      const renderSourcesPane = pane => {
+        pane.innerHTML = `
+          <p class="hint" style="margin:0 0 10px;color:#c98">Drop-in apps can access your filesystem and saved open-quake credentials. Only add repositories you trust.</p>
+          <div id="diRepos"></div>
+          <p class="hint" style="margin:8px 0 0">A GitHub folder serving an <code>index.json</code> + app <code>.zip</code>s. Point it at your own fork to install from there.</p>
+          <label class="row" style="gap:8px;align-items:center;width:auto;margin-top:10px"><input type="checkbox" id="diAutoPage" style="width:auto"> Add a page for newly installed apps</label>
+          <details class="advsec" style="margin-top:16px">
+            <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Advanced settings</summary>
+            <label class="row" style="gap:8px;align-items:center;width:auto;margin-top:8px"><input type="checkbox" id="diMulti" style="width:auto"> Allow multiple drop-in app repositories</label>
+            <div class="row" style="margin-top:12px"><label style="width:auto">Storage location</label>
+              <select id="diLoc" style="width:auto">
+                <option value="appdata">%APPDATA%\\open-quake</option>
+                <option value="localappdata">%LOCALAPPDATA%\\open-quake</option>
+              </select></div>
+            <p class="hint" id="diLocPath" style="margin:2px 0 0"></p>
+            <p class="hint">Where imported drop-in apps are stored — this folder survives app updates (the install folder doesn't).</p>
+          </details>`;
+        renderRepos();
+        { const ap = document.getElementById('diAutoPage'); if (ap) { ap.checked = !!appSettings().autoPageOnImport; ap.onchange = () => setS('autoPageOnImport', ap.checked); } }
+        { const mb = document.getElementById('diMulti'); if (mb) { mb.checked = multi; mb.onchange = () => { multi = mb.checked; setS('multiRepo', multi); renderRepos(); }; } }
+        configApi.getDropInInfo().then(info => { if (!info) return; const s2 = document.getElementById('diLoc'); if (s2) s2.value = info.location; const p = document.getElementById('diLocPath'); if (p) p.textContent = info.dir; });
+        const loc = document.getElementById('diLoc'); if (loc) loc.onchange = async e => {
+          const info = await configApi.setDropInLocation(e.target.value);
+          if (!config.settings) config.settings = {}; config.settings.dropInLocation = e.target.value;   // keep the editor copy in sync so a full Save won't revert it
+          const p = document.getElementById('diLocPath'); if (info && p) p.textContent = info.dir;
+          await refreshInstalled(); renderSubtabs();
+        };
       };
-      renderList();
+
+      refreshInstalled().then(() => { renderSubtabs(); renderPane(); });
     }
 
     if (tab === 'auth') {

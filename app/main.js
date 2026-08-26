@@ -905,6 +905,18 @@ async function updateDropInApp(id, confirmExec) {
   const r = await downloadAndInstall(idx, entry, src.url, id, confirmExec);
   return (r && r.ok) ? { ok: true, updated: true, id: r.id, name: r.name, version: entry.version } : r;
 }
+// Re-download and overwrite an installed repo app at whatever version the repo currently offers — the
+// update path without the newer-version guard, for fixing a corrupted or half-installed app.
+async function reinstallDropInApp(id, confirmExec) {
+  const src = readAppSources()[id];
+  if (!src || !src.url) return { ok: false, error: 'This app was not installed from a repository.' };
+  const idx = await fetchRepoIndex(src.url);
+  if (idx.error) return { ok: false, error: idx.error };
+  const entry = idx.apps.find(a => a.id === id);
+  if (!entry) return { ok: false, error: '"' + id + '" is no longer in the repository.' };
+  const r = await downloadAndInstall(idx, entry, src.url, id, confirmExec);
+  return (r && r.ok) ? { ok: true, reinstalled: true, id: r.id, name: r.name, version: entry.version } : r;
+}
 // Secret-at-rest store: encrypts the secret-typed config fields (dashboard tokens / Basic passwords /
 // custom header values / app secret options) in config.json. On Windows the backend is raw DPAPI
 // (app/dpapi.js) — Electron safeStorage's Chromium key layer lost its key across launches here,
@@ -3771,6 +3783,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('installRepoApp', (e, id, confirmExec, repoUrl) => isFrom(e, configWin) ? installRepoApp(id, confirmExec, repoUrl) : { ok: false });
   ipcMain.handle('checkDropInUpdate', (e, id) => isFrom(e, configWin) ? checkDropInUpdate(id) : { ok: false });
   ipcMain.handle('updateDropInApp', (e, id, confirmExec) => isFrom(e, configWin) ? updateDropInApp(id, confirmExec) : { ok: false });
+  ipcMain.handle('reinstallDropInApp', (e, id, confirmExec) => isFrom(e, configWin) ? reinstallDropInApp(id, confirmExec) : { ok: false });
   // Editor -> drop-in app server bridge (generic): lets the editor host management UI for an app.
   ipcMain.handle('appApiCall', (e, appId, action, body) => (isFrom(e, configWin) && sysserver) ? sysserver.callAppServer(appId, action, body) : { ok: false });
   ipcMain.handle('getAppIcon', (e, value) => isFrom(e, configWin) ? getAppIconDataUrl(value) : null);

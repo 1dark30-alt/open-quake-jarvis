@@ -183,6 +183,36 @@
   .diSrcRow { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
   .diSrcLab { color: #6f8298; width: 22px; text-align: right; flex: none; font-size: 12px; }
   .diSrcRow input { flex: 1; background: #0a111a; }
+  /* sub-tabs + panes */
+  .diSubbar { display: flex; gap: 2px; border-bottom: 1px solid #1e2733; margin: 14px 0 16px; flex-wrap: wrap; }
+  .diSubtab { background: transparent; border: none; border-bottom: 2px solid transparent; border-radius: 0; color: #8aa0b6; padding: 9px 16px; font-weight: 500; margin-bottom: -1px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 7px; }
+  .diSubtab:hover { color: #dbe5f0; background: transparent; }
+  .diSubtab.on { color: #ffffff; border-bottom-color: #2b8bff; }
+  .diSubBadge { font-size: 11px; background: #243449; color: #bcd4ee; border-radius: 999px; padding: 1px 8px; line-height: 1.5; }
+  .diSubtab.on .diSubBadge { background: #1e6fd0; color: #fff; }
+  .diSubBadge.amber { background: #4a3410; color: #e8b04b; }
+  .diReady { color: #7fb59a; } .diReady .diDot { background: #3f7d5a; }
+  .diFilterWrap { position: relative; }
+  .diFmenu { display: none; position: absolute; right: 0; top: 38px; z-index: 20; background: #141d29; border: 1px solid #2a3a4e; border-radius: 9px; padding: 8px 12px; min-width: 180px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+  .diFmenu.open { display: block; }
+  .diFh { color: #6f8298; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; margin: 6px 0 4px; }
+  .diFmenu label { display: flex; align-items: center; gap: 8px; padding: 4px 0; color: #cfe0f2; cursor: pointer; }
+  .diFmenu label input { width: auto; }
+  .diFchip { display: inline-flex; align-items: center; gap: 6px; background: #16314f; border: 1px solid #2b6fb0; color: #dbe9ff; border-radius: 999px; padding: 3px 6px 3px 11px; font-size: 12px; margin-right: 6px; }
+  .diFchip .x { cursor: pointer; color: #9fc2ea; font-size: 14px; line-height: 1; }
+  .diPills { display: flex; gap: 7px; }
+  .diPill { background: #141d29; border: 1px solid #2a3a4e; border-radius: 999px; padding: 5px 12px; font-size: 12px; color: #91a4ba; cursor: pointer; user-select: none; }
+  .diPill.on { background: #16314f; border-color: #2b6fb0; color: #fff; }
+  .diPill .n { color: #6f8298; font-size: 11px; } .diPill.on .n { color: #bcd4ee; }
+  .diCatRow { display: flex; align-items: flex-start; gap: 12px; padding: 11px 4px; border-bottom: 1px solid #141c27; }
+  .diCatRow .body { flex: 1; }
+  .diCatNm { font-weight: 600; color: #dbe5f0; font-size: 13.5px; }
+  .diCatNm .v { color: #6f8298; font-weight: 400; font-size: 12px; margin-left: 6px; }
+  .diCatDs { color: #6f8298; font-size: 12px; margin-top: 3px; line-height: 1.45; }
+  .diCatRow .diRepoPill { margin-top: 4px; }
+  .diEmpty { text-align: center; color: #6f8298; padding: 34px 10px; font-size: 13.5px; }
+  .diEmpty .big { font-size: 15px; color: #cfe0f2; margin-bottom: 6px; }
+  .diEmpty .chk { color: #3f7d5a; font-size: 26px; margin-bottom: 10px; }
 </style>
 </head>
 <body>
