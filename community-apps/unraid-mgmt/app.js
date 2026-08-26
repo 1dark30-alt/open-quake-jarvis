@@ -1,6 +1,6 @@
 'use strict';
 
-const RUNNING_VERSION = '1.0.10';
+const RUNNING_VERSION = '1.0.11';
 const query = new URLSearchParams(location.search);
 const refreshSeconds = Math.max(5, Math.min(60, parseInt(query.get('refreshSeconds'), 10) || 10));
 const controlsAllowed = query.get('allowControls') !== 'false' && query.get('allowControls') !== '0';
@@ -372,15 +372,29 @@ function fmtRate(bytesPerSec) {
 function netTile(net) {
   const rx = net ? Number(net.rxSec) || 0 : 0;
   const tx = net ? Number(net.txSec) || 0 : 0;
-  const max = Math.max(rx, tx, 1);
+  const denom = rx + tx;
+  // Bars scale to LINK CAPACITY (% utilization), not to each other. Prefer the
+  // API's utilizationPercent split by direction; else fall back to a 1 Gbps link.
+  let inPct = 0, outPct = 0;
+  if (net) {
+    if (net.util != null && net.util > 0 && denom > 0) {
+      inPct = net.util * rx / denom;
+      outPct = net.util * tx / denom;
+    } else {
+      inPct = (rx * 8 / 1e9) * 100;
+      outPct = (tx * 8 / 1e9) * 100;
+    }
+  }
   return '<div class="stat net">'
     + '<span class="l">Network</span>'
-    + netRow('down', net ? fmtRate(rx) : '—', net ? (rx / max) * 100 : 0)
-    + netRow('up', net ? fmtRate(tx) : '—', net ? (tx / max) * 100 : 0)
+    + netRow('down', net ? fmtRate(rx) : '—', inPct)
+    + netRow('up', net ? fmtRate(tx) : '—', outPct)
     + '</div>';
 }
 function netRow(dir, rate, pct) {
-  const w = Math.max(0, Math.min(100, pct));
+  // Perceptual (sqrt) scale of link utilization: light traffic stays visible,
+  // but the bar only fills as you approach the link's capacity.
+  const w = Math.max(0, Math.min(100, Math.sqrt(Math.max(0, pct) / 100) * 100));
   return '<div class="netrow">'
     + '<span class="na ' + dir + '">' + (dir === 'down' ? '&#8595;' : '&#8593;') + '</span>'
     + '<span class="nv">' + rate + '</span>'

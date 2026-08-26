@@ -170,7 +170,7 @@ const Q_SYSTEM = '{ info { os { hostname uptime } versions { core { unraid } } }
 const Q_ARRAY = '{ array { state capacity { kilobytes { free used total } } disks { name temp status fsSize fsFree } parityCheckStatus { status progress running errors } } }';
 const Q_NOTIF = '{ notifications { overview { unread { total } } list(filter: { type: UNREAD, offset: 0, limit: 8 }) { id title subject importance timestamp } } }';
 const Q_UPS = '{ upsDevices { name model status battery { chargeLevel estimatedRuntime } power { loadPercentage nominalPower } } }';
-const Q_NET = '{ metrics { network { name rxSec txSec } } }';
+const Q_NET = '{ metrics { network { name rxSec txSec utilizationPercent } } }';
 const Q_VMS = '{ vms { domains { id name state } } }';
 
 // ── normalizers (KB → bytes; tolerate missing fields) ─────────────────────────
@@ -290,9 +290,11 @@ function normNet(data) {
   for (const n of list) {
     if (!n || n.name === 'lo') continue;
     const rx = num(n.rxSec), tx = num(n.txSec);
-    if (!best || rx + tx > best.rxSec + best.txSec) best = { rxSec: rx, txSec: tx, iface: n.name };
+    if (!best || rx + tx > best.rxSec + best.txSec) {
+      best = { rxSec: rx, txSec: tx, util: (n.utilizationPercent != null ? num(n.utilizationPercent) : null), iface: n.name };
+    }
   }
-  return best || { rxSec: 0, txSec: 0, iface: '' };
+  return best || { rxSec: 0, txSec: 0, util: null, iface: '' };
 }
 
 // ── per-server fetch ──────────────────────────────────────────────────────────
