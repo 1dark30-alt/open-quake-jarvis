@@ -46,16 +46,13 @@ function formatWhen(iso) {
 
 // ── Rail ─────────────────────────────────────────────────────────────────────
 function railRow(service, slice) {
-  let dot = 'up';
   let headline;
   if (!slice) {
-    dot = '';
     headline = '<span class="hd state idle">…</span>';
   } else if (slice.up === false) {
-    dot = 'down';
-    headline = '<span class="hd state bad">Unreachable</span>';
+    headline = '<span class="hd state bad">Down</span>';
   } else if (service.key === 'sabnzbd') {
-    if (slice.paused) { dot = 'warn'; headline = '<span class="hd state idle">paused</span>'; }
+    if (slice.paused) headline = '<span class="hd state idle">paused</span>';
     else if (slice.kbpersec > 50) headline = '<span class="hd">' + esc((slice.kbpersec / 1024).toFixed(1)) + '<span class="sub">MB/s</span></span>';
     else headline = '<span class="hd state idle">idle</span>';
   } else if (service.key === 'youtarr') {
@@ -63,13 +60,13 @@ function railRow(service, slice) {
   } else if (service.key === 'lidatube') {
     headline = '<span class="hd state ok">Up</span>';
   } else {
-    if (slice.queueErrors || (slice.health || []).some(h => h.type === 'error')) dot = 'down';
-    else if (slice.queueWarnings || (slice.health || []).length) dot = 'warn';
     headline = '<span class="hd">' + (slice.queueCount || 0)
       + '<span class="sub">&#8595; &#183; ' + (slice.missing || 0) + ' ' + service.missingWord + '</span></span>';
   }
+  // dot carries the app's brand color (via b-* text color + currentColor background); red X when down
+  const down = slice && slice.up === false;
   return '<button type="button" class="svc' + (state.selected === service.key ? ' sel' : '') + '" data-svc="' + service.key + '">'
-    + '<span class="dot ' + dot + '"></span><span class="nm b-' + service.key + '">' + service.name + '</span>' + headline + '</button>';
+    + '<span class="dot b-' + service.key + (down ? ' down' : '') + '"></span><span class="nm b-' + service.key + '">' + service.name + '</span>' + headline + '</button>';
 }
 
 // ── Center list ──────────────────────────────────────────────────────────────
@@ -79,7 +76,7 @@ function statusIsWarning(status) {
 
 function mergedItems(services) {
   const rows = [];
-  for (const service of SERVICES) {
+  for (const service of focusedServices()) {
     const slice = services[service.key];
     if (!slice || !slice.configured || !Array.isArray(slice.items)) continue;
     for (const item of slice.items) rows.push(Object.assign({ service: service.key }, item));
@@ -177,9 +174,20 @@ function render(services) {
 
   const items = mergedItems(services);
   $('#activity-heading').textContent = items.length ? 'Active downloads · ' + items.length : 'Active downloads';
-  $('#dl-list').innerHTML = items.length
-    ? items.map(itemRow).join('')
-    : '<div class="empty">No active downloads</div>';
+  $('#back-all').hidden = !state.selected;
+  let listHtml = items.map(itemRow).join('');
+  if (state.selected) {
+    if (!items.length) listHtml = '<div class="empty-line">No active downloads</div>';
+    const slice = services[state.selected] || {};
+    const history = Array.isArray(slice.history) ? slice.history.slice(0, 5) : [];
+    if (history.length) {
+      listHtml += '<div class="sec hist-sec">Recent history</div>'
+        + history.map(entry => itemRow({ service: state.selected, title: entry.title, status: entry.status, progress: null, timeleft: null })).join('');
+    }
+  } else if (!items.length) {
+    listHtml = '<div class="empty">No active downloads</div>';
+  }
+  $('#dl-list').innerHTML = listHtml;
 
   const focused = state.selected && SERVICES.find(s => s.key === state.selected);
   $('#open-row').innerHTML = focused
@@ -305,6 +313,11 @@ $('#open-row').addEventListener('click', async event => {
   } catch (error) {
     renderError(error.message || 'Could not open');
   }
+});
+
+$('#back-all').addEventListener('click', () => {
+  state.selected = null;
+  if (state.lastServices) render(state.lastServices);
 });
 
 $('#rail').addEventListener('click', event => {

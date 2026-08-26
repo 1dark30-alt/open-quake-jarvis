@@ -4,14 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>*arr Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=1.0.2">
+  <link rel="stylesheet" href="style.css?v=1.0.3">
 </head>
 <body>
   <main class="shell">
     <nav class="rail" id="rail" aria-label="Services"></nav>
 
     <section class="mid" aria-labelledby="activity-heading">
-      <header class="sec" id="activity-heading">Active downloads</header>
+      <header class="mid-head">
+        <span class="sec" id="activity-heading">Active downloads</span>
+        <button type="button" class="back-btn" id="back-all" hidden>&#8249; All apps</button>
+      </header>
       <div class="list-wrap">
         <div class="dl-list" id="dl-list"></div>
         <div class="sbar" id="sbar" hidden><div class="sbar-thumb" id="sbar-thumb"></div></div>
@@ -28,6 +31,6 @@
       </div>
     </aside>
   </main>
-  <script src="app.js?v=1.0.2"></script>
+  <script src="app.js?v=1.0.3"></script>
 </body>
 </html>

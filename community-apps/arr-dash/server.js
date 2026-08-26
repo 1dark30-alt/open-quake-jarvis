@@ -1,7 +1,6 @@
 'use strict';
 
 const REQUEST_TIMEOUT_MS = 8000;
-const PING_TIMEOUT_MS = 5000;
 const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 
 // Youtarr session token cache (7-day tokens; re-login on 401).
@@ -47,9 +46,23 @@ async function fetchJson(url, init, timeoutMs) {
 
 // ── Sonarr / Radarr / Lidarr ─────────────────────────────────────────────────
 const ARR_APPS = {
-  sonarr: { api: 'api/v3', queueExtras: 'includeUnknownSeriesItems=true&includeSeries=true&includeEpisode=true' },
-  radarr: { api: 'api/v3', queueExtras: 'includeUnknownMovieItems=true&includeMovie=true' },
-  lidarr: { api: 'api/v1', queueExtras: 'includeUnknownArtistItems=true&includeArtist=true&includeAlbum=true' },
+  sonarr: { api: 'api/v3', queueExtras: 'includeUnknownSeriesItems=true&includeSeries=true&includeEpisode=true', historyExtras: 'includeSeries=true&includeEpisode=true' },
+  radarr: { api: 'api/v3', queueExtras: 'includeUnknownMovieItems=true&includeMovie=true', historyExtras: 'includeMovie=true' },
+  lidarr: { api: 'api/v1', queueExtras: 'includeUnknownArtistItems=true&includeArtist=true&includeAlbum=true', historyExtras: 'includeArtist=true&includeAlbum=true' },
+};
+
+// Health noise T.J. doesn't want on the panel (applies to all three *arrs)
+const HEALTH_IGNORE = [/removed from TheTVDB/i, /completed download handling/i];
+
+const EVENT_LABELS = {
+  grabbed: 'Grabbed',
+  downloadFolderImported: 'Imported',
+  downloadImported: 'Imported',
+  trackFileImported: 'Imported',
+  downloadFailed: 'Failed',
+  episodeFileDeleted: 'Deleted',
+  movieFileDeleted: 'Deleted',
+  trackFileDeleted: 'Deleted',
 };
 
 function arrTitle(kind, record) {
@@ -64,7 +77,7 @@ function arrTitle(kind, record) {
   if (kind === 'lidarr' && record.artist) {
     return record.artist.artistName + (record.album ? ' — ' + record.album.title : '');
   }
-  return record.title || 'Unknown';
+  return record.title || record.sourceTitle || 'Unknown';
 }
 
 function calendarEntry(kind, item) {
@@ -85,13 +98,14 @@ async function fetchArr(kind, base, apiKey) {
 
   const start = new Date();
   const end = new Date(start.getTime() + 24 * 3600 * 1000);
-  const [queue, queueStatus, health, diskspace, missing, calendar] = await Promise.all([
+  const [queue, queueStatus, health, diskspace, missing, calendar, history] = await Promise.all([
     get('queue?page=1&pageSize=20&' + cfg.queueExtras),
     get('queue/status'),
     get('health'),
     get('diskspace'),
     get('wanted/missing?page=1&pageSize=1'),
     get('calendar?start=' + start.toISOString() + '&end=' + end.toISOString() + (kind === 'sonarr' ? '&includeSeries=true' : '')).catch(() => []),
+    get('history?page=1&pageSize=5&sortKey=date&sortDirection=descending&' + cfg.historyExtras).catch(() => ({})),
   ]);
 
   return {
@@ -100,7 +114,9 @@ async function fetchArr(kind, base, apiKey) {
     queueErrors: (queueStatus.errors ? 1 : 0) + (queueStatus.unknownErrors ? 1 : 0),
     queueWarnings: (queueStatus.warnings ? 1 : 0) + (queueStatus.unknownWarnings ? 1 : 0),
     missing: missing.totalRecords || 0,
-    health: (Array.isArray(health) ? health : []).map(h => ({ type: h.type, message: h.message })),
+    health: (Array.isArray(health) ? health : [])
+      .filter(h => !HEALTH_IGNORE.some(rx => rx.test(h.message || '')))
+      .map(h => ({ type: h.type, message: h.message })),
     disks: (Array.isArray(diskspace) ? diskspace : []).map(d => ({ path: d.path, free: d.freeSpace, total: d.totalSpace })),
     items: (queue.records || []).map(r => ({
       title: arrTitle(kind, r),
@@ -109,6 +125,10 @@ async function fetchArr(kind, base, apiKey) {
       status: r.status || null,
     })),
     calendar: (Array.isArray(calendar) ? calendar : []).map(i => calendarEntry(kind, i)).filter(e => e.when),
+    history: (history.records || []).map(r => ({
+      title: arrTitle(kind, r),
+      status: EVENT_LABELS[r.eventType] || r.eventType || '',
+    })),
   };
 }
 
@@ -168,9 +188,10 @@ async function fetchYoutarr(base, user, pass) {
       throw error;
     }
   };
-  const [jobs, activity] = await Promise.all([
+  const [jobs, activity, videos] = await Promise.all([
     get('/runningjobs'),
     get('/api/jobs/current-activity').catch(() => null),
+    get('/getVideos?page=1&limit=5').catch(() => null),
   ]);
   const running = (Array.isArray(jobs) ? jobs : []).filter(j => j.status === 'In Progress' || j.status === 'Pending');
   return {
@@ -182,17 +203,22 @@ async function fetchYoutarr(base, user, pass) {
       timeleft: null,
       status: j.status,
     })),
+    history: ((videos && videos.videos) || []).map(v => ({
+      title: (v.youTubeChannelName ? v.youTubeChannelName + ' — ' : '') + (v.youTubeVideoName || 'Video'),
+      status: v.removed ? 'Missing' : 'Downloaded',
+    })),
   };
 }
 
 // ── LidaTube (reachability only — no HTTP API) ───────────────────────────────
 async function fetchLidatube(base) {
+  // Any HTTP response (including redirects) proves the server is reachable.
+  // Don't read the body — the page can stream slowly and trip the timeout.
   const response = await fetch(base + '/', {
     redirect: 'manual',
-    signal: AbortSignal.timeout(PING_TIMEOUT_MS),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  if (response.status >= 500) throw new Error('HTTP ' + response.status);
-  try { await response.arrayBuffer(); } catch (error) {}
+  try { if (response.body) await response.body.cancel(); } catch (error) {}
   return { up: true };
 }
 
