@@ -9,7 +9,6 @@ const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 12000;
 const DEFAULT_CACHE_MS = 60 * 1000;
 const DETAIL_CACHE_MS = 30 * 1000;
-const CARD_TYPES = new Set(['repositories', 'pipelines', 'pull-requests', 'work-items']);
 const cache = new Map();
 const inFlight = new Map();
 let fetchImpl = (...args) => fetch(...args);
@@ -182,25 +181,14 @@ function normalizeOrganization(item) {
 }
 
 async function organizations(context, token, force) {
-  const configured = text(context.options && context.options.organization, 100);
   const key = 'organizations';
   return cached(key, 10 * 60 * 1000, async () => {
-    let discovered = [];
-    let discoveryWarning = '';
-    try {
-      const profile = await requestJson(`${PROFILE_ORIGIN}/_apis/profile/profiles/me?api-version=${API_VERSION}`, token);
-      const memberId = identifier(profile.id, 'profile');
-      const accounts = await requestJson(`${PROFILE_ORIGIN}/_apis/accounts?memberId=${pathPart(memberId)}&api-version=${API_VERSION}`, token);
-      discovered = valueArray(accounts).map(normalizeOrganization).filter(Boolean);
-    } catch (error) {
-      discoveryWarning = publicMessage(error);
-      if (!configured) throw error;
-    }
-    if (configured && !discovered.some(item => item.name.toLowerCase() === configured.toLowerCase())) {
-      discovered.unshift(normalizeOrganization({ accountName: configured }));
-    }
+    const profile = await requestJson(`${PROFILE_ORIGIN}/_apis/profile/profiles/me?api-version=${API_VERSION}`, token);
+    const memberId = identifier(profile.id, 'profile');
+    const accounts = await requestJson(`${PROFILE_ORIGIN}/_apis/accounts?memberId=${pathPart(memberId)}&api-version=${API_VERSION}`, token);
+    const discovered = valueArray(accounts).map(normalizeOrganization).filter(Boolean);
     discovered.sort((a, b) => a.name.localeCompare(b.name));
-    return { organizations: discovered, defaultOrganization: configured, warning: discoveryWarning };
+    return { organizations: discovered };
   }, force);
 }
 
@@ -223,7 +211,7 @@ async function projects(context, token, organization, force) {
     const data = await requestJson(organizationApiUrl(org, 'projects', { '$top': 250, stateFilter: 'wellFormed' }), token);
     const items = valueArray(data).map(item => normalizeProject(item, org)).filter(item => item.id && item.name);
     items.sort((a, b) => a.name.localeCompare(b.name));
-    return { projects: items, defaultProject: text(context.options && context.options.defaultProject, 200) };
+    return { projects: items };
   }, force);
 }
 
@@ -473,12 +461,8 @@ function metricFor(type, datasets) {
   };
 }
 
-function configuredCards(options) {
-  const defaults = ['repositories', 'pipelines', 'pull-requests', 'work-items'];
-  return defaults.map((fallback, index) => {
-    const chosen = text(options && options[`card${index + 1}`], 40);
-    return CARD_TYPES.has(chosen) ? chosen : fallback;
-  });
+function configuredCards() {
+  return ['repositories', 'pipelines', 'pull-requests', 'work-items'];
 }
 
 function parseBody(context) {
@@ -619,7 +603,7 @@ async function handleAction(action, context) {
     const results = [repositories, pipelines, pullRequests, workItems];
     const oldest = Math.min(...results.map(item => item.fetchedAt));
     return {
-      ok: true, project, cards: configuredCards(context.options).map(type => metricFor(type, datasets)),
+      ok: true, project, cards: configuredCards().map(type => metricFor(type, datasets)),
       actionsEnabled: actionsEnabled(context), fetchedAt: new Date(oldest).toISOString(),
       stale: results.some(item => item.stale), warning: results.map(item => item.warning).filter(Boolean)[0] || ''
     };

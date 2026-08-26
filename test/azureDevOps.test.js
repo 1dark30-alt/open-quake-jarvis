@@ -46,7 +46,8 @@ test('manifest is a self-contained served drop-in with server-only credentials',
   assert.equal(data.served, true);
   assert.equal(data.server, 'server.js');
   assert.deepEqual(data.oauth.scopes, server._test.OAUTH_SCOPES);
-  for (const key of ['oauthClientId', 'oauthClientSecret', 'organization', 'defaultProject', 'enablePipelineActions']) {
+  assert.deepEqual(data.options.map(option => option.key), ['oauthClientId', 'oauthClientSecret', 'enablePipelineActions']);
+  for (const key of ['oauthClientId', 'oauthClientSecret', 'enablePipelineActions']) {
     assert.equal(data.options.find(option => option.key === key).serverOnly, true, `${key} must stay out of the page URL`);
   }
   assert.equal(data.options.find(option => option.key === 'oauthClientSecret').type, 'secret');
@@ -60,7 +61,7 @@ test('community catalog and importable zip contain the Azure DevOps drop-in', ()
     id: 'azure-devops',
     name: 'Azure DevOps',
     description: 'Project-focused Azure DevOps repositories, pipelines, pull requests, and work items.',
-    version: '1.0.1',
+    version: '1.0.2',
     zip: 'azure-devops.zip',
     server: true
   });
@@ -77,7 +78,7 @@ test('app assets are relative and the panel defines exactly four overview slots'
   assert.match(html, /src="app\.js"/);
   assert.match(html, /<svg[^>]*viewBox="0 0 24 24"/);
   assert.doesNotMatch(html, /(?:src|href)="\//);
-  assert.equal(data.options.filter(option => /^card[1-4]$/.test(option.key)).length, 4);
+  assert.equal(data.options.filter(option => /^card[1-4]$/.test(option.key)).length, 0);
 });
 
 test('overview cards present healthy, warning, and failure states from existing datasets', () => {
@@ -128,9 +129,9 @@ test('external Azure DevOps links are limited to the selected organization', () 
   assert.equal(server._test.safeExternalUrl('https://user:pass@dev.azure.com/contoso/Project', 'contoso'), '');
 });
 
-test('invalid card configuration falls back without changing the four-card shape', () => {
+test('overview card order is fixed even when legacy card options remain in saved config', () => {
   assert.deepEqual(server._test.configuredCards({ card1: 'pipelines', card2: 'not-a-card' }), [
-    'pipelines', 'pipelines', 'pull-requests', 'work-items'
+    'repositories', 'pipelines', 'pull-requests', 'work-items'
   ]);
 });
 

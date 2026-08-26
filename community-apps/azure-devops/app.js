@@ -36,7 +36,7 @@ const state = {
   contextVersion: 0,
   requestVersion: 0,
   refreshTimer: null,
-  refreshMinutes: Math.max(1, Number(query.get('refreshMinutes')) || 5),
+  refreshMinutes: 5,
   cachedViews: new Map(),
   confirmResolve: null
 };

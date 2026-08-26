@@ -40,7 +40,8 @@ Tenant policy may require an administrator to grant consent.
 ## 3. Configure and connect
 
 1. Import or install the `azure-devops` folder as an open-quake drop-in app.
-2. Set the client ID and, optionally, a default organization and project.
+2. Set the client ID. Organization and project selection happens directly on the panel and the
+   last selection is remembered locally.
 3. Leave **Enable pipeline run and cancel controls** off unless the device should be allowed to
    change pipeline state.
 4. Add the app to a page and select **Connect** on the panel.
@@ -51,8 +52,8 @@ organization on `https://dev.azure.com` and use the panel's normal external-link
 
 ## Troubleshooting
 
-- **No organizations found:** set the default organization option, and confirm the user is a
-  member of it. Some tenant policies prevent profile-based organization discovery.
+- **No organizations found:** confirm the user is a member of the expected Azure DevOps
+  organization and that the app registration has `vso.profile` permission.
 - **Permission denied:** check the delegated permissions and the user's Azure DevOps project
   security. The app cannot elevate beyond the signed-in user.
 - **Run validation failed:** the pipeline may require runtime parameters that this compact panel
