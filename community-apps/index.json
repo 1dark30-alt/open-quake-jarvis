@@ -17,14 +17,6 @@
       "server": true
     },
     {
-      "id": "frigate-cams",
-      "name": "Frigate Cameras",
-      "description": "Live camera wall for a local Frigate NVR — auto-discovers every camera, with Grid, Spotlight, and Cycle views.",
-      "version": "1.0.0",
-      "zip": "frigate-cams.zip",
-      "server": false
-    },
-    {
       "id": "if-player",
       "name": "Interactive Fiction",
       "description": "Play Inform / Z-machine & Glulx text adventures with TTS narration and voice commands.",
@@ -46,14 +38,6 @@
       "description": "Launch the kitten for distance — a touch remake of the classic, with online high scores.",
       "version": "1.0.0",
       "zip": "kitten-cannon.zip",
-      "server": false
-    },
-    {
-      "id": "music-assistant",
-      "name": "Music Assistant",
-      "description": "Full Music Assistant controller: now playing, queue, players and grouping, library browse and search.",
-      "version": "1.0.0",
-      "zip": "music-assistant.zip",
       "server": false
     },
     {
