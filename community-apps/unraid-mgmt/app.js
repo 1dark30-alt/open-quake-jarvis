@@ -1,6 +1,6 @@
 'use strict';
 
-const RUNNING_VERSION = '1.0.7';
+const RUNNING_VERSION = '1.0.8';
 const query = new URLSearchParams(location.search);
 const refreshSeconds = Math.max(5, Math.min(60, parseInt(query.get('refreshSeconds'), 10) || 10));
 const controlsAllowed = query.get('allowControls') !== 'false' && query.get('allowControls') !== '0';
@@ -470,7 +470,7 @@ function openDetail(id) {
     + (c.gpuMem != null ? kv('GPU memory', fmtMb(c.gpuMem)) : '')
     + '</div>'
     + '<button type="button" class="paction primary" id="plogs">Open logs in web UI</button>'
-    + '<div class="none" style="color:var(--muted);font-size:15px">' + (c.cpu == null ? 'Live CPU/memory need the stats-api add-on. ' : '') + 'Container logs aren\'t in the Unraid API.</div>';
+    + '<div class="none" style="color:var(--muted);font-size:15px">' + (c.cpu == null ? 'Live CPU/memory need the stats-api add-on. ' : '') + 'Logs open in your browser via the stats-api add-on.</div>';
   $('#overlay').hidden = false;
   $('#panel').scrollTop = 0;
 }

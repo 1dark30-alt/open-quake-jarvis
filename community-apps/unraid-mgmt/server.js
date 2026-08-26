@@ -407,9 +407,16 @@ function openWebUi(options, query) {
   const cfg = cfgOrThrow(options, parseInt(query.server, 10));
   const shell = require('electron').shell;
   if (!shell || typeof shell.openExternal !== 'function') throw new Error('opening a browser is only available on the panel');
-  // Per-container log view: Unraid serves it at /logterminal/<name>.log/ (trailing slash).
+  // Logs open in the browser via the stats-api add-on (Unraid's own log view is an
+  // on-demand ttyd session that can't be deep-linked). Falls back to the Docker page.
   const log = String(query.log || '');
-  const url = log ? cfg.base + '/logterminal/' + encodeURIComponent(log) + '.log/' : cfg.base + '/Docker';
+  let url;
+  if (log) {
+    if (!cfg.stats) throw new Error('logs need the stats-api URL set in this server\'s options');
+    url = cfg.stats + '/logs?container=' + encodeURIComponent(log);
+  } else {
+    url = cfg.base + '/Docker';
+  }
   shell.openExternal(url);
   return { ok: true };
 }
