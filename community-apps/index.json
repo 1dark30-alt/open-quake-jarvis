@@ -9,6 +9,14 @@
       "server": true
     },
     {
+      "id": "ai-usage",
+      "name": "AI Usage",
+      "description": "At-a-glance usage monitor for Claude (Claude Code & Cowork), ChatGPT/Codex, and GitHub Copilot. Reads local Claude/Codex session logs and the GitHub billing API.",
+      "version": "1.0.0",
+      "zip": "ai-usage.zip",
+      "server": true
+    },
+    {
       "id": "duplicati-dash",
       "name": "Duplicati Dashboard",
       "description": "Backup status board for a Duplicati server — every job with a green/red result dot, live progress while running, and one tap to open the web UI on the PC.",

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Usage</title>
+  <link rel="stylesheet" href="style.css?v=1.0.0">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <h1>AI Usage</h1>
+        <span class="tag">Claude &middot; ChatGPT &middot; Copilot</span>
+      </div>
+      <nav class="periods" id="periods" aria-label="Time period">
+        <button type="button" data-p="today">Today</button>
+        <button type="button" data-p="7d" class="sel">7 days</button>
+        <button type="button" data-p="30d">30 days</button>
+        <button type="button" data-p="all">All time</button>
+      </nav>
+      <div class="updated" id="updated">&#8230;</div>
+    </header>
+    <div class="grid">
+      <section class="panel" id="p-claude" style="--accent:#e08a5c"></section>
+      <section class="panel" id="p-codex" style="--accent:#19c39a"></section>
+      <section class="panel" id="p-copilot" style="--accent:#a179f2"></section>
+    </div>
+  </main>
+  <script src="app.js?v=1.0.0"></script>
+</body>
+</html>
