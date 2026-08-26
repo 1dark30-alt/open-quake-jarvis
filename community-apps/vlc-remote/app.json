@@ -1,7 +1,7 @@
 {
   "id": "vlc-remote",
   "name": "VLC Desktop Remote",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Control a local or network VLC player with transport, seek, volume, status, and playlist controls.",
   "entry": "index.html",
   "served": true,
@@ -36,12 +36,6 @@
         ["30", "30 seconds"]
       ],
       "help": "How often the panel refreshes VLC status and playlist data."
-    },
-    {
-      "key": "mock",
-      "label": "Demo data",
-      "type": "bool",
-      "default": false
     }
   ]
 }

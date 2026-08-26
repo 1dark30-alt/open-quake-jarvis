@@ -284,6 +284,7 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 
 /* ── Active server down ────────────────────────────────── */
+.down-overlay[hidden] { display: none; }
 .down-overlay {
   position: absolute;
   top: 72px;

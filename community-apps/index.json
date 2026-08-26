@@ -4,7 +4,7 @@
       "id": "arr-dash",
       "name": "*arr Dashboard",
       "description": "At-a-glance dashboard for Sonarr, Radarr, Lidarr, SABnzbd, Youtarr, and LidaTube — downloads, health, disk space, and upcoming releases.",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "zip": "arr-dash.zip",
       "server": true
     },
@@ -15,6 +15,14 @@
       "version": "1.0.2",
       "zip": "duplicati-dash.zip",
       "server": true
+    },
+    {
+      "id": "frigate-cams",
+      "name": "Frigate Cameras",
+      "description": "Live camera wall for a local Frigate NVR — auto-discovers every camera, with Grid, Spotlight, and Cycle views.",
+      "version": "1.0.0",
+      "zip": "frigate-cams.zip",
+      "server": false
     },
     {
       "id": "if-player",
@@ -60,7 +68,7 @@
       "id": "pihole-dash",
       "name": "Pi-hole Dashboard",
       "description": "Multi-server Pi-hole dashboard — per-server tabs with live stats, 24-hour query chart, top lists, and blocking controls.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "zip": "pihole-dash.zip",
       "server": true
     },
@@ -92,7 +100,7 @@
       "id": "vlc-remote",
       "name": "VLC Desktop Remote",
       "description": "Control a local or network VLC player with transport, seek, volume, status, and playlist controls.",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "zip": "vlc-remote.zip",
       "server": true
     }

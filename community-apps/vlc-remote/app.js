@@ -1,7 +1,6 @@
 'use strict';
 
 const query = new URLSearchParams(location.search);
-const mockMode = query.get('mock') === '1' || query.get('mock') === 'true';
 const refreshSeconds = Math.max(1, Math.min(30, parseInt(query.get('refreshSeconds'), 10) || 2));
 
 const state = {
@@ -56,7 +55,6 @@ function apiUrl(action, params) {
 }
 
 async function api(action, params) {
-  if (mockMode) return mockApi(action, params);
   const response = await fetch(apiUrl(action, params), { cache: 'no-store' });
   const text = await response.text();
   let payload = {};
@@ -304,50 +302,6 @@ function setupEvents() {
     closeDrawer();
   });
 }
-
-function mockApi(action, params) {
-  if (action === 'command' && params) {
-    if (params.command === 'pl_pause') mockApi.playing = !mockApi.playing;
-    if (params.command === 'pl_stop') mockApi.playing = false;
-    if (params.command === 'pl_empty') mockApi.empty = true;
-    if (params.command === 'pl_play') {
-      mockApi.currentId = Number(params.id) || 2;
-      mockApi.playing = true;
-    }
-  }
-  const status = {
-    ok: true,
-    state: mockApi.playing ? 'playing' : 'paused',
-    time: Math.floor((Date.now() / 1000) % 1800),
-    length: 3600,
-    volume: 176,
-    currentplid: mockApi.currentId,
-    information: {
-      category: {
-        meta: {
-          title: 'Big Buck Bunny',
-          artist: 'Blender Foundation',
-          album: 'Local desktop VLC',
-        },
-      },
-    },
-  };
-  const playlist = {
-    ok: true,
-    children: mockApi.empty ? [] : [{
-      name: 'Playlist',
-      children: [
-        { id: 1, type: 'leaf', name: 'Open Quake trailer.mp4', duration: 212 },
-        { id: 2, type: 'leaf', name: 'Big Buck Bunny', duration: 3600 },
-        { id: 3, type: 'leaf', name: 'NAS movie night.m3u8', duration: 5420 },
-      ],
-    }],
-  };
-  return Promise.resolve(action === 'playlist' ? playlist : status);
-}
-mockApi.playing = true;
-mockApi.currentId = 2;
-mockApi.empty = false;
 
 applyTheme();
 setupEvents();

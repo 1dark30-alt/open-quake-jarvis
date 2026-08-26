@@ -1,7 +1,7 @@
 {
   "id": "pihole-dash",
   "name": "Pi-hole Dashboard",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Multi-server Pi-hole dashboard — per-server tabs with live stats, 24-hour query chart, top lists, and blocking controls.",
   "entry": "index.html",
   "served": true,
@@ -26,7 +26,6 @@
       "default": "10",
       "choices": [["5", "5 seconds"], ["10", "10 seconds"], ["30", "30 seconds"]],
       "help": "How often the dashboard polls the servers."
-    },
-    { "key": "mock", "label": "Demo data", "type": "bool", "default": false, "help": "Show sample data without contacting any server." }
+    }
   ]
 }

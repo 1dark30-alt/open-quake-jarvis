@@ -33,8 +33,7 @@ service is optional — leave its URL blank to hide it.
 | Youtarr | URL, plus username + password unless it runs with `AUTH_ENABLED=false` | Your Youtarr login |
 | LidaTube | URL only | — (no API; the dashboard shows reachability only) |
 
-Also configurable: refresh interval (5/10/30 s) and a **Demo data** toggle that
-renders sample data without contacting anything.
+Also configurable: refresh interval (5/10/30 s).
 
 ## Notes
 

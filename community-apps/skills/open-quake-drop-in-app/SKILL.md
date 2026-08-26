@@ -14,6 +14,7 @@ Use this skill when creating or changing standalone drop-in apps in the open-qua
 - Keep `app.json.id` stable, lowercase, and unique. Prefer matching the folder name for new apps.
 - During migration, preserve an existing app id even if the folder name differs.
 - Do not edit host/runtime files for a normal app.
+- Do not add "Demo data" / mock-mode options — apps show real data or an honest empty/error state.
 - Treat changes to app discovery, serving, editor behavior, IPC, packaging, local server behavior, or build files as platform work, not app work.
 - Use relative asset URLs in HTML, such as `style.css` and `app.js`.
 

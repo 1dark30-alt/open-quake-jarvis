@@ -27,7 +27,7 @@ update it). For each server slot: a tab name, the base URL (e.g.
 Web Interface / API → **App password**. It works even with 2FA enabled and can
 be revoked without changing your admin login.
 
-Also configurable: refresh interval (5/10/30 s) and a **Demo data** toggle.
+Also configurable: refresh interval (5/10/30 s).
 
 ## Notes
 

@@ -32,6 +32,7 @@ Rules:
 
 - `id` must be unique and lowercase — letters, digits, `_`, `-`.
 - Say what the app does, and whether it needs a `server` module or `proxy`, in the PR.
+- No "Demo data" / mock-mode options — apps show real data or an honest empty/error state.
 - See [`docs/app-template/`](app-template) for a minimal starting point and
   [Apps & drop-ins](apps.md) for the manifest schema.
 

@@ -1,7 +1,6 @@
 'use strict';
 
 const query = new URLSearchParams(location.search);
-const mockMode = query.get('mock') === '1' || query.get('mock') === 'true';
 const refreshSeconds = Math.max(5, Math.min(60, parseInt(query.get('refreshSeconds'), 10) || 10));
 
 const $ = selector => document.querySelector(selector);
@@ -200,7 +199,7 @@ function noteTimer(blocking, timer) {
 
 async function refresh() {
   try {
-    const payload = mockMode ? mockSummary() : await apiCall('summary', { active: state.active || '' });
+    const payload = await apiCall('summary', { active: state.active || '' });
     state.servers = payload.servers;
     const active = payload.servers.find(server => server.slot === state.active && server.configured);
     if (active && active.up !== false) noteTimer(active.blocking, active.timer);
@@ -220,7 +219,7 @@ $('#tabs').addEventListener('click', event => {
   state.active = parseInt(tab.dataset.slot, 10);
   state.timerBase = null;
   render();
-  if (!mockMode) apiCall('summary', { active: state.active }).then(payload => {
+  apiCall('summary', { active: state.active }).then(payload => {
     state.servers = payload.servers;
     const active = payload.servers.find(server => server.slot === state.active);
     if (active && active.up !== false) noteTimer(active.blocking, active.timer);
@@ -234,14 +233,12 @@ $('#brow').addEventListener('click', async event => {
   const mode = button.dataset.block;
   button.disabled = true;
   try {
-    if (!mockMode) {
-      const params = { server: state.active, enable: mode === 'enable' ? '1' : '0' };
-      if (mode === 'pause') params.timer = '300';
-      const result = await apiCall('blocking', params);
-      const server = state.servers.find(s => s.slot === state.active);
-      if (server) { server.blocking = result.blocking; server.timer = result.timer; }
-      noteTimer(result.blocking, result.timer);
-    }
+    const params = { server: state.active, enable: mode === 'enable' ? '1' : '0' };
+    if (mode === 'pause') params.timer = '300';
+    const result = await apiCall('blocking', params);
+    const server = state.servers.find(s => s.slot === state.active);
+    if (server) { server.blocking = result.blocking; server.timer = result.timer; }
+    noteTimer(result.blocking, result.timer);
     render();
   } catch (error) {
     $('#bstate').className = 'bstate unknown';
@@ -250,7 +247,7 @@ $('#brow').addEventListener('click', async event => {
 });
 
 $('#open-web').addEventListener('click', async () => {
-  if (!state.active || mockMode) return;
+  if (!state.active) return;
   try {
     await apiCall('open', { server: state.active });
   } catch (error) {
@@ -258,28 +255,6 @@ $('#open-web').addEventListener('click', async () => {
     $('#bstate').textContent = error.message || 'Could not open';
   }
 });
-
-// ── Demo data ────────────────────────────────────────────────────────────────
-function mockSummary() {
-  const history = [];
-  for (let i = 0; i < 144; i++) {
-    const total = Math.max(20, Math.round(120 + 90 * Math.sin(i / 7.6) + (i * 37 % 61)));
-    history.push({ ts: 0, total, blocked: Math.round(total * (0.1 + (i * 13 % 17) / 100)) });
-  }
-  return { ok: true, servers: [
-    { slot: 1, configured: true, up: true, name: 'Primary', blocking: 'enabled', timer: null,
-      stats: { total: 48211, blocked: 6804, percent: 14.1, qps: 1.4, clients: 23, gravity: 1210000 },
-      updateAvailable: true, version: 'v6.1.2',
-      detail: { history,
-        topBlocked: [{ name: 'app-measurement.com', count: 1204 }, { name: 'graph.facebook.com', count: 989 }, { name: 'telemetry.microsoft.com', count: 742 }, { name: 'ads.tiktok.com', count: 511 }],
-        topClients: [{ name: 'tj-desktop', count: 9410 }, { name: 'living-room-tv', count: 6220 }, { name: '192.168.1.88', count: 4102 }, { name: 'phone-tj', count: 2977 }],
-        gravityUpdated: Date.now() / 1000 - 26 * 3600 } },
-    { slot: 2, configured: true, up: true, name: 'Backup', blocking: 'enabled', timer: null,
-      stats: { total: 12044, blocked: 1795, percent: 14.9, qps: 0.4, clients: 9, gravity: 1210000 },
-      updateAvailable: false, version: 'v6.1.2' },
-    { slot: 3, configured: false }, { slot: 4, configured: false },
-  ] };
-}
 
 applyTheme();
 setInterval(tickCountdown, 1000);

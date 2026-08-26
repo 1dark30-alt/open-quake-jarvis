@@ -15,7 +15,6 @@ By **Mark Hollingworth**.
      other machine's address.
    - **VLC password** — the Lua password (stored as an encrypted secret).
    - **Refresh interval** — 1–30 s status/playlist polling (default 2 s).
-   - **Demo data** — try the UI without a VLC connection.
 
 ## Notes
 

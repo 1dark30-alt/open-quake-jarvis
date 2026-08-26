@@ -1,7 +1,7 @@
 {
   "id": "arr-dash",
   "name": "*arr Dashboard",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "At-a-glance dashboard for Sonarr, Radarr, Lidarr, SABnzbd, Youtarr, and LidaTube — downloads, health, disk space, and upcoming releases.",
   "entry": "index.html",
   "served": true,
@@ -113,13 +113,6 @@
         ["30", "30 seconds"]
       ],
       "help": "How often the dashboard polls the servers."
-    },
-    {
-      "key": "mock",
-      "label": "Demo data",
-      "type": "bool",
-      "default": false,
-      "help": "Show sample data without contacting any server."
     }
   ]
 }

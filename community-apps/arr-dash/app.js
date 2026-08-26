@@ -1,7 +1,6 @@
 'use strict';
 
 const query = new URLSearchParams(location.search);
-const mockMode = query.get('mock') === '1' || query.get('mock') === 'true';
 const refreshSeconds = Math.max(5, Math.min(60, parseInt(query.get('refreshSeconds'), 10) || 10));
 
 const SERVICES = [
@@ -260,7 +259,7 @@ function wireScrollbar() {
 // ── Data loop ────────────────────────────────────────────────────────────────
 async function refresh() {
   try {
-    const payload = mockMode ? mockSummary() : await fetchSummary();
+    const payload = await fetchSummary();
     render(payload.services);
   } catch (error) {
     renderError(error.message || 'Refresh failed');
@@ -278,38 +277,12 @@ async function fetchSummary() {
   return payload;
 }
 
-function mockSummary() {
-  return { ok: true, services: {
-    sonarr: { configured: true, up: true, queueCount: 3, queueErrors: 0, queueWarnings: 0, missing: 12,
-      health: [], disks: [{ path: '/data', free: 6.2e12, total: 14e12 }],
-      items: [
-        { title: 'The Expanse S06E04', progress: 72, timeleft: '00:12:00', status: 'downloading' },
-        { title: 'For All Mankind S05E01', progress: null, timeleft: null, status: 'queued' },
-      ],
-      calendar: [{ title: 'Slow Horses S04E03', when: new Date(Date.now() + 6 * 3600e3).toISOString() }] },
-    radarr: { configured: true, up: true, queueCount: 1, queueErrors: 0, queueWarnings: 0, missing: 4,
-      health: [], disks: [{ path: '/data', free: 6.2e12, total: 14e12 }],
-      items: [{ title: 'Dune: Part Two (2024)', progress: 31, timeleft: '01:04:00', status: 'downloading' }],
-      calendar: [{ title: 'Twisters (2024)', when: new Date(Date.now() + 20 * 3600e3).toISOString() }] },
-    lidarr: { configured: true, up: true, queueCount: 1, queueErrors: 0, queueWarnings: 0, missing: 27,
-      health: [], disks: [], items: [{ title: 'Khruangbin — A LA SALA', progress: null, timeleft: null, status: 'queued' }], calendar: [] },
-    sabnzbd: { configured: true, up: true, paused: false, kbpersec: 8601, queueCount: 1,
-      disks: [{ path: '/downloads', free: 0.89e12, total: 2e12 }],
-      items: [{ title: 'Slow.Horses.S04E02.2160p.WEB', progress: 45, timeleft: '0:22:00', status: 'Downloading' }] },
-    youtarr: { configured: true, up: true, jobCount: 1,
-      items: [{ title: 'Channel Downloads — Veritasium 3 of 12', progress: 25, timeleft: null, status: 'In Progress' }] },
-    lidatube: { configured: true, up: true },
-  } };
-}
-
 $('#open-row').addEventListener('click', async event => {
   if (!event.target.closest('#open-web') || !state.selected) return;
   try {
-    if (!mockMode) {
-      const response = await fetch('/app-api/open?svc=' + encodeURIComponent(state.selected), { cache: 'no-store' });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload.ok === false) throw new Error(payload.error || 'Could not open');
-    }
+    const response = await fetch('/app-api/open?svc=' + encodeURIComponent(state.selected), { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) throw new Error(payload.error || 'Could not open');
   } catch (error) {
     renderError(error.message || 'Could not open');
   }
