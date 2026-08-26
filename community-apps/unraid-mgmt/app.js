@@ -1,6 +1,6 @@
 'use strict';
 
-const RUNNING_VERSION = '1.0.11';
+const RUNNING_VERSION = '1.0.12';
 const query = new URLSearchParams(location.search);
 const refreshSeconds = Math.max(5, Math.min(60, parseInt(query.get('refreshSeconds'), 10) || 10));
 const controlsAllowed = query.get('allowControls') !== 'false' && query.get('allowControls') !== '0';
