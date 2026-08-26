@@ -1,6 +1,6 @@
 'use strict';
 
-const RUNNING_VERSION = '1.0.4';
+const RUNNING_VERSION = '1.0.5';
 const query = new URLSearchParams(location.search);
 const refreshSeconds = Math.max(5, Math.min(60, parseInt(query.get('refreshSeconds'), 10) || 10));
 const controlsAllowed = query.get('allowControls') !== 'false' && query.get('allowControls') !== '0';
@@ -191,6 +191,7 @@ function renderDocker(s) {
       + '    <button type="button" class="fchip" data-filter="all">All</button>'
       + '    <button type="button" class="fchip" data-filter="running">Running</button>'
       + '    <button type="button" class="fchip" data-filter="stopped">Stopped</button>'
+      + '    <button type="button" class="fchip warn" data-filter="updates">Updates</button>'
       + '    <button type="button" class="fchip" id="sortbtn">Sort: Name</button>'
       + '    <button type="button" class="fchip" id="densitybtn">Compact</button>'
       + '  </div>'
@@ -224,6 +225,7 @@ function filteredContainers(s) {
   if (q) list = list.filter(c => (c.name + ' ' + c.image).toLowerCase().includes(q));
   if (state.filter === 'running') list = list.filter(c => c.state === 'running');
   else if (state.filter === 'stopped') list = list.filter(c => c.state !== 'running');
+  else if (state.filter === 'updates') list = list.filter(c => c.updateAvailable);
   list = list.slice().sort((a, b) => {
     if (state.sort === 'state' && a.state !== b.state) return a.state === 'running' ? -1 : 1;
     return a.name.localeCompare(b.name);
@@ -247,8 +249,9 @@ function updateDockerList(s) {
 
   // side: counts + bulk + docker usage
   const c = s.counts || { running: 0, stopped: 0, total: 0 };
+  const updN = c.updates || 0;
   const bulk = controlsAllowed
-    ? '<button type="button" class="bbtn" data-bulk="updateAll">Update all pending</button>'
+    ? '<button type="button" class="bbtn' + (updN ? ' primary' : '') + '" data-bulk="updateAll">Update all pending' + (updN ? ' (' + updN + ')' : '') + '</button>'
       + '<button type="button" class="bbtn" data-bulk="startAll">Start all</button>'
       + '<button type="button" class="bbtn danger" data-bulk="stopAll">Stop all</button>'
     : '';
@@ -256,10 +259,12 @@ function updateDockerList(s) {
     '<div class="mini">'
     + '<div class="stat"><span class="v ok">' + c.running + '</span><span class="l">Running</span></div>'
     + '<div class="stat"><span class="v">' + (c.stopped + (c.paused || 0)) + '</span><span class="l">Stopped</span></div>'
+    + '<div class="stat"><span class="v' + (updN ? ' warn' : '') + '">' + updN + '</span><span class="l">Updates</span></div>'
     + '</div>'
+    + '<button type="button" class="bbtn" data-bulk="checkUpdates">Check for updates</button>'
     + bulk
     + '<div class="spacer"></div>'
-    + '<button type="button" class="bbtn primary" data-open>Open web UI</button>';
+    + '<button type="button" class="bbtn" data-open>Open web UI</button>';
   syncScrollbar('#dlist', '#sbar', '#sbar-thumb');
 }
 
@@ -269,14 +274,12 @@ function containerRow(c, compact) {
   const up = c.state === 'running' ? esc(shortStatus(c.status)) : esc(shortStatus(c.status));
   let actions = '';
   if (!compact && controlsAllowed) {
-    if (c.state === 'running') {
-      actions = btn('stop', '&#9632;') + btn('restart', '&#8635;');
-    } else if (c.state === 'paused') {
-      actions = '<button type="button" class="cbtn go" data-act="unpause" title="Resume">&#9654;</button>' + btn('stop', '&#9632;');
-    } else {
-      actions = '<button type="button" class="cbtn go" data-act="start" title="Start">&#9654;</button>' + btn('restart', '&#8635;');
-    }
-    actions = '<div class="cactions">' + actions + '</div>';
+    let acts;
+    if (c.state === 'running') acts = btn('stop', '&#9632;') + btn('restart', '&#8635;');
+    else if (c.state === 'paused') acts = '<button type="button" class="cbtn go" data-act="unpause" title="Resume">&#9654;</button>' + btn('stop', '&#9632;');
+    else acts = '<button type="button" class="cbtn go" data-act="start" title="Start">&#9654;</button>' + btn('restart', '&#8635;');
+    if (c.updateAvailable) acts = '<button type="button" class="cbtn upd" data-act="update" title="Apply update">&#11014;</button>' + acts;
+    actions = '<div class="cactions">' + acts + '</div>';
   }
   let met = '';
   if (c.cpu != null || c.mem != null) {
@@ -287,6 +290,7 @@ function containerRow(c, compact) {
     + '<span class="cdot ' + dotcls + '"></span>'
     + '<span class="cbody"><span class="cname">' + esc(c.name) + '</span><span class="cimage">' + esc(c.image) + '</span></span>'
     + '<span class="cpill ' + cls + '">' + esc(c.state || 'unknown') + '</span>'
+    + (c.updateAvailable ? '<span class="cpill upd">update</span>' : '')
     + met
     + '<span class="cup">' + up + '</span>'
     + actions + '</div>';
@@ -451,12 +455,12 @@ function openDetail(id) {
     if (running) { acts.push(pact('stop', 'Stop', 'danger')); acts.push(pact('restart', 'Restart')); acts.push(pact('pause', 'Pause')); }
     else if (paused) { acts.push(pact('unpause', 'Resume', 'primary')); acts.push(pact('stop', 'Stop', 'danger')); }
     else { acts.push(pact('start', 'Start', 'go')); acts.push(pact('restart', 'Restart')); }
-    acts.push(pact('update', 'Update'));
+    acts.push(pact('update', c.updateAvailable ? 'Update ready' : 'Update', c.updateAvailable ? 'primary' : ''));
   }
 
   $('#panel').innerHTML =
     '<div class="phd"><span class="ptitle">' + esc(c.name) + '</span><button type="button" class="close" id="pclose">&#10005;</button></div>'
-    + '<div><span class="cpill ' + (running ? 'running' : (paused ? 'paused' : 'stopped')) + '">' + esc(c.state) + '</span> <span class="cup">' + esc(c.status) + '</span></div>'
+    + '<div><span class="cpill ' + (running ? 'running' : (paused ? 'paused' : 'stopped')) + '">' + esc(c.state) + '</span>' + (c.updateAvailable ? ' <span class="cpill upd">update</span>' : '') + ' <span class="cup">' + esc(c.status) + '</span></div>'
     + '<div class="pactions">' + acts.join('') + '</div>'
     + '<div class="pmeta">'
     + kv('Image', '<span class="mono">' + esc(c.image) + '</span>')
@@ -523,7 +527,8 @@ async function runBulk(kind) {
   if (kind === 'stopAll') { if (!await confirmAction('Stop all containers', 'Stop every running container on this server?', true)) return; }
   if (kind === 'updateAll') { if (!await confirmAction('Update all', 'Update all containers with pending updates?', false)) return; }
   try {
-    if (kind === 'updateAll') { await apiCall('updateAll', { server: state.active }); toast('Update all started'); }
+    if (kind === 'checkUpdates') { toast('Checking for updates…'); await apiCall('checkUpdates', { server: state.active }); toast('Update check done'); }
+    else if (kind === 'updateAll') { await apiCall('updateAll', { server: state.active }); toast('Update all started'); }
     else {
       const s = activeServer();
       const list = (s.containers || []).filter(c => kind === 'startAll' ? c.state !== 'running' : c.state === 'running');

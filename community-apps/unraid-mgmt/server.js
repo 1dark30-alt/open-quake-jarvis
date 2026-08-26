@@ -164,6 +164,8 @@ function mergeContainerStats(containers, statsContainers) {
 
 // ── GraphQL documents (best-confirmed against unraid/api; see README to verify) ─
 const Q_DOCKER = '{ docker { containers { id names image state status autoStart ports { ip privatePort publicPort } } } }';
+// Update flags kept in their own isolated query so a missing field can never break the list.
+const Q_DOCKER_UPD = '{ docker { containers { id isUpdateAvailable isRebuildReady } } }';
 const Q_SYSTEM = '{ info { os { hostname uptime } versions { core { unraid } } } metrics { cpu { percentTotal } memory { total used percentTotal } } }';
 const Q_ARRAY = '{ array { state capacity { kilobytes { free used total } } disks { name temp status fsSize fsFree } parityCheckStatus { status progress running errors } } }';
 const Q_NOTIF = '{ notifications { overview { unread { total } } list(filter: { type: UNREAD, offset: 0, limit: 8 }) { id title subject importance timestamp } } }';
@@ -193,6 +195,15 @@ function normDocker(data) {
     else stopped++;
   }
   return { containers, counts: { running, paused, stopped, total: containers.length } };
+}
+
+// Merge the isolated update-status query onto the container rows by id.
+function mergeDockerUpdates(containers, data) {
+  const list = data && data.docker && data.docker.containers;
+  if (!Array.isArray(containers) || !Array.isArray(list)) return;
+  const byId = new Map();
+  for (const u of list) if (u && u.id) byId.set(u.id, !!(u.isUpdateAvailable || u.isRebuildReady));
+  for (const c of containers) if (byId.has(c.id)) c.updateAvailable = byId.get(c.id);
 }
 
 function normSystem(data) {
@@ -284,11 +295,13 @@ async function fetchServer(cfg, full) {
   };
 
   if (full) {
-    const [notif, ups, vms, statsRes] = await Promise.all([tryQuery(cfg, Q_NOTIF), tryQuery(cfg, Q_UPS), tryQuery(cfg, Q_VMS), fetchStats(cfg)]);
+    const [notif, ups, vms, updData, statsRes] = await Promise.all([tryQuery(cfg, Q_NOTIF), tryQuery(cfg, Q_UPS), tryQuery(cfg, Q_VMS), tryQuery(cfg, Q_DOCKER_UPD), fetchStats(cfg)]);
     out.containers = docker.containers;
     out.notifications = normNotif(notif);
     out.ups = normUps(ups);
     out.vms = normVms(vms);
+    mergeDockerUpdates(out.containers, updData);
+    out.counts = Object.assign({}, docker.counts, { updates: out.containers.filter(c => c.updateAvailable).length });
     // GPU + per-container cpu/mem/vram come only from the optional stats-api add-on.
     const stats = statsRes && statsRes.data;
     out.gpu = stats ? normStatsGpu(stats.gpu) : null;
@@ -362,6 +375,13 @@ async function dockerUpdateAll(options, query) {
   return { ok: true };
 }
 
+// Re-check registries for new image digests (Unraid's "Check for Updates").
+async function dockerCheckUpdates(options, query) {
+  const cfg = cfgOrThrow(options, parseInt(query.server, 10));
+  await graphql(cfg, 'mutation { docker { refreshDockerDigests } }');
+  return { ok: true };
+}
+
 const VM_OPS = { start: 'start', stop: 'stop', pause: 'pause', resume: 'resume' };
 async function vmAction(options, query) {
   requireControls(options);
@@ -398,6 +418,7 @@ async function handle(action, context) {
     if (action === 'summary') return await summary(options, query);
     if (action === 'container') return await dockerAction(options, query);
     if (action === 'updateAll') return await dockerUpdateAll(options, query);
+    if (action === 'checkUpdates') return await dockerCheckUpdates(options, query);
     if (action === 'vm') return await vmAction(options, query);
     if (action === 'parity') return await parityAction(options, query);
     if (action === 'open') return openWebUi(options, query);

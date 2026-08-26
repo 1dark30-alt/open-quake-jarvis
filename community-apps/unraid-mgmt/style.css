@@ -112,6 +112,9 @@ input { font: inherit; }
 .cpill.running { color: var(--success); background: rgba(55, 208, 163, 0.14); }
 .cpill.stopped { color: var(--muted); background: var(--control); }
 .cpill.paused { color: var(--warning); background: rgba(244, 201, 93, 0.16); }
+.cpill.upd { color: var(--warning); background: rgba(244, 201, 93, 0.16); }
+.cbtn.upd { color: var(--warning); }
+.fchip.warn { color: var(--warning); }
 .crow .cup { font-size: 16px; color: var(--muted); flex: none; white-space: nowrap; }
 .crow .cmet { font-size: 15px; color: var(--muted); flex: none; white-space: nowrap; min-width: 96px; text-align: right; }
 .dlist.compact .cmet { min-width: 60px; font-size: 13px; }
