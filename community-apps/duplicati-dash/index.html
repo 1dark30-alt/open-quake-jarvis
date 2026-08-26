@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Duplicati Dashboard</title>
+  <link rel="stylesheet" href="style.css?v=1.0.0">
+</head>
+<body>
+  <main class="shell">
+    <section class="main" aria-labelledby="bk-heading">
+      <header class="sec" id="bk-heading">Backups</header>
+      <div class="list-wrap">
+        <div class="bk-list" id="bk-list"></div>
+        <div class="sbar" id="sbar" hidden><div class="sbar-thumb" id="sbar-thumb"></div></div>
+      </div>
+    </section>
+
+    <aside class="side">
+      <button type="button" class="open-btn" id="open-web">Open Duplicati web UI&nbsp;&nbsp;&#8599;</button>
+      <div class="state" id="state"></div>
+      <div class="tally" id="tally"></div>
+      <div class="notif-box">
+        <header class="sec">Notifications</header>
+        <div id="notifs"></div>
+      </div>
+    </aside>
+  </main>
+  <script src="app.js?v=1.0.0"></script>
+</body>
+</html>

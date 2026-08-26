@@ -19,6 +19,10 @@ For how to install or submit an app — and a safety note — see the docs:
   health warnings, disk space, and the next 24 hours of releases. Tap a service to
   focus on it (its queue + recent history) or open its web UI on the PC. Read-only;
   API keys stay server-side.
+- **[duplicati-dash](duplicati-dash)** — backup status board for a **Duplicati** server:
+  every job with a green/red result dot, last run, sizes, versions, and next run;
+  live progress while a backup runs; failed jobs surface their error inline; one tap
+  opens the Duplicati web UI on the PC. Read-only.
 - **[if-player](if-player)** — play Inform / Z-machine text adventures (Z-code and Glulx),
   with the story **read aloud** through your TTS voice and **spoken commands** transcribed by
   your STT — both picked up automatically from Settings → TTS/STT. Keyboard play works
