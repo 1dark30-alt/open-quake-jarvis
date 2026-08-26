@@ -161,6 +161,14 @@ input { font: inherit; }
 .gauges { flex: none; display: flex; gap: var(--s2); }
 .gauges .stat { padding: 12px var(--s2); }
 .gauges .v { font-size: 34px; }
+.stat.net { display: flex; flex-direction: column; justify-content: center; }
+.stat.net .l { margin-bottom: 4px; }
+.netrow { display: flex; align-items: baseline; gap: 10px; margin: 4px 0; }
+.netrow .na { font-size: 22px; font-weight: 700; line-height: 1; }
+.netrow .na.down { color: var(--success); }
+.netrow .na.up { color: var(--accent); }
+.netrow .nv { font-size: 26px; font-weight: 700; color: var(--ink); }
+.netrow .nl { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-left: auto; }
 .cards { flex: 1; min-height: 0; display: flex; gap: var(--s2); }
 .card { flex: 1; background: var(--surface); border-radius: 12px; padding: var(--s2); display: flex; flex-direction: column; min-width: 0; }
 .card .hd { display: flex; align-items: center; gap: 10px; margin-bottom: var(--s1); font-size: 20px; font-weight: 700; }

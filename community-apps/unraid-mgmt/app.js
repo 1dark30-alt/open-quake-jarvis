@@ -1,6 +1,6 @@
 'use strict';
 
-const RUNNING_VERSION = '1.0.8';
+const RUNNING_VERSION = '1.0.9';
 const query = new URLSearchParams(location.search);
 const refreshSeconds = Math.max(5, Math.min(60, parseInt(query.get('refreshSeconds'), 10) || 10));
 const controlsAllowed = query.get('allowControls') !== 'false' && query.get('allowControls') !== '0';
@@ -322,7 +322,7 @@ function renderOverview(s) {
     gauge('CPU load', sys.cpuPct != null ? sys.cpuPct + '%' : '—', sys.cpuPct, '')
     + gauge('RAM', sys.memPct != null ? sys.memPct + '%' : '—', sys.memPct, sys.memUsed != null ? fmtBytes(sys.memUsed) + ' / ' + fmtBytes(sys.memTotal) : '')
     + gauge('Array', arr ? fmtBytes(arr.free) + ' free' : '—', arr ? Math.round((arr.used / (arr.total || 1)) * 100) : null, arr ? esc(arr.state.toLowerCase()) : '')
-    + parityGauge(arr);
+    + netTile(s.net);
 
   let gpuCard;
   if (s.gpu && (s.gpu.util != null || s.gpu.memTotal)) {
@@ -362,11 +362,21 @@ function gauge(label, value, pct, sub) {
   const bar = pct != null ? '<div class="bar"><i class="' + (pct >= 90 ? 'warn' : 'ok') + '" style="width:' + Math.max(0, Math.min(100, pct)) + '%"></i></div>' : '';
   return '<div class="stat"><span class="l">' + label + '</span><span class="v">' + value + '</span>' + bar + (sub ? '<span class="l">' + sub + '</span>' : '') + '</div>';
 }
-function parityGauge(arr) {
-  if (!arr || !arr.parity) return gauge('Parity', '—', null, '');
-  const p = arr.parity;
-  if (p.running) return gauge('Parity check', (p.progress != null ? Math.round(p.progress) + '%' : 'running'), p.progress, p.errors + ' errors');
-  return gauge('Parity', 'Idle', null, (p.errors ? p.errors + ' errors' : '0 errors'));
+function fmtRate(bytesPerSec) {
+  const bits = (Number(bytesPerSec) || 0) * 8;
+  if (bits >= 1e9) return (bits / 1e9).toFixed(1) + ' Gbps';
+  if (bits >= 1e6) return (bits / 1e6).toFixed(1) + ' Mbps';
+  if (bits >= 1e3) return Math.round(bits / 1e3) + ' Kbps';
+  return Math.round(bits) + ' bps';
+}
+function netTile(net) {
+  const inRate = net ? fmtRate(net.rxSec) : '—';
+  const outRate = net ? fmtRate(net.txSec) : '—';
+  return '<div class="stat net">'
+    + '<span class="l">Network</span>'
+    + '<div class="netrow"><span class="na down">&#8595;</span><span class="nv">' + inRate + '</span><span class="nl">in</span></div>'
+    + '<div class="netrow"><span class="na up">&#8593;</span><span class="nv">' + outRate + '</span><span class="nl">out</span></div>'
+    + '</div>';
 }
 function kv(k, v) { return '<div class="kv"><span>' + k + '</span><b>' + v + '</b></div>'; }
 function kvBar(k, v, pct, cls) {

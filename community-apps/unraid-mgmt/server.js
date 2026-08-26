@@ -170,6 +170,7 @@ const Q_SYSTEM = '{ info { os { hostname uptime } versions { core { unraid } } }
 const Q_ARRAY = '{ array { state capacity { kilobytes { free used total } } disks { name temp status fsSize fsFree } parityCheckStatus { status progress running errors } } }';
 const Q_NOTIF = '{ notifications { overview { unread { total } } list(filter: { type: UNREAD, offset: 0, limit: 8 }) { id title subject importance timestamp } } }';
 const Q_UPS = '{ upsDevices { name model status battery { chargeLevel estimatedRuntime } power { loadPercentage nominalPower } } }';
+const Q_NET = '{ metrics { network { name rxSec txSec } } }';
 const Q_VMS = '{ vms { domains { id name state } } }';
 
 // ── normalizers (KB → bytes; tolerate missing fields) ─────────────────────────
@@ -281,6 +282,19 @@ function normVms(data) {
   return domains.map(v => ({ id: v.id, name: v.name || '', state: String(v.state || '').toLowerCase() }));
 }
 
+// Pick the busiest non-loopback interface (avoids double-counting a bond + its slave).
+function normNet(data) {
+  const list = data && data.metrics && data.metrics.network;
+  if (!Array.isArray(list)) return null;
+  let best = null;
+  for (const n of list) {
+    if (!n || n.name === 'lo') continue;
+    const rx = num(n.rxSec), tx = num(n.txSec);
+    if (!best || rx + tx > best.rxSec + best.txSec) best = { rxSec: rx, txSec: tx, iface: n.name };
+  }
+  return best || { rxSec: 0, txSec: 0, iface: '' };
+}
+
 // ── per-server fetch ──────────────────────────────────────────────────────────
 async function fetchServer(cfg, full) {
   const dockerData = await graphql(cfg, Q_DOCKER); // critical: let its error mark the server down
@@ -295,11 +309,12 @@ async function fetchServer(cfg, full) {
   };
 
   if (full) {
-    const [notif, ups, vms, updData, statsRes] = await Promise.all([tryQuery(cfg, Q_NOTIF), tryQuery(cfg, Q_UPS), tryQuery(cfg, Q_VMS), tryQuery(cfg, Q_DOCKER_UPD), fetchStats(cfg)]);
+    const [notif, ups, vms, updData, netData, statsRes] = await Promise.all([tryQuery(cfg, Q_NOTIF), tryQuery(cfg, Q_UPS), tryQuery(cfg, Q_VMS), tryQuery(cfg, Q_DOCKER_UPD), tryQuery(cfg, Q_NET), fetchStats(cfg)]);
     out.containers = docker.containers;
     out.notifications = normNotif(notif);
     out.ups = normUps(ups);
     out.vms = normVms(vms);
+    out.net = normNet(netData);
     mergeDockerUpdates(out.containers, updData);
     out.counts = Object.assign({}, docker.counts, { updates: out.containers.filter(c => c.updateAvailable).length });
     // GPU + per-container cpu/mem/vram come only from the optional stats-api add-on.
