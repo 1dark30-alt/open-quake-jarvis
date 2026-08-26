@@ -121,6 +121,14 @@
       "server": true
     },
     {
+      "id": "tailscale-monitor",
+      "name": "Tailscale Monitor",
+      "description": "See your tailnet at a glance — every machine with address, OS, exit-node role, and live online status. Reads the local Tailscale daemon (tailscale status) — no API key or login needed.",
+      "version": "0.6.0",
+      "zip": "tailscale-monitor.zip",
+      "server": true
+    },
+    {
       "id": "unraid-mgmt",
       "name": "Unraid Manager",
       "description": "Monitor and manage several Unraid servers — Docker control (start/stop/restart/update) built for 60+ containers, plus array, disks, parity, UPS, VMs, and notifications. Needs Unraid 7.2+ (built-in GraphQL API).",

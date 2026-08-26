@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tailscale Monitor</title>
+<style>
+  :root{
+    --bg:#0b0e14; --card:#11161f; --cardsel:#16202e; --border:#222b38;
+    --fg:#e6edf3; --dim:#aab5c2; --accent:#4b8bff;
+    --ok:#3fb950; --warn:#e3b341; --bad:#f85149; --off:#aab5c2;
+    --tag:#1f6feb33; --tagfg:#79c0ff; --fade:rgba(11,14,20,0);
+  }
+  html[data-theme="light"]{
+    --bg:#f6f8fa; --card:#fff; --cardsel:#e7eef7; --border:#d0d7de;
+    --fg:#1f2328; --dim:#424a53; --accent:#0969da;
+    --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; --off:#424a53;
+    --tag:#ddf4ff; --tagfg:#0969da; --fade:rgba(246,248,250,0);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--fg);font:18px/1.3 system-ui,-apple-system,Segoe UI,sans-serif;
+    display:flex;flex-direction:column;overflow:hidden}
+
+  /* ── Header: 64px ── */
+  header{flex:0 0 64px;display:flex;align-items:center;gap:28px;padding:0 24px;border-bottom:1px solid var(--border)}
+  header h1{font-size:31px;margin:0;font-weight:700;white-space:nowrap}
+  #health{display:flex;align-items:center;gap:26px;font-size:19px;white-space:nowrap}
+  .chip{display:flex;align-items:center;gap:9px}
+  .chip .n{font-weight:700}
+  .glyph{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;flex:0 0 auto;font-size:13px}
+  .glyph.ok{background:var(--ok)}
+  .glyph.off{border:2.5px solid var(--off)}
+  .glyph.warn{background:var(--warn);color:#000;font-weight:800;line-height:1}
+  .spacer{flex:1}
+  #rate{color:var(--dim);font-size:19px;white-space:pre;font-variant-numeric:tabular-nums;margin-right:8px}
+  #admin{height:48px;padding:0 24px;border-radius:10px;border:1px solid var(--border);
+    background:var(--card);color:var(--fg);font:600 18px system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+  #admin:active{background:var(--cardsel);border-color:var(--accent)}
+
+  /* ── Navigation: 48px ── */
+  .tabs{flex:0 0 48px;display:flex;align-items:stretch;padding:0 24px;gap:12px;border-bottom:1px solid var(--border)}
+  .tab{display:flex;align-items:center;padding:0 22px;font-size:19px;color:var(--dim);border-bottom:3px solid transparent}
+  .tab.sel{color:var(--fg);font-weight:700;border-bottom-color:var(--accent)}
+  #filters{display:none;align-items:center;gap:8px;margin-left:12px}
+  #filters button{height:48px;align-self:center;padding:0 20px;border-radius:999px;border:1px solid var(--border);
+    background:none;color:var(--dim);font:600 18px system-ui,sans-serif;cursor:pointer}
+  #filters button.sel{background:var(--tag);color:var(--tagfg);border-color:var(--tagfg)}
+  #pos{margin-left:auto;align-self:center;color:var(--dim);font-size:18px;white-space:nowrap}
+
+  /* ── Error state: readable summary + 48px retry ── */
+  #banner{display:none;align-items:center;gap:18px;margin:10px 24px 0;padding:10px 18px;border-radius:10px;
+    font-size:19px;background:#f8514922;border:1px solid #f8514955;color:#ffb3ac}
+  html[data-theme="light"] #banner{color:#cf222e}
+  #retry{height:48px;padding:0 24px;margin-left:auto;border-radius:10px;border:1px solid #f8514955;
+    background:none;color:inherit;font:600 18px system-ui,sans-serif;cursor:pointer;flex:0 0 auto}
+
+  /* ── Card region: the ONLY scrolling area ── */
+  #wrap{flex:1;min-height:0;position:relative}
+  #list{height:100%;overflow-y:auto;padding:8px 24px;scroll-behavior:smooth}
+  #grid{display:grid;grid-template-columns:repeat(3, 1fr);gap:12px 16px}
+  .card{height:168px;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:16px 20px;display:flex;flex-direction:column;gap:8px;outline:none}
+  .card:active{background:var(--cardsel)}
+  .card:focus-visible,.card.sel{background:var(--cardsel);outline:3px solid var(--accent);outline-offset:-3px}
+  .c-top{display:flex;align-items:center;gap:14px;min-width:0}
+  .mname{font-size:27px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .badge{flex:0 0 auto;margin-left:auto;font-size:16px;font-weight:700;letter-spacing:.05em;padding:4px 12px;
+    border-radius:999px;background:var(--tag);color:var(--tagfg);white-space:nowrap;text-transform:uppercase}
+  .status{display:flex;align-items:center;gap:10px;font-size:21px;font-weight:700;letter-spacing:.03em;white-space:nowrap}
+  .status .glyph{width:18px;height:18px}
+  .status.ok{color:var(--ok)}
+  .status.warn{color:var(--warn)}
+  .status.off{color:var(--off)}
+  .c-meta{font-size:19px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .c-meta .os{text-transform:capitalize}
+  .c-meta .addr{font-variant-numeric:tabular-nums}
+  .c-seen{font-size:18px;color:var(--dim);white-space:nowrap}
+
+  /* loading skeletons: same geometry, no animation */
+  .card.skel{border-style:dashed;opacity:.45}
+  .skel .bar{background:var(--border);border-radius:6px;height:22px}
+  .skel .bar.w1{width:55%;height:26px}
+  .skel .bar.w2{width:35%}
+  .skel .bar.w3{width:70%;height:18px}
+
+  #fade{position:absolute;left:0;right:0;bottom:0;height:36px;pointer-events:none;display:none;
+    background:linear-gradient(to bottom, var(--fade), var(--bg))}
+
+  #empty{display:none;padding:60px 24px;text-align:center}
+  #empty .big{font-size:28px;font-weight:600;margin-bottom:18px}
+  #empty button{height:48px;padding:0 26px;border-radius:10px;border:1px solid var(--border);
+    background:var(--card);color:var(--fg);font:600 18px system-ui,sans-serif;cursor:pointer}
+</style>
+</head>
+<body>
+  <header>
+    <h1>Tailscale Monitor</h1>
+    <div id="health"></div>
+    <span class="spacer"></span>
+    <span id="rate"></span>
+    <button id="admin">Admin console ↗</button>
+  </header>
+  <div class="tabs">
+    <div class="tab sel">Machines</div>
+    <!-- Traffic tab intentionally absent until implemented — a disabled tab is noise on this screen -->
+    <div id="filters">
+      <button data-f="all" class="sel">All</button>
+      <button data-f="warn">Attention</button>
+      <button data-f="ok">Online</button>
+      <button data-f="off">Offline</button>
+    </div>
+    <span id="pos"></span>
+  </div>
+  <div id="banner"><span id="bannertext"></span><button id="retry">Retry</button></div>
+  <div id="wrap">
+    <div id="list">
+      <div id="grid"></div>
+      <div id="empty">
+        <div class="big">No machines found</div>
+        <button id="emptyadmin">Open admin console ↗</button>
+      </div>
+    </div>
+    <div id="fade"></div>
+  </div>
+<script src="app.js"></script>
+</body>
+</html>
