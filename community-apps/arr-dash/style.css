@@ -69,14 +69,25 @@ button:focus:not(:focus-visible) { outline: none; }
 
 .svc {
   flex: 1;
-  min-height: 0;
+  min-height: 48px;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-3);
+  border: none;
   border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  width: 100%;
 }
 .svc:last-child { border-bottom: none; }
+.svc:active { background: var(--surface-control); }
+.svc.sel {
+  background: var(--surface-raised);
+  box-shadow: inset 6px 0 0 var(--accent);
+}
 
 .dot {
   width: 14px;
@@ -168,16 +179,19 @@ button:focus:not(:focus-visible) { outline: none; }
   background: var(--surface-control);
   flex: none;
 }
-.b-sonarr { color: #4db8ff; }
-.b-radarr { color: #f4c95d; }
-.b-lidarr { color: #37d0a3; }
-.b-sabnzbd { color: #ffb04d; }
-.b-youtarr { color: #ff6464; }
-:root[data-theme="light"] .b-sonarr { color: #0b78c2; }
-:root[data-theme="light"] .b-radarr { color: #a3781a; }
-:root[data-theme="light"] .b-lidarr { color: #0f8f6c; }
-:root[data-theme="light"] .b-sabnzbd { color: #b06710; }
-:root[data-theme="light"] .b-youtarr { color: #cc3a3a; }
+/* Brand colors sampled from each app's official logo */
+.b-sonarr { color: #00c8f5; }
+.b-radarr { color: #ffc230; }
+.b-lidarr { color: #00b566; }
+.b-sabnzbd { color: #ffb300; }
+.b-youtarr { color: #00f0d0; }
+.b-lidatube { color: #f03030; }
+:root[data-theme="light"] .b-sonarr { color: #0087b3; }
+:root[data-theme="light"] .b-radarr { color: #a67c00; }
+:root[data-theme="light"] .b-lidarr { color: #009252; }
+:root[data-theme="light"] .b-sabnzbd { color: #996b00; }
+:root[data-theme="light"] .b-youtarr { color: #008f7c; }
+:root[data-theme="light"] .b-lidatube { color: #c22a2a; }
 
 .dl .ttl {
   font-size: 23px;

@@ -15,6 +15,9 @@ const SERVICES = [
 
 const $ = selector => document.querySelector(selector);
 
+// selected = one service key to focus the right column on, or null for combined
+const state = { selected: null, lastServices: null };
+
 function applyTheme() {
   document.documentElement.dataset.theme = query.get('_dark') === '0' ? 'light' : 'dark';
 }
@@ -65,7 +68,8 @@ function railRow(service, slice) {
     headline = '<span class="hd">' + (slice.queueCount || 0)
       + '<span class="sub">&#8595; &#183; ' + (slice.missing || 0) + ' ' + service.missingWord + '</span></span>';
   }
-  return '<div class="svc"><span class="dot ' + dot + '"></span><span class="nm">' + service.name + '</span>' + headline + '</div>';
+  return '<button type="button" class="svc' + (state.selected === service.key ? ' sel' : '') + '" data-svc="' + service.key + '">'
+    + '<span class="dot ' + dot + '"></span><span class="nm b-' + service.key + '">' + service.name + '</span>' + headline + '</button>';
 }
 
 // ── Center list ──────────────────────────────────────────────────────────────
@@ -98,9 +102,13 @@ function itemRow(item) {
 }
 
 // ── Right column ─────────────────────────────────────────────────────────────
+function focusedServices() {
+  return state.selected ? SERVICES.filter(s => s.key === state.selected) : SERVICES;
+}
+
 function healthHtml(services) {
   const cards = [];
-  for (const service of SERVICES) {
+  for (const service of focusedServices()) {
     const slice = services[service.key];
     if (!slice || !slice.configured) continue;
     if (slice.up === false) {
@@ -111,13 +119,16 @@ function healthHtml(services) {
       cards.push('<div class="hw' + (entry.type === 'error' ? ' err' : '') + '"><b>' + service.name + '</b><span>' + esc(entry.message) + '</span></div>');
     }
   }
-  if (!cards.length) return '<div class="ok-pill">&#10003;&nbsp; All services healthy</div>';
+  if (!cards.length) {
+    const who = state.selected ? SERVICES.find(s => s.key === state.selected).name : 'All services';
+    return '<div class="ok-pill">&#10003;&nbsp; ' + who + ' healthy</div>';
+  }
   return cards.slice(0, 4).join('');
 }
 
 function disksHtml(services) {
   const seen = new Map();
-  for (const service of SERVICES) {
+  for (const service of focusedServices()) {
     const slice = services[service.key];
     if (!slice || !Array.isArray(slice.disks)) continue;
     for (const disk of slice.disks) {
@@ -136,7 +147,7 @@ function disksHtml(services) {
 
 function calendarHtml(services) {
   const entries = [];
-  for (const service of SERVICES) {
+  for (const service of focusedServices()) {
     const slice = services[service.key];
     if (!slice || !Array.isArray(slice.calendar)) continue;
     entries.push(...slice.calendar);
@@ -148,8 +159,17 @@ function calendarHtml(services) {
   ).join('');
 }
 
+function historyHtml(slice) {
+  const rows = (slice && slice.history) || [];
+  if (!rows.length) return '<div class="none">No recent history</div>';
+  return rows.slice(0, 5).map(entry =>
+    '<div class="it"><span class="nm">' + esc(entry.title) + '</span><span class="when">' + esc(entry.status || '') + '</span></div>'
+  ).join('');
+}
+
 // ── Render ───────────────────────────────────────────────────────────────────
 function render(services) {
+  state.lastServices = services;
   const configured = SERVICES.filter(s => services[s.key] && services[s.key].configured);
   $('#rail').innerHTML = configured.length
     ? configured.map(s => railRow(s, services[s.key])).join('')
@@ -163,7 +183,13 @@ function render(services) {
 
   $('#health').innerHTML = healthHtml(services);
   $('#disks').innerHTML = disksHtml(services);
-  $('#cal').innerHTML = calendarHtml(services);
+  if (state.selected === 'sabnzbd') {
+    $('#cal-heading').textContent = 'Recent history';
+    $('#cal').innerHTML = historyHtml(services.sabnzbd);
+  } else {
+    $('#cal-heading').textContent = 'Next 24 hours';
+    $('#cal').innerHTML = calendarHtml(services);
+  }
   syncScrollbar();
 }
 
@@ -262,6 +288,13 @@ function mockSummary() {
     lidatube: { configured: true, up: true },
   } };
 }
+
+$('#rail').addEventListener('click', event => {
+  const row = event.target.closest('.svc[data-svc]');
+  if (!row) return;
+  state.selected = state.selected === row.dataset.svc ? null : row.dataset.svc;
+  if (state.lastServices) render(state.lastServices);
+});
 
 applyTheme();
 wireScrollbar();
