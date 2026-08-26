@@ -1,6 +1,6 @@
 'use strict';
 
-const RUNNING_VERSION = '1.0.5';
+const RUNNING_VERSION = '1.0.6';
 const query = new URLSearchParams(location.search);
 const refreshSeconds = Math.max(5, Math.min(60, parseInt(query.get('refreshSeconds'), 10) || 10));
 const controlsAllowed = query.get('allowControls') !== 'false' && query.get('allowControls') !== '0';
@@ -271,29 +271,28 @@ function updateDockerList(s) {
 function containerRow(c, compact) {
   const cls = c.state === 'running' ? 'running' : (c.state === 'paused' ? 'paused' : 'stopped');
   const dotcls = c.state === 'running' ? '' : (c.state === 'paused' ? 'paused' : 'stopped');
-  const up = c.state === 'running' ? esc(shortStatus(c.status)) : esc(shortStatus(c.status));
+  const up = esc(shortStatus(c.status));
   let actions = '';
   if (!compact && controlsAllowed) {
-    let acts;
-    if (c.state === 'running') acts = btn('stop', '&#9632;') + btn('restart', '&#8635;');
-    else if (c.state === 'paused') acts = '<button type="button" class="cbtn go" data-act="unpause" title="Resume">&#9654;</button>' + btn('stop', '&#9632;');
-    else acts = '<button type="button" class="cbtn go" data-act="start" title="Start">&#9654;</button>' + btn('restart', '&#8635;');
-    if (c.updateAvailable) acts = '<button type="button" class="cbtn upd" data-act="update" title="Apply update">&#11014;</button>' + acts;
-    actions = '<div class="cactions">' + acts + '</div>';
+    if (c.state === 'running') actions = btn('stop', '&#9632;') + btn('restart', '&#8635;');
+    else if (c.state === 'paused') actions = '<button type="button" class="cbtn go" data-act="unpause" title="Resume">&#9654;</button>' + btn('stop', '&#9632;');
+    else actions = '<button type="button" class="cbtn go" data-act="start" title="Start">&#9654;</button>' + btn('restart', '&#8635;');
+    if (c.updateAvailable) actions = '<button type="button" class="cbtn upd" data-act="update" title="Apply update">&#11014;</button>' + actions;
   }
   let met = '';
   if (c.cpu != null || c.mem != null) {
-    met = '<span class="cmet">' + (c.cpu != null ? c.cpu + '%' : '')
-      + (c.cpu != null && c.mem != null ? ' · ' : '') + (c.mem != null ? fmtMb(c.mem) : '') + '</span>';
+    met = (c.cpu != null ? c.cpu + '%' : '') + (c.cpu != null && c.mem != null ? ' · ' : '') + (c.mem != null ? fmtMb(c.mem) : '');
   }
+  // Always emit all six grid cells (empty when no data) so columns stay aligned.
   return '<div class="crow" data-id="' + esc(c.id) + '">'
     + '<span class="cdot ' + dotcls + '"></span>'
     + '<span class="cbody"><span class="cname">' + esc(c.name) + '</span><span class="cimage">' + esc(c.image) + '</span></span>'
-    + '<span class="cpill ' + cls + '">' + esc(c.state || 'unknown') + '</span>'
-    + (c.updateAvailable ? '<span class="cpill upd">update</span>' : '')
-    + met
+    + '<span class="cstate"><span class="cpill ' + cls + '">' + esc(c.state || 'unknown') + '</span>'
+    + (c.updateAvailable ? '<span class="cpill upd">update</span>' : '') + '</span>'
+    + '<span class="cmet">' + met + '</span>'
     + '<span class="cup">' + up + '</span>'
-    + actions + '</div>';
+    + '<div class="cactions">' + actions + '</div>'
+    + '</div>';
 }
 function btn(act, glyph) { return '<button type="button" class="cbtn" data-act="' + act + '" title="' + act + '">' + glyph + '</button>'; }
 function shortStatus(status) {
