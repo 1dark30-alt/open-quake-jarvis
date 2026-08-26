@@ -6,6 +6,10 @@ const SLOTS = [1, 2, 3, 4];
 
 // Per-slot session cache: { sid: string|null } — sid null means "no password set" mode.
 const sessions = {};
+// Per-slot login coordination: single-flight promise + failure backoff, so a dead
+// password can't hammer Pi-hole (it rate-limits) or leak its 16 session seats.
+const loginState = {};
+const LOGIN_BACKOFF_MS = 60000;
 
 function optionString(options, key) {
   const value = options && options[key];
@@ -57,18 +61,36 @@ async function login(n, cfg) {
     body: JSON.stringify({ password: cfg.pass }),
   });
   if (status === 404) throw new Error('Pi-hole v5 detected — this app needs Pi-hole v6');
+  if (status === 429 || (json && json.error && json.error.key === 'no_seats')) {
+    throw new Error('Pi-hole API session limit reached — seats free up within 30 min (or restart FTL)');
+  }
   const session = json && json.session;
   if (!session || session.valid !== true) throw new Error('login failed — check the password');
   sessions[n] = { sid: session.sid || null };
   return sessions[n];
 }
 
+// Single-flight login with backoff: concurrent callers share one attempt, and a
+// failed password is not retried for LOGIN_BACKOFF_MS.
+function ensureSession(n, cfg) {
+  if (sessions[n]) return Promise.resolve(sessions[n]);
+  if (!cfg.pass) { sessions[n] = { sid: null }; return Promise.resolve(sessions[n]); }
+  const state = loginState[n] || (loginState[n] = {});
+  if (state.failedAt && Date.now() - state.failedAt < LOGIN_BACKOFF_MS) {
+    return Promise.reject(new Error(state.lastError || 'login failed — retrying shortly'));
+  }
+  if (!state.promise) {
+    state.promise = login(n, cfg)
+      .then(session => { state.failedAt = 0; return session; })
+      .catch(error => { state.failedAt = Date.now(); state.lastError = safeError(error); throw error; })
+      .finally(() => { state.promise = null; });
+  }
+  return state.promise;
+}
+
 // Authenticated GET/POST against one Pi-hole; re-logins once on 401.
 async function api(n, cfg, path, init, isRetry) {
-  if (!sessions[n]) {
-    if (cfg.pass) await login(n, cfg);
-    else sessions[n] = { sid: null }; // try unauthenticated; 401 below reports "password required"
-  }
+  await ensureSession(n, cfg);
   const headers = Object.assign({ Accept: 'application/json' }, init && init.headers || {});
   if (sessions[n].sid) headers['X-FTL-SID'] = sessions[n].sid;
   const { status, json } = await rawFetch(cfg.base + '/api' + path, Object.assign({}, init, { headers }));
@@ -152,7 +174,7 @@ async function summary(options, query) {
     try {
       return await fetchServer(n, cfg, n === active);
     } catch (error) {
-      sessions[n] = null;
+      // keep any cached session — only a real 401 (handled in api()) invalidates it
       return { slot: n, configured: true, up: false, name: cfg.name, error: safeError(error) };
     }
   }));

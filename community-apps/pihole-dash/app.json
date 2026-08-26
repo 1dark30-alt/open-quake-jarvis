@@ -1,7 +1,7 @@
 {
   "id": "pihole-dash",
   "name": "Pi-hole Dashboard",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Multi-server Pi-hole dashboard — per-server tabs with live stats, 24-hour query chart, top lists, and blocking controls.",
   "entry": "index.html",
   "served": true,
