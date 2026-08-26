@@ -91,17 +91,50 @@ async function tryQuery(cfg, queryText) {
 
 // Optional stats-api add-on (github.com/TeeJS/stats): plain GET JSON, no auth.
 // Supplies GPU + per-container CPU/mem/VRAM the Unraid GraphQL API does not expose.
-async function fetchStats(cfg) {
-  if (!cfg.stats || !/^https?:\/\//i.test(cfg.stats)) return null;
-  try {
-    const init = { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), headers: { Accept: 'application/json' } };
-    const dispatcher = dispatcherFor(cfg);
-    if (dispatcher) init.dispatcher = dispatcher;
-    const response = await fetch(cfg.stats + '/', init);
-    const text = await response.text();
-    if (!response.ok || text.length > MAX_RESPONSE_BYTES) return null;
-    return text ? JSON.parse(text) : null;
-  } catch (error) { return null; }
+// The stats-api '/' endpoint computes per-container docker stats for every
+// container, which on a big box takes far longer than a normal request. So we
+// never block the summary on it: refresh it in the background with a long
+// timeout and serve the last cached result. GPU/per-container numbers lag by a
+// cycle, which is fine for monitoring.
+const STATS_TIMEOUT_MS = 45000;  // the '/' endpoint is expensive on big boxes; give it room
+const STATS_TTL_MS = 25000;      // refresh at most this often (don't hammer it)
+const STATS_STALE_MS = 180000;   // keep serving last-good data for up to 3 min through failures
+const statsData = {};     // slot -> { data, at }  — successful reads ONLY
+const statsErr = {};      // slot -> last error string — never clobbers statsData
+const statsInflight = {}; // slot -> bool
+
+function refreshStats(cfg) {
+  const slot = cfg.slot;
+  if (statsInflight[slot]) return;
+  statsInflight[slot] = true;
+  (async () => {
+    try {
+      const init = { method: 'GET', signal: AbortSignal.timeout(STATS_TIMEOUT_MS), headers: { Accept: 'application/json' } };
+      const dispatcher = dispatcherFor(cfg);
+      if (dispatcher) init.dispatcher = dispatcher;
+      const response = await fetch(cfg.stats + '/', init);
+      const text = await response.text();
+      if (!response.ok) { statsErr[slot] = 'HTTP ' + response.status; return; }
+      if (text.length > MAX_RESPONSE_BYTES) { statsErr[slot] = 'response too large'; return; }
+      statsData[slot] = { data: text ? JSON.parse(text) : null, at: Date.now() };
+      statsErr[slot] = null;
+    } catch (error) {
+      statsErr[slot] = safeError(error);   // KEEP last-good data; a slow/failed poll must not wipe the display
+    } finally { statsInflight[slot] = false; }
+  })();
+}
+
+// Non-blocking: serve last-good stats and refresh in the background. A failed refresh
+// never clears a good reading (that caused the flicker) — last-good persists up to STATS_STALE_MS.
+function fetchStats(cfg) {
+  if (!cfg.stats) return { error: 'no URL set' };
+  if (!/^https?:\/\//i.test(cfg.stats)) return { error: 'URL must start with http:// or https://' };
+  const slot = cfg.slot;
+  const good = statsData[slot];
+  const fresh = good && Date.now() - good.at < STATS_TTL_MS;
+  if (!statsInflight[slot] && !fresh) refreshStats(cfg);
+  if (good && Date.now() - good.at < STATS_STALE_MS) return { data: good.data };
+  return { error: statsErr[slot] || 'loading (first read can take ~15-30s on a big box)' };
 }
 
 function normStatsGpu(g) {
@@ -251,14 +284,16 @@ async function fetchServer(cfg, full) {
   };
 
   if (full) {
-    const [notif, ups, vms, stats] = await Promise.all([tryQuery(cfg, Q_NOTIF), tryQuery(cfg, Q_UPS), tryQuery(cfg, Q_VMS), fetchStats(cfg)]);
+    const [notif, ups, vms, statsRes] = await Promise.all([tryQuery(cfg, Q_NOTIF), tryQuery(cfg, Q_UPS), tryQuery(cfg, Q_VMS), fetchStats(cfg)]);
     out.containers = docker.containers;
     out.notifications = normNotif(notif);
     out.ups = normUps(ups);
     out.vms = normVms(vms);
     // GPU + per-container cpu/mem/vram come only from the optional stats-api add-on.
+    const stats = statsRes && statsRes.data;
     out.gpu = stats ? normStatsGpu(stats.gpu) : null;
     out.statsConfigured = !!cfg.stats;
+    out.statsError = (statsRes && statsRes.error) || null;
     if (stats) mergeContainerStats(out.containers, stats.containers);
   }
   return out;

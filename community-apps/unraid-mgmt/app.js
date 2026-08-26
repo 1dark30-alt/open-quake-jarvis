@@ -1,14 +1,14 @@
 'use strict';
 
-const RUNNING_VERSION = '1.0.1';
+const RUNNING_VERSION = '1.0.4';
 const query = new URLSearchParams(location.search);
 const refreshSeconds = Math.max(5, Math.min(60, parseInt(query.get('refreshSeconds'), 10) || 10));
 const controlsAllowed = query.get('allowControls') !== 'false' && query.get('allowControls') !== '0';
 
 const $ = s => document.querySelector(s);
 const TABS = [
-  { key: 'docker', label: 'Docker' },
   { key: 'overview', label: 'Overview' },
+  { key: 'docker', label: 'Docker' },
   { key: 'storage', label: 'Storage' },
   { key: 'vms', label: 'VMs' },
   { key: 'alerts', label: 'Alerts' },
@@ -17,7 +17,7 @@ const TABS = [
 const state = {
   servers: [],
   active: 0,
-  tab: 'docker',
+  tab: 'overview',
   filter: 'all',      // all | running | stopped
   sort: 'name',       // name | state
   density: 'comfortable',
@@ -331,9 +331,10 @@ function renderOverview(s) {
       + (memPct != null ? '<div class="bar"><i class="nv" style="width:' + memPct + '%"></i></div>' : '')
       + '</div>';
   } else {
-    const why = s.statsConfigured
-      ? 'stats-api is set but returned no GPU — check the nvidia mounts on that box.'
-      : 'Add the stats-api add-on URL in this server\'s options to show GPU.';
+    const why = s.statsError
+      ? 'stats-api error: ' + esc(s.statsError)
+      : (s.statsConfigured ? 'stats-api reachable but returned no GPU data — check the nvidia mounts on that box.'
+        : 'Add the stats-api add-on URL in this server\'s options to show GPU.');
     gpuCard = '<div class="card"><div class="hd">GPU<span class="tag nvidia">no data</span></div>'
       + '<div class="none">GPU isn\'t exposed by the Unraid API.<br>' + why + '</div></div>';
   }
