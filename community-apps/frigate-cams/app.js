@@ -255,17 +255,29 @@ setInterval(() => {
 }, 15000);
 
 // Re-render when the stage changes size (window resize, editor preview, panel rotation).
+// Seed with the CURRENT size, so a resize that lands between boot and the observer's first
+// callback still triggers a re-render — never swallow the first callback as "initial".
 let resizeTimer = 0;
-let lastStageSize = '';
+let lastStageSize = $('#stage').clientWidth + 'x' + $('#stage').clientHeight;
 new ResizeObserver(entries => {
   const box = entries[0].contentRect;
   const size = Math.round(box.width) + 'x' + Math.round(box.height);
   if (size === lastStageSize) return;
-  if (lastStageSize === '') { lastStageSize = size; return; }   // initial observation, boot renders
   lastStageSize = size;
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(render, 200);
 }).observe($('#stage'));
+
+// Self-heal after updates: the host swaps the files on disk but never reloads a page that is
+// already showing the app, so old JS keeps running until a restart. Poll our own app.json
+// (served no-store from disk) and hard-reload the page when the installed version changes.
+const RUNNING_VERSION = '1.0.3';
+setInterval(async () => {
+  try {
+    const manifest = await (await fetch('app.json', { cache: 'no-store' })).json();
+    if (manifest.version && manifest.version !== RUNNING_VERSION) location.reload();
+  } catch (e) {}
+}, 30000);
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 function notice(title, body) {

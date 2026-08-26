@@ -20,7 +20,7 @@
       "id": "frigate-cams",
       "name": "Frigate Cameras",
       "description": "Live camera wall for a local Frigate NVR — auto-discovers every camera, with Grid, Spotlight, and Cycle views.",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "zip": "frigate-cams.zip",
       "server": false
     },
