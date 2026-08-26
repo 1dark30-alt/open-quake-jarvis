@@ -14,6 +14,11 @@ For how to install or submit an app — and a safety note — see the docs:
 
 ## Available apps
 
+- **[arr-dash](arr-dash)** — *arr media-stack dashboard: **Sonarr, Radarr, Lidarr,
+  SABnzbd, Youtarr, LidaTube** in one glance — merged download queue with progress,
+  health warnings, disk space, and the next 24 hours of releases. Tap a service to
+  focus on it (its queue + recent history) or open its web UI on the PC. Read-only;
+  API keys stay server-side.
 - **[if-player](if-player)** — play Inform / Z-machine text adventures (Z-code and Glulx),
   with the story **read aloud** through your TTS voice and **spoken commands** transcribed by
   your STT — both picked up automatically from Settings → TTS/STT. Keyboard play works
@@ -41,6 +46,9 @@ For how to install or submit an app — and a safety note — see the docs:
 - **[spotify-volume](spotify-volume)** — per-app Windows volume control for the knob (Spotify
   by default, configurable to any process). Uses a bundled native helper against the Core
   Audio session APIs — no admin, no Spotify login/Premium, no Web API. By **J Last**.
+- **[vlc-remote](vlc-remote)** — control a local or network VLC player: transport, seek,
+  volume, status, and playlist, via VLC's built-in web interface (enable it in VLC
+  Preferences → Main interfaces → Lua). By **Mark Hollingworth**.
 
 To add one, open a pull request — see
 [docs/community-apps.md](../docs/community-apps.md#submitting-one).
