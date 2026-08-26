@@ -3552,9 +3552,8 @@
       let diTab = 'installed';
       let diSearchI = '', diSearchD = '';
       let diSrcFilter = 'all';       // Discover source filter: 'all' or a repo index
-      let diTypeFilter = 'all';      // Discover runtime filter: 'all' | 'served' | 'static'
-      let diShowInstalled = false;   // Discover: include already-installed apps
-      const diFilterI = { src: new Set(), rt: new Set() };   // Installed filter
+      let diHideInstalled = true;    // Discover: hide already-installed apps (on by default)
+      const diFilterI = { src: new Set(), upd: false };   // Installed filter (by source / has-update)
       const diStatus = {};           // id -> {state:'ok'|'upd'|'err', from, to}
       let diLastChecked = null;
       let diCatalog = null;          // merged repo catalog for Discover (lazy, cached)
@@ -3680,19 +3679,22 @@
         const m = document.getElementById('diFmenu'); if (!m) return;
         const idxs = Array.from(new Set(diInstalled.map(a => repoIndexOf(a.source)).filter(i => i >= 0))).sort((a, b) => a - b);
         m.innerHTML = (idxs.length ? '<div class="diFh">Source</div>' + idxs.map(i => `<label><input type="checkbox" data-k="src" data-v="${i}" ${diFilterI.src.has(i) ? 'checked' : ''}> ${esc(nameOf(i))}</label>`).join('') : '')
-          + '<div class="diFh">Runtime</div>'
-          + `<label><input type="checkbox" data-k="rt" data-v="served" ${diFilterI.rt.has('served') ? 'checked' : ''}> Served</label>`
-          + `<label><input type="checkbox" data-k="rt" data-v="static" ${diFilterI.rt.has('static') ? 'checked' : ''}> Static</label>`;
-        m.querySelectorAll('input').forEach(inp => inp.onchange = () => { const set = inp.dataset.k === 'src' ? diFilterI.src : diFilterI.rt; const val = inp.dataset.k === 'src' ? +inp.dataset.v : inp.dataset.v; if (inp.checked) set.add(val); else set.delete(val); renderActiveChips(); renderInstalledList(); });
+          + '<div class="diFh">Status</div>'
+          + `<label><input type="checkbox" data-k="upd" ${diFilterI.upd ? 'checked' : ''}> Has update</label>`;
+        m.querySelectorAll('input').forEach(inp => inp.onchange = () => {
+          if (inp.dataset.k === 'upd') diFilterI.upd = inp.checked;
+          else { const val = +inp.dataset.v; if (inp.checked) diFilterI.src.add(val); else diFilterI.src.delete(val); }
+          renderActiveChips(); renderInstalledList();
+        });
         renderActiveChips();
       };
       const renderActiveChips = () => {
         const host = document.getElementById('diActiveFilters'); if (!host) return;
         const chips = [];
         diFilterI.src.forEach(i => chips.push({ k: 'src', v: i, label: nameOf(i) }));
-        diFilterI.rt.forEach(v => chips.push({ k: 'rt', v: v, label: v.charAt(0).toUpperCase() + v.slice(1) }));
+        if (diFilterI.upd) chips.push({ k: 'upd', v: '', label: 'Has update' });
         host.innerHTML = chips.map(c => `<span class="diFchip" data-k="${c.k}" data-v="${c.v}">${esc(c.label)}<span class="x">×</span></span>`).join('');
-        host.querySelectorAll('.diFchip .x').forEach(x => x.onclick = e => { const c = e.currentTarget.parentElement; (c.dataset.k === 'src' ? diFilterI.src : diFilterI.rt).delete(c.dataset.k === 'src' ? +c.dataset.v : c.dataset.v); renderFilterMenu(); renderInstalledList(); });
+        host.querySelectorAll('.diFchip .x').forEach(x => x.onclick = e => { const c = e.currentTarget.parentElement; if (c.dataset.k === 'upd') diFilterI.upd = false; else diFilterI.src.delete(+c.dataset.v); renderFilterMenu(); renderInstalledList(); });
       };
       const installedStatusHtml = a => {
         const s = diStatus[a.id];
@@ -3706,7 +3708,7 @@
         const rows = diInstalled.filter(a => {
           const idx = repoIndexOf(a.source);
           if (diFilterI.src.size && !diFilterI.src.has(idx)) return false;
-          if (diFilterI.rt.size && !diFilterI.rt.has(a.served ? 'served' : 'static')) return false;
+          if (diFilterI.upd && !(diStatus[a.id] && diStatus[a.id].state === 'upd')) return false;
           if (q && !((a.name || '').toLowerCase().includes(q) || (a.id || '').toLowerCase().includes(q))) return false;
           return true;
         });
@@ -3751,21 +3753,18 @@
 
       // ---- Discover pane ----
       const renderDiscoverPane = pane => {
+        const showSrc = (multi ? repos.length : 1) > 1;   // hide the source filter when there's only one source
         pane.innerHTML = `
           <div class="diToolbar">
             <div class="diSearch"><span class="diMag">\u{1F50D}</span><input id="diSearchD" placeholder="Search apps…"></div>
-            <select id="diSrcSel"></select>
-            <select id="diTypeSel"><option value="all">Type: All</option><option value="served">Served</option><option value="static">Static</option></select>
-            <div class="diFilterWrap"><button id="diDFilterBtn">Filter</button><div id="diDFmenu" class="diFmenu"><label><input type="checkbox" id="diShowInst" ${diShowInstalled ? 'checked' : ''}> Show installed apps</label></div></div>
+            ${showSrc ? '<select id="diSrcSel"></select>' : ''}
+            <label class="row" style="width:auto;gap:6px;margin:0;color:#91a4ba"><input type="checkbox" id="diHideInst" style="width:auto" ${diHideInstalled ? 'checked' : ''}> Hide installed apps</label>
             <span style="flex:1"></span>
             <span id="diDCount" class="hint" style="margin:0"></span>
           </div>
           <div id="diDList"><p class="hint">Loading apps from your repositories…</p></div>`;
         const se = document.getElementById('diSearchD'); se.value = diSearchD; se.oninput = () => { diSearchD = se.value; renderDiscoverList(); };
-        const ts = document.getElementById('diTypeSel'); ts.value = diTypeFilter; ts.onchange = () => { diTypeFilter = ts.value; renderDiscoverList(); };
-        const fb = document.getElementById('diDFilterBtn'); fb.onclick = e => { e.stopPropagation(); document.getElementById('diDFmenu').classList.toggle('open'); };
-        document.getElementById('diDFmenu').onclick = e => e.stopPropagation();
-        document.getElementById('diShowInst').onchange = e => { diShowInstalled = e.target.checked; renderDiscoverList(); };
+        document.getElementById('diHideInst').onchange = e => { diHideInstalled = e.target.checked; renderDiscoverList(); };
         renderSourceSelect();
         loadCatalog().then(() => { renderSourceSelect(); renderDiscoverList(); });
       };
@@ -3783,11 +3782,10 @@
         const installedIds = new Set(diInstalled.map(a => a.id));
         const q = diSearchD.trim().toLowerCase();
         let items = diCatalog.slice();
-        if (!diShowInstalled) items = items.filter(a => !installedIds.has(a.id));
+        if (diHideInstalled) items = items.filter(a => !installedIds.has(a.id));
         if (diSrcFilter !== 'all') items = items.filter(a => a.repoIndex === +diSrcFilter);
-        if (diTypeFilter !== 'all') items = items.filter(a => (a.server ? 'served' : 'static') === diTypeFilter);
         if (q) items = items.filter(a => (a.name || '').toLowerCase().includes(q) || (a.id || '').toLowerCase().includes(q) || (a.description || '').toLowerCase().includes(q));
-        const cntEl = document.getElementById('diDCount'); if (cntEl) cntEl.textContent = items.length + (diShowInstalled ? ' app' + (items.length === 1 ? '' : 's') : ' available');
+        const cntEl = document.getElementById('diDCount'); if (cntEl) cntEl.textContent = items.length + (diHideInstalled ? ' available' : ' app' + (items.length === 1 ? '' : 's'));
         if (!items.length) { host.innerHTML = '<p class="hint">No apps match.</p>'; return; }
         host.innerHTML = items.map(a => {
           const idx = a.repoIndex;
@@ -3795,7 +3793,7 @@
             : a.state === 'update' ? `<button class="diRepoUpd" data-id="${esc(a.id)}">Update →</button>`
             : `<button class="primary diRepoInst" data-id="${esc(a.id)}" data-i="${idx}">Install</button>`;
           const letter = esc((a.name || a.id || '?').trim().charAt(0).toUpperCase());
-          const meta = 'v' + esc(a.version) + ' · ' + (a.server ? 'Server' : 'Static') + ' · ' + esc(nameOf(idx));
+          const meta = 'v' + esc(a.version) + ' · ' + esc(nameOf(idx));
           return `<div class="diCatRow"><div class="diTile">${letter}</div><div class="body"><div class="diCatNm">${esc(a.name)}</div>${a.description ? `<div class="diCatDs">${esc(a.description)}</div>` : ''}<div class="diCatMeta">${meta}</div></div>${btn}</div>`;
         }).join('');
         host.querySelectorAll('.diRepoInst').forEach(b => b.onclick = e => doInstall(e.currentTarget.dataset.id, false, repos[+e.currentTarget.dataset.i]));
