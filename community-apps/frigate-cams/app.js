@@ -100,13 +100,20 @@ function tileMarkup(cam, index, tileHeight, extraClass, railTile) {
 }
 
 // ── Layout ───────────────────────────────────────────────────────────────────
-// Aspect-aware grid: stage is ~1920x424; aim tiles at ~16:9.
+// Feeds render with object-fit: contain (the full camera frame always shows — security
+// cams must never be cropped), so pick the row count that maximizes the contained 16:9
+// image size inside each tile.
 function gridShape(n) {
   const stage = $('#stage');
-  const ratio = (stage.clientWidth || 1920) / (stage.clientHeight || 424) / (16 / 9);
-  const rows = Math.max(1, Math.ceil(Math.sqrt(n / Math.max(0.5, ratio))));
-  const cols = Math.max(1, Math.ceil(n / rows));
-  return { cols, rows };
+  const width = stage.clientWidth || 1920;
+  const height = stage.clientHeight || 424;
+  let best = { cols: n, rows: 1, scale: 0 };
+  for (let rows = 1; rows <= Math.min(n, 8); rows++) {
+    const cols = Math.ceil(n / rows);
+    const scale = Math.min(width / cols / 16, height / rows / 9);
+    if (scale > best.scale) best = { cols, rows, scale };
+  }
+  return best;
 }
 
 function render() {
