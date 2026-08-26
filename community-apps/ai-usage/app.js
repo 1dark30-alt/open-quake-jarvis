@@ -1,6 +1,6 @@
 'use strict';
 
-const RUNNING_VERSION = '1.0.0';
+const RUNNING_VERSION = '1.0.1';
 const params = new URLSearchParams(location.search);
 const refreshSeconds = Math.max(15, Math.min(300, parseInt(params.get('refreshSeconds'), 10) || 30));
 const PERIODS = ['today', '7d', '30d', 'all'];
@@ -14,13 +14,6 @@ const panels = { claude: $('#p-claude'), codex: $('#p-codex'), copilot: $('#p-co
 // ── Formatting ──────────────────────────────────────────────────────────────
 function esc(v) {
   return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-function money(x) {
-  x = Number(x) || 0;
-  if (x >= 10000) return '$' + (x / 1000).toFixed(1) + 'k';
-  if (x >= 1000) return '$' + Math.round(x).toLocaleString();
-  if (x >= 10) return '$' + x.toFixed(0);
-  return '$' + x.toFixed(2);
 }
 function num(n) {
   n = Number(n) || 0;
@@ -41,34 +34,30 @@ function resetIn(sec) {
   if (h > 0) return h + 'h ' + m + 'm';
   return m + 'm';
 }
-function shortModel(m) { return String(m || '').replace(/^claude-/, ''); }
-function modelColor(m) {
-  m = String(m || '').toLowerCase();
-  if (m.includes('fable') || m.includes('mythos')) return '#e05c9c';
-  if (m.includes('opus')) return '#e08a5c';
-  if (m.includes('sonnet')) return '#5c9ce0';
-  if (m.includes('haiku')) return '#5ce0a8';
-  return '#8a94a0';
-}
 function levelColor(pct) { return pct >= 90 ? 'var(--error)' : pct >= 70 ? 'var(--warning)' : 'var(--success)'; }
 
-function sparkBars(series, fmt) {
-  const max = Math.max(1, ...series.map(s => s.value));
-  const last = series.length - 1;
-  const bars = series.map((s, i) =>
-    '<i class="' + (i === last ? 'today' : '') + '" style="height:' + Math.max(2, Math.round(s.value / max * 100)) + '%"></i>').join('');
-  const peak = series.reduce((a, s) => s.value > a.value ? s : a, series[0] || { value: 0 });
-  return { bars, peak: fmt(peak.value) };
+// A labelled ring gauge. pct null → empty ring with a dash.
+function ring(label, pct, resetsAt, opts) {
+  opts = opts || {};
+  const has = typeof pct === 'number';
+  const p = has ? Math.max(0, Math.min(100, pct)) : 0;
+  const col = has ? levelColor(pct) : 'var(--track)';
+  const resetLine = resetsAt ? 'resets in <b>' + resetIn(resetsAt) + '</b>'
+    : (opts.resetText || '&nbsp;');
+  return '<div class="gauge"><div class="glabel">' + label + '</div>'
+    + '<div class="ring' + (opts.big ? ' big' : '') + '" style="--pct:' + p + ';--ring:' + col + '">'
+    + '<div class="hole"><span class="val">' + (has ? Math.round(pct) + '<span class="u">%</span>' : '&mdash;') + '</span>'
+    + (opts.sub ? '<span class="sub">' + opts.sub + '</span>' : '') + '</div></div>'
+    + '<div class="reset' + (resetsAt ? '' : ' none') + '">' + resetLine + '</div></div>';
 }
-
-function statChip(v, l) { return '<div class="stat"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>'; }
+function bigstat(v, l) { return '<div class="bigstat"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>'; }
 function head(name, sub, chip, chipCls) {
   return '<div class="phead"><div class="pname"><b>' + name + '</b><span>' + sub + '</span></div>'
     + (chip ? '<div class="pchip ' + (chipCls || '') + '">' + chip + '</div>' : '') + '</div>';
 }
 function errState(msg) { return '<div class="state err"><h3>Error</h3><p>' + esc(msg) + '</p></div>'; }
 function scanState(name, sub) {
-  return head(name, sub, '') + '<div class="state"><div class="scan"></div><p>Scanning session logs&hellip;<br>first run can take a moment.</p></div>';
+  return head(name, sub, '') + '<div class="state"><div class="scan"></div><p>Scanning session logs&hellip;</p></div>';
 }
 
 // ── Claude panel ────────────────────────────────────────────────────────────
@@ -76,32 +65,28 @@ function renderClaude(d) {
   if (!d.ok) return head('Claude', 'Code &middot; Cowork', '') + errState(d.error || 'failed');
   if (!d.dir || d.files === 0) {
     return head('Claude', 'Code &middot; Cowork', '')
-      + '<div class="state"><h3>No Claude activity</h3><p>No Claude&nbsp;Code session logs were found under <b>~/.claude</b> on this machine.</p></div>';
+      + '<div class="state"><h3>No Claude activity</h3><p>No Claude&nbsp;Code logs found under <b>~/.claude</b> on this machine.</p></div>';
   }
-  const chip = intc(d.sessions) + ' sessions';
-  const models = (d.models || []).filter(m => m.cost > 0);
-  const totalCost = models.reduce((a, m) => a + m.cost, 0);
-  let split = '';
-  if (totalCost > 0) {
-    split = '<div class="split">' + models.map(m =>
-      '<i style="width:' + (m.cost / totalCost * 100).toFixed(1) + '%;background:' + modelColor(m.model) + '"></i>').join('') + '</div>'
-      + '<div class="splitleg">' + models.map(m =>
-        '<span><s style="background:' + modelColor(m.model) + '"></s>' + esc(shortModel(m.model)) + ' ' + money(m.cost) + '</span>').join('') + '</div>';
+  const plan = d.plan ? d.plan[0].toUpperCase() + d.plan.slice(1) + ' plan' : '';
+  // Live limits if the host resolved them via the Claude usage endpoint; else pending.
+  let gauges;
+  if (d.limit) {
+    const parts = [ring('5-hour', d.limit.fiveHourPct, d.limit.fiveHourResetsAt)];
+    parts.push(ring('Weekly', d.limit.weeklyPct, d.limit.weeklyResetsAt));
+    gauges = '<div class="gauges">' + parts.join('') + '</div>';
+  } else {
+    gauges = '<div class="gauges">'
+      + ring('5-hour', null, 0, { resetText: 'needs Claude sign-in' })
+      + ring('Weekly', null, 0, { resetText: 'see the app options' })
+      + '</div>';
   }
-  const sp = sparkBars(d.spark || [], money);
-  return head('Claude', 'Code &middot; Cowork', chip)
-    + '<div class="focal"><div class="hero" style="flex:1">'
-    + '<div class="big"><span class="cur">&#8776;</span>' + money(d.cost).replace('$', '$') + '</div>'
-    + '<div class="cap">est. value &middot; ' + PERIOD_LABEL[period] + ' &middot; at API rates</div>'
-    + split + '</div></div>'
-    + '<div class="chips">'
-    + statChip(intc(d.msgs), 'Messages')
-    + statChip(num(d.inp + d.out), 'In + out tokens')
-    + statChip(num(d.cacheRead), 'Cache read')
-    + statChip(num(d.cacheWrite), 'Cache write')
-    + '</div>'
-    + '<div class="sparkwrap"><div class="spark">' + sp.bars + '</div>'
-    + '<div class="sparkcap"><span>14-day spend</span><span>peak ' + sp.peak + '</span></div></div>';
+  return head('Claude', 'Code &middot; Cowork', plan || (d.limit ? '' : 'connect'), d.limit ? 'good' : 'warn')
+    + gauges
+    + '<div class="subrow">'
+    + bigstat(intc(d.msgs), 'Messages &middot; ' + PERIOD_LABEL[period])
+    + bigstat(num(d.inp + d.out + d.cacheRead + d.cacheWrite), 'Tokens')
+    + bigstat(intc(d.sessions), 'Sessions')
+    + '</div>';
 }
 
 // ── Codex / ChatGPT panel ───────────────────────────────────────────────────
@@ -109,36 +94,28 @@ function renderCodex(d) {
   if (!d.ok) return head('ChatGPT', 'Codex CLI', '') + errState(d.error || 'failed');
   if (!d.dir || d.files === 0) {
     return head('ChatGPT', 'Codex CLI', '')
-      + '<div class="state"><h3>No Codex activity</h3><p>No Codex CLI session logs were found under <b>~/.codex</b> on this machine.</p></div>';
+      + '<div class="state"><h3>No Codex activity</h3><p>No Codex CLI logs found under <b>~/.codex</b> on this machine.</p></div>';
   }
   const lim = d.limit;
-  const chip = lim && lim.model ? esc(lim.model) : intc(d.sessions) + ' sessions';
-  let focal;
-  if (lim && typeof lim.weeklyPct === 'number') {
-    const pct = Math.max(0, Math.min(100, lim.weeklyPct));
-    focal = '<div class="ring" style="--pct:' + pct + ';--ring:' + levelColor(lim.weeklyPct) + '">'
-      + '<div class="hole"><span class="val">' + Math.round(lim.weeklyPct) + '<i>%</i></span><span class="lbl">weekly</span></div></div>'
-      + '<div class="ringside"><div class="cap"><b>Weekly limit</b></div>'
-      + (lim.weeklyResetsAt ? '<div class="cap">resets in <b>' + resetIn(lim.weeklyResetsAt) + '</b></div>' : '')
-      + (lim.hasShort ? '<div class="cap">5-hr window <b>' + Math.round(lim.shortPct) + '%</b>'
-          + (lim.shortResetsAt ? ' &middot; ' + resetIn(lim.shortResetsAt) : '') + '</div>' : '')
-      + '</div>';
+  const chip = lim && lim.model ? esc(lim.model) : '';
+  let gauges;
+  if (lim && (typeof lim.weeklyPct === 'number' || typeof lim.shortPct === 'number')) {
+    const parts = [];
+    if (lim.hasShort && typeof lim.shortPct === 'number') parts.push(ring('5-hour', lim.shortPct, lim.shortResetsAt));
+    if (typeof lim.weeklyPct === 'number') parts.push(ring('Weekly', lim.weeklyPct, lim.weeklyResetsAt));
+    gauges = '<div class="gauges">' + parts.join('') + '</div>';
   } else {
-    focal = '<div class="hero" style="flex:1"><div class="big">' + intc(d.msgs) + '</div>'
-      + '<div class="cap">messages &middot; ' + PERIOD_LABEL[period] + '</div>'
-      + '<div class="cap" style="text-transform:none;margin-top:6px">No rate-limit data in logs yet.</div></div>';
+    gauges = '<div class="gauges"><div class="gauge"><div class="glabel">activity</div>'
+      + '<div class="ring" style="--pct:0"><div class="hole"><span class="val">' + intc(d.msgs) + '</span><span class="sub">messages</span></div></div>'
+      + '<div class="reset none">no limit data in logs</div></div></div>';
   }
-  const sp = sparkBars(d.spark || [], v => intc(Math.round(v)));
   return head('ChatGPT', 'Codex CLI', chip)
-    + '<div class="focal">' + focal + '</div>'
-    + '<div class="chips">'
-    + statChip(intc(d.msgs), 'Messages &middot; ' + PERIOD_LABEL[period])
-    + statChip(num(d.tokens), 'Tokens')
-    + statChip(intc(d.sessions), 'Sessions')
-    + statChip(num(d.cachedIn), 'Cached input')
-    + '</div>'
-    + '<div class="sparkwrap"><div class="spark">' + sp.bars + '</div>'
-    + '<div class="sparkcap"><span>14-day activity</span><span>peak ' + sp.peak + ' msgs</span></div></div>';
+    + gauges
+    + '<div class="subrow">'
+    + bigstat(intc(d.msgs), 'Messages &middot; ' + PERIOD_LABEL[period])
+    + bigstat(num(d.tokens), 'Tokens')
+    + bigstat(intc(d.sessions), 'Sessions')
+    + '</div>';
 }
 
 // ── Copilot panel ───────────────────────────────────────────────────────────
@@ -146,36 +123,39 @@ function renderCopilot(d) {
   if (!d.ok) return head('Copilot', 'GitHub', 'error', 'err') + errState(d.error || 'failed');
   if (!d.configured) {
     return head('Copilot', 'GitHub', 'not connected', 'warn')
-      + '<div class="state"><h3>Connect GitHub</h3><p>Show your Copilot premium-request usage:</p>'
+      + '<div class="state"><h3>Connect GitHub</h3><p>To show Copilot premium-request usage:</p>'
       + '<ol><li>Open this app&rsquo;s <b>options</b> in the editor</li>'
-      + '<li>Set <b>GitHub username</b></li>'
-      + '<li>Paste a token with <b>Plan: read-only</b> permission</li></ol></div>';
+      + '<li>Set your <b>GitHub username</b></li>'
+      + '<li>Paste a token with <b>Plan: read-only</b></li></ol></div>';
   }
   const included = Number(d.included) || 0;
   const used = Number(d.used) || 0;
   const monthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).getTime() / 1000;
-  let focal;
-  if (included > 0) {
-    const pct = Math.max(0, Math.min(100, used / included * 100));
-    focal = '<div class="ring" style="--pct:' + pct.toFixed(1) + ';--ring:' + levelColor(pct) + '">'
-      + '<div class="hole"><span class="val">' + intc(used) + '</span><span class="lbl">used</span></div></div>'
-      + '<div class="ringside"><div class="cap">of <b>' + intc(included) + '</b> this month</div>'
-      + '<div class="cap">resets in <b>' + resetIn(monthEnd) + '</b></div>'
-      + (d.net > 0 ? '<div class="cap">overage <b>$' + d.net.toFixed(2) + '</b></div>' : '') + '</div>';
-  } else {
-    focal = '<div class="hero" style="flex:1"><div class="big">' + intc(used) + '</div>'
-      + '<div class="cap">premium requests &middot; this month</div></div>';
-  }
   const remaining = Math.max(0, included - used);
+  let body;
+  if (included > 0) {
+    const pct = used / included * 100;
+    body = '<div class="gauges one">'
+      + '<div class="gauge"><div class="glabel">This month</div>'
+      + '<div class="ring big" style="--pct:' + Math.min(100, pct).toFixed(1) + ';--ring:' + levelColor(pct) + '">'
+      + '<div class="hole"><span class="val">' + Math.round(pct) + '<span class="u">%</span></span><span class="sub">of quota</span></div></div>'
+      + '<div class="reset">resets in <b>' + resetIn(monthEnd) + '</b></div></div>'
+      + '<div class="sideblock">'
+      + '<div class="row"><b>' + intc(used) + '</b> used</div>'
+      + '<div class="row"><b>' + intc(remaining) + '</b> left of ' + intc(included) + '</div>'
+      + (d.net > 0 ? '<div class="row">overage <b>$' + d.net.toFixed(2) + '</b></div>' : '')
+      + '</div></div>';
+  } else {
+    body = '<div class="gauges one"><div class="gauge"><div class="glabel">This month</div>'
+      + '<div class="ring big" style="--pct:0"><div class="hole"><span class="val">' + intc(used) + '</span><span class="sub">requests</span></div></div>'
+      + '<div class="reset">resets in <b>' + resetIn(monthEnd) + '</b></div></div></div>';
+  }
   return head('Copilot', 'GitHub', '@' + esc(d.user), 'good')
-    + '<div class="focal">' + focal + '</div>'
-    + '<div class="chips">'
-    + statChip(included > 0 ? intc(included) : '&mdash;', 'Included / mo')
-    + statChip(included > 0 ? intc(remaining) : '&mdash;', 'Remaining')
-    + statChip('$' + (Number(d.net) || 0).toFixed(2), 'Billed overage')
-    + statChip(esc(d.period || ''), 'Billing month')
-    + '</div>'
-    + '<div class="sparkcap" style="margin-top:12px"><span>source: ' + esc(d.source || 'github') + ' billing API</span><span></span></div>';
+    + body
+    + '<div class="subrow">'
+    + bigstat(included > 0 ? intc(included) : '&mdash;', 'Monthly quota')
+    + bigstat('$' + (Number(d.net) || 0).toFixed(2), 'Billed overage')
+    + '</div>';
 }
 
 // ── Data loop ────────────────────────────────────────────────────────────────
@@ -193,15 +173,13 @@ async function loadOne(action, key, renderFn, extra) {
   try { panels[key].innerHTML = renderFn(await apiCall(action, extra)); }
   catch (e) { panels[key].innerHTML = errState(e.message || 'request failed'); }
 }
-function setDot(cls) { const u = $('#updated'); const d = u.querySelector('.dot'); if (d) d.className = 'dot ' + (cls || ''); }
 function stampUpdated() {
   const t = new Date();
   $('#updated').innerHTML = 'updated ' + t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     + '<span class="dot"></span>';
 }
 async function refreshAll() {
-  const u = $('#updated');
-  if (u.querySelector('.dot')) setDot('busy');
+  const dot = $('#updated').querySelector('.dot'); if (dot) dot.className = 'dot busy';
   await Promise.all([
     loadOne('claude', 'claude', renderClaude, { period }),
     loadOne('codex', 'codex', renderCodex, { period }),
@@ -209,7 +187,6 @@ async function refreshAll() {
   ]);
   stampUpdated();
 }
-
 function applyPeriod(p) {
   if (!PERIODS.includes(p)) return;
   period = p;
@@ -233,7 +210,6 @@ window.oqKnob = function (ev) {
   return false;
 };
 
-// Theme (host passes _dark=0 for light).
 document.documentElement.dataset.theme = params.get('_dark') === '0' ? 'light' : 'dark';
 
 // Self-heal after an update: the host swaps files on disk but won't reload a live page.
@@ -244,7 +220,6 @@ setInterval(async () => {
   } catch (e) {}
 }, 30000);
 
-// Boot: show scanning placeholders, then load. Re-sync the period buttons first.
 document.querySelectorAll('#periods button').forEach(b => b.classList.toggle('sel', b.dataset.p === period));
 panels.claude.innerHTML = scanState('Claude', 'Code &middot; Cowork');
 panels.codex.innerHTML = scanState('ChatGPT', 'Codex CLI');
