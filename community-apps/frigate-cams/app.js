@@ -271,7 +271,7 @@ new ResizeObserver(entries => {
 // Self-heal after updates: the host swaps the files on disk but never reloads a page that is
 // already showing the app, so old JS keeps running until a restart. Poll our own app.json
 // (served no-store from disk) and hard-reload the page when the installed version changes.
-const RUNNING_VERSION = '1.0.3';
+const RUNNING_VERSION = '1.0.4';
 setInterval(async () => {
   try {
     const manifest = await (await fetch('app.json', { cache: 'no-store' })).json();

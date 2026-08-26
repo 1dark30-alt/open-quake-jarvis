@@ -178,6 +178,9 @@ html, body {
 .rail .cname { font-size: 14px; }
 .rail .cstamp, .rail .cidx, .rail .rec { display: none; }
 .rail .tile.sel { outline: 3px solid var(--accent); outline-offset: -3px; }
+/* Rail thumbs are pickers, not viewers — cover fills the tile so the selection outline hugs
+   a real image instead of a mostly-black box (the full frame shows in the main tile). */
+.rail .tile img.feed { object-fit: cover; }
 .stage.spotlight .main .cname { font-size: 26px; }
 
 /* ── Cycle ── */
