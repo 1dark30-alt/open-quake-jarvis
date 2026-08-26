@@ -25,6 +25,14 @@
       "server": false
     },
     {
+      "id": "azure-devops",
+      "name": "Azure DevOps",
+      "description": "Project-focused Azure DevOps repositories, pipelines, pull requests, and work items.",
+      "version": "1.0.0",
+      "zip": "azure-devops.zip",
+      "server": true
+    },
+    {
       "id": "if-player",
       "name": "Interactive Fiction",
       "description": "Play Inform / Z-machine & Glulx text adventures with TTS narration and voice commands.",

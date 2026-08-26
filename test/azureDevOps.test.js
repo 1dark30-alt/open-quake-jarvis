@@ -4,8 +4,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const AdmZip = require('adm-zip');
 
-const appDir = path.join(__dirname, '..', 'apps', 'azure-devops');
+const appDir = path.join(__dirname, '..', 'community-apps', 'azure-devops');
 const serverPath = path.join(appDir, 'server.js');
 const server = require(serverPath);
 
@@ -49,6 +50,24 @@ test('manifest is a self-contained served drop-in with server-only credentials',
     assert.equal(data.options.find(option => option.key === key).serverOnly, true, `${key} must stay out of the page URL`);
   }
   assert.equal(data.options.find(option => option.key === 'oauthClientSecret').type, 'secret');
+});
+
+test('community catalog and importable zip contain the Azure DevOps drop-in', () => {
+  const communityDir = path.join(__dirname, '..', 'community-apps');
+  const catalog = JSON.parse(fs.readFileSync(path.join(communityDir, 'index.json'), 'utf8'));
+  const entry = catalog.apps.find(app => app.id === 'azure-devops');
+  assert.deepEqual(entry, {
+    id: 'azure-devops',
+    name: 'Azure DevOps',
+    description: 'Project-focused Azure DevOps repositories, pipelines, pull requests, and work items.',
+    version: '1.0.0',
+    zip: 'azure-devops.zip',
+    server: true
+  });
+  const names = new AdmZip(path.join(communityDir, entry.zip)).getEntries().map(item => item.entryName.replace(/\\/g, '/'));
+  for (const file of ['app.json', 'index.html', 'style.css', 'app.js', 'server.js', 'SETUP.md']) {
+    assert.ok(names.includes(`azure-devops/${file}`), `${file} must be present under the archive root`);
+  }
 });
 
 test('app assets are relative and the panel defines exactly four overview slots', () => {
