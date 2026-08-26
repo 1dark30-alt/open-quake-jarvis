@@ -38,6 +38,10 @@ For how to install or submit an app — and a safety note — see the docs:
 - **[news-spotlight](news-spotlight)** — full-screen rotating RSS feed reader. Defaults
   to BBC / Sky / The Verge / Ars Technica; configurable feeds, story duration, Ken
   Burns motion, breaking-news mode, and an SSRF-safe proxy.
+- **[pihole-dash](pihole-dash)** — multi-server **Pi-hole** dashboard: up to four
+  Pi-holes as tabs on one pane — live stats, 24-hour query chart with blocked share,
+  top blocked/clients, pause/disable/enable blocking, and one-tap open of the web UI
+  on the PC. Pi-hole v6; passwords stay server-side.
 - **[quake-bird](quake-bird)** — a flappy-style arcade game: tap to flap, thread the pipe
   gaps, chase your best score. Original canvas artwork; pipes follow your accent color and
   the page theme. Optional shared high scores on the same score server as kitten-cannon
