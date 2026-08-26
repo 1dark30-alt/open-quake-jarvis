@@ -407,7 +407,10 @@ function openWebUi(options, query) {
   const cfg = cfgOrThrow(options, parseInt(query.server, 10));
   const shell = require('electron').shell;
   if (!shell || typeof shell.openExternal !== 'function') throw new Error('opening a browser is only available on the panel');
-  shell.openExternal(cfg.base + '/Docker');
+  // Per-container log view: Unraid serves it at /logterminal/<name>.log/ (trailing slash).
+  const log = String(query.log || '');
+  const url = log ? cfg.base + '/logterminal/' + encodeURIComponent(log) + '.log/' : cfg.base + '/Docker';
+  shell.openExternal(url);
   return { ok: true };
 }
 

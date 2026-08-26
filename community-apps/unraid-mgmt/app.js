@@ -1,6 +1,6 @@
 'use strict';
 
-const RUNNING_VERSION = '1.0.6';
+const RUNNING_VERSION = '1.0.7';
 const query = new URLSearchParams(location.search);
 const refreshSeconds = Math.max(5, Math.min(60, parseInt(query.get('refreshSeconds'), 10) || 10));
 const controlsAllowed = query.get('allowControls') !== 'false' && query.get('allowControls') !== '0';
@@ -481,7 +481,7 @@ function closeOverlay() { $('#overlay').hidden = true; state.selected = null; }
 
 $('#overlay').addEventListener('click', e => {
   if (e.target.id === 'scrim' || e.target.id === 'pclose') return closeOverlay();
-  if (e.target.id === 'plogs') return openWeb();
+  if (e.target.id === 'plogs') return openLogs(state.selected);
   const b = e.target.closest('[data-pact]');
   if (b && state.selected) runContainer(state.selected, b.dataset.pact);
 });
@@ -555,6 +555,14 @@ async function runParity(op) {
 
 async function openWeb() {
   try { await apiCall('open', { server: state.active }); }
+  catch (e) { toast(e.message || 'Could not open', true); }
+}
+
+async function openLogs(id) {
+  const s = activeServer();
+  const c = s && (s.containers || []).find(x => x.id === id);
+  if (!c) return;
+  try { await apiCall('open', { server: state.active, log: c.name }); }
   catch (e) { toast(e.message || 'Could not open', true); }
 }
 
