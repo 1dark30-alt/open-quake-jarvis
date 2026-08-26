@@ -271,7 +271,7 @@ new ResizeObserver(entries => {
 // Self-heal after updates: the host swaps the files on disk but never reloads a page that is
 // already showing the app, so old JS keeps running until a restart. Poll our own app.json
 // (served no-store from disk) and hard-reload the page when the installed version changes.
-const RUNNING_VERSION = '1.0.4';
+const RUNNING_VERSION = '1.0.5';
 setInterval(async () => {
   try {
     const manifest = await (await fetch('app.json', { cache: 'no-store' })).json();
@@ -293,7 +293,10 @@ async function boot() {
   try {
     state.cams = await discover();
   } catch (error) {
-    notice('Can\'t reach Frigate', 'No answer from <code>' + esc(baseUrl) + '/api/config</code> (' + esc(error.message) + '). Check the address and that Frigate\'s port 5000 is reachable from this machine.');
+    // A failed boot must not be a dead end — Frigate restarts (config changes, updates) answer
+    // 500 or nothing for a while. Keep retrying; the page recovers by itself when Frigate does.
+    notice('Can\'t reach Frigate', 'No answer from <code>' + esc(baseUrl) + '/api/config</code> (' + esc(error.message) + '). Retrying every 15 seconds &mdash; if this persists, check the address and that Frigate\'s port 5000 is reachable from this machine.');
+    setTimeout(boot, 15000);
     return;
   }
   if (!state.cams.length) {
