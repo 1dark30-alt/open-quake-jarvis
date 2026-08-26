@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frigate Cameras</title>
+  <link rel="stylesheet" href="style.css?v=1.0.0">
+</head>
+<body>
+  <main class="shell">
+    <header class="bar">
+      <div class="brand">
+        <svg class="cam-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 7l13-2v10L3 15z"/><path d="M16 8l5-2v10l-5-2"/><circle cx="9" cy="10" r="2"/>
+        </svg>
+        <span>Frigate Cameras</span>
+      </div>
+      <span class="count" id="count"></span>
+      <div class="chips">
+        <button type="button" class="chip" data-mode="grid">Grid</button>
+        <button type="button" class="chip" data-mode="spotlight">Spotlight</button>
+        <button type="button" class="chip" data-mode="cycle">Cycle</button>
+        <button type="button" class="chip src" id="src-toggle"><span class="reddot"></span><span id="src-label">LIVE</span></button>
+      </div>
+    </header>
+    <section class="stage" id="stage"></section>
+  </main>
+  <script src="app.js?v=1.0.0"></script>
+</body>
+</html>

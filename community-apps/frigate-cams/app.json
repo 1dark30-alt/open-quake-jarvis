@@ -1,0 +1,77 @@
+{
+  "id": "frigate-cams",
+  "name": "Frigate Cameras",
+  "version": "1.0.0",
+  "description": "Live camera wall for a local Frigate NVR — auto-discovers every camera, with Grid, Spotlight, and Cycle views.",
+  "entry": "index.html",
+  "served": true,
+  "proxy": {
+    "methods": ["GET"],
+    "allow": [{ "option": "frigateUrl" }]
+  },
+  "options": [
+    {
+      "key": "frigateUrl",
+      "label": "Frigate URL",
+      "type": "text",
+      "default": "",
+      "help": "Frigate's internal (unauthenticated) address, e.g. http://192.168.1.25:5000 — not the login port 8971."
+    },
+    {
+      "key": "mode",
+      "label": "View mode",
+      "type": "select",
+      "default": "grid",
+      "choices": [
+        ["grid", "Grid — all cameras"],
+        ["spotlight", "Spotlight — one big + rail"],
+        ["cycle", "Cycle — rotate through cameras"]
+      ]
+    },
+    {
+      "key": "stillMode",
+      "label": "Stills instead of live video",
+      "type": "bool",
+      "default": false,
+      "help": "Auto-refreshing snapshots instead of moving MJPEG — much lighter on the Frigate server for big grids."
+    },
+    {
+      "key": "refreshSeconds",
+      "label": "Still refresh rate",
+      "type": "select",
+      "default": "2",
+      "choices": [
+        ["1", "1 second"],
+        ["2", "2 seconds"],
+        ["5", "5 seconds"],
+        ["10", "10 seconds"]
+      ]
+    },
+    {
+      "key": "cycleSeconds",
+      "label": "Cycle dwell time",
+      "type": "select",
+      "default": "10",
+      "choices": [
+        ["5", "5 seconds"],
+        ["10", "10 seconds"],
+        ["15", "15 seconds"],
+        ["30", "30 seconds"]
+      ]
+    },
+    {
+      "key": "cameras",
+      "label": "Cameras (optional)",
+      "type": "text",
+      "default": "",
+      "help": "Comma-separated camera names to show, in order — blank shows every camera Frigate reports."
+    },
+    {
+      "key": "mock",
+      "label": "Demo data",
+      "type": "bool",
+      "default": false,
+      "help": "Show simulated cameras without contacting Frigate."
+    }
+  ]
+}
