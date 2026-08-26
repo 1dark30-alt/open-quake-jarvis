@@ -1,6 +1,6 @@
 'use strict';
 
-const RUNNING_VERSION = '1.0.4';
+const RUNNING_VERSION = '1.0.5';
 const params = new URLSearchParams(location.search);
 const refreshSeconds = Math.max(15, Math.min(300, parseInt(params.get('refreshSeconds'), 10) || 30));
 const PERIODS = ['today', '7d', '30d', 'all'];
@@ -93,8 +93,12 @@ function codexCard(d) {
   const chip = lim && lim.model ? esc(lim.model) : '';
   // The rate-limit % is account-global but read from this machine's newest local
   // snapshot — flag its age so a stale machine's gauge is self-explanatory.
-  const stale = lim && !lim.live && lim.at && (Date.now() - lim.at > 600000);
-  const sub = stale ? 'Codex CLI &middot; as of ' + ago(Date.now() - lim.at) : 'Codex CLI';
+  // Show the signed-in account when live, and clearly mark any non-live reading as a
+  // snapshot — so a machine whose live call is failing can't masquerade as fresh, and
+  // a different signed-in account is obvious.
+  let sub = 'Codex CLI';
+  if (lim && lim.live) sub = 'Codex CLI &middot; ' + esc(lim.email || 'live');
+  else if (lim && lim.at) sub = 'Codex CLI &middot; snapshot, ' + ago(Date.now() - lim.at);
   let gauges;
   if (lim && (typeof lim.weeklyPct === 'number' || typeof lim.shortPct === 'number')) {
     const parts = [];

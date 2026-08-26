@@ -443,7 +443,7 @@ async function codexLiveLimits(options) {
   const sorted = [...windows].sort((a, b) => a.window - b.window);
   const short = sorted[0], weekly = sorted[sorted.length - 1];
   const data = {
-    live: true, plan: j.plan_type || null,
+    live: true, plan: j.plan_type || null, email: j.email || null, accountId: j.account_id || null,
     weeklyPct: weekly.pct, weeklyResetsAt: weekly.resetsAt, weeklyWindow: weekly.window,
     shortPct: short.pct, shortResetsAt: short.resetsAt, shortWindow: short.window,
     hasShort: sorted.length > 1 && short.window !== weekly.window,
