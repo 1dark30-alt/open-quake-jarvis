@@ -1,13 +1,22 @@
 'use strict';
-// slideCapture controller: Manual capture is a SINGLE shot. When invoked without a running
-// capture it may spin the stream up for one frame, but it must NOT leave automatic settle-capture
-// running afterwards (regression: clicking "Manual capture" started continuous auto-capture).
+// slideCapture controller: Manual capture is a SINGLE shot. It grabs one frame using the live
+// capture stream but must NOT enable the automatic settle-capture (regression: clicking "Manual
+// capture" started continuous auto-capture). The panel's Start/Stop toggle (state.capturing)
+// reflects AUTO capture, not the hidden stream a Manual grab keeps alive.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createSlideCapture } = require('../app/slideCapture');
+const { THUMB_W, THUMB_H } = require('../app/slideCaptureEngine');
 
-// Minimal deps: capture window is a fake whose webContents.send records the last IPC command.
+// Lit (non-black) RGBA thumbnail as an ArrayBuffer, matching what the capture page ships.
+function thumb(level) {
+  const u = new Uint8ClampedArray(THUMB_W * THUMB_H * 4);
+  for (let i = 0; i < u.length; i += 4) { u[i] = u[i + 1] = u[i + 2] = level; u[i + 3] = 255; }
+  return u.buffer;
+}
+const META = { meanLuma: 120, nonBlack: 1 };   // passes looksBlank (lit content)
+
 function makeCapture() {
   const cmds = [];
   const fakeWin = {
@@ -24,30 +33,38 @@ function makeCapture() {
     log: () => {},
   });
   sc.ensureWindow();
-  sc.onReady();                 // mark the capture window ready so sendCmd delivers
+  sc.onReady();
   sc.selectWindow('window:1:0', 'Deck');
   return { sc, cmds };
 }
+const grabs = cmds => cmds.filter(c => c.type === 'grab').length;
 
-test('Manual capture (standalone) does not leave auto-capture running', () => {
+test('Manual capture grabs one frame without enabling auto-capture', () => {
   const { sc, cmds } = makeCapture();
   const r = sc.manual();
   assert.equal(r.ok, true);
-  assert.ok(cmds.some(c => c.type === 'grab'), 'sent a grab');
-  assert.equal(sc.getState().capturing, true, 'stream is live while the frame is in flight');
+  assert.equal(grabs(cmds), 1, 'sent exactly one grab');
+  assert.equal(sc.getState().capturing, false, 'panel stays "Start capture" — Manual is not auto-capture');
 
-  // The full-res PNG comes back; onFrame writes it (folder is bogus so the write throws and is
-  // swallowed — we only care that capture is torn down, not that the file lands).
-  sc.onFrame(Buffer.from([1, 2, 3]));
-  assert.equal(sc.getState().capturing, false, 'auto-capture torn down after the single shot');
-  assert.ok(cmds.some(c => c.type === 'stop'), 'sent a stop');
+  sc.onFrame(Buffer.from([1, 2, 3]));   // full-res PNG returns (bogus folder -> write throws, swallowed)
+  assert.equal(sc.getState().capturing, false, 'still not auto-capturing after the grab');
+
+  // Feed steady thumbnails: with auto-save off, a settled frame must NOT trigger any auto grab.
+  for (let i = 0; i < 5; i++) sc.onThumb(thumb(100), META);
+  assert.equal(grabs(cmds), 1, 'no automatic grabs after a Manual capture');
 });
 
-test('Manual capture while auto-capture is running leaves it running', () => {
-  const { sc } = makeCapture();
-  sc.start();                                   // user explicitly started auto-capture
-  assert.equal(sc.getState().capturing, true);
+test('Start capture enables auto-capture; Manual during it leaves it running', () => {
+  const { sc, cmds } = makeCapture();
+  sc.start();
+  assert.equal(sc.getState().capturing, true, 'Start capture => auto-capturing');
+
+  // A settled new slide should auto-grab once auto-save is on.
+  sc.onThumb(thumb(100), META);   // poll 1 seeds prevThumb (f2f=1, motion)
+  sc.onThumb(thumb(100), META);   // poll 2: 1 stable
+  sc.onThumb(thumb(100), META);   // poll 3: 2 stable -> settle -> auto grab
+  assert.equal(grabs(cmds), 1, 'auto-capture grabbed a settled slide');
+
   sc.manual();
-  sc.onFrame(Buffer.from([1, 2, 3]));
-  assert.equal(sc.getState().capturing, true, 'explicit auto-capture is not stopped by a manual grab');
+  assert.equal(sc.getState().capturing, true, 'a Manual grab does not stop running auto-capture');
 });
