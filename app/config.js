@@ -3060,8 +3060,6 @@
   // Software window). Slots reference pages by id — nothing is duplicated.
   const PANE_MAX_SLOTS = 5;
   function curPane() { const list = config.panes || []; return (paneIndex >= 0 && paneIndex < list.length) ? list[paneIndex] : null; }
-  function paneSlotKind(t) { return t === 'dashboard' ? 'web' : t === 'app' ? 'app' : 'grid'; }
-  function pagesOfType(t) { const k = paneSlotKind(t); return (config.grids || []).filter(g => g && (k === 'grid' ? (!g.kind || g.kind === 'grid') : g.kind === k)); }
   function renderPanes() {
     const el = document.getElementById('panelist'); if (!el) return;
     el.innerHTML = '';
@@ -3079,7 +3077,7 @@
   }
   function addPane() {
     if (!Array.isArray(config.panes)) config.panes = [];
-    config.panes.push({ id: uid(), name: 'New Pane', slots: [{ type: 'grid', pageId: '' }] });
+    config.panes.push({ id: uid(), name: 'New Pane', slots: [{ pageId: '' }] });
     paneIndex = config.panes.length - 1;
     leftTab = 'panes'; view = 'panes';
     render(); markDirty();
@@ -3098,26 +3096,22 @@
         <button class="danger" id="pnDelete" style="margin-left:auto">Delete pane</button></div>`;
     document.getElementById('pnName').oninput = e => { p.name = e.target.value; renderPanes(); markDirty(); };
     const addBtn = document.getElementById('pnAddSlot');
-    if (addBtn) addBtn.onclick = () => { p.slots.push({ type: 'grid', pageId: '' }); render(); markDirty(); };
+    if (addBtn) addBtn.onclick = () => { p.slots.push({ pageId: '' }); render(); markDirty(); };
     document.getElementById('pnDelete').onclick = deleteCurrentPane;
     const slotsEl = document.getElementById('pnSlots');
     p.slots.forEach((s, i) => {
-      const pages = pagesOfType(s.type);
       const opts = ['<option value="">— choose a page —</option>']
-        .concat(pages.map(g => `<option value="${esc(g.id)}"${g.id === s.pageId ? ' selected' : ''}>${esc(g.name || '(unnamed)')}</option>`)).join('');
+        .concat((config.grids || []).map(g => {
+          const tag = g.kind === 'web' ? '🌐' : g.kind === 'app' ? '🧩' : '▦';
+          return `<option value="${esc(g.id)}"${g.id === s.pageId ? ' selected' : ''}>${tag} ${esc(g.name || '(unnamed)')}</option>`;
+        })).join('');
       const d = document.createElement('div');
       d.className = 'row';
       d.style.cssText = 'border:1px solid #2a3a4d;border-radius:8px;padding:10px;margin-top:8px;gap:8px;align-items:center';
       d.innerHTML = `
         <span class="griphandle" title="Drag to reorder" style="cursor:grab">☰</span>
-        <select data-pn-type style="width:130px">
-          <option value="grid"${s.type === 'grid' || !s.type ? ' selected' : ''}>Grid</option>
-          <option value="dashboard"${s.type === 'dashboard' ? ' selected' : ''}>Dashboard</option>
-          <option value="app"${s.type === 'app' ? ' selected' : ''}>App</option>
-        </select>
         <select data-pn-page style="flex:1;min-width:0">${opts}</select>
         <button data-pn-del class="danger" title="Remove this page from the pane">×</button>`;
-      d.querySelector('[data-pn-type]').onchange = e => { s.type = e.target.value; s.pageId = ''; render(); markDirty(); };
       d.querySelector('[data-pn-page]').onchange = e => { s.pageId = e.target.value; markDirty(); };
       d.querySelector('[data-pn-del]').onclick = () => {
         if (!window.confirm('Remove this page from the pane?')) return;
@@ -3199,10 +3193,9 @@
       <div class="row"><label style="width:auto">Show</label>
         <select id="sSwDisplay" style="width:230px">
           <option value="pages">Pages — one page at a time</option>
-          <option value="pane">Pane — stacked pages</option>
-        </select>
-        <select id="sSwPane" style="width:230px;margin-left:8px"></select></div>
-      <p class="hint">Software mode only. A <b>pane</b> (created on the sidebar's Panes tab) stacks several of your pages vertically — the window grows to fit them, so a big screen shows them all at once. With no valid pane selected the window falls back to normal Pages. Applies on <b>Save</b>.</p>
+          <option value="pane">Panes — stacked pages</option>
+        </select></div>
+      <p class="hint">Software mode only. A <b>pane</b> (created on the sidebar's Panes tab) stacks several of your pages vertically — the window grows to fit them, so a big screen shows them all at once. In Panes view the window's ☰ button switches between your panes, just like it switches pages. With no usable pane the window falls back to normal Pages. Applies on <b>Save</b>.</p>
 
       <p class="sectitle" style="margin-top:22px">On launch</p>
       <div class="row"><label style="width:auto">Editor window</label>
@@ -4160,20 +4153,12 @@
       if (runSel) { runSel.value = runModeVal; runSel.onchange = e => setS('runMode', e.target.value); }
       const runSetupBtn = document.getElementById('sRunSetup');
       if (runSetupBtn) runSetupBtn.onclick = () => { try { configApi.openWelcome(); } catch (e) {} };
-      // Software window: pages (default) vs a stacked pane. The pane picker lists panes by name and
-      // stays greyed out until the display is 'pane' (or when there are no panes to pick).
-      const swDisp = document.getElementById('sSwDisplay'), swPane = document.getElementById('sSwPane');
-      if (swDisp && swPane) {
-        const panes = config.panes || [];
-        swPane.innerHTML = panes.length
-          ? panes.map(p => `<option value="${esc(p.id)}">${esc(p.name || '(unnamed)')}</option>`).join('')
-          : '<option value="">(no panes yet)</option>';
+      // Software window: pages (default) vs stacked panes. Which pane shows is runtime state (the
+      // window's ☰ selector), not a setting — mirrors how the active page works.
+      const swDisp = document.getElementById('sSwDisplay');
+      if (swDisp) {
         swDisp.value = s.softwareDisplay === 'pane' ? 'pane' : 'pages';
-        if (panes.some(p => p.id === s.activePaneId)) swPane.value = s.activePaneId;
-        const syncPaneSel = () => { swPane.disabled = swDisp.value !== 'pane' || !panes.length; };
-        syncPaneSel();
-        swDisp.onchange = e => { setS('softwareDisplay', e.target.value); if (e.target.value === 'pane' && swPane.value) setS('activePaneId', swPane.value); syncPaneSel(); };
-        swPane.onchange = e => setS('activePaneId', e.target.value);
+        swDisp.onchange = e => setS('softwareDisplay', e.target.value);
       }
       document.getElementById('sLaunch').value = s.launchMode;
       document.getElementById('sLaunch').onchange = e => setS('launchMode', e.target.value);

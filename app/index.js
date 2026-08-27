@@ -3,10 +3,12 @@
   // the stage scales to fit the window (never rotates) and a floating button drives the page menu.
   const SOFTWARE_MODE = new URLSearchParams(location.search).get('mode') === 'software';
   if (SOFTWARE_MODE) document.documentElement.classList.add('swmode');
-  // Pane slot = one stacked page inside a software pane window. The slot shows a fixed page, so the
-  // ☰ page selector is hidden and its mouse/keyboard wiring stays off.
+  // Pane slot = one stacked page inside a software pane window. The top slot (?psel=1) keeps the ☰
+  // selector — main feeds it the PANE list, so it switches panes the way pages switch normally. The
+  // other slots show a fixed page: selector hidden, wiring off.
   const PANE_SLOT = new URLSearchParams(location.search).get('pane') === '1';
-  if (PANE_SLOT) document.documentElement.classList.add('paneslot');
+  const PANE_SEL = new URLSearchParams(location.search).get('psel') === '1';
+  if (PANE_SLOT && !PANE_SEL) document.documentElement.classList.add('paneslot');
   const grid = document.getElementById('grid'), vol = document.getElementById('vol'), web = document.getElementById('web');
   const webgrid = document.getElementById('webgrid');   // button strip beside a dashboard
   const selector = document.getElementById('selector'), selitems = document.getElementById('selitems');
@@ -397,7 +399,7 @@
   // ---- software mode: mouse drives the page menu (no knob) ----
   // The ☰ button toggles the page menu; clicking an item picks it; clicking the dim backdrop closes;
   // the wheel scrolls the list. In panel/monitor mode none of this is wired (the knob owns the menu).
-  if (SOFTWARE_MODE && !PANE_SLOT) {
+  if (SOFTWARE_MODE && (!PANE_SLOT || PANE_SEL)) {
     const swBtn = document.getElementById('swpages');
     if (swBtn) swBtn.addEventListener('click', () => { selOpen ? closeSelector() : openSelector(); });
     selitems.addEventListener('click', (e) => {

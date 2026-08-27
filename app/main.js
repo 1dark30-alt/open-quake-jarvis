@@ -77,7 +77,7 @@ const { createScreensaverHost } = require('./screensaver-host'); // Screensaver 
 const saverIdle = require('./screensaver-idle'); // pure screensaver auto-start/wake/swallow decisions
 const owuiClient = require('./owuiClient'); // shared OWUI URL normalization + model-list probe
 const { resolveRunMode, reservedDisplayEnabled } = require('./runMode'); // pure run-mode helpers (panel/software/monitor)
-const { activePane } = require('./panes');    // pure pane resolution (software-mode vertical page stacks)
+const { activePane, resolvePaneSlots } = require('./panes');    // pure pane resolution (software-mode vertical page stacks)
 const voiceConfig = require('./voiceConfig'); // global TTS/STT endpoints + per-page override resolution + legacy migration
 const { DiscordService } = require('./discordService'); // local Discord desktop RPC; protocol stays behind this main-process service
 const { DiscordOAuth } = require('./discordOAuth');
@@ -1119,6 +1119,19 @@ function activePaneNow() { return activePane(config.settings, config.panes, conf
 // Everything that forces a software-window rebuild when a save changes it: pane on/off, which pane,
 // and which pages it stacks (page count sets the window height and the number of slot views).
 function paneRebuildKey() { const ap = activePaneNow(); return ap ? ap.pane.id + ':' + ap.pages.map(g => g.id).join(',') : ''; }
+// The ☰ selector's entries in pane mode: every pane that resolves to at least one page.
+function paneList() { return (config.panes || []).filter(p => resolvePaneSlots(p, config.grids).length).map(p => ({ id: p.id, name: p.name })); }
+// Switch the displayed pane (from the top slot's ☰ selector). Persisted like the active page; the
+// window rebuilds because the slot count — and so the window height — can change.
+function switchPane(id) {
+  const ap = activePaneNow();
+  if (ap && ap.pane.id === id) return;
+  if (!(config.panes || []).some(p => p.id === id)) return;
+  if (!config.settings) config.settings = {};
+  config.settings.activePaneId = id;
+  saveConfig();
+  applyRunModeLive();
+}
 // The pages currently on screen: the pane's stacked pages in pane mode, else just the active page.
 function visibleGrids() { const ap = activePaneNow(); return ap ? ap.pages : [activeGrid()]; }
 // Tell the local server which served page(s) are on screen so it runs only those pages' pollers
@@ -1260,14 +1273,16 @@ function runRoutine(routineId) {
 async function pushToPanel() {
   const ap = activePaneNow();
   if (ap && paneViews.length) {
-    // Pane mode: each slot view gets its own page + theme. No gridList/intro/rotation — the
-    // stacked pages are fixed; there is no selector inside a slot.
+    // Pane mode: each slot view gets its own page + theme. The TOP slot also gets the pane list as
+    // its "gridList" — its ☰ selector then switches panes the way it normally switches pages
+    // (switchGrid arrives with a pane id; see the switchGrid handler). No intro/rotation sends.
     syncPollers(ap.pages);
     for (let i = 0; i < paneViews.length; i++) {
       const v = paneViews[i], g = ap.pages[i];
       if (!v || v.webContents.isDestroyed() || !g) continue;
       v.webContents.send('theme', themePayload(g));
       v.webContents.send('grid', await resolveGridIcons(g));
+      if (i === 0) v.webContents.send('gridList', { grids: paneList(), activeId: ap.pane.id });
     }
     return;
   }
@@ -2434,10 +2449,12 @@ function createSoftwareWindow() {
         v.setBounds({ x: 0, y: top, width: b.width, height: bottom - top });
       });
     };
-    views.forEach(v => {
+    views.forEach((v, i) => {
       try { v.setBackgroundColor('#000000'); } catch (e) {}
       win.contentView.addChildView(v);
-      v.webContents.loadFile(path.join(__dirname, 'index.html'), { query: { mode: 'software', pane: '1' } });
+      // Top slot keeps the ☰ selector (psel=1) — it lists PANES and switches between them.
+      const query = i === 0 ? { mode: 'software', pane: '1', psel: '1' } : { mode: 'software', pane: '1' };
+      v.webContents.loadFile(path.join(__dirname, 'index.html'), { query });
       // Re-push as each slot finishes loading; sends to still-loading slots are dropped harmlessly.
       v.webContents.on('did-finish-load', () => { if (panelWin === win) pushToPanel(); });
     });
@@ -3515,7 +3532,11 @@ app.whenReady().then(async () => {
   ipcMain.on('launch', (e, a) => { if (!isFromPanel(e)) return; runAction(a); });
   ipcMain.on('volume', (e, v) => { if (!isFromPanel(e)) return; mediaKeys.volume(v); });
   ipcMain.on('media', (e, cmd) => { if (!isFromPanel(e)) return; mediaKey(cmd); });   // knob 'enter' on the music page -> play/pause
-  ipcMain.on('switchGrid', (e, id) => { if (!isFromPanel(e)) return; gotoGrid(id, true); if (rotateRunning) scheduleRotation(); });   // a manual pick resets the rotation timer
+  ipcMain.on('switchGrid', (e, id) => {
+    if (!isFromPanel(e)) return;
+    if (activePaneNow() && (config.panes || []).some(p => p.id === id)) { switchPane(id); return; }   // pane mode: the ☰ lists panes
+    gotoGrid(id, true); if (rotateRunning) scheduleRotation();   // a manual pick resets the rotation timer
+  });
   // Focus a page ON THE DEVICE from the editor. Only pages already in main's config (i.e. saved) can
   // be focused -- the editor blocks this when it has unsaved changes, so an id we don't know is an
   // error, not a silent no-op. This is the one place the editor is allowed to move the live page.
