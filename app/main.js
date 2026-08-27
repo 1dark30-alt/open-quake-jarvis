@@ -3634,6 +3634,13 @@ app.whenReady().then(async () => {
     if (config.homePageId) gotoGrid(config.homePageId, false);
   });
   ipcMain.on('openConfig', (e) => { if (!isFromPanel(e) && !isFrom(e, configWin)) return; openConfigWindow(); });
+  // Restore input after a native confirm()/alert() in the editor: the dialog steals focus and the
+  // window never registers getting it back (electron#31917), leaving inputs/<select>s dead until a
+  // blur+refocus cycle.
+  ipcMain.on('refocusEditor', (e) => {
+    if (!isFrom(e, configWin)) return;
+    try { configWin.blur(); configWin.focus(); } catch (err) {}
+  });
   ipcMain.on('introDone', (e) => { if (!isFromPanel(e)) return; config.introShown = true; saveConfig(); });   // remember the intro was dismissed
   ipcMain.on('saveTileValue', (e, data) => {
     console.log('[counter] saveTileValue received:', JSON.stringify(data));

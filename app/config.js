@@ -744,7 +744,7 @@
       const del = document.getElementById('rtdDelete');
       if (del) del.onclick = () => {
         const r = curRoutine(); if (!r) return;
-        if (!window.confirm('Delete routine “' + (r.name || '(unnamed)') + '”?\n\nAny tile or macro that uses it will show “routine not found” until you point it elsewhere. This can’t be undone.')) return;
+        if (!ask('Delete routine “' + (r.name || '(unnamed)') + '”?\n\nAny tile or macro that uses it will show “routine not found” until you point it elsewhere. This can’t be undone.')) return;
         const l = list(); const idx = l.findIndex(x => x.id === r.id);
         if (idx >= 0) l.splice(idx, 1);
         selRoutineId = null;   // resolveRoutineSel picks the first still-visible routine on redraw
@@ -1008,7 +1008,7 @@
         if (cur && cur !== g.id) {
           const other = config.grids.find(x => x.id === cur);
           const name = (other && other.name) || cur;
-          if (!window.confirm(name + ' is currently set as home page, switch to this one?')) {
+          if (!ask(name + ' is currently set as home page, switch to this one?')) {
             e.target.checked = false;
             return;
           }
@@ -1022,7 +1022,7 @@
     const ghide = document.getElementById('gHidden');
     if (ghide) ghide.onchange = e => {
       if (e.target.checked && config.homePageId === g.id) {
-        window.alert('This page is set as the home page and can\'t be hidden. Pick a new home page first, then hide this one.');
+        tell('This page is set as the home page and can\'t be hidden. Pick a new home page first, then hide this one.');
         e.target.checked = false;
         return;
       }
@@ -1048,7 +1048,7 @@
       cloneBtn.onclick = () => {
         const src = config.grids.find(p => p.id === clone.value); if (!src) return;
         const hasContent = (g.tiles || []).some(t => t && t.type);
-        if (hasContent && !window.confirm('Replace this grid’s tiles with the ones from “' + (src.name || 'that page') + '”?')) return;
+        if (hasContent && !ask('Replace this grid’s tiles with the ones from “' + (src.name || 'that page') + '”?')) return;
         g.tiles = fitTiles(src.tiles, (g.cols || 1) * (g.rows || 1));
         ti = -1; selEnd = -1; render(); markDirty();
       };
@@ -1059,6 +1059,13 @@
   // ---- save model (no live edit) ----
   function setState(text, cls) { const el = document.getElementById('state'); el.textContent = text; el.className = 'state' + (cls ? ' ' + cls : ''); }
   function markDirty() { dirty = true; setState('● unsaved changes', 'dirty'); document.getElementById('saveBtn').disabled = false; }
+  // Native confirm()/alert() leave the window's input state broken in Electron — text fields and
+  // <select> popups stop responding because the dialog takes focus and the window never registers
+  // getting it back (electron#31917 / #41603). Route EVERY dialog through these; main blurs and
+  // refocuses the editor window afterwards, which restores input.
+  function refocusAfterDialog() { try { if (configApi.refocusEditor) configApi.refocusEditor(); } catch (e) {} }
+  function ask(msg) { const r = window.confirm(msg); refocusAfterDialog(); return r; }
+  function tell(msg) { window.alert(msg); refocusAfterDialog(); }
   async function doSave() {
     try {
       const result = await configApi.saveConfig(config);
@@ -2597,7 +2604,7 @@
         if (!(r && r.ok)) { document.getElementById('dkMsg').textContent = 'Rename failed: ' + ((r && r.error) || ''); } else draw();
       });
       box.querySelectorAll('.dkDel').forEach(b => b.onclick = async e => {
-        if (!window.confirm('Remove this deck profile and its key assignments?')) return;
+        if (!ask('Remove this deck profile and its key assignments?')) return;
         const r = await configApi.appApiCall('deck-host', 'profile-remove', { id: e.currentTarget.dataset.id });
         if (!(r && r.ok)) document.getElementById('dkMsg').textContent = 'Remove failed: ' + ((r && r.error) || '');
         draw();
@@ -2670,7 +2677,7 @@
       };
       const disconnect = box.querySelector('#dcDisconnect');
       if (disconnect) disconnect.onclick = async () => {
-        if (!window.confirm('Disconnect Discord and remove the stored OAuth tokens?')) return;
+        if (!ask('Disconnect Discord and remove the stored OAuth tokens?')) return;
         disconnect.disabled = true; message('Disconnecting…');
         let result;
         try { result = await configApi.disconnectOAuthProvider('discord'); }
@@ -2760,7 +2767,7 @@
         message('Enter the device code in GitHub…'); poll(result);
       };
       box.querySelector('#ghDisconnect').onclick = async event => {
-        if (!window.confirm('Disconnect GitHub and remove the stored OAuth tokens?')) return;
+        if (!ask('Disconnect GitHub and remove the stored OAuth tokens?')) return;
         event.currentTarget.disabled = true; message('Disconnecting…');
         let result;
         try { result = await configApi.disconnectGitHub(); }
@@ -2911,7 +2918,7 @@
   async function focusCurrentPage() {
     const g = curGrid();
     if (!g) return;
-    if (dirty) { window.alert('Save your changes first. The device only knows about saved pages, so “Focus on device” is unavailable until you Save.'); return; }
+    if (dirty) { tell('Save your changes first. The device only knows about saved pages, so “Focus on device” is unavailable until you Save.'); return; }
     try {
       const r = await configApi.focusPage(g.id);
       if (r && r.ok) setState('focused “' + (g.name || 'page') + '” on the device', 'saved');
@@ -3054,7 +3061,7 @@
     const list = config.groups || [];
     if (groupIndex < 0 || groupIndex >= list.length) return;
     const removed = list[groupIndex];
-    if (!window.confirm('Delete group "' + (removed.name || '(unnamed)') + '"? Any pages using it will fall back to their own tiles.')) return;
+    if (!ask('Delete group "' + (removed.name || '(unnamed)') + '"? Any pages using it will fall back to their own tiles.')) return;
     // Clear references on pages that used this group.
     (config.grids || []).forEach(p => { if (p && p.groupId === removed.id) { delete p.groupId; delete p.useGroup; } });
     list.splice(groupIndex, 1);
@@ -3134,7 +3141,7 @@
         const cur = config.homePaneId;
         if (cur && cur !== p.id) {
           const other = (config.panes || []).find(x => x.id === cur);
-          if (!window.confirm(((other && other.name) || cur) + ' is currently set as home pane, switch to this one?')) { e.target.checked = false; return; }
+          if (!ask(((other && other.name) || cur) + ' is currently set as home pane, switch to this one?')) { e.target.checked = false; return; }
         }
         config.homePaneId = p.id;
       } else if (config.homePaneId === p.id) delete config.homePaneId;
@@ -3179,7 +3186,7 @@
           <button data-pn-del class="danger" title="Remove this page from the pane">×</button>`;
         d.querySelector('[data-pn-page]').onchange = e => { s.pageId = e.target.value; markDirty(); };
         d.querySelector('[data-pn-del]').onclick = () => {
-          if (!window.confirm('Remove this page from the pane?')) return;
+          if (!ask('Remove this page from the pane?')) return;
           slots.splice(i, 1); render(); markDirty();
         };
         // Drag starts on the ☰ grip ONLY — a draggable row swallows mousedown on the <select>,
@@ -3202,7 +3209,7 @@
   function deleteCurrentPane() {
     const list = config.panes || [];
     const p = curPane(); if (!p) return;
-    if (!window.confirm('Delete pane "' + (p.name || '(unnamed)') + '"?')) return;
+    if (!ask('Delete pane "' + (p.name || '(unnamed)') + '"?')) return;
     if (config.settings && config.settings.activePaneId === p.id) config.settings.activePaneId = '';
     if (config.homePaneId === p.id) delete config.homePaneId;
     list.splice(paneIndex, 1);
@@ -3754,7 +3761,7 @@
         diMsg('Installing "' + id + '"…');
         const r = await configApi.installRepoApp(id, confirmExec, repo);
         if (r && r.ok) { appDefs = await configApi.getApps(); const added = maybeAddAppPage(r.id, r.name); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); diMsg('Installed "' + r.name + '" from ' + (nameForSource(repo) || 'the repository') + (added ? ' — added a page' : '') + '.'); }
-        else if (r && r.warnExec && !confirmExec) { if (window.confirm('This app contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC with full access. Only install it if you trust the repository.\n\nInstall anyway?')) doInstall(id, true, repo); else diMsg(''); }
+        else if (r && r.warnExec && !confirmExec) { if (ask('This app contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC with full access. Only install it if you trust the repository.\n\nInstall anyway?')) doInstall(id, true, repo); else diMsg(''); }
         else if (r && r.conflict) diMsg('"' + id + '" is already installed — use Update instead.', true);
         else diMsg('Install failed: ' + ((r && r.error) || 'unknown error'), true);
       };
@@ -3764,26 +3771,26 @@
           const c = await configApi.checkDropInUpdate(id);
           if (!c || !c.ok) return diMsg('Update check failed: ' + ((c && c.error) || ''), true);
           if (!c.updateAvailable) { diStatus[id] = { state: 'ok' }; renderPane(); return diMsg('"' + id + '" is up to date (v' + c.installedVersion + ').'); }
-          if (!window.confirm('Update "' + id + '" from v' + c.installedVersion + ' to v' + c.remoteVersion + '?')) return diMsg('');
+          if (!ask('Update "' + id + '" from v' + c.installedVersion + ' to v' + c.remoteVersion + '?')) return diMsg('');
         }
         diMsg('Updating "' + id + '"…');
         const r = await configApi.updateDropInApp(id, confirmExec);
         if (r && r.ok && r.updated) { diStatus[id] = { state: 'ok' }; appDefs = await configApi.getApps(); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); diMsg('Updated "' + (r.name || id) + '" to v' + r.version); }
         else if (r && r.ok && r.upToDate) { diStatus[id] = { state: 'ok' }; renderPane(); diMsg('"' + id + '" is up to date.'); }
-        else if (r && r.warnExec && !confirmExec) { if (window.confirm('This update contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC. Update anyway?')) doUpdate(id, true); else diMsg(''); }
+        else if (r && r.warnExec && !confirmExec) { if (ask('This update contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC. Update anyway?')) doUpdate(id, true); else diMsg(''); }
         else diMsg('Update failed: ' + ((r && r.error) || 'unknown error'), true);
       };
       const doReinstall = async (id, confirmExec) => {
-        if (!confirmExec) { if (!window.confirm('Reinstall "' + id + '"? This re-downloads and overwrites its files.')) return diMsg(''); }
+        if (!confirmExec) { if (!ask('Reinstall "' + id + '"? This re-downloads and overwrites its files.')) return diMsg(''); }
         diMsg('Reinstalling "' + id + '"…');
         const r = await configApi.reinstallDropInApp(id, confirmExec);
         if (r && r.ok && r.reinstalled) { delete diStatus[id]; appDefs = await configApi.getApps(); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); diMsg('Reinstalled "' + (r.name || id) + '" (v' + r.version + ').'); }
-        else if (r && r.warnExec && !confirmExec) { if (window.confirm('This app contains executable code that runs on your PC. Reinstall anyway?')) doReinstall(id, true); else diMsg(''); }
+        else if (r && r.warnExec && !confirmExec) { if (ask('This app contains executable code that runs on your PC. Reinstall anyway?')) doReinstall(id, true); else diMsg(''); }
         else diMsg('Reinstall failed: ' + ((r && r.error) || 'unknown error'), true);
       };
       const doExport = async id => { const r = await configApi.exportDropInApp(id); diMsg(r && r.ok ? 'Exported to ' + r.path : (r && r.canceled ? '' : 'Export failed: ' + ((r && r.error) || '')), !(r && r.ok)); };
       const doDelete = async id => {
-        if (!window.confirm('Delete drop-in app "' + id + '" and its folder?')) return;
+        if (!ask('Delete drop-in app "' + id + '" and its folder?')) return;
         const r = await configApi.deleteDropInApp(id);
         if (r && r.ok) { delete diStatus[id]; diMsg('Deleted ' + id); appDefs = await configApi.getApps(); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); }
         else diMsg('Delete failed: ' + ((r && r.error) || ''), true);
@@ -3806,7 +3813,7 @@
       };
       const updateAll = async ids => {
         if (!ids.length) return;
-        if (!window.confirm('Update all ' + ids.length + ' app(s) now?')) return;
+        if (!ask('Update all ' + ids.length + ' app(s) now?')) return;
         let done = 0;
         for (const id of ids) { diMsg('Updating "' + id + '"…'); const r = await configApi.updateDropInApp(id, true); if (r && r.ok && r.updated) { done++; diStatus[id] = { state: 'ok' }; } }
         appDefs = await configApi.getApps(); diCatalog = null; await refreshInstalled(); renderPane();
@@ -4203,7 +4210,7 @@
         host.querySelectorAll('.oauthDisconnect').forEach(btn => {
           btn.onclick = async e => {
             const id = e.currentTarget.dataset.provider;
-            if (!window.confirm('Disconnect ' + id + ' and remove stored OAuth tokens?')) return;
+            if (!ask('Disconnect ' + id + ' and remove stored OAuth tokens?')) return;
             oauthMsg(id, 'Disconnecting...');
             const r = await configApi.disconnectOAuthProvider(id);
             oauthMsg(id, r && r.ok ? 'Disconnected' : 'Disconnect failed: ' + ((r && r.error) || ''), !(r && r.ok));
@@ -4293,7 +4300,7 @@
         finally { tBtn.disabled = false; }
       };
       if (tClr) tClr.onclick = async () => {
-        if (!window.confirm('Clear touch calibration on every display? You\'ll need to run Set up touchscreen after.')) return;
+        if (!ask('Clear touch calibration on every display? You\'ll need to run Set up touchscreen after.')) return;
         tClr.disabled = true; tMsg.textContent = 'Clearing calibrations…'; tMsg.style.color = '#7e93ab';
         try {
           const r = await configApi.clearTouchCalibration();
