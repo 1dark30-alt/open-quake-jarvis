@@ -8,6 +8,8 @@
     confident: "Rewrite the user's text in a confident, direct, assertive tone. Remove hedging and qualifiers, fix grammar, and keep the original meaning. Output only the rewritten text.",
   };
   let config = { activeGridId: null, grids: [] };
+  let baseConfig = null;   // config as of the last load/save — the base for merging external writes into a dirty editor
+  const snapConfig = o => JSON.parse(JSON.stringify(o));
   let gi = 0, ti = -1, selEnd = -1, dragFrom = -1, dirty = false, appDefs = [], view = 'pages', ledState = null, settingsTab = 'software', dashTab = 'page';
   let voiceModes = null;   // { claude:[{id,label}], codex:[...], copilot:[...], owui:[], api:[] } — lazy-loaded for the Routines tab's Mode picker
   let selRoutineId = null, routineQuery = '';   // Routines tab master-detail: selection tracked by stable id, plus the search box text
@@ -1061,6 +1063,7 @@
     try {
       const result = await configApi.saveConfig(config);
       if (!(result && result.ok)) throw new Error(result && result.error || 'secure persistence failed');
+      baseConfig = snapConfig(config);   // on-disk now matches the editor — new merge base
       dirty = false;
       document.getElementById('saveBtn').disabled = true;
       setState('saved ✓', 'saved');
@@ -4581,6 +4584,7 @@
     config = await configApi.getConfig(); if (!config.grids) config.grids = [];
     if (!Array.isArray(config.groups)) config.groups = [];
     if (!Array.isArray(config.panes)) config.panes = [];
+    baseConfig = snapConfig(config);
     // In software Panes mode, open on the Panes tab with the currently displayed pane selected.
     if (softwarePaneMode() && config.panes.length) {
       leftTab = 'panes'; view = 'panes';
@@ -4598,7 +4602,6 @@
     if (configApi.onConfigChangedExternally) {
       let extReloadTimer = null;
       const applyExternalReload = async () => {
-        if (dirty) { setState('● unsaved changes — the panel added a page; save or reload to see it', 'dirty'); return; }
         // Mid-interaction guard: re-rendering while a <select> popup is open (or an input is focused)
         // destroys the element under the user's click, so their pick silently lands nowhere. Defer
         // until the control loses focus. (Pane mode makes this frequent — many live app pages can
@@ -4611,13 +4614,27 @@
         }
         const fresh = await configApi.getConfig();
         if (!fresh) return;
-        config = fresh;
+        let mergeNote = '';
+        if (dirty && baseConfig) {
+          // Fold the external write into the unsaved working copy (three-way against the last
+          // load/save). Only a unit/key edited BOTH places conflicts — the editor keeps its version.
+          const { merged, conflicts } = configMerge.mergeExternalConfig(config, baseConfig, fresh);
+          config = merged;
+          mergeNote = conflicts.length
+            ? ' — panel also changed ' + conflicts.slice(0, 2).join(', ') + (conflicts.length > 2 ? ', …' : '') + '; your edit wins on Save'
+            : ' (panel updates merged in)';
+        } else {
+          config = fresh;
+        }
+        baseConfig = snapConfig(fresh);
         if (!config.grids) config.grids = [];
         if (!Array.isArray(config.groups)) config.groups = [];
         if (!Array.isArray(config.panes)) config.panes = [];
         if (gi >= config.grids.length) { gi = Math.max(0, config.grids.length - 1); ti = -1; }
+        if (paneIndex >= config.panes.length) paneIndex = config.panes.length - 1;
+        if (groupIndex >= config.groups.length) groupIndex = config.groups.length - 1;
         render();
-        setState('updated from the panel');
+        setState(dirty ? '● unsaved changes' + mergeNote : 'updated from the panel', dirty ? 'dirty' : '');
       };
       configApi.onConfigChangedExternally(() => { clearTimeout(extReloadTimer); applyExternalReload(); });
     }
