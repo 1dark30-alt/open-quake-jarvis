@@ -2942,6 +2942,8 @@
     const tp = document.getElementById('lTabPages'); if (tp) tp.classList.toggle('on', pagesTab);
     const tg = document.getElementById('lTabGroups'); if (tg) tg.classList.toggle('on', groupsTab);
     const tpn = document.getElementById('lTabPanes'); if (tpn) tpn.classList.toggle('on', panesTab);
+    // In software Panes mode, panes are the primary unit — their tab moves to the far left.
+    if (tpn) tpn.style.order = softwarePaneMode() ? '-1' : '';
 
     if (view === 'settings') { renderSettings(); return; }
     if (view === 'groups') { renderGroupMeta(); renderTiles(); renderForm(); return; }
@@ -3059,6 +3061,7 @@
   // A pane stacks 1..5 existing pages vertically for the Software-mode window (Settings -> Software ->
   // Software window). Slots reference pages by id — nothing is duplicated.
   const PANE_MAX_SLOTS = 5;
+  function softwarePaneMode() { const s = config.settings || {}; return s.runMode === 'software' && s.softwareDisplay === 'pane'; }
   function curPane() { const list = config.panes || []; return (paneIndex >= 0 && paneIndex < list.length) ? list[paneIndex] : null; }
   function renderPanes() {
     const el = document.getElementById('panelist'); if (!el) return;
@@ -4544,6 +4547,12 @@
     config = await configApi.getConfig(); if (!config.grids) config.grids = [];
     if (!Array.isArray(config.groups)) config.groups = [];
     if (!Array.isArray(config.panes)) config.panes = [];
+    // In software Panes mode, open on the Panes tab with the currently displayed pane selected.
+    if (softwarePaneMode() && config.panes.length) {
+      leftTab = 'panes'; view = 'panes';
+      const cur = config.panes.findIndex(p => p.id === (config.settings || {}).activePaneId);
+      paneIndex = cur >= 0 ? cur : 0;
+    }
     try { const v = await configApi.getAppVersion(); const el = document.getElementById('appVer'); if (el && v) el.textContent = 'v' + v; } catch (e) {}
     try { appDefs = await configApi.getApps(); } catch (e) {}
     try { haCacheLocal = await configApi.getHaCache(); } catch (e) {}   // for iconHtml's HA icon resolution
