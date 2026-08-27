@@ -3171,7 +3171,7 @@
         d.className = 'row';
         d.style.cssText = 'border:1px solid #2a3a4d;border-radius:8px;padding:10px;margin-top:8px;gap:8px;align-items:center';
         d.innerHTML = `
-          <span class="griphandle" title="Drag to reorder" style="cursor:grab">☰</span>
+          <span class="griphandle" title="Drag to reorder" style="cursor:grab" draggable="true">☰</span>
           <select data-pn-page style="flex:1;min-width:0">${opts}</select>
           <button data-pn-del class="danger" title="Remove this page from the pane">×</button>`;
         d.querySelector('[data-pn-page]').onchange = e => { s.pageId = e.target.value; markDirty(); };
@@ -3179,8 +3179,9 @@
           if (!window.confirm('Remove this page from the pane?')) return;
           slots.splice(i, 1); render(); markDirty();
         };
-        d.draggable = true;
-        d.ondragstart = e => { paneSlotDragFrom = i; paneSlotDragCol = colKey; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(i)); } catch (er) {} };
+        // Drag starts on the ☰ grip ONLY — a draggable row swallows mousedown on the <select>,
+        // making the page dropdown unpickable.
+        d.querySelector('.griphandle').ondragstart = e => { paneSlotDragFrom = i; paneSlotDragCol = colKey; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(i)); } catch (er) {} };
         d.ondragover = e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; d.classList.add('dragover'); };
         d.ondragleave = () => d.classList.remove('dragover');
         d.ondrop = e => {
@@ -4595,8 +4596,19 @@
     // not by this window. Re-read so it shows up (and so this window's next Save doesn't write a
     // stale copy back over it). With unsaved edits we must not clobber them, so say so instead.
     if (configApi.onConfigChangedExternally) {
-      configApi.onConfigChangedExternally(async () => {
+      let extReloadTimer = null;
+      const applyExternalReload = async () => {
         if (dirty) { setState('● unsaved changes — the panel added a page; save or reload to see it', 'dirty'); return; }
+        // Mid-interaction guard: re-rendering while a <select> popup is open (or an input is focused)
+        // destroys the element under the user's click, so their pick silently lands nowhere. Defer
+        // until the control loses focus. (Pane mode makes this frequent — many live app pages can
+        // persist options at any moment.)
+        const ae = document.activeElement;
+        if (ae && ['SELECT', 'INPUT', 'TEXTAREA'].includes(ae.tagName)) {
+          clearTimeout(extReloadTimer);
+          extReloadTimer = setTimeout(applyExternalReload, 1500);
+          return;
+        }
         const fresh = await configApi.getConfig();
         if (!fresh) return;
         config = fresh;
@@ -4606,6 +4618,7 @@
         if (gi >= config.grids.length) { gi = Math.max(0, config.grids.length - 1); ti = -1; }
         render();
         setState('updated from the panel');
-      });
+      };
+      configApi.onConfigChangedExternally(() => { clearTimeout(extReloadTimer); applyExternalReload(); });
     }
   })();
