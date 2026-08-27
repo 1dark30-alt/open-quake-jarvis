@@ -3142,10 +3142,25 @@
     const addBtn2 = document.getElementById('pnAddSlot2');
     if (addBtn2) addBtn2.onclick = () => { p.slots2.push({ pageId: '' }); render(); markDirty(); };
     document.getElementById('pnDelete').onclick = deleteCurrentPane;
-    // One builder for both columns; drag-reorder works within a column (drag between columns: remove + re-add).
+    // One builder for both columns; drag moves slots within a column AND across columns (a row drop
+    // inserts at that spot, a drop on the column's empty space appends).
+    const srcArrOf = () => paneSlotDragCol === 'R' ? p.slots2 : p.slots;
+    const moveSlot = (dstArr, dstIndex) => {
+      const from = paneSlotDragFrom, srcArr = srcArrOf();
+      paneSlotDragFrom = -1; paneSlotDragCol = '';
+      if (from < 0 || from >= srcArr.length) return;
+      if (srcArr === dstArr && (from === dstIndex || dstIndex > srcArr.length)) return;
+      if (srcArr !== dstArr && dstArr.length >= PANE_MAX_SLOTS) return;   // target column full
+      const [moved] = srcArr.splice(from, 1);
+      dstArr.splice(Math.min(dstIndex, dstArr.length), 0, moved);
+      render(); markDirty();
+    };
     const buildColumn = (slots, containerId, colKey) => {
       const slotsEl = document.getElementById(containerId);
-      if (!slots.length) { slotsEl.innerHTML = '<p class="hint" style="margin:8px 0 0">(empty)</p>'; return; }
+      // The column itself accepts drops (append) — that's how a slot moves into an EMPTY column.
+      slotsEl.ondragover = e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
+      slotsEl.ondrop = e => { e.preventDefault(); moveSlot(slots, slots.length); };
+      if (!slots.length) { slotsEl.innerHTML = '<p class="hint" style="margin:8px 0 0">(empty — drag a page here)</p>'; return; }
       slots.forEach((s, i) => {
         const opts = ['<option value="">— choose a page —</option>']
           .concat((config.grids || []).map(g => {
@@ -3169,13 +3184,9 @@
         d.ondragover = e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; d.classList.add('dragover'); };
         d.ondragleave = () => d.classList.remove('dragover');
         d.ondrop = e => {
-          e.preventDefault(); d.classList.remove('dragover');
-          const from = paneSlotDragFrom; paneSlotDragFrom = -1;
-          if (paneSlotDragCol !== colKey || from < 0 || from === i || from >= slots.length) { paneSlotDragCol = ''; return; }
-          paneSlotDragCol = '';
-          const [moved] = slots.splice(from, 1);
-          slots.splice(i, 0, moved);
-          render(); markDirty();
+          e.preventDefault(); e.stopPropagation();   // don't also fire the column's append-drop
+          d.classList.remove('dragover');
+          moveSlot(slots, i);
         };
         d.ondragend = () => d.classList.remove('dragover');
         slotsEl.appendChild(d);
