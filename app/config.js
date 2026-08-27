@@ -3071,6 +3071,7 @@
       const left = document.createElement('span'); left.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden';
       const name = document.createElement('span'); name.textContent = '▤ ' + (p.name || '(unnamed)'); name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
       left.appendChild(name); d.appendChild(left);
+      if (p.shortcut) { const sub = document.createElement('span'); sub.className = 'gsub badge'; sub.title = 'Hotkey shortcut'; sub.textContent = p.shortcut; d.appendChild(sub); }
       d.onclick = () => { view = 'panes'; paneIndex = i; ti = -1; selEnd = -1; render(); };
       el.appendChild(d);
     });
@@ -3089,12 +3090,37 @@
     if (!Array.isArray(p.slots)) p.slots = [];
     el.innerHTML = `
       <div class="row"><label>Name</label><input id="pnName" value="${esc(p.name)}"></div>
+      <div class="row" style="margin-top:6px"><label style="width:auto">Hotkey shortcut</label>
+        <input id="pnShortcut" readonly placeholder="click, then press keys" value="${esc(p.shortcut || '')}" style="width:200px">
+        <button id="pnShortcutClear" style="margin-left:8px">Clear</button>
+        <label style="width:auto;margin-left:14px;font-weight:normal;cursor:pointer"><input type="checkbox" id="pnShortcutNoRot" ${p.shortcutStopsRotation ? 'checked' : ''}> Disables rotation</label></div>
+      <p class="hint">Global hotkey that switches the software window to this pane from anywhere (flipping it to Panes view if needed). Press a combo that includes a modifier. <b>Disables rotation</b> turns auto-rotation off when it fires.</p>
+      <div class="row" style="margin-top:6px"><label style="width:auto">Rotation</label>
+        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="pnRot" ${p.rotate ? 'checked' : ''}> Include in rotation</label>
+        <label class="iconopt" style="width:auto;margin-left:14px"><input type="checkbox" id="pnHome" ${config.homePaneId === p.id ? 'checked' : ''}> Set as home pane</label></div>
+      <p class="hint">In Panes view, auto-rotation cycles through the panes with <b>Include in rotation</b> ticked (Settings → Software → Screen rotation controls the on/off and interval). The <b>home pane</b> is where a go-home action lands; only one pane can be home.</p>
       <p class="hint">A pane stacks up to ${PANE_MAX_SLOTS} of your existing pages vertically, so the Software-mode window can fill a taller screen. Show it via Settings → Software → <b>Software window</b>. Each slot is a full 1920×480 page — the window's height follows the number of slots.</p>
       <div id="pnSlots"></div>
       <div class="row" style="margin-top:10px">
         ${p.slots.length < PANE_MAX_SLOTS ? '<button class="primary" id="pnAddSlot">+ Add page</button>' : '<span class="hint" style="margin:0">Pane is full (' + PANE_MAX_SLOTS + ' pages).</span>'}
         <button class="danger" id="pnDelete" style="margin-left:auto">Delete pane</button></div>`;
     document.getElementById('pnName').oninput = e => { p.name = e.target.value; renderPanes(); markDirty(); };
+    const pnSc = document.getElementById('pnShortcut');
+    pnSc.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { p.shortcut = acc; pnSc.value = acc; renderPanes(); markDirty(); } };
+    document.getElementById('pnShortcutClear').onclick = () => { delete p.shortcut; pnSc.value = ''; renderPanes(); markDirty(); };
+    document.getElementById('pnShortcutNoRot').onchange = e => { if (e.target.checked) p.shortcutStopsRotation = true; else delete p.shortcutStopsRotation; markDirty(); };
+    document.getElementById('pnRot').onchange = e => { p.rotate = e.target.checked; markDirty(); };
+    document.getElementById('pnHome').onchange = e => {
+      if (e.target.checked) {
+        const cur = config.homePaneId;
+        if (cur && cur !== p.id) {
+          const other = (config.panes || []).find(x => x.id === cur);
+          if (!window.confirm(((other && other.name) || cur) + ' is currently set as home pane, switch to this one?')) { e.target.checked = false; return; }
+        }
+        config.homePaneId = p.id;
+      } else if (config.homePaneId === p.id) delete config.homePaneId;
+      markDirty();
+    };
     const addBtn = document.getElementById('pnAddSlot');
     if (addBtn) addBtn.onclick = () => { p.slots.push({ pageId: '' }); render(); markDirty(); };
     document.getElementById('pnDelete').onclick = deleteCurrentPane;
@@ -3138,6 +3164,7 @@
     const p = curPane(); if (!p) return;
     if (!window.confirm('Delete pane "' + (p.name || '(unnamed)') + '"?')) return;
     if (config.settings && config.settings.activePaneId === p.id) config.settings.activePaneId = '';
+    if (config.homePaneId === p.id) delete config.homePaneId;
     list.splice(paneIndex, 1);
     if (!list.length) { view = 'pages'; leftTab = 'pages'; paneIndex = -1; }
     else paneIndex = Math.min(paneIndex, list.length - 1);

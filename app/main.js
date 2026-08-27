@@ -1121,16 +1121,21 @@ function activePaneNow() { return activePane(config.settings, config.panes, conf
 function paneRebuildKey() { const ap = activePaneNow(); return ap ? ap.pane.id + ':' + ap.pages.map(g => g.id).join(',') : ''; }
 // The ☰ selector's entries in pane mode: every pane that resolves to at least one page.
 function paneList() { return (config.panes || []).filter(p => resolvePaneSlots(p, config.grids).length).map(p => ({ id: p.id, name: p.name })); }
-// Switch the displayed pane (from the top slot's ☰ selector). Persisted like the active page; the
-// window rebuilds because the slot count — and so the window height — can change.
-function switchPane(id) {
-  const ap = activePaneNow();
-  if (ap && ap.pane.id === id) return;
+// Panes cycled by auto-rotation in pane mode: opted in AND resolving to at least one page.
+function paneRotationList() { return (config.panes || []).filter(p => p.rotate && resolvePaneSlots(p, config.grids).length); }
+// Switch the displayed pane — the pane analog of gotoGrid. Used by the top slot's ☰ selector
+// (persist), pane hotkeys (persist), rotation and go-home (no persist, like page rotation). Also
+// flips the software display to panes, so a pane hotkey works from Pages view too. The window
+// rebuilds only when the visible stack actually changes (slot count sets the window height).
+function gotoPane(id, persist) {
   if (!(config.panes || []).some(p => p.id === id)) return;
+  if (runMode() !== 'software') return;                    // panes only exist in software mode
   if (!config.settings) config.settings = {};
+  const before = paneRebuildKey();
+  config.settings.softwareDisplay = 'pane';
   config.settings.activePaneId = id;
-  saveConfig();
-  applyRunModeLive();
+  if (persist) saveConfig();
+  if (paneRebuildKey() !== before) applyRunModeLive();
 }
 // The pages currently on screen: the pane's stacked pages in pane mode, else just the active page.
 function visibleGrids() { const ap = activePaneNow(); return ap ? ap.pages : [activeGrid()]; }
@@ -2794,6 +2799,21 @@ function applyShortcuts() {
       if (!ok) console.log('shortcut already in use, not registered:', g.shortcut, '->', g.id);
     } catch (e) { console.log('shortcut register error:', g.shortcut, '-', e.message); }
   }
+  // Per-pane global hotkeys: same contract as page hotkeys, for the software window's panes. Firing
+  // one switches to that pane (flipping the window to Panes view if needed); no-op outside software
+  // mode. "Disables rotation" works exactly like the page version.
+  for (const p of (config.panes || [])) {
+    if (!p.shortcut) continue;
+    try {
+      const ok = globalShortcut.register(p.shortcut, () => {
+        if (process.platform === 'win32') modifiersInAccelerator(p.shortcut).forEach(m => mediaKeys.keyUp(m));
+        gotoPane(p.id, true);
+        if (p.shortcutStopsRotation) setRotation(false);
+        else if (rotateRunning) scheduleRotation();
+      });
+      if (!ok) console.log('shortcut already in use, not registered:', p.shortcut, '-> pane', p.id);
+    } catch (e) { console.log('shortcut register error:', p.shortcut, '-', e.message); }
+  }
   // Live Translate: a per-page hotkey that toggles translation (start/stop listening). Global, so it
   // fires from any app; if the page isn't on-screen it is switched to first, then the mic toggles.
   for (const g of (config.grids || [])) {
@@ -2913,6 +2933,14 @@ function registerSlideHotkeys() {
 }
 function applySlideHotkeys() { try { applyShortcuts(); } catch (e) {} }   // re-arm everything (incl. slide combos)
 function rotateTick() {
+  const ap = activePaneNow();
+  if (ap) {
+    // Pane mode rotates through opted-in PANES (the page categories don't apply to panes).
+    const ids = paneRotationList().map(p => p.id);
+    if (ids.length < 2) return;
+    gotoPane(ids[(ids.indexOf(ap.pane.id) + 1) % ids.length], false);
+    return;
+  }
   const ids = rotationList().map(g => g.id);
   if (ids.length < 2) return;                                  // nothing to cycle through
   gotoGrid(ids[(ids.indexOf(config.activeGridId) + 1) % ids.length], false);   // active not in list (-1) -> first
@@ -3534,7 +3562,7 @@ app.whenReady().then(async () => {
   ipcMain.on('media', (e, cmd) => { if (!isFromPanel(e)) return; mediaKey(cmd); });   // knob 'enter' on the music page -> play/pause
   ipcMain.on('switchGrid', (e, id) => {
     if (!isFromPanel(e)) return;
-    if (activePaneNow() && (config.panes || []).some(p => p.id === id)) { switchPane(id); return; }   // pane mode: the ☰ lists panes
+    if (activePaneNow() && (config.panes || []).some(p => p.id === id)) { gotoPane(id, true); if (rotateRunning) scheduleRotation(); return; }   // pane mode: the ☰ lists panes; a manual pick resets the timer
     gotoGrid(id, true); if (rotateRunning) scheduleRotation();   // a manual pick resets the rotation timer
   });
   // Focus a page ON THE DEVICE from the editor. Only pages already in main's config (i.e. saved) can
@@ -3550,7 +3578,11 @@ app.whenReady().then(async () => {
   ipcMain.on('toggleRotation', (e) => { if (!isFromPanel(e)) return; toggleRotation(); });
   ipcMain.on('startRotation', (e) => { if (!isFromPanel(e)) return; setRotation(true); });
   ipcMain.on('stopRotation', (e) => { if (!isFromPanel(e)) return; setRotation(false); });
-  ipcMain.on('gotoHome', (e) => { if (!isFromPanel(e)) return; if (config.homePageId) gotoGrid(config.homePageId, false); });
+  ipcMain.on('gotoHome', (e) => {
+    if (!isFromPanel(e)) return;
+    if (activePaneNow()) { if (config.homePaneId) gotoPane(config.homePaneId, false); return; }   // pane mode: home = the home pane
+    if (config.homePageId) gotoGrid(config.homePageId, false);
+  });
   ipcMain.on('openConfig', (e) => { if (!isFromPanel(e) && !isFrom(e, configWin)) return; openConfigWindow(); });
   ipcMain.on('introDone', (e) => { if (!isFromPanel(e)) return; config.introShown = true; saveConfig(); });   // remember the intro was dismissed
   ipcMain.on('saveTileValue', (e, data) => {
