@@ -1247,13 +1247,14 @@ function start(opts) {
   });
 }
 
-// Run only the poller the visible page needs; stop the others. Called by main.js whenever the
-// active panel page changes. which: 'music' (now-playing) | 'office' | null.
-// start()/stop() are idempotent, so this is safe to call on every page push.
+// Run only the pollers the visible page(s) need; stop the others. Called by main.js whenever the
+// active panel page changes. which: 'music' | 'office' | 'github' | null, or an array of those
+// (a software-mode pane shows several pages at once). start()/stop() are idempotent.
 function setActivePage(which) {
-  if (which !== 'office') clearOfficeCapability();
-  if (which !== 'github') clearGitHubCapability();
-  if (which === 'music') nowplaying.start();
+  const set = new Set(Array.isArray(which) ? which : which ? [which] : []);
+  if (!set.has('office')) clearOfficeCapability();
+  if (!set.has('github')) clearGitHubCapability();
+  if (set.has('music')) nowplaying.start();
   else nowplaying.stop();
 }
 

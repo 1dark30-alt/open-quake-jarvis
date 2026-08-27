@@ -11,8 +11,8 @@
   let gi = 0, ti = -1, selEnd = -1, dragFrom = -1, dirty = false, appDefs = [], view = 'pages', ledState = null, settingsTab = 'software', dashTab = 'page';
   let voiceModes = null;   // { claude:[{id,label}], codex:[...], copilot:[...], owui:[], api:[] } — lazy-loaded for the Routines tab's Mode picker
   let selRoutineId = null, routineQuery = '';   // Routines tab master-detail: selection tracked by stable id, plus the search box text
-  // Left sidebar tab (Pages vs Groups list) + which group is currently being edited when view='groups'.
-  let leftTab = 'pages', groupIndex = -1;
+  // Left sidebar tab (Pages vs Groups vs Panes list) + which group/pane is being edited.
+  let leftTab = 'pages', groupIndex = -1, paneIndex = -1, paneSlotDragFrom = -1;
   // Per-page Advanced <details> open state — persisted across re-renders so toggling an override
   // checkbox inside it (which calls render()) doesn't collapse the section out from under the user.
   let advOpen = false;
@@ -2917,6 +2917,8 @@
   }
   function deleteCurrentPage() {
     if (config.grids.length <= 1) return;
+    const removedId = (config.grids[gi] || {}).id;
+    (config.panes || []).forEach(p => { if (Array.isArray(p.slots)) p.slots = p.slots.filter(s => s && s.pageId !== removedId); });
     config.grids.splice(gi, 1); gi = 0; ti = -1;
     if (!config.grids.some(x => x.id === config.activeGridId)) config.activeGridId = config.grids[0].id;
     render(); markDirty();
@@ -2927,17 +2929,23 @@
     if (githubAuthPollTimer) { clearTimeout(githubAuthPollTimer); githubAuthPollTimer = null; }
     renderGrids();
     renderGroups();
+    renderPanes();
     // Sidebar: which list is visible + which + buttons row + which tab is highlighted.
-    const groupsTab = leftTab === 'groups';
-    const elGL = document.getElementById('gridlist'); if (elGL) elGL.style.display = groupsTab ? 'none' : '';
+    const groupsTab = leftTab === 'groups', panesTab = leftTab === 'panes';
+    const pagesTab = !groupsTab && !panesTab;
+    const elGL = document.getElementById('gridlist'); if (elGL) elGL.style.display = pagesTab ? '' : 'none';
     const elGRP = document.getElementById('grouplist'); if (elGRP) elGRP.style.display = groupsTab ? '' : 'none';
-    const elAP = document.getElementById('addPageBtns'); if (elAP) elAP.style.display = groupsTab ? 'none' : '';
+    const elPN = document.getElementById('panelist'); if (elPN) elPN.style.display = panesTab ? '' : 'none';
+    const elAP = document.getElementById('addPageBtns'); if (elAP) elAP.style.display = pagesTab ? '' : 'none';
     const elAG = document.getElementById('addGroupBtns'); if (elAG) elAG.style.display = groupsTab ? '' : 'none';
-    const tp = document.getElementById('lTabPages'); if (tp) tp.classList.toggle('on', !groupsTab);
+    const elAPn = document.getElementById('addPaneBtns'); if (elAPn) elAPn.style.display = panesTab ? '' : 'none';
+    const tp = document.getElementById('lTabPages'); if (tp) tp.classList.toggle('on', pagesTab);
     const tg = document.getElementById('lTabGroups'); if (tg) tg.classList.toggle('on', groupsTab);
+    const tpn = document.getElementById('lTabPanes'); if (tpn) tpn.classList.toggle('on', panesTab);
 
     if (view === 'settings') { renderSettings(); return; }
     if (view === 'groups') { renderGroupMeta(); renderTiles(); renderForm(); return; }
+    if (view === 'panes') { renderPaneEditor(); return; }
     const g = curGrid();
     const groupApplied = !!(g && g.useGroup && g.groupId && groupById(g.groupId));
     const showTileEditor = () => { if (groupApplied) renderGroupAppliedPreview(g); else { renderTiles(); renderForm(); } };
@@ -3047,6 +3055,101 @@
     ti = -1; selEnd = -1; render(); markDirty();
   }
 
+  // ---- panes (left list + stacked-slot editor) ----
+  // A pane stacks 1..5 existing pages vertically for the Software-mode window (Settings -> Software ->
+  // Software window). Slots reference pages by id — nothing is duplicated.
+  const PANE_MAX_SLOTS = 5;
+  function curPane() { const list = config.panes || []; return (paneIndex >= 0 && paneIndex < list.length) ? list[paneIndex] : null; }
+  function paneSlotKind(t) { return t === 'dashboard' ? 'web' : t === 'app' ? 'app' : 'grid'; }
+  function pagesOfType(t) { const k = paneSlotKind(t); return (config.grids || []).filter(g => g && (k === 'grid' ? (!g.kind || g.kind === 'grid') : g.kind === k)); }
+  function renderPanes() {
+    const el = document.getElementById('panelist'); if (!el) return;
+    el.innerHTML = '';
+    const list = config.panes || [];
+    if (!list.length) { el.innerHTML = '<p class="hint" style="margin:6px 4px">No panes yet. Use + Pane to create one.</p>'; return; }
+    list.forEach((p, i) => {
+      const d = document.createElement('div');
+      d.className = 'gridrow' + (view === 'panes' && i === paneIndex ? ' active' : '');
+      const left = document.createElement('span'); left.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden';
+      const name = document.createElement('span'); name.textContent = '▤ ' + (p.name || '(unnamed)'); name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      left.appendChild(name); d.appendChild(left);
+      d.onclick = () => { view = 'panes'; paneIndex = i; ti = -1; selEnd = -1; render(); };
+      el.appendChild(d);
+    });
+  }
+  function addPane() {
+    if (!Array.isArray(config.panes)) config.panes = [];
+    config.panes.push({ id: uid(), name: 'New Pane', slots: [{ type: 'grid', pageId: '' }] });
+    paneIndex = config.panes.length - 1;
+    leftTab = 'panes'; view = 'panes';
+    render(); markDirty();
+  }
+  function renderPaneEditor() {
+    ['tilegrid', 'mergebar', 'tileform', 'iconpane'].forEach(id => { const e = document.getElementById(id); if (e) e.innerHTML = ''; });
+    const p = curPane(); const el = document.getElementById('gridmeta');
+    if (!p) { el.innerHTML = '<p class="hint">No pane selected. Use + Pane to create one.</p>'; return; }
+    if (!Array.isArray(p.slots)) p.slots = [];
+    el.innerHTML = `
+      <div class="row"><label>Name</label><input id="pnName" value="${esc(p.name)}"></div>
+      <p class="hint">A pane stacks up to ${PANE_MAX_SLOTS} of your existing pages vertically, so the Software-mode window can fill a taller screen. Show it via Settings → Software → <b>Software window</b>. Each slot is a full 1920×480 page — the window's height follows the number of slots.</p>
+      <div id="pnSlots"></div>
+      <div class="row" style="margin-top:10px">
+        ${p.slots.length < PANE_MAX_SLOTS ? '<button class="primary" id="pnAddSlot">+ Add page</button>' : '<span class="hint" style="margin:0">Pane is full (' + PANE_MAX_SLOTS + ' pages).</span>'}
+        <button class="danger" id="pnDelete" style="margin-left:auto">Delete pane</button></div>`;
+    document.getElementById('pnName').oninput = e => { p.name = e.target.value; renderPanes(); markDirty(); };
+    const addBtn = document.getElementById('pnAddSlot');
+    if (addBtn) addBtn.onclick = () => { p.slots.push({ type: 'grid', pageId: '' }); render(); markDirty(); };
+    document.getElementById('pnDelete').onclick = deleteCurrentPane;
+    const slotsEl = document.getElementById('pnSlots');
+    p.slots.forEach((s, i) => {
+      const pages = pagesOfType(s.type);
+      const opts = ['<option value="">— choose a page —</option>']
+        .concat(pages.map(g => `<option value="${esc(g.id)}"${g.id === s.pageId ? ' selected' : ''}>${esc(g.name || '(unnamed)')}</option>`)).join('');
+      const d = document.createElement('div');
+      d.className = 'row';
+      d.style.cssText = 'border:1px solid #2a3a4d;border-radius:8px;padding:10px;margin-top:8px;gap:8px;align-items:center';
+      d.innerHTML = `
+        <span class="griphandle" title="Drag to reorder" style="cursor:grab">☰</span>
+        <select data-pn-type style="width:130px">
+          <option value="grid"${s.type === 'grid' || !s.type ? ' selected' : ''}>Grid</option>
+          <option value="dashboard"${s.type === 'dashboard' ? ' selected' : ''}>Dashboard</option>
+          <option value="app"${s.type === 'app' ? ' selected' : ''}>App</option>
+        </select>
+        <select data-pn-page style="flex:1;min-width:0">${opts}</select>
+        <button data-pn-del class="danger" title="Remove this page from the pane">×</button>`;
+      d.querySelector('[data-pn-type]').onchange = e => { s.type = e.target.value; s.pageId = ''; render(); markDirty(); };
+      d.querySelector('[data-pn-page]').onchange = e => { s.pageId = e.target.value; markDirty(); };
+      d.querySelector('[data-pn-del]').onclick = () => {
+        if (!window.confirm('Remove this page from the pane?')) return;
+        p.slots.splice(i, 1); render(); markDirty();
+      };
+      d.draggable = true;
+      d.ondragstart = e => { paneSlotDragFrom = i; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(i)); } catch (er) {} };
+      d.ondragover = e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; d.classList.add('dragover'); };
+      d.ondragleave = () => d.classList.remove('dragover');
+      d.ondrop = e => {
+        e.preventDefault(); d.classList.remove('dragover');
+        const from = paneSlotDragFrom; paneSlotDragFrom = -1;
+        if (from < 0 || from === i || from >= p.slots.length) return;
+        const [moved] = p.slots.splice(from, 1);
+        p.slots.splice(i, 0, moved);
+        render(); markDirty();
+      };
+      d.ondragend = () => d.classList.remove('dragover');
+      slotsEl.appendChild(d);
+    });
+  }
+  function deleteCurrentPane() {
+    const list = config.panes || [];
+    const p = curPane(); if (!p) return;
+    if (!window.confirm('Delete pane "' + (p.name || '(unnamed)') + '"?')) return;
+    if (config.settings && config.settings.activePaneId === p.id) config.settings.activePaneId = '';
+    list.splice(paneIndex, 1);
+    if (!list.length) { view = 'pages'; leftTab = 'pages'; paneIndex = -1; }
+    else paneIndex = Math.min(paneIndex, list.length - 1);
+    ti = -1; selEnd = -1; render(); markDirty();
+  }
+
   // ---- settings page ----
   const DEFAULT_APP_REPO = 'https://github.com/TeeJS/open-quake/tree/main/community-apps';
   const DEFAULT_SETTINGS = { launchMode: 'editor', micOnLaunch: false, reservedDisplay: false, keepDisplayAwake: false, offlineIcons: false, appRepo: DEFAULT_APP_REPO, appRepos: [], multiRepo: false, autoPageOnImport: true };
@@ -3091,6 +3194,15 @@
         </select></div>
       <div class="row"><button id="sRunSetup">Re-run first-time setup…</button></div>
       <p class="hint"><b>Software</b> mode runs in an ordinary desktop window and needs no special hardware — ideal for the meeting workflow on any PC. <b>Panel</b> and <b>Monitor</b> use the QUAKE display. A mode change applies as soon as you click <b>Save</b> — no restart.</p>
+
+      <p class="sectitle" style="margin-top:22px">Software window</p>
+      <div class="row"><label style="width:auto">Show</label>
+        <select id="sSwDisplay" style="width:230px">
+          <option value="pages">Pages — one page at a time</option>
+          <option value="pane">Pane — stacked pages</option>
+        </select>
+        <select id="sSwPane" style="width:230px;margin-left:8px"></select></div>
+      <p class="hint">Software mode only. A <b>pane</b> (created on the sidebar's Panes tab) stacks several of your pages vertically — the window grows to fit them, so a big screen shows them all at once. With no valid pane selected the window falls back to normal Pages. Applies on <b>Save</b>.</p>
 
       <p class="sectitle" style="margin-top:22px">On launch</p>
       <div class="row"><label style="width:auto">Editor window</label>
@@ -4048,6 +4160,21 @@
       if (runSel) { runSel.value = runModeVal; runSel.onchange = e => setS('runMode', e.target.value); }
       const runSetupBtn = document.getElementById('sRunSetup');
       if (runSetupBtn) runSetupBtn.onclick = () => { try { configApi.openWelcome(); } catch (e) {} };
+      // Software window: pages (default) vs a stacked pane. The pane picker lists panes by name and
+      // stays greyed out until the display is 'pane' (or when there are no panes to pick).
+      const swDisp = document.getElementById('sSwDisplay'), swPane = document.getElementById('sSwPane');
+      if (swDisp && swPane) {
+        const panes = config.panes || [];
+        swPane.innerHTML = panes.length
+          ? panes.map(p => `<option value="${esc(p.id)}">${esc(p.name || '(unnamed)')}</option>`).join('')
+          : '<option value="">(no panes yet)</option>';
+        swDisp.value = s.softwareDisplay === 'pane' ? 'pane' : 'pages';
+        if (panes.some(p => p.id === s.activePaneId)) swPane.value = s.activePaneId;
+        const syncPaneSel = () => { swPane.disabled = swDisp.value !== 'pane' || !panes.length; };
+        syncPaneSel();
+        swDisp.onchange = e => { setS('softwareDisplay', e.target.value); if (e.target.value === 'pane' && swPane.value) setS('activePaneId', swPane.value); syncPaneSel(); };
+        swPane.onchange = e => setS('activePaneId', e.target.value);
+      }
       document.getElementById('sLaunch').value = s.launchMode;
       document.getElementById('sLaunch').onchange = e => setS('launchMode', e.target.value);
       const offIcons = document.getElementById('sOfflineIcons');
@@ -4363,8 +4490,10 @@
   document.getElementById('addDash').onclick = () => addPage('web');
   document.getElementById('addApp').onclick = () => addPage('app');
   document.getElementById('addGroup').onclick = () => addGroup();
+  document.getElementById('addPane').onclick = () => addPane();
   document.getElementById('lTabPages').onclick = () => { leftTab = 'pages'; render(); };
   document.getElementById('lTabGroups').onclick = () => { leftTab = 'groups'; render(); };
+  document.getElementById('lTabPanes').onclick = () => { leftTab = 'panes'; render(); };
   document.getElementById('saveBtn').onclick = doSave;
   document.getElementById('settingsBtn').onclick = async () => {
     view = view === 'settings' ? 'pages' : 'settings';
@@ -4402,6 +4531,7 @@
   (async () => {
     config = await configApi.getConfig(); if (!config.grids) config.grids = [];
     if (!Array.isArray(config.groups)) config.groups = [];
+    if (!Array.isArray(config.panes)) config.panes = [];
     try { const v = await configApi.getAppVersion(); const el = document.getElementById('appVer'); if (el && v) el.textContent = 'v' + v; } catch (e) {}
     try { appDefs = await configApi.getApps(); } catch (e) {}
     try { haCacheLocal = await configApi.getHaCache(); } catch (e) {}   // for iconHtml's HA icon resolution
@@ -4418,6 +4548,7 @@
         config = fresh;
         if (!config.grids) config.grids = [];
         if (!Array.isArray(config.groups)) config.groups = [];
+        if (!Array.isArray(config.panes)) config.panes = [];
         if (gi >= config.grids.length) { gi = Math.max(0, config.grids.length - 1); ti = -1; }
         render();
         setState('updated from the panel');

@@ -24,7 +24,7 @@ if (process.platform === 'win32') {
   catch (e) { console.log('win-ca load failed:', e.message); }
 }
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, powerSaveBlocker, powerMonitor, ipcMain, shell, dialog, session, net, safeStorage, clipboard, globalShortcut, nativeTheme, Notification } = require('electron');
+const { app, BrowserWindow, WebContentsView, Tray, Menu, nativeImage, screen, powerSaveBlocker, powerMonitor, ipcMain, shell, dialog, session, net, safeStorage, clipboard, globalShortcut, nativeTheme, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -77,6 +77,7 @@ const { createScreensaverHost } = require('./screensaver-host'); // Screensaver 
 const saverIdle = require('./screensaver-idle'); // pure screensaver auto-start/wake/swallow decisions
 const owuiClient = require('./owuiClient'); // shared OWUI URL normalization + model-list probe
 const { resolveRunMode, reservedDisplayEnabled } = require('./runMode'); // pure run-mode helpers (panel/software/monitor)
+const { activePane } = require('./panes');    // pure pane resolution (software-mode vertical page stacks)
 const voiceConfig = require('./voiceConfig'); // global TTS/STT endpoints + per-page override resolution + legacy migration
 const { DiscordService } = require('./discordService'); // local Discord desktop RPC; protocol stays behind this main-process service
 const { DiscordOAuth } = require('./discordOAuth');
@@ -176,6 +177,7 @@ obsService.on('update', () => {
   obsPushTimer = setTimeout(() => { obsPushTimer = null; pushToPanel().catch(() => {}); }, 120);
 });
 let panelWin = null, configWin = null, tray = null, welcomeWin = null;
+let paneViews = [];   // software pane mode: one WebContentsView per stacked page (empty otherwise)
 let dashSession = null, cookieFlushT = null;   // dashboard webview session + a debounced cookie-store flush
 const dev = new MultiKnob({ hid: HID });
 let reservedRefreshTimer = null;
@@ -398,8 +400,13 @@ function applyTheme() {
 }
 // Theme payload: per-card light/dark + accent for the active page, PLUS the global light/dark so the
 // panel's page-menu/intro overlays can stay in the user's chosen mode even on a per-card-overridden page.
-function themePayload() { return Object.assign({}, effectiveTheme(activeGrid()), { globalDark: effectiveTheme(null).dark }); }
+function themePayload(g) { return Object.assign({}, effectiveTheme(g === undefined ? activeGrid() : g), { globalDark: effectiveTheme(null).dark }); }
 function pushTheme() {
+  const ap = activePaneNow();
+  if (ap && paneViews.length) {
+    paneViews.forEach((v, i) => { const g = ap.pages[i]; if (v && !v.webContents.isDestroyed() && g) v.webContents.send('theme', themePayload(g)); });
+    return;
+  }
   if (panelWin && !panelWin.isDestroyed()) panelWin.webContents.send('theme', themePayload());
 }
 // hex -> {hue,sat} (0..255), value fixed full — matches the editor/DK-Suite ring conversion.
@@ -414,6 +421,13 @@ function hexToHsv255(hex) {
 // <webview> of arbitrary dashboard pages (its own separate webContents), so comparing against
 // panelWin.webContents rejects any guest page — or stray sender — that reaches the preload bridge.
 function isFrom(e, win) { return !!(win && !win.isDestroyed() && e.sender === win.webContents); }
+// Panel-side IPC may come from the panel window OR (software pane mode) any of the stacked slot views.
+function isFromPanel(e) { return isFrom(e, panelWin) || paneViews.some(v => v && !v.webContents.isDestroyed() && e.sender === v.webContents); }
+// Everything currently showing the panel UI: the slot views in pane mode, else the panel window.
+function panelSendTargets() {
+  if (paneViews.length) return paneViews.filter(v => v && !v.webContents.isDestroyed()).map(v => v.webContents);
+  return (panelWin && !panelWin.isDestroyed()) ? [panelWin.webContents] : [];
+}
 
 // User config lives in the OS user-data dir (writable even inside a packaged app). On first run it's
 // seeded from a previous dev config (app/config.json) if present, otherwise the bundled default.
@@ -431,6 +445,7 @@ function loadConfig() {
 // Normalize dashboard auth: fold the old per-page `haToken` into the typed `auth` object.
 function migrateConfig(c) {
   if (!c.settings) c.settings = {};
+  if (!Array.isArray(c.panes)) c.panes = [];   // software-mode page stacks (see panes.js)
   c.settings.discord = normalizeDiscordSettings(c.settings.discord);
   c.settings.github = normalizeGitHubSettings(c.settings.github);
   (c.grids || []).forEach(g => {
@@ -495,15 +510,16 @@ function ensureMusicPage() {
 }
 // An app's embedded grid (Music, Agenda, Events, …) is served to the page (resolved icons) and its taps
 // launched — generic across any app that defines a grid, keyed to whichever app page is currently shown.
+// ponytail: first app page with a grid wins if a pane stacks two — upgrade to per-slot routing if hit.
 async function getActiveAppTiles() {
-  const g = activeGrid();
-  if (!(g && g.kind === 'app' && Array.isArray(g.tiles) && g.cols && g.rows)) return { cols: 2, rows: 2, tiles: [] };
+  const g = visibleGrids().find(p => p && p.kind === 'app' && Array.isArray(p.tiles) && p.cols && p.rows);
+  if (!g) return { cols: 2, rows: 2, tiles: [] };
   const resolved = await resolveGridIcons(Object.assign({}, g, { kind: 'grid' }));   // resolve icons (force the tile path)
   return { cols: g.cols, rows: g.rows, tiles: resolved.tiles || [] };
 }
 function onAppLaunch(i) {
-  const g = activeGrid();
-  if (g && g.kind === 'app' && g.tiles && g.tiles[i]) { runAction(g.tiles[i]); return true; }
+  const g = visibleGrids().find(p => p && p.kind === 'app' && p.tiles && p.tiles[i]);
+  if (g) { runAction(g.tiles[i]); return true; }
   return false;
 }
 function hostMatches(a, b) { try { return new URL(a).host === new URL(b).host; } catch (e) { return false; } }
@@ -1039,8 +1055,8 @@ function appPageUrl(page) {
   return pathToFileURL(file).href + (hash ? '#' + hash : '');
 }
 function activeServedAppConfig(appId) {
-  const g = activeGrid();
-  if (!(g && g.kind === 'app' && g.app === appId)) return null;
+  const g = visibleGrids().find(p => p && p.kind === 'app' && p.app === appId);
+  if (!g) return null;
   const def = loadApps().find(a => a.id === appId);
   if (!(def && def.served)) return null;
   const opts = g.options || {};
@@ -1098,20 +1114,25 @@ function notifyEditorConfigChanged() {
 }
 function activeGrid() { return config.grids.find(g => g.id === config.activeGridId) || config.grids[0] || { cols: 8, rows: 2, tiles: [] }; }
 function gridList() { return config.grids.filter(g => !g.hidden).map(g => ({ id: g.id, name: g.name })); }
-// Tell the local server which served page is on screen so it runs only that page's poller
+// Software pane mode: the pane being displayed (null in every other mode/state — see panes.js).
+function activePaneNow() { return activePane(config.settings, config.panes, config.grids); }
+// Everything that forces a software-window rebuild when a save changes it: pane on/off, which pane,
+// and which pages it stacks (page count sets the window height and the number of slot views).
+function paneRebuildKey() { const ap = activePaneNow(); return ap ? ap.pane.id + ':' + ap.pages.map(g => g.id).join(',') : ''; }
+// The pages currently on screen: the pane's stacked pages in pane mode, else just the active page.
+function visibleGrids() { const ap = activePaneNow(); return ap ? ap.pages : [activeGrid()]; }
+// Tell the local server which served page(s) are on screen so it runs only those pages' pollers
 // (Music now-playing) and idles the rest — no background polling while hidden.
 function syncPollers(g) {
   if (!sysserver) return;
-  const which = monitorMode ? null                                  // panel hidden (monitor mode) -> idle every page poller
-    : (g && g.kind === 'app' && g.app === 'music') ? 'music'
-    : (g && g.kind === 'app' && g.app === 'office') ? 'office'
-    : (g && g.kind === 'app' && g.app === 'github') ? 'github'
-    : null;
-  try { sysserver.setActivePage(which); } catch (e) {}
+  const pages = monitorMode ? [] : (Array.isArray(g) ? g : g ? [g] : []);   // monitor mode -> panel hidden -> idle everything
+  const apps = pages.filter(p => p && p.kind === 'app').map(p => p.app);
+  try { sysserver.setActivePage(apps.filter(a => a === 'music' || a === 'office' || a === 'github')); } catch (e) {}
   // HA-backed dev apps (HA Schedule / Agenda / Events): poll HA only while one is shown, at the page's
   // chosen interval (default 10 min). They share one snapshot, so any of them drives the same poll.
   try {
-    if (!monitorMode && g && g.kind === 'app' && HA_SCHEDULE_APPS.includes(g.app)) haschedule.start((parseInt((g.options || {}).interval, 10) || 600) * 1000);
+    const ha = pages.find(p => p && p.kind === 'app' && HA_SCHEDULE_APPS.includes(p.app));
+    if (ha) haschedule.start((parseInt((ha.options || {}).interval, 10) || 600) * 1000);
     else haschedule.stop();
   } catch (e) {}
 }
@@ -1180,7 +1201,7 @@ function getDeviceDiagnostics() {
 // the device that a tap did not do what they expected -- a Windows toast is on the wrong screen.
 function panelNotice(text) {
   if (!text) return;
-  if (panelWin && !panelWin.isDestroyed()) { try { panelWin.webContents.send('notice', String(text)); } catch (e) {} }
+  panelSendTargets().forEach(wc => { try { wc.send('notice', String(text)); } catch (e) {} });
 }
 // One of the five AI Voice hosts, by the backend its page is set to.
 function voiceHostForBackend(backend) {
@@ -1237,6 +1258,19 @@ function runRoutine(routineId) {
 }
 
 async function pushToPanel() {
+  const ap = activePaneNow();
+  if (ap && paneViews.length) {
+    // Pane mode: each slot view gets its own page + theme. No gridList/intro/rotation — the
+    // stacked pages are fixed; there is no selector inside a slot.
+    syncPollers(ap.pages);
+    for (let i = 0; i < paneViews.length; i++) {
+      const v = paneViews[i], g = ap.pages[i];
+      if (!v || v.webContents.isDestroyed() || !g) continue;
+      v.webContents.send('theme', themePayload(g));
+      v.webContents.send('grid', await resolveGridIcons(g));
+    }
+    return;
+  }
   if (panelWin && !panelWin.isDestroyed()) {
     const g = activeGrid();
     syncPollers(g);                                                // run only the poller the shown page needs (before the webview reloads, so it primes)
@@ -2353,14 +2387,20 @@ function placePanel() {
 // The window aspect is locked to 1920:480; closing it drops to the tray (reopen from the tray).
 function createSoftwareWindow() {
   if (panelWin && !panelWin.isDestroyed()) { panelWin.show(); panelWin.focus(); return; }
+  const ap = activePaneNow();                    // pane mode: N stacked pages -> N slot views, taller window
+  const units = ap ? ap.pages.length : 1;
   const wa = screen.getPrimaryDisplay().workArea;
-  const width = Math.max(760, Math.min(1280, wa.width - 80));
-  const height = Math.round(width * 480 / 1920);
+  let width = Math.max(760, Math.min(1280, wa.width - 80));
+  let height = Math.round(width * (480 * units) / 1920);
+  if (height > wa.height - 80) {                 // taller than the screen -> shrink to fit, keep the aspect
+    height = wa.height - 80;
+    width = Math.max(760, Math.round(height * 1920 / (480 * units)));
+  }
   panelWin = new BrowserWindow({
     width, height,
     x: wa.x + Math.round((wa.width - width) / 2),
     y: wa.y + Math.round((wa.height - height) / 2),
-    minWidth: 760, minHeight: Math.round(760 * 480 / 1920),
+    minWidth: 760, minHeight: Math.round(760 * (480 * units) / 1920),
     title: 'open-quake', frame: true, show: false, resizable: true, movable: true,
     minimizable: true, maximizable: true, fullscreenable: false, autoHideMenuBar: true,
     backgroundColor: '#000000',
@@ -2373,11 +2413,43 @@ function createSoftwareWindow() {
   });
   const win = panelWin;   // capture: a live mode switch destroys this window while creating another — the
                           // stale window's events must not clobber the module-level panelWin of the new one.
-  try { win.setAspectRatio(1920 / 480); } catch (e) {}
-  win.loadFile(path.join(__dirname, 'index.html'), { query: { mode: 'software' } });
-  win.once('ready-to-show', () => { if (win.isDestroyed()) return; win.show(); win.focus(); if (panelWin === win) pushToPanel(); });
-  win.on('closed', () => { if (panelWin === win) panelWin = null; });
-  console.log('software mode: window created (' + width + 'x' + height + ')');
+  try { win.setAspectRatio(1920 / (480 * units)); } catch (e) {}
+  if (ap) {
+    // The window itself hosts nothing; each slot is a full panel renderer (index.html) in its own
+    // WebContentsView, fed its own page by pushToPanel. ?pane=1 hides the per-slot page selector.
+    const views = ap.pages.map(() => new WebContentsView({
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'panel-preload.js'),
+        webviewTag: true,
+      },
+    }));
+    paneViews = views;
+    const layoutPaneViews = () => {
+      if (win.isDestroyed()) return;
+      const b = win.getContentBounds();
+      views.forEach((v, i) => {
+        const top = Math.round(b.height * i / units), bottom = Math.round(b.height * (i + 1) / units);
+        v.setBounds({ x: 0, y: top, width: b.width, height: bottom - top });
+      });
+    };
+    views.forEach(v => {
+      try { v.setBackgroundColor('#000000'); } catch (e) {}
+      win.contentView.addChildView(v);
+      v.webContents.loadFile(path.join(__dirname, 'index.html'), { query: { mode: 'software', pane: '1' } });
+      // Re-push as each slot finishes loading; sends to still-loading slots are dropped harmlessly.
+      v.webContents.on('did-finish-load', () => { if (panelWin === win) pushToPanel(); });
+    });
+    layoutPaneViews();
+    win.on('resize', layoutPaneViews);
+    win.show(); win.focus();                     // no ready-to-show without window-level content
+  } else {
+    win.loadFile(path.join(__dirname, 'index.html'), { query: { mode: 'software' } });
+    win.once('ready-to-show', () => { if (win.isDestroyed()) return; win.show(); win.focus(); if (panelWin === win) pushToPanel(); });
+  }
+  win.on('closed', () => { if (panelWin === win) { panelWin = null; paneViews = []; } });
+  console.log('software mode: window created (' + width + 'x' + height + (ap ? ', pane "' + ap.pane.name + '" x' + units : '') + ')');
 }
 
 // Create/show the UI window for the current run mode and set reserved-display accordingly. Shared by
@@ -2414,7 +2486,7 @@ function applyRunModeAndLaunch() {
 // window down and rebuild it for the new mode in-process. Persist runMode BEFORE calling this.
 function applyRunModeLive() {
   if (monitorMode) { monitorMode = false; reservedDisplay.setSuspended(false); releaseTouch(); }   // drop monitor state without re-showing the old panel
-  const old = panelWin; panelWin = null;
+  const old = panelWin; panelWin = null; paneViews = [];   // slot views die with their window
   if (old && !old.isDestroyed()) { try { old.destroy(); } catch (e) {} }
   placeUiForMode();
   refreshTray();
@@ -2714,7 +2786,7 @@ function applyShortcuts() {
         if (process.platform === 'win32') modifiersInAccelerator(g.options.micHotkey).forEach(m => mediaKeys.keyUp(m));
         const active = activeGrid();
         if (!(active && active.id === g.id)) gotoGrid(g.id, true);   // bring the page on-screen (loads it)
-        if (panelWin && !panelWin.isDestroyed()) panelWin.webContents.send('micToggle');
+        panelSendTargets().forEach(wc => wc.send('micToggle'));
       });
       if (!ok) console.log('shortcut already in use, not registered:', g.options.micHotkey, '-> livetranslate toggle', g.id);
     } catch (e) { console.log('shortcut register error:', g.options.micHotkey, '-', e.message); }
@@ -2865,6 +2937,8 @@ function voiceSessionBusy() {
     });
 }
 function saverTick() {
+  // Pane mode shows fixed stacked pages — the saver can't take over the view, so don't arm it.
+  if (activePaneNow()) { if (saverActive) dissolveSaver(); return; }
   // Self-heal: an editor save can swap the active page without gotoGrid — never keep swallowing.
   if (saverActive && !saverIdle.isScreensaverGrid(activeGrid())) dissolveSaver();
   // Idle stamp: the ARIS-68 panel reports its own touch over HID, so lastPanelInputAt is the
@@ -2984,8 +3058,8 @@ function stepPage(dir) {
   if (rotateRunning) scheduleRotation();          // a manual step resets the rotation timer, like the knob/tray
 }
 function reloadActiveDashboard() {
-  const g = activeGrid();
-  if (g && g.kind === 'web' && panelWin && !panelWin.isDestroyed()) panelWin.webContents.send('reloadDashboard');
+  if (!visibleGrids().some(g => g && g.kind === 'web')) return;
+  panelSendTargets().forEach(wc => wc.send('reloadDashboard'));
 }
 // The page (if any) mapped to whatever app currently holds OS foreground focus, per desktopFocus.js's own
 // debounced/committed value — not the raw poll, so this agrees with whatever page onForegroundAppChange last acted on.
@@ -3438,10 +3512,10 @@ app.whenReady().then(async () => {
   if ((config.settings && config.settings.haAuth && config.settings.haAuth.useHa)) refreshHaCache();
   oauthHandler.scheduleAll();
 
-  ipcMain.on('launch', (e, a) => { if (!isFrom(e, panelWin)) return; runAction(a); });
-  ipcMain.on('volume', (e, v) => { if (!isFrom(e, panelWin)) return; mediaKeys.volume(v); });
-  ipcMain.on('media', (e, cmd) => { if (!isFrom(e, panelWin)) return; mediaKey(cmd); });   // knob 'enter' on the music page -> play/pause
-  ipcMain.on('switchGrid', (e, id) => { if (!isFrom(e, panelWin)) return; gotoGrid(id, true); if (rotateRunning) scheduleRotation(); });   // a manual pick resets the rotation timer
+  ipcMain.on('launch', (e, a) => { if (!isFromPanel(e)) return; runAction(a); });
+  ipcMain.on('volume', (e, v) => { if (!isFromPanel(e)) return; mediaKeys.volume(v); });
+  ipcMain.on('media', (e, cmd) => { if (!isFromPanel(e)) return; mediaKey(cmd); });   // knob 'enter' on the music page -> play/pause
+  ipcMain.on('switchGrid', (e, id) => { if (!isFromPanel(e)) return; gotoGrid(id, true); if (rotateRunning) scheduleRotation(); });   // a manual pick resets the rotation timer
   // Focus a page ON THE DEVICE from the editor. Only pages already in main's config (i.e. saved) can
   // be focused -- the editor blocks this when it has unsaved changes, so an id we don't know is an
   // error, not a silent no-op. This is the one place the editor is allowed to move the live page.
@@ -3452,15 +3526,15 @@ app.whenReady().then(async () => {
     if (rotateRunning) scheduleRotation();
     return { ok: true };
   });
-  ipcMain.on('toggleRotation', (e) => { if (!isFrom(e, panelWin)) return; toggleRotation(); });
-  ipcMain.on('startRotation', (e) => { if (!isFrom(e, panelWin)) return; setRotation(true); });
-  ipcMain.on('stopRotation', (e) => { if (!isFrom(e, panelWin)) return; setRotation(false); });
-  ipcMain.on('gotoHome', (e) => { if (!isFrom(e, panelWin)) return; if (config.homePageId) gotoGrid(config.homePageId, false); });
-  ipcMain.on('openConfig', (e) => { if (!isFrom(e, panelWin) && !isFrom(e, configWin)) return; openConfigWindow(); });
-  ipcMain.on('introDone', (e) => { if (!isFrom(e, panelWin)) return; config.introShown = true; saveConfig(); });   // remember the intro was dismissed
+  ipcMain.on('toggleRotation', (e) => { if (!isFromPanel(e)) return; toggleRotation(); });
+  ipcMain.on('startRotation', (e) => { if (!isFromPanel(e)) return; setRotation(true); });
+  ipcMain.on('stopRotation', (e) => { if (!isFromPanel(e)) return; setRotation(false); });
+  ipcMain.on('gotoHome', (e) => { if (!isFromPanel(e)) return; if (config.homePageId) gotoGrid(config.homePageId, false); });
+  ipcMain.on('openConfig', (e) => { if (!isFromPanel(e) && !isFrom(e, configWin)) return; openConfigWindow(); });
+  ipcMain.on('introDone', (e) => { if (!isFromPanel(e)) return; config.introShown = true; saveConfig(); });   // remember the intro was dismissed
   ipcMain.on('saveTileValue', (e, data) => {
     console.log('[counter] saveTileValue received:', JSON.stringify(data));
-    if (!isFrom(e, panelWin)) { console.log('[counter] REJECTED: not from panelWin'); return; }
+    if (!isFromPanel(e)) { console.log('[counter] REJECTED: not from panelWin'); return; }
     if (!data || typeof data.gridId !== 'string' || !Number.isInteger(data.index) || typeof data.value !== 'string') {
       console.log('[counter] REJECTED: bad shape. gridId-type=', typeof (data&&data.gridId), 'index-type=', typeof (data&&data.index), 'index-isInt=', Number.isInteger(data&&data.index), 'value-type=', typeof (data&&data.value));
       return;
@@ -3472,8 +3546,8 @@ app.whenReady().then(async () => {
     saveConfig();
     console.log('[counter] SAVED: grid', data.gridId, 'tile', data.index, '=', data.value);
   });
-  ipcMain.on('openExternal', (e, url) => { if (!isFrom(e, panelWin) && !isFrom(e, configWin)) return; openExternalUrl(url); });
-  ipcMain.on('ringState', (e, state) => { if (!isFrom(e, panelWin)) return; setRingState(state); });
+  ipcMain.on('openExternal', (e, url) => { if (!isFromPanel(e) && !isFrom(e, configWin)) return; openExternalUrl(url); });
+  ipcMain.on('ringState', (e, state) => { if (!isFromPanel(e)) return; setRingState(state); });
   ipcMain.handle('getConfig', (e) => isFrom(e, configWin) ? configForRenderer(config) : null);
   ipcMain.handle('getAppVersion', (e) => isFrom(e, configWin) ? app.getVersion() : null);
   ipcMain.handle('listOAuthProviders', (e) => isFrom(e, configWin) ? oauthProviderPayload() : []);
@@ -3673,6 +3747,7 @@ app.whenReady().then(async () => {
     const active = config.activeGridId;                          // the knob owns the live page — editor edits never change it
     const wasRot = rotationCfg().enabled;                        // detect a fresh off->on to auto-start (else keep the runtime pause)
     const prevMode = runMode();                                  // detect a run-mode change to rebuild the window live
+    const prevPaneKey = paneRebuildKey();                        // detect a pane display/layout change (window height must change)
     const prevMeeting = meetingSettings();                       // recorder-affecting fields, read before config is swapped
     const oauth = config.settings && config.settings.oauth;
     if (oauth) {
@@ -3725,6 +3800,7 @@ app.whenReady().then(async () => {
       meetingRecorder.setMic(nextMeeting.micDevice);                            // push an edited mic to the recorder
     }
     if (runMode() !== prevMode) applyRunModeLive();                 // run mode changed on the Software tab -> rebuild the window in-place
+    else if (runMode() === 'software' && paneRebuildKey() !== prevPaneKey) applyRunModeLive();   // pane display/slots changed -> new window height
     return { ok: true };
   });
   ipcMain.handle('pickProgram', async (e) => {
