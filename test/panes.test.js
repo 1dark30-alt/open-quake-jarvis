@@ -5,7 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { resolvePaneSlots, activePane, softwareWindowBounds, MAX_PANE_SLOTS } = require('../app/panes');
+const { resolvePaneSlots, resolvePaneColumns, activePane, softwareWindowBounds, MAX_PANE_SLOTS } = require('../app/panes');
 
 const grids = [
   { id: 'a', name: 'Grid A' },
@@ -47,24 +47,42 @@ test('activePane is null when no pane resolves to any pages', () => {
 
 test('softwareWindowBounds: no previous bounds -> default width, centered', () => {
   const wa = { x: 0, y: 0, width: 2560, height: 1440 };
-  const b = softwareWindowBounds(null, wa, 1);
+  const b = softwareWindowBounds(null, wa, 1, 1);
   assert.deepEqual(b, { x: 640, y: 560, width: 1280, height: 320 });
 });
 
-test('softwareWindowBounds: rebuild keeps position and width, height follows slot count', () => {
+test('softwareWindowBounds: rebuild keeps position and width, height follows layout', () => {
   const wa = { x: 0, y: 0, width: 2560, height: 1440 };
   const prev = { x: 100, y: 100, width: 1000, height: 250 };
-  assert.deepEqual(softwareWindowBounds(prev, wa, 1), { x: 100, y: 100, width: 1000, height: 250 });
-  assert.deepEqual(softwareWindowBounds(prev, wa, 3), { x: 100, y: 100, width: 1000, height: 750 });
+  assert.deepEqual(softwareWindowBounds(prev, wa, 1, 1), { x: 100, y: 100, width: 1000, height: 250 });
+  assert.deepEqual(softwareWindowBounds(prev, wa, 3, 1), { x: 100, y: 100, width: 1000, height: 750 });
+  // two columns: same rows are half as tall for a given width (3840-wide unit)
+  assert.deepEqual(softwareWindowBounds(prev, wa, 4, 2), { x: 100, y: 100, width: 1000, height: 500 });
 });
 
 test('softwareWindowBounds: clamps into the work area', () => {
   const wa = { x: 0, y: 0, width: 1920, height: 1080 };
   // 5 units at width 1600 would be 4000 tall -> shrink to fit, position pulled back on-screen
-  const b = softwareWindowBounds({ x: 1800, y: 1000, width: 1600, height: 400 }, wa, 5);
+  const b = softwareWindowBounds({ x: 1800, y: 1000, width: 1600, height: 400 }, wa, 5, 1);
   assert.equal(b.height, 1000);
   assert.equal(b.width, Math.max(760, Math.round(1000 * 1920 / 2400)));
   assert.ok(b.x + b.width <= wa.width && b.y + b.height <= wa.height);
+});
+
+test('resolvePaneColumns: right column only exists while it resolves pages', () => {
+  assert.deepEqual(resolvePaneColumns(pane([{ pageId: 'a' }]), grids).length, 1);
+  const two = resolvePaneColumns({ id: 'p', slots: [{ pageId: 'a' }], slots2: [{ pageId: 'b' }] }, grids);
+  assert.equal(two.length, 2);
+  assert.deepEqual(two[1].map(g => g.id), ['b']);
+  // dangling-only right column -> single column
+  assert.equal(resolvePaneColumns({ id: 'p', slots: [{ pageId: 'a' }], slots2: [{ pageId: 'gone' }] }, grids).length, 1);
+});
+
+test('activePane: two-column pane flattens pages column-major and reports columns', () => {
+  const p = { id: 'p1', name: 'P', slots: [{ pageId: 'a' }, { pageId: 'b' }], slots2: [{ pageId: 'c' }] };
+  const r = activePane(sw, [p], grids);
+  assert.deepEqual(r.pages.map(g => g.id), ['a', 'b', 'c']);
+  assert.deepEqual(r.columns.map(c => c.map(g => g.id)), [['a', 'b'], ['c']]);
 });
 
 test('activePane falls back to the first usable pane when the picked id is unset or dead', () => {

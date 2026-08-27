@@ -77,7 +77,7 @@ const { createScreensaverHost } = require('./screensaver-host'); // Screensaver 
 const saverIdle = require('./screensaver-idle'); // pure screensaver auto-start/wake/swallow decisions
 const owuiClient = require('./owuiClient'); // shared OWUI URL normalization + model-list probe
 const { resolveRunMode, reservedDisplayEnabled } = require('./runMode'); // pure run-mode helpers (panel/software/monitor)
-const { activePane, resolvePaneSlots, softwareWindowBounds } = require('./panes');    // pure pane resolution (software-mode vertical page stacks)
+const { activePane, resolvePaneColumns, softwareWindowBounds } = require('./panes');    // pure pane resolution (software-mode page stacks, 1-2 columns)
 const voiceConfig = require('./voiceConfig'); // global TTS/STT endpoints + per-page override resolution + legacy migration
 const { DiscordService } = require('./discordService'); // local Discord desktop RPC; protocol stays behind this main-process service
 const { DiscordOAuth } = require('./discordOAuth');
@@ -1120,11 +1120,12 @@ function gridList() { return config.grids.filter(g => !g.hidden).map(g => ({ id:
 function activePaneNow() { return activePane(config.settings, config.panes, config.grids); }
 // Everything that forces a software-window rebuild when a save changes it: pane on/off, which pane,
 // and which pages it stacks (page count sets the window height and the number of slot views).
-function paneRebuildKey() { const ap = activePaneNow(); return ap ? ap.pane.id + ':' + ap.pages.map(g => g.id).join(',') : ''; }
+function paneRebuildKey() { const ap = activePaneNow(); return ap ? ap.pane.id + ':' + ap.columns.map(c => c.map(g => g.id).join(',')).join('|') : ''; }
+function paneUsable(p) { return resolvePaneColumns(p, config.grids).some(c => c.length); }
 // The ☰ selector's entries in pane mode: every pane that resolves to at least one page.
-function paneList() { return (config.panes || []).filter(p => resolvePaneSlots(p, config.grids).length).map(p => ({ id: p.id, name: p.name })); }
+function paneList() { return (config.panes || []).filter(paneUsable).map(p => ({ id: p.id, name: p.name })); }
 // Panes cycled by auto-rotation in pane mode: opted in AND resolving to at least one page.
-function paneRotationList() { return (config.panes || []).filter(p => p.rotate && resolvePaneSlots(p, config.grids).length); }
+function paneRotationList() { return (config.panes || []).filter(p => p.rotate && paneUsable(p)); }
 // Switch the displayed pane — the pane analog of gotoGrid. Used by the top slot's ☰ selector
 // (persist), pane hotkeys (persist), rotation and go-home (no persist, like page rotation). Also
 // flips the software display to panes, so a pane hotkey works from Pages view too. The window
@@ -2426,16 +2427,27 @@ function makePaneView(psel) {
   v.webContents.on('did-finish-load', () => { pushToPanel(); });
   return v;
 }
-// Slice the window's content height into equal rows, one per slot view.
+// Lay the slot views out as the active pane's column grid: each column gets an equal width strip,
+// sliced into `rows` equal rows (rows = the taller column, so both columns' slots line up).
+// paneViews order is column-major: left column top-to-bottom, then the right column.
 function layoutPaneViews() {
   if (!panelWin || panelWin.isDestroyed() || !paneViews.length) return;
+  const ap = activePaneNow(); if (!ap) return;
   const b = panelWin.getContentBounds();
-  const rows = paneViews.length;
-  paneViews.forEach((v, i) => {
-    const top = Math.round(b.height * i / rows), bottom = Math.round(b.height * (i + 1) / rows);
-    try { v.setBounds({ x: 0, y: top, width: b.width, height: bottom - top }); } catch (e) {}
+  const nCols = ap.columns.length;
+  const rows = Math.max(1, ...ap.columns.map(c => c.length));
+  let vi = 0;
+  ap.columns.forEach((col, ci) => {
+    const left = Math.round(b.width * ci / nCols), right = Math.round(b.width * (ci + 1) / nCols);
+    col.forEach((_, ri) => {
+      const v = paneViews[vi++]; if (!v) return;
+      const top = Math.round(b.height * ri / rows), bottom = Math.round(b.height * (ri + 1) / rows);
+      try { v.setBounds({ x: left, y: top, width: right - left, height: bottom - top }); } catch (e) {}
+    });
   });
 }
+// rows/cols of the active pane's layout (rows = the taller column).
+function paneGridShape(ap) { return { rows: Math.max(1, ...ap.columns.map(c => c.length)), cols: ap.columns.length }; }
 // Apply a pane change (switch, edited slots, pages->pane flip) to the EXISTING window — no
 // destroy/recreate, so the window's position, size, and maximized state survive. Views are added or
 // removed to match the slot count; the window is only resized when it isn't maximized. Falls back to
@@ -2444,35 +2456,36 @@ function applyPaneLive() {
   const win = panelWin;
   const ap = activePaneNow();
   if (!win || win.isDestroyed() || !ap || !paneViews.length) { applyRunModeLive(); return; }
-  const units = ap.pages.length;
-  while (paneViews.length > units) {
+  const total = ap.pages.length;
+  const { rows, cols } = paneGridShape(ap);
+  while (paneViews.length > total) {
     const v = paneViews.pop();
     try { win.contentView.removeChildView(v); } catch (e) {}
     try { v.webContents.close(); } catch (e) {}
   }
-  while (paneViews.length < units) { const v = makePaneView(false); paneViews.push(v); win.contentView.addChildView(v); }
-  try { win.setMinimumSize(760, Math.round(760 * (480 * units) / 1920)); } catch (e) {}
-  try { win.setAspectRatio(1920 / (480 * units)); } catch (e) {}
+  while (paneViews.length < total) { const v = makePaneView(false); paneViews.push(v); win.contentView.addChildView(v); }
+  try { win.setMinimumSize(760, Math.round(760 * (480 * rows) / (1920 * cols))); } catch (e) {}
+  try { win.setAspectRatio((1920 * cols) / (480 * rows)); } catch (e) {}
   if (!win.isMaximized() && !win.isFullScreen()) {
     const cur = win.getBounds();
-    win.setBounds(softwareWindowBounds(cur, screen.getDisplayMatching(cur).workArea, units));
+    win.setBounds(softwareWindowBounds(cur, screen.getDisplayMatching(cur).workArea, rows, cols));
   }
   layoutPaneViews();
   pushToPanel();
-  console.log('pane applied live: "' + ap.pane.name + '" x' + units);
+  console.log('pane applied live: "' + ap.pane.name + '" ' + cols + 'x' + rows);
 }
 function createSoftwareWindow() {
   if (panelWin && !panelWin.isDestroyed()) { panelWin.show(); panelWin.focus(); return; }
-  const ap = activePaneNow();                    // pane mode: N stacked pages -> N slot views, taller window
-  const units = ap ? ap.pages.length : 1;
+  const ap = activePaneNow();                    // pane mode: the pane's rows x cols of slot views
+  const shape = ap ? paneGridShape(ap) : { rows: 1, cols: 1 };
   // A full rebuild (mode flip) reuses the window's last position, width, and maximized state instead
   // of recentering on the primary display — only the height follows the slot count.
   const prev = swBounds;
   const wa = prev ? screen.getDisplayMatching(prev).workArea : screen.getPrimaryDisplay().workArea;
-  const { x, y, width, height } = softwareWindowBounds(prev, wa, units);
+  const { x, y, width, height } = softwareWindowBounds(prev, wa, shape.rows, shape.cols);
   panelWin = new BrowserWindow({
     width, height, x, y,
-    minWidth: 760, minHeight: Math.round(760 * (480 * units) / 1920),
+    minWidth: 760, minHeight: Math.round(760 * (480 * shape.rows) / (1920 * shape.cols)),
     title: 'open-quake', frame: true, show: false, resizable: true, movable: true,
     minimizable: true, maximizable: true, fullscreenable: false, autoHideMenuBar: true,
     backgroundColor: '#000000',
@@ -2495,9 +2508,9 @@ function createSoftwareWindow() {
   rememberBounds();
   win.on('move', rememberBounds);
   win.on('resize', rememberBounds);
-  try { win.setAspectRatio(1920 / (480 * units)); } catch (e) {}
+  try { win.setAspectRatio((1920 * shape.cols) / (480 * shape.rows)); } catch (e) {}
   if (ap) {
-    paneViews = ap.pages.map((g, i) => makePaneView(i === 0));
+    paneViews = ap.pages.map((g, i) => makePaneView(i === 0));   // column-major; view 0 = top-left = ☰ slot
     paneViews.forEach(v => win.contentView.addChildView(v));
     layoutPaneViews();
     win.on('resize', layoutPaneViews);
@@ -2508,7 +2521,7 @@ function createSoftwareWindow() {
     win.once('ready-to-show', () => { if (win.isDestroyed()) return; win.show(); win.focus(); if (swMaximized) win.maximize(); if (panelWin === win) pushToPanel(); });
   }
   win.on('closed', () => { if (panelWin === win) { panelWin = null; paneViews = []; } });
-  console.log('software mode: window created (' + width + 'x' + height + (ap ? ', pane "' + ap.pane.name + '" x' + units : '') + ')');
+  console.log('software mode: window created (' + width + 'x' + height + (ap ? ', pane "' + ap.pane.name + '" ' + shape.cols + 'x' + shape.rows : '') + ')');
 }
 
 // Create/show the UI window for the current run mode and set reserved-display accordingly. Shared by

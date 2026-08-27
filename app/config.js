@@ -12,7 +12,7 @@
   let voiceModes = null;   // { claude:[{id,label}], codex:[...], copilot:[...], owui:[], api:[] } — lazy-loaded for the Routines tab's Mode picker
   let selRoutineId = null, routineQuery = '';   // Routines tab master-detail: selection tracked by stable id, plus the search box text
   // Left sidebar tab (Pages vs Groups vs Panes list) + which group/pane is being edited.
-  let leftTab = 'pages', groupIndex = -1, paneIndex = -1, paneSlotDragFrom = -1;
+  let leftTab = 'pages', groupIndex = -1, paneIndex = -1, paneSlotDragFrom = -1, paneSlotDragCol = '';
   // Per-page Advanced <details> open state — persisted across re-renders so toggling an override
   // checkbox inside it (which calls render()) doesn't collapse the section out from under the user.
   let advOpen = false;
@@ -2918,7 +2918,10 @@
   function deleteCurrentPage() {
     if (config.grids.length <= 1) return;
     const removedId = (config.grids[gi] || {}).id;
-    (config.panes || []).forEach(p => { if (Array.isArray(p.slots)) p.slots = p.slots.filter(s => s && s.pageId !== removedId); });
+    (config.panes || []).forEach(p => {
+      if (Array.isArray(p.slots)) p.slots = p.slots.filter(s => s && s.pageId !== removedId);
+      if (Array.isArray(p.slots2)) p.slots2 = p.slots2.filter(s => s && s.pageId !== removedId);
+    });
     config.grids.splice(gi, 1); gi = 0; ti = -1;
     if (!config.grids.some(x => x.id === config.activeGridId)) config.activeGridId = config.grids[0].id;
     render(); markDirty();
@@ -3091,6 +3094,7 @@
     const p = curPane(); const el = document.getElementById('gridmeta');
     if (!p) { el.innerHTML = '<p class="hint">No pane selected. Use + Pane to create one.</p>'; return; }
     if (!Array.isArray(p.slots)) p.slots = [];
+    if (!Array.isArray(p.slots2)) p.slots2 = [];   // optional right column
     el.innerHTML = `
       <div class="row"><label>Name</label><input id="pnName" value="${esc(p.name)}"></div>
       <div class="row" style="margin-top:6px"><label style="width:auto">Hotkey shortcut</label>
@@ -3102,11 +3106,20 @@
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="pnRot" ${p.rotate ? 'checked' : ''}> Include in rotation</label>
         <label class="iconopt" style="width:auto;margin-left:14px"><input type="checkbox" id="pnHome" ${config.homePaneId === p.id ? 'checked' : ''}> Set as home pane</label></div>
       <p class="hint">In Panes view, auto-rotation cycles through the panes with <b>Include in rotation</b> ticked (Settings → Software → Screen rotation controls the on/off and interval). The <b>home pane</b> is where a go-home action lands; only one pane can be home.</p>
-      <p class="hint">A pane stacks up to ${PANE_MAX_SLOTS} of your existing pages vertically, so the Software-mode window can fill a taller screen. Show it via Settings → Software → <b>Software window</b>. Each slot is a full 1920×480 page — the window's height follows the number of slots.</p>
-      <div id="pnSlots"></div>
-      <div class="row" style="margin-top:10px">
-        ${p.slots.length < PANE_MAX_SLOTS ? '<button class="primary" id="pnAddSlot">+ Add page</button>' : '<span class="hint" style="margin:0">Pane is full (' + PANE_MAX_SLOTS + ' pages).</span>'}
-        <button class="danger" id="pnDelete" style="margin-left:auto">Delete pane</button></div>`;
+      <p class="hint">A pane stacks up to ${PANE_MAX_SLOTS} of your existing pages per column, one or two columns, so the Software-mode window can fill a bigger screen. Show it via Settings → Software → <b>Software window</b>. Each slot is a full 1920×480 page — the window's shape follows the layout.</p>
+      <div style="display:flex; gap:14px; align-items:flex-start">
+        <div style="flex:1; min-width:0">
+          <p class="sectitle" style="margin:0 0 2px">Left column</p>
+          <div id="pnSlots"></div>
+          <div class="row" style="margin-top:10px">${p.slots.length < PANE_MAX_SLOTS ? '<button class="primary" id="pnAddSlot">+ Add page</button>' : '<span class="hint" style="margin:0">Column is full (' + PANE_MAX_SLOTS + ').</span>'}</div>
+        </div>
+        <div style="flex:1; min-width:0">
+          <p class="sectitle" style="margin:0 0 2px">Right column <span style="font-weight:normal;opacity:.6">(optional)</span></p>
+          <div id="pnSlots2"></div>
+          <div class="row" style="margin-top:10px">${p.slots2.length < PANE_MAX_SLOTS ? '<button class="primary" id="pnAddSlot2">+ Add page</button>' : '<span class="hint" style="margin:0">Column is full (' + PANE_MAX_SLOTS + ').</span>'}</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="danger" id="pnDelete" style="margin-left:auto">Delete pane</button></div>`;
     document.getElementById('pnName').oninput = e => { p.name = e.target.value; renderPanes(); markDirty(); };
     const pnSc = document.getElementById('pnShortcut');
     pnSc.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { p.shortcut = acc; pnSc.value = acc; renderPanes(); markDirty(); } };
@@ -3126,41 +3139,50 @@
     };
     const addBtn = document.getElementById('pnAddSlot');
     if (addBtn) addBtn.onclick = () => { p.slots.push({ pageId: '' }); render(); markDirty(); };
+    const addBtn2 = document.getElementById('pnAddSlot2');
+    if (addBtn2) addBtn2.onclick = () => { p.slots2.push({ pageId: '' }); render(); markDirty(); };
     document.getElementById('pnDelete').onclick = deleteCurrentPane;
-    const slotsEl = document.getElementById('pnSlots');
-    p.slots.forEach((s, i) => {
-      const opts = ['<option value="">— choose a page —</option>']
-        .concat((config.grids || []).map(g => {
-          const tag = g.kind === 'web' ? '🌐' : g.kind === 'app' ? '🧩' : '▦';
-          return `<option value="${esc(g.id)}"${g.id === s.pageId ? ' selected' : ''}>${tag} ${esc(g.name || '(unnamed)')}</option>`;
-        })).join('');
-      const d = document.createElement('div');
-      d.className = 'row';
-      d.style.cssText = 'border:1px solid #2a3a4d;border-radius:8px;padding:10px;margin-top:8px;gap:8px;align-items:center';
-      d.innerHTML = `
-        <span class="griphandle" title="Drag to reorder" style="cursor:grab">☰</span>
-        <select data-pn-page style="flex:1;min-width:0">${opts}</select>
-        <button data-pn-del class="danger" title="Remove this page from the pane">×</button>`;
-      d.querySelector('[data-pn-page]').onchange = e => { s.pageId = e.target.value; markDirty(); };
-      d.querySelector('[data-pn-del]').onclick = () => {
-        if (!window.confirm('Remove this page from the pane?')) return;
-        p.slots.splice(i, 1); render(); markDirty();
-      };
-      d.draggable = true;
-      d.ondragstart = e => { paneSlotDragFrom = i; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(i)); } catch (er) {} };
-      d.ondragover = e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; d.classList.add('dragover'); };
-      d.ondragleave = () => d.classList.remove('dragover');
-      d.ondrop = e => {
-        e.preventDefault(); d.classList.remove('dragover');
-        const from = paneSlotDragFrom; paneSlotDragFrom = -1;
-        if (from < 0 || from === i || from >= p.slots.length) return;
-        const [moved] = p.slots.splice(from, 1);
-        p.slots.splice(i, 0, moved);
-        render(); markDirty();
-      };
-      d.ondragend = () => d.classList.remove('dragover');
-      slotsEl.appendChild(d);
-    });
+    // One builder for both columns; drag-reorder works within a column (drag between columns: remove + re-add).
+    const buildColumn = (slots, containerId, colKey) => {
+      const slotsEl = document.getElementById(containerId);
+      if (!slots.length) { slotsEl.innerHTML = '<p class="hint" style="margin:8px 0 0">(empty)</p>'; return; }
+      slots.forEach((s, i) => {
+        const opts = ['<option value="">— choose a page —</option>']
+          .concat((config.grids || []).map(g => {
+            const tag = g.kind === 'web' ? '🌐' : g.kind === 'app' ? '🧩' : '▦';
+            return `<option value="${esc(g.id)}"${g.id === s.pageId ? ' selected' : ''}>${tag} ${esc(g.name || '(unnamed)')}</option>`;
+          })).join('');
+        const d = document.createElement('div');
+        d.className = 'row';
+        d.style.cssText = 'border:1px solid #2a3a4d;border-radius:8px;padding:10px;margin-top:8px;gap:8px;align-items:center';
+        d.innerHTML = `
+          <span class="griphandle" title="Drag to reorder" style="cursor:grab">☰</span>
+          <select data-pn-page style="flex:1;min-width:0">${opts}</select>
+          <button data-pn-del class="danger" title="Remove this page from the pane">×</button>`;
+        d.querySelector('[data-pn-page]').onchange = e => { s.pageId = e.target.value; markDirty(); };
+        d.querySelector('[data-pn-del]').onclick = () => {
+          if (!window.confirm('Remove this page from the pane?')) return;
+          slots.splice(i, 1); render(); markDirty();
+        };
+        d.draggable = true;
+        d.ondragstart = e => { paneSlotDragFrom = i; paneSlotDragCol = colKey; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(i)); } catch (er) {} };
+        d.ondragover = e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; d.classList.add('dragover'); };
+        d.ondragleave = () => d.classList.remove('dragover');
+        d.ondrop = e => {
+          e.preventDefault(); d.classList.remove('dragover');
+          const from = paneSlotDragFrom; paneSlotDragFrom = -1;
+          if (paneSlotDragCol !== colKey || from < 0 || from === i || from >= slots.length) { paneSlotDragCol = ''; return; }
+          paneSlotDragCol = '';
+          const [moved] = slots.splice(from, 1);
+          slots.splice(i, 0, moved);
+          render(); markDirty();
+        };
+        d.ondragend = () => d.classList.remove('dragover');
+        slotsEl.appendChild(d);
+      });
+    };
+    buildColumn(p.slots, 'pnSlots', 'L');
+    buildColumn(p.slots2, 'pnSlots2', 'R');
   }
   function deleteCurrentPane() {
     const list = config.panes || [];
