@@ -178,7 +178,8 @@ obsService.on('update', () => {
 });
 let panelWin = null, configWin = null, tray = null, welcomeWin = null;
 let paneViews = [];   // software pane mode: one WebContentsView per stacked page (empty otherwise)
-let swBounds = null;  // last software-window bounds — rebuilds (save, pane switch) keep the user's position/size
+let swBounds = null;  // last NORMAL software-window bounds — rebuilds keep the user's position/size
+let swMaximized = false;   // whether the software window was maximized — survives rebuilds too
 let dashSession = null, cookieFlushT = null;   // dashboard webview session + a debounced cookie-store flush
 const dev = new MultiKnob({ hid: HID });
 let reservedRefreshTimer = null;
@@ -1136,7 +1137,7 @@ function gotoPane(id, persist) {
   config.settings.softwareDisplay = 'pane';
   config.settings.activePaneId = id;
   if (persist) saveConfig();
-  if (paneRebuildKey() !== before) applyRunModeLive();
+  if (paneRebuildKey() !== before) applyPaneLive();
 }
 // The pages currently on screen: the pane's stacked pages in pane mode, else just the active page.
 function visibleGrids() { const ap = activePaneNow(); return ap ? ap.pages : [activeGrid()]; }
@@ -2406,12 +2407,66 @@ function placePanel() {
 // stage to fit and shows a mouse-driven page menu. Reuses the panelWin variable so every existing
 // `panelWin && !panelWin.isDestroyed()` path (touch/knob sends, pushToPanel, meeting IPC) just works.
 // The window aspect is locked to 1920:480; closing it drops to the tray (reopen from the tray).
+// One pane slot: a full panel renderer (index.html) in its own WebContentsView, fed its page by
+// pushToPanel. ?pane=1 hides the per-slot page selector; the top slot's psel=1 keeps it (listing PANES).
+function makePaneView(psel) {
+  const v = new WebContentsView({
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'panel-preload.js'),
+      webviewTag: true,
+    },
+  });
+  try { v.setBackgroundColor('#000000'); } catch (e) {}
+  const query = psel ? { mode: 'software', pane: '1', psel: '1' } : { mode: 'software', pane: '1' };
+  v.webContents.loadFile(path.join(__dirname, 'index.html'), { query });
+  // Re-push once the slot finishes loading; pushToPanel only touches the CURRENT paneViews, so a
+  // stale view's late load is harmless.
+  v.webContents.on('did-finish-load', () => { pushToPanel(); });
+  return v;
+}
+// Slice the window's content height into equal rows, one per slot view.
+function layoutPaneViews() {
+  if (!panelWin || panelWin.isDestroyed() || !paneViews.length) return;
+  const b = panelWin.getContentBounds();
+  const rows = paneViews.length;
+  paneViews.forEach((v, i) => {
+    const top = Math.round(b.height * i / rows), bottom = Math.round(b.height * (i + 1) / rows);
+    try { v.setBounds({ x: 0, y: top, width: b.width, height: bottom - top }); } catch (e) {}
+  });
+}
+// Apply a pane change (switch, edited slots, pages->pane flip) to the EXISTING window — no
+// destroy/recreate, so the window's position, size, and maximized state survive. Views are added or
+// removed to match the slot count; the window is only resized when it isn't maximized. Falls back to
+// a full rebuild when the current window isn't a pane window (or panes just turned off).
+function applyPaneLive() {
+  const win = panelWin;
+  const ap = activePaneNow();
+  if (!win || win.isDestroyed() || !ap || !paneViews.length) { applyRunModeLive(); return; }
+  const units = ap.pages.length;
+  while (paneViews.length > units) {
+    const v = paneViews.pop();
+    try { win.contentView.removeChildView(v); } catch (e) {}
+    try { v.webContents.close(); } catch (e) {}
+  }
+  while (paneViews.length < units) { const v = makePaneView(false); paneViews.push(v); win.contentView.addChildView(v); }
+  try { win.setMinimumSize(760, Math.round(760 * (480 * units) / 1920)); } catch (e) {}
+  try { win.setAspectRatio(1920 / (480 * units)); } catch (e) {}
+  if (!win.isMaximized() && !win.isFullScreen()) {
+    const cur = win.getBounds();
+    win.setBounds(softwareWindowBounds(cur, screen.getDisplayMatching(cur).workArea, units));
+  }
+  layoutPaneViews();
+  pushToPanel();
+  console.log('pane applied live: "' + ap.pane.name + '" x' + units);
+}
 function createSoftwareWindow() {
   if (panelWin && !panelWin.isDestroyed()) { panelWin.show(); panelWin.focus(); return; }
   const ap = activePaneNow();                    // pane mode: N stacked pages -> N slot views, taller window
   const units = ap ? ap.pages.length : 1;
-  // A live rebuild (editor save, pane switch, mode flip) reuses the window's last position and width
-  // instead of recentering on the primary display — only the height follows the slot count.
+  // A full rebuild (mode flip) reuses the window's last position, width, and maximized state instead
+  // of recentering on the primary display — only the height follows the slot count.
   const prev = swBounds;
   const wa = prev ? screen.getDisplayMatching(prev).workArea : screen.getPrimaryDisplay().workArea;
   const { x, y, width, height } = softwareWindowBounds(prev, wa, units);
@@ -2430,46 +2485,27 @@ function createSoftwareWindow() {
   });
   const win = panelWin;   // capture: a live mode switch destroys this window while creating another — the
                           // stale window's events must not clobber the module-level panelWin of the new one.
-  const rememberBounds = () => { if (!win.isDestroyed() && panelWin === win) { try { swBounds = win.getBounds(); } catch (e) {} } };
+  const rememberBounds = () => {
+    if (win.isDestroyed() || panelWin !== win) return;
+    try {
+      swMaximized = win.isMaximized();
+      if (!swMaximized && !win.isFullScreen()) swBounds = win.getBounds();   // keep the last NORMAL bounds for restore
+    } catch (e) {}
+  };
   rememberBounds();
   win.on('move', rememberBounds);
   win.on('resize', rememberBounds);
   try { win.setAspectRatio(1920 / (480 * units)); } catch (e) {}
   if (ap) {
-    // The window itself hosts nothing; each slot is a full panel renderer (index.html) in its own
-    // WebContentsView, fed its own page by pushToPanel. ?pane=1 hides the per-slot page selector.
-    const views = ap.pages.map(() => new WebContentsView({
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        preload: path.join(__dirname, 'panel-preload.js'),
-        webviewTag: true,
-      },
-    }));
-    paneViews = views;
-    const layoutPaneViews = () => {
-      if (win.isDestroyed()) return;
-      const b = win.getContentBounds();
-      views.forEach((v, i) => {
-        const top = Math.round(b.height * i / units), bottom = Math.round(b.height * (i + 1) / units);
-        v.setBounds({ x: 0, y: top, width: b.width, height: bottom - top });
-      });
-    };
-    views.forEach((v, i) => {
-      try { v.setBackgroundColor('#000000'); } catch (e) {}
-      win.contentView.addChildView(v);
-      // Top slot keeps the ☰ selector (psel=1) — it lists PANES and switches between them.
-      const query = i === 0 ? { mode: 'software', pane: '1', psel: '1' } : { mode: 'software', pane: '1' };
-      v.webContents.loadFile(path.join(__dirname, 'index.html'), { query });
-      // Re-push as each slot finishes loading; sends to still-loading slots are dropped harmlessly.
-      v.webContents.on('did-finish-load', () => { if (panelWin === win) pushToPanel(); });
-    });
+    paneViews = ap.pages.map((g, i) => makePaneView(i === 0));
+    paneViews.forEach(v => win.contentView.addChildView(v));
     layoutPaneViews();
     win.on('resize', layoutPaneViews);
     win.show(); win.focus();                     // no ready-to-show without window-level content
+    if (swMaximized) win.maximize();
   } else {
     win.loadFile(path.join(__dirname, 'index.html'), { query: { mode: 'software' } });
-    win.once('ready-to-show', () => { if (win.isDestroyed()) return; win.show(); win.focus(); if (panelWin === win) pushToPanel(); });
+    win.once('ready-to-show', () => { if (win.isDestroyed()) return; win.show(); win.focus(); if (swMaximized) win.maximize(); if (panelWin === win) pushToPanel(); });
   }
   win.on('closed', () => { if (panelWin === win) { panelWin = null; paneViews = []; } });
   console.log('software mode: window created (' + width + 'x' + height + (ap ? ', pane "' + ap.pane.name + '" x' + units : '') + ')');
@@ -3854,7 +3890,7 @@ app.whenReady().then(async () => {
       meetingRecorder.setMic(nextMeeting.micDevice);                            // push an edited mic to the recorder
     }
     if (runMode() !== prevMode) applyRunModeLive();                 // run mode changed on the Software tab -> rebuild the window in-place
-    else if (runMode() === 'software' && paneRebuildKey() !== prevPaneKey) applyRunModeLive();   // pane display/slots changed -> new window height
+    else if (runMode() === 'software' && paneRebuildKey() !== prevPaneKey) applyPaneLive();   // pane display/slots changed -> adjust the window in place
     return { ok: true };
   });
   ipcMain.handle('pickProgram', async (e) => {
