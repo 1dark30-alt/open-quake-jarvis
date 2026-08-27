@@ -77,7 +77,7 @@ const { createScreensaverHost } = require('./screensaver-host'); // Screensaver 
 const saverIdle = require('./screensaver-idle'); // pure screensaver auto-start/wake/swallow decisions
 const owuiClient = require('./owuiClient'); // shared OWUI URL normalization + model-list probe
 const { resolveRunMode, reservedDisplayEnabled } = require('./runMode'); // pure run-mode helpers (panel/software/monitor)
-const { activePane, resolvePaneSlots } = require('./panes');    // pure pane resolution (software-mode vertical page stacks)
+const { activePane, resolvePaneSlots, softwareWindowBounds } = require('./panes');    // pure pane resolution (software-mode vertical page stacks)
 const voiceConfig = require('./voiceConfig'); // global TTS/STT endpoints + per-page override resolution + legacy migration
 const { DiscordService } = require('./discordService'); // local Discord desktop RPC; protocol stays behind this main-process service
 const { DiscordOAuth } = require('./discordOAuth');
@@ -178,6 +178,7 @@ obsService.on('update', () => {
 });
 let panelWin = null, configWin = null, tray = null, welcomeWin = null;
 let paneViews = [];   // software pane mode: one WebContentsView per stacked page (empty otherwise)
+let swBounds = null;  // last software-window bounds — rebuilds (save, pane switch) keep the user's position/size
 let dashSession = null, cookieFlushT = null;   // dashboard webview session + a debounced cookie-store flush
 const dev = new MultiKnob({ hid: HID });
 let reservedRefreshTimer = null;
@@ -2409,17 +2410,13 @@ function createSoftwareWindow() {
   if (panelWin && !panelWin.isDestroyed()) { panelWin.show(); panelWin.focus(); return; }
   const ap = activePaneNow();                    // pane mode: N stacked pages -> N slot views, taller window
   const units = ap ? ap.pages.length : 1;
-  const wa = screen.getPrimaryDisplay().workArea;
-  let width = Math.max(760, Math.min(1280, wa.width - 80));
-  let height = Math.round(width * (480 * units) / 1920);
-  if (height > wa.height - 80) {                 // taller than the screen -> shrink to fit, keep the aspect
-    height = wa.height - 80;
-    width = Math.max(760, Math.round(height * 1920 / (480 * units)));
-  }
+  // A live rebuild (editor save, pane switch, mode flip) reuses the window's last position and width
+  // instead of recentering on the primary display — only the height follows the slot count.
+  const prev = swBounds;
+  const wa = prev ? screen.getDisplayMatching(prev).workArea : screen.getPrimaryDisplay().workArea;
+  const { x, y, width, height } = softwareWindowBounds(prev, wa, units);
   panelWin = new BrowserWindow({
-    width, height,
-    x: wa.x + Math.round((wa.width - width) / 2),
-    y: wa.y + Math.round((wa.height - height) / 2),
+    width, height, x, y,
     minWidth: 760, minHeight: Math.round(760 * (480 * units) / 1920),
     title: 'open-quake', frame: true, show: false, resizable: true, movable: true,
     minimizable: true, maximizable: true, fullscreenable: false, autoHideMenuBar: true,
@@ -2433,6 +2430,10 @@ function createSoftwareWindow() {
   });
   const win = panelWin;   // capture: a live mode switch destroys this window while creating another — the
                           // stale window's events must not clobber the module-level panelWin of the new one.
+  const rememberBounds = () => { if (!win.isDestroyed() && panelWin === win) { try { swBounds = win.getBounds(); } catch (e) {} } };
+  rememberBounds();
+  win.on('move', rememberBounds);
+  win.on('resize', rememberBounds);
   try { win.setAspectRatio(1920 / (480 * units)); } catch (e) {}
   if (ap) {
     // The window itself hosts nothing; each slot is a full panel renderer (index.html) in its own

@@ -35,4 +35,19 @@ function activePane(settings, panes, grids) {
   return pages.length ? { pane, pages } : null;
 }
 
-module.exports = { resolvePaneSlots, activePane, MAX_PANE_SLOTS };
+// Software-window geometry for `units` stacked 1920x480 pages. With `prev` (the window's last
+// bounds) the user's position and width are kept — only the height follows the slot count, clamped
+// into the work area `wa`. Without prev: default width, centered.
+function softwareWindowBounds(prev, wa, units) {
+  let width = prev ? Math.max(760, prev.width) : Math.max(760, Math.min(1280, wa.width - 80));
+  let height = Math.round(width * (480 * units) / 1920);
+  if (height > wa.height - 80) {                 // taller than the screen -> shrink to fit, keep the aspect
+    height = wa.height - 80;
+    width = Math.max(760, Math.round(height * 1920 / (480 * units)));
+  }
+  const x = prev ? Math.min(Math.max(prev.x, wa.x), wa.x + wa.width - width) : wa.x + Math.round((wa.width - width) / 2);
+  const y = prev ? Math.min(Math.max(prev.y, wa.y), wa.y + wa.height - height) : wa.y + Math.round((wa.height - height) / 2);
+  return { x, y, width, height };
+}
+
+module.exports = { resolvePaneSlots, activePane, softwareWindowBounds, MAX_PANE_SLOTS };

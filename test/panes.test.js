@@ -5,7 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { resolvePaneSlots, activePane, MAX_PANE_SLOTS } = require('../app/panes');
+const { resolvePaneSlots, activePane, softwareWindowBounds, MAX_PANE_SLOTS } = require('../app/panes');
 
 const grids = [
   { id: 'a', name: 'Grid A' },
@@ -43,6 +43,28 @@ test('activePane is null when no pane resolves to any pages', () => {
   assert.equal(activePane(sw, [], grids), null);
   assert.equal(activePane(sw, [pane([{ pageId: 'gone' }])], grids), null);
   assert.equal(activePane({ ...sw, activePaneId: 'nope' }, [pane([{ pageId: 'gone' }])], grids), null);
+});
+
+test('softwareWindowBounds: no previous bounds -> default width, centered', () => {
+  const wa = { x: 0, y: 0, width: 2560, height: 1440 };
+  const b = softwareWindowBounds(null, wa, 1);
+  assert.deepEqual(b, { x: 640, y: 560, width: 1280, height: 320 });
+});
+
+test('softwareWindowBounds: rebuild keeps position and width, height follows slot count', () => {
+  const wa = { x: 0, y: 0, width: 2560, height: 1440 };
+  const prev = { x: 100, y: 100, width: 1000, height: 250 };
+  assert.deepEqual(softwareWindowBounds(prev, wa, 1), { x: 100, y: 100, width: 1000, height: 250 });
+  assert.deepEqual(softwareWindowBounds(prev, wa, 3), { x: 100, y: 100, width: 1000, height: 750 });
+});
+
+test('softwareWindowBounds: clamps into the work area', () => {
+  const wa = { x: 0, y: 0, width: 1920, height: 1080 };
+  // 5 units at width 1600 would be 4000 tall -> shrink to fit, position pulled back on-screen
+  const b = softwareWindowBounds({ x: 1800, y: 1000, width: 1600, height: 400 }, wa, 5);
+  assert.equal(b.height, 1000);
+  assert.equal(b.width, Math.max(760, Math.round(1000 * 1920 / 2400)));
+  assert.ok(b.x + b.width <= wa.width && b.y + b.height <= wa.height);
 });
 
 test('activePane falls back to the first usable pane when the picked id is unset or dead', () => {
