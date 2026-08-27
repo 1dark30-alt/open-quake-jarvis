@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { chooseCurrentMeeting, createOfficeGraph, meetingMetadata } = require('../app/officeGraph');
+const { chooseCurrentMeeting, createOfficeGraph, meetingMetadata } = require('../community-apps/office/officeGraph');
 
 function event(subject, start, end, extra) {
   return Object.assign({

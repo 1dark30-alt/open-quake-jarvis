@@ -117,11 +117,11 @@ Recording and transcription for the Meeting panel (details in [meeting.md](meeti
     uses its signed-in MAPI profile; no OAuth or app registration is needed. **Check
     Connection** fills the Account dropdown. Set the Calendar folder (usually
     "Calendar"). The new Outlook (olk.exe) has no COM interface.
-  - **Microsoft 365 (Graph)** reads the signed-in user's Microsoft 365 calendar with the
-    existing delegated Microsoft connection and `Calendars.Read`. **Check Connection**
-    starts browser sign-in when needed; complete it and check again. This source does not
-    require classic Outlook to be running. Microsoft sign-in and encrypted token storage
-    are shared with the Office panel and can also be managed on the Auth tab.
+  - **Microsoft 365 (Graph)** uses the installed Microsoft 365 drop-in app and its app-scoped
+    `Calendars.Read` connection. Select that app's page in the editor and use its **Microsoft
+    365 account → Connect** control before choosing **Check Connection** here. The panel also
+    offers Connect when disconnected. This source does not require classic Outlook or a global
+    Microsoft OAuth setting.
 
   Both sources select the meeting the same way: if the next :00/:30 boundary is under
   5 minutes away, the meeting starting then wins; otherwise the meeting containing the

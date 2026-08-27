@@ -42,9 +42,10 @@ Included apps:
   backends; each keeps its own session and settings.
 - **[Meeting](meeting.md)** — one-tap mute/video/accept/decline/leave for Zoom and Teams,
   no keyboard or mouse.
-- **Microsoft 365** — a read-only Microsoft 365 dashboard: your profile, live presence, and
-  upcoming calendar entries pulled from Microsoft Graph after you sign in with your Microsoft
-  account (**Settings → Auth**), plus up to **eight** configurable app shortcuts (Teams,
+- **Microsoft 365** — an installable community drop-in with a read-only dashboard: your profile,
+  live presence, and upcoming calendar entries pulled from Microsoft Graph after you choose
+  **Connect** in that app page's editor settings (or on its disconnected panel), plus up to
+  **eight** configurable app shortcuts (Teams,
   Outlook, Word, Excel, PowerPoint, OneNote, OneDrive, Microsoft 365) that either focus an
   already-open window or launch it, and a one-tap **Join meeting** for the current/next event.
   Meeting links follow the configured Teams header app's **Open with** mode: web, desktop, or

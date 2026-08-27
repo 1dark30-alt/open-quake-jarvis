@@ -26,7 +26,7 @@ function storeFor(backend, logs) {
 function tokenConfig(accessToken, refreshToken) {
   return {
     grids: [],
-    settings: { oauth: { providers: {}, tokens: { microsoft: { accessToken, refreshToken } } } },
+    settings: { oauth: { providers: {}, tokens: { 'app:office': { accessToken, refreshToken } } } },
   };
 }
 
@@ -93,11 +93,11 @@ test('encryption backend failure never downgrades a changed secret to plaintext'
 test('OAuth token mutations roll back when secure persistence fails', () => {
   let config = tokenConfig('old-access', 'old-refresh');
   const storage = new TokenStorage({ getConfig: () => config, saveConfig: () => false });
-  assert.throws(() => storage.setTokens('microsoft', { accessToken: canary, refreshToken: canary + '-refresh' }), /stored securely/);
-  assert.equal(config.settings.oauth.tokens.microsoft.accessToken, 'old-access');
-  assert.equal(config.settings.oauth.tokens.microsoft.refreshToken, 'old-refresh');
-  assert.throws(() => storage.deleteTokens('microsoft'), /deletion could not be stored/);
-  assert.equal(config.settings.oauth.tokens.microsoft.refreshToken, 'old-refresh');
+  assert.throws(() => storage.setTokens('app:office', { accessToken: canary, refreshToken: canary + '-refresh' }), /stored securely/);
+  assert.equal(config.settings.oauth.tokens['app:office'].accessToken, 'old-access');
+  assert.equal(config.settings.oauth.tokens['app:office'].refreshToken, 'old-refresh');
+  assert.throws(() => storage.deleteTokens('app:office'), /deletion could not be stored/);
+  assert.equal(config.settings.oauth.tokens['app:office'].refreshToken, 'old-refresh');
 });
 
 windowsTest('OAuth save, restart restore, refresh rotation, and logout stay encrypted at rest', () => {
@@ -116,17 +116,17 @@ windowsTest('OAuth save, restart restore, refresh rotation, and logout stay encr
     assert.doesNotMatch(persisted, new RegExp(canary));
 
     config = store.decryptConfig(JSON.parse(persisted));
-    assert.equal(storage.getTokens('microsoft').refreshToken, canary + '-refresh');
+    assert.equal(storage.getTokens('app:office').refreshToken, canary + '-refresh');
 
-    storage.setTokens('microsoft', { accessToken: canary + '-rotated-access', refreshToken: canary + '-rotated-refresh' });
+    storage.setTokens('app:office', { accessToken: canary + '-rotated-access', refreshToken: canary + '-rotated-refresh' });
     persisted = fs.readFileSync(file, 'utf8');
     assert.doesNotMatch(persisted, new RegExp(canary));
     config = store.decryptConfig(JSON.parse(persisted));
-    assert.equal(storage.getTokens('microsoft').refreshToken, canary + '-rotated-refresh');
+    assert.equal(storage.getTokens('app:office').refreshToken, canary + '-rotated-refresh');
 
-    storage.deleteTokens('microsoft');
+    storage.deleteTokens('app:office');
     config = store.decryptConfig(JSON.parse(fs.readFileSync(file, 'utf8')));
-    assert.equal(storage.getTokens('microsoft'), null);
+    assert.equal(storage.getTokens('app:office'), null);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

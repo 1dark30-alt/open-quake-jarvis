@@ -16,26 +16,17 @@ class TokenStorage {
     }
     if (!config.settings.oauth.providers || typeof config.settings.oauth.providers !== 'object') config.settings.oauth.providers = {};
     if (!config.settings.oauth.tokens || typeof config.settings.oauth.tokens !== 'object') config.settings.oauth.tokens = {};
-    if (config.settings.oauth.providers.teams && !config.settings.oauth.providers.microsoft) {
-      config.settings.oauth.providers.microsoft = config.settings.oauth.providers.teams;
-      delete config.settings.oauth.providers.teams;
-      this.saveConfig();
+    let migrated = false;
+    const legacyToken = config.settings.oauth.tokens.microsoft || config.settings.oauth.tokens.teams;
+    if (legacyToken && !config.settings.oauth.tokens['app:office']) {
+      config.settings.oauth.tokens['app:office'] = Object.assign({}, legacyToken, { provider: 'app:office' });
+      migrated = true;
     }
-    // Microsoft is a shipped public OAuth client. Its application identity belongs to the
-    // provider definition, not mutable user configuration; remove legacy overrides/secrets.
-    const microsoftSettings = config.settings.oauth.providers.microsoft;
-    if (microsoftSettings && typeof microsoftSettings === 'object') {
-      const hadLegacySettings = Object.hasOwn(microsoftSettings, 'clientId') || Object.hasOwn(microsoftSettings, 'clientSecret');
-      delete microsoftSettings.clientId;
-      delete microsoftSettings.clientSecret;
-      if (!Object.keys(microsoftSettings).length) delete config.settings.oauth.providers.microsoft;
-      if (hadLegacySettings) this.saveConfig();
+    for (const id of ['microsoft', 'teams']) {
+      if (Object.hasOwn(config.settings.oauth.providers, id)) { delete config.settings.oauth.providers[id]; migrated = true; }
+      if (Object.hasOwn(config.settings.oauth.tokens, id)) { delete config.settings.oauth.tokens[id]; migrated = true; }
     }
-    if (config.settings.oauth.tokens.teams && !config.settings.oauth.tokens.microsoft) {
-      config.settings.oauth.tokens.microsoft = Object.assign({}, config.settings.oauth.tokens.teams, { provider: 'microsoft' });
-      delete config.settings.oauth.tokens.teams;
-      this.saveConfig();
-    }
+    if (migrated) this.saveConfig();
     return config.settings.oauth;
   }
 

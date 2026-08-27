@@ -1905,7 +1905,7 @@
     const g = curGrid();
     const def = appDefs.find(a => a.id === g.app);
     const builtinGrid = !!(def && def.grid);          // music/agenda/events: in-page grid, always on
-    const canGrid = !!def && !builtinGrid && g.app !== 'office'; // Office owns four configured app controls; no unrelated generic grid
+    const canGrid = !!def && !builtinGrid && !def.hideGridInEditor;
     const onButtons = canGrid && g.gridOn && dashTab === 'buttons';
     // Tile editor shows for a built-in grid, or on the Buttons tab of an opted-in grid; clear it otherwise.
     if (!builtinGrid && !onButtons) ['tilegrid', 'mergebar', 'tileform', 'iconpane'].forEach(id => { document.getElementById(id).innerHTML = ''; });
@@ -2184,6 +2184,7 @@
         <option value="">— choose an app —</option>
         ${appDefs.filter(a => a.id === g.app || appVisible(a)).sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })).map(a => `<option value="${esc(a.id)}" ${a.id === g.app ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
       </select><button id="refreshApps" type="button" title="Reload app manifests">Refresh</button></div>
+      ${def && def.oauth ? '<div id="appOAuth"></div>' : ''}
       ${optsBlock}
       ${rotRowHtml(g)}
       ${shortcutRowHtml(g)}
@@ -2196,6 +2197,7 @@
     document.getElementById('refreshApps').onclick = refreshApps;
     document.getElementById('gDelete').onclick = deleteCurrentPage;
     { const fb = document.getElementById('gFocus'); if (fb) fb.onclick = focusCurrentPage; }
+    if (def && def.oauth) appendDropInOAuthSetup(document.getElementById('appOAuth'), def);
     const gg = document.getElementById('gGrid');
     if (gg) gg.onchange = e => {
       g.gridOn = e.target.checked;
@@ -2470,6 +2472,81 @@
     }
     wireRotRow(g); wireShortcutRow(g); wireAdvRow(g);
     enforceMusicCap(g);
+  }
+  // OAuth belongs to the installed app, so its lifecycle controls sit with that app's page
+  // configuration instead of in the global Settings -> Auth provider list. The main process binds
+  // every call to app:<id>; tokens and provider credentials never cross this renderer boundary.
+  async function appendDropInOAuthSetup(el, def) {
+    if (!el || !def || !def.oauth) return;
+    const box = document.createElement('div');
+    box.className = 'advsec';
+    box.style.cssText = 'margin-top:12px;padding:10px;border:1px solid #213145;border-radius:8px';
+    el.appendChild(box);
+    let notice = '';
+    let noticeBad = false;
+
+    const expiry = value => {
+      if (!value) return '';
+      const minutes = Math.round((Number(value) - Date.now()) / 60000);
+      if (minutes < 0) return ' · token expired';
+      if (minutes < 60) return ' · expires in ' + minutes + ' min';
+      return ' · expires in ' + Math.round(minutes / 60) + ' h';
+    };
+    const draw = async () => {
+      if (!box.isConnected) return null;
+      let status;
+      try { status = await configApi.getAppOAuthStatus(def.id); }
+      catch (error) { status = { ok: false, error: error.message || String(error) }; }
+      if (!box.isConnected) return status;
+      const connected = !!(status && status.ok && status.connected);
+      const configured = !!(status && status.ok && status.configured);
+      const state = connected ? 'Connected' + expiry(status.expiresAt) : configured ? 'Ready to connect' : 'Not configured';
+      const scopes = Array.isArray(def.oauth.scopes) ? def.oauth.scopes.join(' ') : '';
+      box.innerHTML = `<div class="row" style="gap:8px;align-items:center">
+          <label style="width:auto;font-weight:bold">${esc(def.oauth.name || def.name || 'App')} account</label>
+          <span class="hint" style="margin:0">${esc(state)}</span>
+          <span id="appOauthMsg" class="hint" style="margin:0 0 0 auto;color:${noticeBad ? '#c98' : '#7e93ab'}">${esc(notice || (status && status.ok ? '' : (status && status.error) || 'OAuth status unavailable'))}</span>
+        </div>
+        ${def.oauth.clientId ? '<div class="row"><label>Application</label><span class="hint" style="margin:0">Provided by this drop-in app</span></div>' : ''}
+        <div class="row"><label>Permissions</label><span class="hint" style="margin:0">${esc(scopes || 'Declared by the app')}</span></div>
+        <p class="hint">This account and its encrypted tokens belong only to <b>${esc(def.name || def.id)}</b>; other drop-in apps cannot access them.</p>
+        <div class="row" style="gap:8px">
+          <button id="appOauthConnect" ${configured ? '' : 'disabled'}>${connected ? 'Reconnect' : 'Connect'}</button>
+          <button id="appOauthDisconnect" class="danger" ${connected ? '' : 'disabled'}>Disconnect</button>
+        </div>`;
+      const connect = box.querySelector('#appOauthConnect');
+      if (connect) connect.onclick = async () => {
+        connect.disabled = true; notice = 'Opening ' + (def.oauth.name || def.name || 'account') + ' sign-in…'; noticeBad = false; await draw();
+        let result;
+        try { result = await configApi.connectAppOAuth(def.id); }
+        catch (error) { result = { ok: false, error: error.message || String(error) }; }
+        if (!result || !result.ok) {
+          notice = 'Connect failed: ' + ((result && result.error) || 'unknown error'); noticeBad = true; await draw(); return;
+        }
+        notice = 'Finish sign-in in your browser.'; noticeBad = false; await draw();
+        let attempts = 0;
+        const poll = async () => {
+          if (!box.isConnected || attempts++ >= 60) return;
+          const next = await draw();
+          if (next && next.connected) { notice = 'Connected'; noticeBad = false; await draw(); return; }
+          setTimeout(poll, 2000);
+        };
+        setTimeout(poll, 2000);
+      };
+      const disconnect = box.querySelector('#appOauthDisconnect');
+      if (disconnect) disconnect.onclick = async () => {
+        if (!window.confirm('Disconnect ' + (def.oauth.name || def.name || def.id) + ' and remove its stored OAuth tokens?')) return;
+        disconnect.disabled = true; notice = 'Disconnecting…'; noticeBad = false; await draw();
+        let result;
+        try { result = await configApi.disconnectAppOAuth(def.id); }
+        catch (error) { result = { ok: false, error: error.message || String(error) }; }
+        notice = result && result.ok ? 'Disconnected' : 'Disconnect failed: ' + ((result && result.error) || 'unknown error');
+        noticeBad = !(result && result.ok);
+        await draw();
+      };
+      return status;
+    };
+    await draw();
   }
   // Music: only 2 of {button grid, album art, lyrics} fit at once. Disable the unchecked third.
   function optVal(g, key, dflt) { const o = g.options || {}; return (key in o) ? o[key] : dflt; }
@@ -4198,7 +4275,7 @@
             e.currentTarget.disabled = true;
             oauthMsg(id, 'Opening browser...');
             const provider = providers.find(value => value.provider === id);
-            const requestedScopes = id === 'microsoft' ? ['User.Read', 'Presence.Read', 'Calendars.Read', 'offline_access'] : (provider && provider.scopes || []);
+            const requestedScopes = provider && provider.scopes || [];
             const r = await configApi.connectOAuthProvider(id, requestedScopes);
             oauthMsg(id, r && r.ok ? 'Finish sign-in in your browser.' : 'Connect failed: ' + ((r && r.error) || ''), !(r && r.ok));
             e.currentTarget.disabled = false;
@@ -4448,9 +4525,7 @@
         if (!r || !r.ok) {
           msg.textContent = (r && r.error) || 'Check failed'; msg.style.color = '#c98';
           if (source === 'microsoft365' && r && (r.code === 'not_connected' || r.code === 'consent_required')) {
-            const connected = await configApi.connectOAuthProvider('microsoft', ['User.Read', 'Presence.Read', 'Calendars.Read', 'offline_access']);
-            if (!connected || !connected.ok) { msg.textContent = (connected && connected.error) || 'Could not start Microsoft sign-in.'; return; }
-            msg.textContent = 'Complete Microsoft sign-in in your browser, then click Check Connection again.'; msg.style.color = '';
+            msg.textContent = 'Open the installed Microsoft 365 app and choose Connect, then click Check Connection again.';
           }
           return;
         }

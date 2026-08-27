@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' http: https: file: data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file: http: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob: data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none';">
 <title>Microsoft 365 — Teams</title>
-<link rel="stylesheet" href="/office.css">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main id="officeDeck" class="office-deck">
@@ -39,6 +39,7 @@
           <span class="app-nav-copy"><strong>Excel</strong><small>Desktop / web</small></span>
         </button>
       </nav>
+      <button id="disconnect" class="disconnect-button" type="button" hidden>Disconnect</button>
     </header>
 
     <section class="meeting-strip">
@@ -124,7 +125,7 @@
     </section>
   </main>
 
-<script src="/officeCalendar.js"></script>
-<script src="/office.js"></script>
+<script src="officeCalendar.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

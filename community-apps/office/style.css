@@ -94,7 +94,7 @@ button:focus-visible {
   position: relative;
   z-index: 5;
   display: grid;
-  grid-template-columns: minmax(370px, 0.76fr) minmax(0, 1.72fr);
+  grid-template-columns: minmax(370px, 0.76fr) minmax(0, 1.72fr) auto;
   align-items: center;
   gap: 16px;
   min-width: 0;
@@ -843,7 +843,7 @@ h1 {
 .auth-box p { margin: 0; color: var(--muted); font-size: 13px; }
 .auth-message { min-height: 18px; padding-top: 6px; }
 
-.auth-box > button {
+.auth-box button {
   min-width: 140px;
   min-height: 56px;
   border: 1px solid var(--line-strong);
@@ -854,8 +854,17 @@ h1 {
   font-weight: 800;
 }
 
+.disconnect-button {
+  min-width: 96px;
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  background: var(--surface-soft);
+}
+
 @media (max-width: 1200px) {
-  .deck-header { grid-template-columns: minmax(260px, 1fr) auto minmax(330px, 1fr); gap: 12px; }
+  .deck-header { grid-template-columns: minmax(260px, 1fr) minmax(0, 1.7fr) auto; gap: 12px; }
   .header-action { min-width: 96px; }
   .meeting-content { grid-template-columns: minmax(0, 1fr) 210px; }
   .primary-event { grid-template-columns: 118px minmax(0, 1fr); }

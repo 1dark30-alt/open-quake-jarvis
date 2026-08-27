@@ -49,6 +49,9 @@ For how to install or submit an app — and a safety note — see the docs:
 - **[news-spotlight](news-spotlight)** — full-screen rotating RSS feed reader. Defaults
   to BBC / Sky / The Verge / Ars Technica; configurable feeds, story duration, Ken
   Burns motion, breaking-news mode, and an SSRF-safe proxy.
+- **[office](office)** — Microsoft 365 calendar, presence, app launcher, and configurable
+  desktop shortcuts. Its Microsoft sign-in belongs to this app and is managed from that app's
+  editor settings (with a panel fallback); no global Microsoft OAuth setting is required.
 - **[pihole-dash](pihole-dash)** — multi-server **Pi-hole** dashboard: up to four
   Pi-holes as tabs on one pane — live stats, 24-hour query chart with blocked share,
   top blocked/clients, pause/disable/enable blocking, and one-tap open of the web UI

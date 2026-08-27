@@ -308,7 +308,7 @@ class OAuthHandler {
   }
 
   listStatus() {
-    return ['microsoft', 'github', 'google'].map(id => this.status(id));
+    return ['github', 'google'].map(id => this.status(id));
   }
 
   scheduleAll() {
