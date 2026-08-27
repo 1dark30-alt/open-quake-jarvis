@@ -8,11 +8,13 @@
     confident: "Rewrite the user's text in a confident, direct, assertive tone. Remove hedging and qualifiers, fix grammar, and keep the original meaning. Output only the rewritten text.",
   };
   let config = { activeGridId: null, grids: [] };
+  let baseConfig = null;   // config as of the last load/save — the base for merging external writes into a dirty editor
+  const snapConfig = o => JSON.parse(JSON.stringify(o));
   let gi = 0, ti = -1, selEnd = -1, dragFrom = -1, dirty = false, appDefs = [], view = 'pages', ledState = null, settingsTab = 'software', dashTab = 'page';
   let voiceModes = null;   // { claude:[{id,label}], codex:[...], copilot:[...], owui:[], api:[] } — lazy-loaded for the Routines tab's Mode picker
   let selRoutineId = null, routineQuery = '';   // Routines tab master-detail: selection tracked by stable id, plus the search box text
-  // Left sidebar tab (Pages vs Groups list) + which group is currently being edited when view='groups'.
-  let leftTab = 'pages', groupIndex = -1;
+  // Left sidebar tab (Pages vs Groups vs Panes list) + which group/pane is being edited.
+  let leftTab = 'pages', groupIndex = -1, paneIndex = -1, paneSlotDragFrom = -1, paneSlotDragCol = '';
   // Per-page Advanced <details> open state — persisted across re-renders so toggling an override
   // checkbox inside it (which calls render()) doesn't collapse the section out from under the user.
   let advOpen = false;
@@ -742,7 +744,7 @@
       const del = document.getElementById('rtdDelete');
       if (del) del.onclick = () => {
         const r = curRoutine(); if (!r) return;
-        if (!window.confirm('Delete routine “' + (r.name || '(unnamed)') + '”?\n\nAny tile or macro that uses it will show “routine not found” until you point it elsewhere. This can’t be undone.')) return;
+        if (!ask('Delete routine “' + (r.name || '(unnamed)') + '”?\n\nAny tile or macro that uses it will show “routine not found” until you point it elsewhere. This can’t be undone.')) return;
         const l = list(); const idx = l.findIndex(x => x.id === r.id);
         if (idx >= 0) l.splice(idx, 1);
         selRoutineId = null;   // resolveRoutineSel picks the first still-visible routine on redraw
@@ -1006,7 +1008,7 @@
         if (cur && cur !== g.id) {
           const other = config.grids.find(x => x.id === cur);
           const name = (other && other.name) || cur;
-          if (!window.confirm(name + ' is currently set as home page, switch to this one?')) {
+          if (!ask(name + ' is currently set as home page, switch to this one?')) {
             e.target.checked = false;
             return;
           }
@@ -1020,7 +1022,7 @@
     const ghide = document.getElementById('gHidden');
     if (ghide) ghide.onchange = e => {
       if (e.target.checked && config.homePageId === g.id) {
-        window.alert('This page is set as the home page and can\'t be hidden. Pick a new home page first, then hide this one.');
+        tell('This page is set as the home page and can\'t be hidden. Pick a new home page first, then hide this one.');
         e.target.checked = false;
         return;
       }
@@ -1046,7 +1048,7 @@
       cloneBtn.onclick = () => {
         const src = config.grids.find(p => p.id === clone.value); if (!src) return;
         const hasContent = (g.tiles || []).some(t => t && t.type);
-        if (hasContent && !window.confirm('Replace this grid’s tiles with the ones from “' + (src.name || 'that page') + '”?')) return;
+        if (hasContent && !ask('Replace this grid’s tiles with the ones from “' + (src.name || 'that page') + '”?')) return;
         g.tiles = fitTiles(src.tiles, (g.cols || 1) * (g.rows || 1));
         ti = -1; selEnd = -1; render(); markDirty();
       };
@@ -1057,10 +1059,18 @@
   // ---- save model (no live edit) ----
   function setState(text, cls) { const el = document.getElementById('state'); el.textContent = text; el.className = 'state' + (cls ? ' ' + cls : ''); }
   function markDirty() { dirty = true; setState('● unsaved changes', 'dirty'); document.getElementById('saveBtn').disabled = false; }
+  // Native confirm()/alert() leave the window's input state broken in Electron — text fields and
+  // <select> popups stop responding because the dialog takes focus and the window never registers
+  // getting it back (electron#31917 / #41603). Route EVERY dialog through these; main blurs and
+  // refocuses the editor window afterwards, which restores input.
+  function refocusAfterDialog() { try { if (configApi.refocusEditor) configApi.refocusEditor(); } catch (e) {} }
+  function ask(msg) { const r = window.confirm(msg); refocusAfterDialog(); return r; }
+  function tell(msg) { window.alert(msg); refocusAfterDialog(); }
   async function doSave() {
     try {
       const result = await configApi.saveConfig(config);
       if (!(result && result.ok)) throw new Error(result && result.error || 'secure persistence failed');
+      baseConfig = snapConfig(config);   // on-disk now matches the editor — new merge base
       dirty = false;
       document.getElementById('saveBtn').disabled = true;
       setState('saved ✓', 'saved');
@@ -2594,7 +2604,7 @@
         if (!(r && r.ok)) { document.getElementById('dkMsg').textContent = 'Rename failed: ' + ((r && r.error) || ''); } else draw();
       });
       box.querySelectorAll('.dkDel').forEach(b => b.onclick = async e => {
-        if (!window.confirm('Remove this deck profile and its key assignments?')) return;
+        if (!ask('Remove this deck profile and its key assignments?')) return;
         const r = await configApi.appApiCall('deck-host', 'profile-remove', { id: e.currentTarget.dataset.id });
         if (!(r && r.ok)) document.getElementById('dkMsg').textContent = 'Remove failed: ' + ((r && r.error) || '');
         draw();
@@ -2667,7 +2677,7 @@
       };
       const disconnect = box.querySelector('#dcDisconnect');
       if (disconnect) disconnect.onclick = async () => {
-        if (!window.confirm('Disconnect Discord and remove the stored OAuth tokens?')) return;
+        if (!ask('Disconnect Discord and remove the stored OAuth tokens?')) return;
         disconnect.disabled = true; message('Disconnecting…');
         let result;
         try { result = await configApi.disconnectOAuthProvider('discord'); }
@@ -2757,7 +2767,7 @@
         message('Enter the device code in GitHub…'); poll(result);
       };
       box.querySelector('#ghDisconnect').onclick = async event => {
-        if (!window.confirm('Disconnect GitHub and remove the stored OAuth tokens?')) return;
+        if (!ask('Disconnect GitHub and remove the stored OAuth tokens?')) return;
         event.currentTarget.disabled = true; message('Disconnecting…');
         let result;
         try { result = await configApi.disconnectGitHub(); }
@@ -2908,7 +2918,7 @@
   async function focusCurrentPage() {
     const g = curGrid();
     if (!g) return;
-    if (dirty) { window.alert('Save your changes first. The device only knows about saved pages, so “Focus on device” is unavailable until you Save.'); return; }
+    if (dirty) { tell('Save your changes first. The device only knows about saved pages, so “Focus on device” is unavailable until you Save.'); return; }
     try {
       const r = await configApi.focusPage(g.id);
       if (r && r.ok) setState('focused “' + (g.name || 'page') + '” on the device', 'saved');
@@ -2917,6 +2927,11 @@
   }
   function deleteCurrentPage() {
     if (config.grids.length <= 1) return;
+    const removedId = (config.grids[gi] || {}).id;
+    (config.panes || []).forEach(p => {
+      if (Array.isArray(p.slots)) p.slots = p.slots.filter(s => s && s.pageId !== removedId);
+      if (Array.isArray(p.slots2)) p.slots2 = p.slots2.filter(s => s && s.pageId !== removedId);
+    });
     config.grids.splice(gi, 1); gi = 0; ti = -1;
     if (!config.grids.some(x => x.id === config.activeGridId)) config.activeGridId = config.grids[0].id;
     render(); markDirty();
@@ -2927,17 +2942,25 @@
     if (githubAuthPollTimer) { clearTimeout(githubAuthPollTimer); githubAuthPollTimer = null; }
     renderGrids();
     renderGroups();
+    renderPanes();
     // Sidebar: which list is visible + which + buttons row + which tab is highlighted.
-    const groupsTab = leftTab === 'groups';
-    const elGL = document.getElementById('gridlist'); if (elGL) elGL.style.display = groupsTab ? 'none' : '';
+    const groupsTab = leftTab === 'groups', panesTab = leftTab === 'panes';
+    const pagesTab = !groupsTab && !panesTab;
+    const elGL = document.getElementById('gridlist'); if (elGL) elGL.style.display = pagesTab ? '' : 'none';
     const elGRP = document.getElementById('grouplist'); if (elGRP) elGRP.style.display = groupsTab ? '' : 'none';
-    const elAP = document.getElementById('addPageBtns'); if (elAP) elAP.style.display = groupsTab ? 'none' : '';
+    const elPN = document.getElementById('panelist'); if (elPN) elPN.style.display = panesTab ? '' : 'none';
+    const elAP = document.getElementById('addPageBtns'); if (elAP) elAP.style.display = pagesTab ? '' : 'none';
     const elAG = document.getElementById('addGroupBtns'); if (elAG) elAG.style.display = groupsTab ? '' : 'none';
-    const tp = document.getElementById('lTabPages'); if (tp) tp.classList.toggle('on', !groupsTab);
+    const elAPn = document.getElementById('addPaneBtns'); if (elAPn) elAPn.style.display = panesTab ? '' : 'none';
+    const tp = document.getElementById('lTabPages'); if (tp) tp.classList.toggle('on', pagesTab);
     const tg = document.getElementById('lTabGroups'); if (tg) tg.classList.toggle('on', groupsTab);
+    const tpn = document.getElementById('lTabPanes'); if (tpn) tpn.classList.toggle('on', panesTab);
+    // In software Panes mode, panes are the primary unit — their tab moves to the far left.
+    if (tpn) tpn.style.order = softwarePaneMode() ? '-1' : '';
 
     if (view === 'settings') { renderSettings(); return; }
     if (view === 'groups') { renderGroupMeta(); renderTiles(); renderForm(); return; }
+    if (view === 'panes') { renderPaneEditor(); return; }
     const g = curGrid();
     const groupApplied = !!(g && g.useGroup && g.groupId && groupById(g.groupId));
     const showTileEditor = () => { if (groupApplied) renderGroupAppliedPreview(g); else { renderTiles(); renderForm(); } };
@@ -3038,12 +3061,160 @@
     const list = config.groups || [];
     if (groupIndex < 0 || groupIndex >= list.length) return;
     const removed = list[groupIndex];
-    if (!window.confirm('Delete group "' + (removed.name || '(unnamed)') + '"? Any pages using it will fall back to their own tiles.')) return;
+    if (!ask('Delete group "' + (removed.name || '(unnamed)') + '"? Any pages using it will fall back to their own tiles.')) return;
     // Clear references on pages that used this group.
     (config.grids || []).forEach(p => { if (p && p.groupId === removed.id) { delete p.groupId; delete p.useGroup; } });
     list.splice(groupIndex, 1);
     if (!list.length) { view = 'pages'; leftTab = 'pages'; groupIndex = -1; }
     else groupIndex = Math.min(groupIndex, list.length - 1);
+    ti = -1; selEnd = -1; render(); markDirty();
+  }
+
+  // ---- panes (left list + stacked-slot editor) ----
+  // A pane stacks 1..5 existing pages vertically for the Software-mode window (Settings -> Software ->
+  // Software window). Slots reference pages by id — nothing is duplicated.
+  const PANE_MAX_SLOTS = 5;
+  function softwarePaneMode() { const s = config.settings || {}; return s.runMode === 'software' && s.softwareDisplay === 'pane'; }
+  function curPane() { const list = config.panes || []; return (paneIndex >= 0 && paneIndex < list.length) ? list[paneIndex] : null; }
+  function renderPanes() {
+    const el = document.getElementById('panelist'); if (!el) return;
+    el.innerHTML = '';
+    const list = config.panes || [];
+    if (!list.length) { el.innerHTML = '<p class="hint" style="margin:6px 4px">No panes yet. Use + Pane to create one.</p>'; return; }
+    list.forEach((p, i) => {
+      const d = document.createElement('div');
+      d.className = 'gridrow' + (view === 'panes' && i === paneIndex ? ' active' : '');
+      const left = document.createElement('span'); left.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden';
+      const name = document.createElement('span'); name.textContent = '▤ ' + (p.name || '(unnamed)'); name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      left.appendChild(name); d.appendChild(left);
+      if (p.shortcut) { const sub = document.createElement('span'); sub.className = 'gsub badge'; sub.title = 'Hotkey shortcut'; sub.textContent = p.shortcut; d.appendChild(sub); }
+      d.onclick = () => { view = 'panes'; paneIndex = i; ti = -1; selEnd = -1; render(); };
+      el.appendChild(d);
+    });
+  }
+  function addPane() {
+    if (!Array.isArray(config.panes)) config.panes = [];
+    config.panes.push({ id: uid(), name: 'New Pane', slots: [{ pageId: '' }] });
+    paneIndex = config.panes.length - 1;
+    leftTab = 'panes'; view = 'panes';
+    render(); markDirty();
+  }
+  function renderPaneEditor() {
+    ['tilegrid', 'mergebar', 'tileform', 'iconpane'].forEach(id => { const e = document.getElementById(id); if (e) e.innerHTML = ''; });
+    const p = curPane(); const el = document.getElementById('gridmeta');
+    if (!p) { el.innerHTML = '<p class="hint">No pane selected. Use + Pane to create one.</p>'; return; }
+    if (!Array.isArray(p.slots)) p.slots = [];
+    if (!Array.isArray(p.slots2)) p.slots2 = [];   // optional right column
+    el.innerHTML = `
+      <div class="row"><label>Name</label><input id="pnName" value="${esc(p.name)}"></div>
+      <div class="row" style="margin-top:6px"><label style="width:auto">Hotkey shortcut</label>
+        <input id="pnShortcut" readonly placeholder="click, then press keys" value="${esc(p.shortcut || '')}" style="width:200px">
+        <button id="pnShortcutClear" style="margin-left:8px">Clear</button>
+        <label style="width:auto;margin-left:14px;font-weight:normal;cursor:pointer"><input type="checkbox" id="pnShortcutNoRot" ${p.shortcutStopsRotation ? 'checked' : ''}> Disables rotation</label></div>
+      <p class="hint">Global hotkey that switches the software window to this pane from anywhere (flipping it to Panes view if needed). Press a combo that includes a modifier. <b>Disables rotation</b> turns auto-rotation off when it fires.</p>
+      <div class="row" style="margin-top:6px"><label style="width:auto">Rotation</label>
+        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="pnRot" ${p.rotate ? 'checked' : ''}> Include in rotation</label>
+        <label class="iconopt" style="width:auto;margin-left:14px"><input type="checkbox" id="pnHome" ${config.homePaneId === p.id ? 'checked' : ''}> Set as home pane</label></div>
+      <p class="hint">In Panes view, auto-rotation cycles through the panes with <b>Include in rotation</b> ticked (Settings → Software → Screen rotation controls the on/off and interval). The <b>home pane</b> is where a go-home action lands; only one pane can be home.</p>
+      <p class="hint">A pane stacks up to ${PANE_MAX_SLOTS} of your existing pages per column, one or two columns, so the Software-mode window can fill a bigger screen. Show it via Settings → Software → <b>Software window</b>. Each slot is a full 1920×480 page — the window's shape follows the layout.</p>
+      <div style="display:flex; gap:14px; align-items:flex-start">
+        <div style="flex:1; min-width:0">
+          <p class="sectitle" style="margin:0 0 2px">Left column</p>
+          <div id="pnSlots"></div>
+          <div class="row" style="margin-top:10px">${p.slots.length < PANE_MAX_SLOTS ? '<button class="primary" id="pnAddSlot">+ Add page</button>' : '<span class="hint" style="margin:0">Column is full (' + PANE_MAX_SLOTS + ').</span>'}</div>
+        </div>
+        <div style="flex:1; min-width:0">
+          <p class="sectitle" style="margin:0 0 2px">Right column <span style="font-weight:normal;opacity:.6">(optional)</span></p>
+          <div id="pnSlots2"></div>
+          <div class="row" style="margin-top:10px">${p.slots2.length < PANE_MAX_SLOTS ? '<button class="primary" id="pnAddSlot2">+ Add page</button>' : '<span class="hint" style="margin:0">Column is full (' + PANE_MAX_SLOTS + ').</span>'}</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="danger" id="pnDelete" style="margin-left:auto">Delete pane</button></div>`;
+    document.getElementById('pnName').oninput = e => { p.name = e.target.value; renderPanes(); markDirty(); };
+    const pnSc = document.getElementById('pnShortcut');
+    pnSc.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { p.shortcut = acc; pnSc.value = acc; renderPanes(); markDirty(); } };
+    document.getElementById('pnShortcutClear').onclick = () => { delete p.shortcut; pnSc.value = ''; renderPanes(); markDirty(); };
+    document.getElementById('pnShortcutNoRot').onchange = e => { if (e.target.checked) p.shortcutStopsRotation = true; else delete p.shortcutStopsRotation; markDirty(); };
+    document.getElementById('pnRot').onchange = e => { p.rotate = e.target.checked; markDirty(); };
+    document.getElementById('pnHome').onchange = e => {
+      if (e.target.checked) {
+        const cur = config.homePaneId;
+        if (cur && cur !== p.id) {
+          const other = (config.panes || []).find(x => x.id === cur);
+          if (!ask(((other && other.name) || cur) + ' is currently set as home pane, switch to this one?')) { e.target.checked = false; return; }
+        }
+        config.homePaneId = p.id;
+      } else if (config.homePaneId === p.id) delete config.homePaneId;
+      markDirty();
+    };
+    const addBtn = document.getElementById('pnAddSlot');
+    if (addBtn) addBtn.onclick = () => { p.slots.push({ pageId: '' }); render(); markDirty(); };
+    const addBtn2 = document.getElementById('pnAddSlot2');
+    if (addBtn2) addBtn2.onclick = () => { p.slots2.push({ pageId: '' }); render(); markDirty(); };
+    document.getElementById('pnDelete').onclick = deleteCurrentPane;
+    // One builder for both columns; drag moves slots within a column AND across columns (a row drop
+    // inserts at that spot, a drop on the column's empty space appends).
+    const srcArrOf = () => paneSlotDragCol === 'R' ? p.slots2 : p.slots;
+    const moveSlot = (dstArr, dstIndex) => {
+      const from = paneSlotDragFrom, srcArr = srcArrOf();
+      paneSlotDragFrom = -1; paneSlotDragCol = '';
+      if (from < 0 || from >= srcArr.length) return;
+      if (srcArr === dstArr && (from === dstIndex || dstIndex > srcArr.length)) return;
+      if (srcArr !== dstArr && dstArr.length >= PANE_MAX_SLOTS) return;   // target column full
+      const [moved] = srcArr.splice(from, 1);
+      dstArr.splice(Math.min(dstIndex, dstArr.length), 0, moved);
+      render(); markDirty();
+    };
+    const buildColumn = (slots, containerId, colKey) => {
+      const slotsEl = document.getElementById(containerId);
+      // The column itself accepts drops (append) — that's how a slot moves into an EMPTY column.
+      slotsEl.ondragover = e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
+      slotsEl.ondrop = e => { e.preventDefault(); moveSlot(slots, slots.length); };
+      if (!slots.length) { slotsEl.innerHTML = '<p class="hint" style="margin:8px 0 0">(empty — drag a page here)</p>'; return; }
+      slots.forEach((s, i) => {
+        const opts = ['<option value="">— choose a page —</option>']
+          .concat((config.grids || []).map(g => {
+            const tag = g.kind === 'web' ? '🌐' : g.kind === 'app' ? '🧩' : '▦';
+            return `<option value="${esc(g.id)}"${g.id === s.pageId ? ' selected' : ''}>${tag} ${esc(g.name || '(unnamed)')}</option>`;
+          })).join('');
+        const d = document.createElement('div');
+        d.className = 'row';
+        d.style.cssText = 'border:1px solid #2a3a4d;border-radius:8px;padding:10px;margin-top:8px;gap:8px;align-items:center';
+        d.innerHTML = `
+          <span class="griphandle" title="Drag to reorder" style="cursor:grab" draggable="true">☰</span>
+          <select data-pn-page style="flex:1;min-width:0">${opts}</select>
+          <button data-pn-del class="danger" title="Remove this page from the pane">×</button>`;
+        d.querySelector('[data-pn-page]').onchange = e => { s.pageId = e.target.value; markDirty(); };
+        d.querySelector('[data-pn-del]').onclick = () => {
+          if (!ask('Remove this page from the pane?')) return;
+          slots.splice(i, 1); render(); markDirty();
+        };
+        // Drag starts on the ☰ grip ONLY — a draggable row swallows mousedown on the <select>,
+        // making the page dropdown unpickable.
+        d.querySelector('.griphandle').ondragstart = e => { paneSlotDragFrom = i; paneSlotDragCol = colKey; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(i)); } catch (er) {} };
+        d.ondragover = e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; d.classList.add('dragover'); };
+        d.ondragleave = () => d.classList.remove('dragover');
+        d.ondrop = e => {
+          e.preventDefault(); e.stopPropagation();   // don't also fire the column's append-drop
+          d.classList.remove('dragover');
+          moveSlot(slots, i);
+        };
+        d.ondragend = () => d.classList.remove('dragover');
+        slotsEl.appendChild(d);
+      });
+    };
+    buildColumn(p.slots, 'pnSlots', 'L');
+    buildColumn(p.slots2, 'pnSlots2', 'R');
+  }
+  function deleteCurrentPane() {
+    const list = config.panes || [];
+    const p = curPane(); if (!p) return;
+    if (!ask('Delete pane "' + (p.name || '(unnamed)') + '"?')) return;
+    if (config.settings && config.settings.activePaneId === p.id) config.settings.activePaneId = '';
+    if (config.homePaneId === p.id) delete config.homePaneId;
+    list.splice(paneIndex, 1);
+    if (!list.length) { view = 'pages'; leftTab = 'pages'; paneIndex = -1; }
+    else paneIndex = Math.min(paneIndex, list.length - 1);
     ti = -1; selEnd = -1; render(); markDirty();
   }
 
@@ -3091,6 +3262,14 @@
         </select></div>
       <div class="row"><button id="sRunSetup">Re-run first-time setup…</button></div>
       <p class="hint"><b>Software</b> mode runs in an ordinary desktop window and needs no special hardware — ideal for the meeting workflow on any PC. <b>Panel</b> and <b>Monitor</b> use the QUAKE display. A mode change applies as soon as you click <b>Save</b> — no restart.</p>
+
+      <p class="sectitle" style="margin-top:22px">Software window</p>
+      <div class="row"><label style="width:auto">Show</label>
+        <select id="sSwDisplay" style="width:230px">
+          <option value="pages">Pages — one page at a time</option>
+          <option value="pane">Panes — stacked pages</option>
+        </select></div>
+      <p class="hint">Software mode only. A <b>pane</b> (created on the sidebar's Panes tab) stacks several of your pages vertically — the window grows to fit them, so a big screen shows them all at once. In Panes view the window's ☰ button switches between your panes, just like it switches pages. With no usable pane the window falls back to normal Pages. Applies on <b>Save</b>.</p>
 
       <p class="sectitle" style="margin-top:22px">On launch</p>
       <div class="row"><label style="width:auto">Editor window</label>
@@ -3582,7 +3761,7 @@
         diMsg('Installing "' + id + '"…');
         const r = await configApi.installRepoApp(id, confirmExec, repo);
         if (r && r.ok) { appDefs = await configApi.getApps(); const added = maybeAddAppPage(r.id, r.name); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); diMsg('Installed "' + r.name + '" from ' + (nameForSource(repo) || 'the repository') + (added ? ' — added a page' : '') + '.'); }
-        else if (r && r.warnExec && !confirmExec) { if (window.confirm('This app contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC with full access. Only install it if you trust the repository.\n\nInstall anyway?')) doInstall(id, true, repo); else diMsg(''); }
+        else if (r && r.warnExec && !confirmExec) { if (ask('This app contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC with full access. Only install it if you trust the repository.\n\nInstall anyway?')) doInstall(id, true, repo); else diMsg(''); }
         else if (r && r.conflict) diMsg('"' + id + '" is already installed — use Update instead.', true);
         else diMsg('Install failed: ' + ((r && r.error) || 'unknown error'), true);
       };
@@ -3592,26 +3771,26 @@
           const c = await configApi.checkDropInUpdate(id);
           if (!c || !c.ok) return diMsg('Update check failed: ' + ((c && c.error) || ''), true);
           if (!c.updateAvailable) { diStatus[id] = { state: 'ok' }; renderPane(); return diMsg('"' + id + '" is up to date (v' + c.installedVersion + ').'); }
-          if (!window.confirm('Update "' + id + '" from v' + c.installedVersion + ' to v' + c.remoteVersion + '?')) return diMsg('');
+          if (!ask('Update "' + id + '" from v' + c.installedVersion + ' to v' + c.remoteVersion + '?')) return diMsg('');
         }
         diMsg('Updating "' + id + '"…');
         const r = await configApi.updateDropInApp(id, confirmExec);
         if (r && r.ok && r.updated) { diStatus[id] = { state: 'ok' }; appDefs = await configApi.getApps(); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); diMsg('Updated "' + (r.name || id) + '" to v' + r.version); }
         else if (r && r.ok && r.upToDate) { diStatus[id] = { state: 'ok' }; renderPane(); diMsg('"' + id + '" is up to date.'); }
-        else if (r && r.warnExec && !confirmExec) { if (window.confirm('This update contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC. Update anyway?')) doUpdate(id, true); else diMsg(''); }
+        else if (r && r.warnExec && !confirmExec) { if (ask('This update contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC. Update anyway?')) doUpdate(id, true); else diMsg(''); }
         else diMsg('Update failed: ' + ((r && r.error) || 'unknown error'), true);
       };
       const doReinstall = async (id, confirmExec) => {
-        if (!confirmExec) { if (!window.confirm('Reinstall "' + id + '"? This re-downloads and overwrites its files.')) return diMsg(''); }
+        if (!confirmExec) { if (!ask('Reinstall "' + id + '"? This re-downloads and overwrites its files.')) return diMsg(''); }
         diMsg('Reinstalling "' + id + '"…');
         const r = await configApi.reinstallDropInApp(id, confirmExec);
         if (r && r.ok && r.reinstalled) { delete diStatus[id]; appDefs = await configApi.getApps(); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); diMsg('Reinstalled "' + (r.name || id) + '" (v' + r.version + ').'); }
-        else if (r && r.warnExec && !confirmExec) { if (window.confirm('This app contains executable code that runs on your PC. Reinstall anyway?')) doReinstall(id, true); else diMsg(''); }
+        else if (r && r.warnExec && !confirmExec) { if (ask('This app contains executable code that runs on your PC. Reinstall anyway?')) doReinstall(id, true); else diMsg(''); }
         else diMsg('Reinstall failed: ' + ((r && r.error) || 'unknown error'), true);
       };
       const doExport = async id => { const r = await configApi.exportDropInApp(id); diMsg(r && r.ok ? 'Exported to ' + r.path : (r && r.canceled ? '' : 'Export failed: ' + ((r && r.error) || '')), !(r && r.ok)); };
       const doDelete = async id => {
-        if (!window.confirm('Delete drop-in app "' + id + '" and its folder?')) return;
+        if (!ask('Delete drop-in app "' + id + '" and its folder?')) return;
         const r = await configApi.deleteDropInApp(id);
         if (r && r.ok) { delete diStatus[id]; diMsg('Deleted ' + id); appDefs = await configApi.getApps(); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); }
         else diMsg('Delete failed: ' + ((r && r.error) || ''), true);
@@ -3634,7 +3813,7 @@
       };
       const updateAll = async ids => {
         if (!ids.length) return;
-        if (!window.confirm('Update all ' + ids.length + ' app(s) now?')) return;
+        if (!ask('Update all ' + ids.length + ' app(s) now?')) return;
         let done = 0;
         for (const id of ids) { diMsg('Updating "' + id + '"…'); const r = await configApi.updateDropInApp(id, true); if (r && r.ok && r.updated) { done++; diStatus[id] = { state: 'ok' }; } }
         appDefs = await configApi.getApps(); diCatalog = null; await refreshInstalled(); renderPane();
@@ -4031,7 +4210,7 @@
         host.querySelectorAll('.oauthDisconnect').forEach(btn => {
           btn.onclick = async e => {
             const id = e.currentTarget.dataset.provider;
-            if (!window.confirm('Disconnect ' + id + ' and remove stored OAuth tokens?')) return;
+            if (!ask('Disconnect ' + id + ' and remove stored OAuth tokens?')) return;
             oauthMsg(id, 'Disconnecting...');
             const r = await configApi.disconnectOAuthProvider(id);
             oauthMsg(id, r && r.ok ? 'Disconnected' : 'Disconnect failed: ' + ((r && r.error) || ''), !(r && r.ok));
@@ -4048,6 +4227,13 @@
       if (runSel) { runSel.value = runModeVal; runSel.onchange = e => setS('runMode', e.target.value); }
       const runSetupBtn = document.getElementById('sRunSetup');
       if (runSetupBtn) runSetupBtn.onclick = () => { try { configApi.openWelcome(); } catch (e) {} };
+      // Software window: pages (default) vs stacked panes. Which pane shows is runtime state (the
+      // window's ☰ selector), not a setting — mirrors how the active page works.
+      const swDisp = document.getElementById('sSwDisplay');
+      if (swDisp) {
+        swDisp.value = s.softwareDisplay === 'pane' ? 'pane' : 'pages';
+        swDisp.onchange = e => setS('softwareDisplay', e.target.value);
+      }
       document.getElementById('sLaunch').value = s.launchMode;
       document.getElementById('sLaunch').onchange = e => setS('launchMode', e.target.value);
       const offIcons = document.getElementById('sOfflineIcons');
@@ -4114,7 +4300,7 @@
         finally { tBtn.disabled = false; }
       };
       if (tClr) tClr.onclick = async () => {
-        if (!window.confirm('Clear touch calibration on every display? You\'ll need to run Set up touchscreen after.')) return;
+        if (!ask('Clear touch calibration on every display? You\'ll need to run Set up touchscreen after.')) return;
         tClr.disabled = true; tMsg.textContent = 'Clearing calibrations…'; tMsg.style.color = '#7e93ab';
         try {
           const r = await configApi.clearTouchCalibration();
@@ -4363,8 +4549,10 @@
   document.getElementById('addDash').onclick = () => addPage('web');
   document.getElementById('addApp').onclick = () => addPage('app');
   document.getElementById('addGroup').onclick = () => addGroup();
+  document.getElementById('addPane').onclick = () => addPane();
   document.getElementById('lTabPages').onclick = () => { leftTab = 'pages'; render(); };
   document.getElementById('lTabGroups').onclick = () => { leftTab = 'groups'; render(); };
+  document.getElementById('lTabPanes').onclick = () => { leftTab = 'panes'; render(); };
   document.getElementById('saveBtn').onclick = doSave;
   document.getElementById('settingsBtn').onclick = async () => {
     view = view === 'settings' ? 'pages' : 'settings';
@@ -4402,6 +4590,14 @@
   (async () => {
     config = await configApi.getConfig(); if (!config.grids) config.grids = [];
     if (!Array.isArray(config.groups)) config.groups = [];
+    if (!Array.isArray(config.panes)) config.panes = [];
+    baseConfig = snapConfig(config);
+    // In software Panes mode, open on the Panes tab with the currently displayed pane selected.
+    if (softwarePaneMode() && config.panes.length) {
+      leftTab = 'panes'; view = 'panes';
+      const cur = config.panes.findIndex(p => p.id === (config.settings || {}).activePaneId);
+      paneIndex = cur >= 0 ? cur : 0;
+    }
     try { const v = await configApi.getAppVersion(); const el = document.getElementById('appVer'); if (el && v) el.textContent = 'v' + v; } catch (e) {}
     try { appDefs = await configApi.getApps(); } catch (e) {}
     try { haCacheLocal = await configApi.getHaCache(); } catch (e) {}   // for iconHtml's HA icon resolution
@@ -4411,16 +4607,42 @@
     // not by this window. Re-read so it shows up (and so this window's next Save doesn't write a
     // stale copy back over it). With unsaved edits we must not clobber them, so say so instead.
     if (configApi.onConfigChangedExternally) {
-      configApi.onConfigChangedExternally(async () => {
-        if (dirty) { setState('● unsaved changes — the panel added a page; save or reload to see it', 'dirty'); return; }
+      let extReloadTimer = null;
+      const applyExternalReload = async () => {
+        // Mid-interaction guard: re-rendering while a <select> popup is open (or an input is focused)
+        // destroys the element under the user's click, so their pick silently lands nowhere. Defer
+        // until the control loses focus. (Pane mode makes this frequent — many live app pages can
+        // persist options at any moment.)
+        const ae = document.activeElement;
+        if (ae && ['SELECT', 'INPUT', 'TEXTAREA'].includes(ae.tagName)) {
+          clearTimeout(extReloadTimer);
+          extReloadTimer = setTimeout(applyExternalReload, 1500);
+          return;
+        }
         const fresh = await configApi.getConfig();
         if (!fresh) return;
-        config = fresh;
+        let mergeNote = '';
+        if (dirty && baseConfig) {
+          // Fold the external write into the unsaved working copy (three-way against the last
+          // load/save). Only a unit/key edited BOTH places conflicts — the editor keeps its version.
+          const { merged, conflicts } = configMerge.mergeExternalConfig(config, baseConfig, fresh);
+          config = merged;
+          mergeNote = conflicts.length
+            ? ' — panel also changed ' + conflicts.slice(0, 2).join(', ') + (conflicts.length > 2 ? ', …' : '') + '; your edit wins on Save'
+            : ' (panel updates merged in)';
+        } else {
+          config = fresh;
+        }
+        baseConfig = snapConfig(fresh);
         if (!config.grids) config.grids = [];
         if (!Array.isArray(config.groups)) config.groups = [];
+        if (!Array.isArray(config.panes)) config.panes = [];
         if (gi >= config.grids.length) { gi = Math.max(0, config.grids.length - 1); ti = -1; }
+        if (paneIndex >= config.panes.length) paneIndex = config.panes.length - 1;
+        if (groupIndex >= config.groups.length) groupIndex = config.groups.length - 1;
         render();
-        setState('updated from the panel');
-      });
+        setState(dirty ? '● unsaved changes' + mergeNote : 'updated from the panel', dirty ? 'dirty' : '');
+      };
+      configApi.onConfigChangedExternally(() => { clearTimeout(extReloadTimer); applyExternalReload(); });
     }
   })();

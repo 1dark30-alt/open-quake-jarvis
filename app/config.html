@@ -38,6 +38,10 @@
     color: #8aa0b6; padding: 8px 14px; margin-bottom: -1px; font-weight: 500; }
   button.tab:hover { background: transparent; color: #dbe5f0; }
   button.tab.on { color: #ffffff; border-bottom-color: #2b8bff; }
+  /* Sidebar tabbar: three tabs must fit one row even at the 180px minimum sidebar width —
+     wrapping put Panes on a second line where it read as missing. Settings tabbar still wraps. */
+  .grids .tabbar { flex-wrap: nowrap; gap: 2px; }
+  .grids .tabbar .tab { padding: 8px 8px; min-width: 0; }
   input, select { background: #0e141c; color: #dbe5f0; border: 1px solid #2a3a4e; border-radius: 6px; padding: 7px 9px; font-size: 13px; width: 100%; }
   .row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
   .row label { width: 70px; color: #91a4ba; font-size: 13px; flex: none; }
@@ -242,11 +246,14 @@
       <div class="tabbar" style="margin-bottom:10px">
         <button id="lTabPages" class="tab on">Pages</button>
         <button id="lTabGroups" class="tab">Groups</button>
+        <button id="lTabPanes" class="tab">Panes</button>
       </div>
       <div id="gridlist"></div>
       <div id="grouplist" style="display:none"></div>
+      <div id="panelist" style="display:none"></div>
       <div id="addPageBtns" class="row" style="margin-top:12px; gap:6px; flex-wrap:wrap"><button class="primary" id="addGrid">+ Grid</button><button id="addDash">+ Dashboard</button><button id="addApp">+ App</button></div>
       <div id="addGroupBtns" class="row" style="margin-top:12px; gap:6px; display:none"><button class="primary" id="addGroup">+ Group</button></div>
+      <div id="addPaneBtns" class="row" style="margin-top:12px; gap:6px; display:none"><button class="primary" id="addPane">+ Pane</button></div>
     </div>
     <div id="colsplit" class="colsplit" title="Drag to resize"></div>
     <div class="col editor">
@@ -263,6 +270,7 @@
     <span id="state" class="state"></span>
     <button class="primary" id="saveBtn" disabled>Save</button>
   </footer>
+<script src="configMerge.js"></script>
 <script src="config.js"></script>
 </body>
 </html>

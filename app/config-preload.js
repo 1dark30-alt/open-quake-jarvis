@@ -69,6 +69,9 @@ contextBridge.exposeInMainWorld('openQuakeConfig', {
   probeApiModels(url, apiKey) { return ipcRenderer.invoke('probeApiModels', url, apiKey); },
   // Screensaver: open the effective photos/videos folder in Explorer (auto-creating it first).
   openScreensaverMedia(dir, kind) { return ipcRenderer.invoke('openScreensaverMedia', dir, kind); },
+  // After a native confirm()/alert(): blur+refocus the editor window from main so inputs and
+  // <select> popups keep working (electron#31917 focus bug).
+  refocusEditor() { ipcRenderer.send('refocusEditor'); },
   pathToFileURL(filePath) {
     try { return pathToFileURL(filePath).href; }
     catch (e) { return ''; }
