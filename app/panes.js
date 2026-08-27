@@ -23,9 +23,15 @@ function resolvePaneSlots(pane, grids) {
 function activePane(settings, panes, grids) {
   if (resolveRunMode(settings) !== 'software') return null;
   if (!settings || settings.softwareDisplay !== 'pane') return null;
-  const pane = (Array.isArray(panes) ? panes : []).find(p => p && p.id === settings.activePaneId);
-  if (!pane) return null;
-  const pages = resolvePaneSlots(pane, grids);
+  const list = Array.isArray(panes) ? panes : [];
+  // Explicit pick wins; an unset/dead activePaneId falls back to the first pane that resolves to
+  // pages — the user chose "Pane", so show one rather than silently reverting to Pages.
+  let pane = list.find(p => p && p.id === settings.activePaneId);
+  let pages = pane ? resolvePaneSlots(pane, grids) : [];
+  if (!pages.length) {
+    pane = list.find(p => resolvePaneSlots(p, grids).length);
+    pages = pane ? resolvePaneSlots(pane, grids) : [];
+  }
   return pages.length ? { pane, pages } : null;
 }
 

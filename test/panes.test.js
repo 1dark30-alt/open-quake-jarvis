@@ -39,10 +39,22 @@ test('activePane is null by default and outside software mode', () => {
   assert.equal(activePane({ ...sw, softwareDisplay: 'pages' }, [pane([{ pageId: 'a' }])], grids), null);
 });
 
-test('activePane is null when the pane is missing or resolves empty', () => {
+test('activePane is null when no pane resolves to any pages', () => {
   assert.equal(activePane(sw, [], grids), null);
-  assert.equal(activePane({ ...sw, activePaneId: 'nope' }, [pane([{ pageId: 'a' }])], grids), null);
   assert.equal(activePane(sw, [pane([{ pageId: 'gone' }])], grids), null);
+  assert.equal(activePane({ ...sw, activePaneId: 'nope' }, [pane([{ pageId: 'gone' }])], grids), null);
+});
+
+test('activePane falls back to the first usable pane when the picked id is unset or dead', () => {
+  // Show=Pane saved before any pane was picked (activePaneId '') — must still display the pane.
+  const unset = activePane({ ...sw, activePaneId: '' }, [pane([{ pageId: 'a' }])], grids);
+  assert.equal(unset.pane.id, 'p1');
+  const dead = activePane({ ...sw, activePaneId: 'nope' }, [
+    { id: 'empty', slots: [{ pageId: 'gone' }] },
+    pane([{ pageId: 'b' }]),
+  ], grids);
+  assert.equal(dead.pane.id, 'p1');   // skips the pane with no resolvable pages
+  assert.deepEqual(dead.pages.map(g => g.id), ['b']);
 });
 
 test('activePane returns the pane and its resolved pages', () => {
