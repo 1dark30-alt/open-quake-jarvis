@@ -73,6 +73,14 @@
       "server": false
     },
     {
+      "id": "office",
+      "name": "Microsoft 365",
+      "description": "Microsoft 365 calendar, presence, app launcher, and configurable desktop shortcuts.",
+      "version": "1.0.0",
+      "zip": "office.zip",
+      "server": true
+    },
+    {
       "id": "music-assistant",
       "name": "Music Assistant",
       "description": "Full Music Assistant controller: now playing, queue, players and grouping, library browse and search.",

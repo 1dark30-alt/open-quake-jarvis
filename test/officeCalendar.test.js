@@ -4,8 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { dateLabel, durationLabel, groupEvents, localDateKey } = require('../app/officeCalendar');
-const { officeShortcutImageDataUrl } = require('../app/officeShortcutIcons');
+const { dateLabel, durationLabel, groupEvents, localDateKey } = require('../community-apps/office/officeCalendar');
+const { officeShortcutImageDataUrl } = require('../community-apps/office/officeShortcutIcons');
 
 function event(id, start, end) {
   return { id, subject: id, start, end, isCancelled: false };
@@ -51,14 +51,13 @@ test('calendar grouping sorts events, excludes cancelled items, and formats dura
 });
 
 test('Office touchscreen controls are host-routed and configurable shortcuts are enabled', () => {
-  const root = path.join(__dirname, '..', 'app');
-  const html = fs.readFileSync(path.join(root, 'office.html'), 'utf8');
-  const script = fs.readFileSync(path.join(root, 'office.js'), 'utf8');
-  const css = fs.readFileSync(path.join(root, 'office.css'), 'utf8');
-  const editor = fs.readFileSync(path.join(root, 'config.js'), 'utf8');
-  const editorHtml = fs.readFileSync(path.join(root, 'config.html'), 'utf8');
-  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'apps', 'apps.json'), 'utf8'));
-  const office = manifest.find(app => app.id === 'office');
+  const root = path.join(__dirname, '..', 'community-apps', 'office');
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const script = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
+  const editor = fs.readFileSync(path.join(__dirname, '..', 'app', 'config.js'), 'utf8');
+  const editorHtml = fs.readFileSync(path.join(__dirname, '..', 'app', 'config.html'), 'utf8');
+  const office = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8'));
 
   assert.equal((html.match(/data-shortcut-index=/g) || []).length, 8);
   assert.equal((html.match(/data-app-index=/g) || []).length, 4);
@@ -77,9 +76,9 @@ test('Office touchscreen controls are host-routed and configurable shortcuts are
   assert.match(html, /App switching and shortcuts work without signing in/);
   assert.doesNotMatch(html, /id="moreToggle"/);
   assert.doesNotMatch(script, /window\.open\s*\(/);
-  assert.match(script, /\/api\/office\/action\//);
-  assert.match(script, /\/api\/office\/action\/meeting\?url=/);
-  assert.match(script, /\/office-icons\//);
+  assert.match(script, /\/app-api\//);
+  assert.doesNotMatch(script, /\/api\/office/);
+  assert.match(script, /office-icons\//);
   assert.match(script, /DEFAULT_SHORTCUTS_BY_APP/);
   assert.match(script, /prefix \+ 'Icon'/);
   assert.match(script, /--shortcut-count/);
@@ -100,7 +99,7 @@ test('Office touchscreen controls are host-routed and configurable shortcuts are
 });
 
 test('Office header uses bundled deterministic Microsoft product artwork', () => {
-  const root = path.join(__dirname, '..', 'app', 'office-icons');
+  const root = path.join(__dirname, '..', 'community-apps', 'office', 'office-icons');
   for (const appId of ['teams', 'outlook', 'word', 'excel', 'powerpoint', 'onenote', 'onedrive', 'office']) {
     const svg = fs.readFileSync(path.join(root, appId + '.svg'), 'utf8');
     assert.match(svg, /^<svg/);
@@ -109,7 +108,7 @@ test('Office header uses bundled deterministic Microsoft product artwork', () =>
 });
 
 test('Office shortcut images accept local image formats without exposing file paths', () => {
-  const svgPath = path.join(__dirname, '..', 'app', 'office-icons', 'teams.svg');
+  const svgPath = path.join(__dirname, '..', 'community-apps', 'office', 'office-icons', 'teams.svg');
   const dataUrl = officeShortcutImageDataUrl(svgPath, fs);
 
   assert.match(dataUrl, /^data:image\/svg\+xml;base64,/);

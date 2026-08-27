@@ -1,22 +1,7 @@
 'use strict';
 
 const REDIRECT_URI = 'http://localhost:5173/oauth/callback';
-const MICROSOFT_CLIENT_ID = '1b171d2e-040f-4e4c-b841-dbb1eb8023c7';
-
 const providers = {
-  microsoft: {
-    id: 'microsoft',
-    name: 'Microsoft 365',
-    clientId: MICROSOFT_CLIENT_ID,
-    authUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
-    tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-    revokeUrl: '',
-    scopes: ['User.Read', 'offline_access'],
-    suggestedScopes: ['User.Read', 'Presence.Read', 'Calendars.Read', 'offline_access'],
-    redirectUri: REDIRECT_URI,
-    usesPkce: true,
-    accessTokenExpiresSkewMs: 5 * 60 * 1000,
-  },
   github: {
     id: 'github',
     name: 'GitHub',
@@ -44,16 +29,15 @@ const providers = {
   },
 };
 
-const aliases = {
-  teams: 'microsoft',
-  office: 'microsoft',
-  graph: 'microsoft',
-};
+const aliases = {};
 
 // Drop-in apps register their own OAuth providers at runtime, always under an `app:<appid>` id so
 // they can never collide with or shadow a built-in (the static table is consulted first below).
 const appProviders = new Map();
-function registerAppProvider(def) { if (def && def.id) appProviders.set(String(def.id).toLowerCase(), def); }
+function registerAppProvider(def) {
+  const id = String(def && def.id || '').toLowerCase();
+  if (id.startsWith('app:')) appProviders.set(id, Object.assign({}, def, { id }));
+}
 function clearAppProviders() { appProviders.clear(); }
 
 function providerFor(id) {
@@ -66,4 +50,4 @@ function canonicalProviderId(id) {
   return provider ? provider.id : String(id || '').toLowerCase();
 }
 
-module.exports = { MICROSOFT_CLIENT_ID, REDIRECT_URI, providers, providerFor, canonicalProviderId, registerAppProvider, clearAppProviders };
+module.exports = { REDIRECT_URI, providers, providerFor, canonicalProviderId, registerAppProvider, clearAppProviders };

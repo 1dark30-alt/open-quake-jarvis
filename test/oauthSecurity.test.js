@@ -2,408 +2,158 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const http = require('node:http');
 const fs = require('node:fs');
+const http = require('node:http');
 const path = require('node:path');
 const sysserver = require('../app/sysserver');
-const { OAuthHandler } = require('../src/auth/oauth-handler');
-const { MICROSOFT_CLIENT_ID, providerFor } = require('../src/auth/providers');
-const { TokenStorage } = require('../src/auth/token-storage');
-const { OFFICE_SCOPES, createOfficeGraph } = require('../app/officeGraph');
 const { configForRenderer } = require('../app/oauthConfigBoundary');
+const { OAuthHandler } = require('../src/auth/oauth-handler');
+const { TokenStorage } = require('../src/auth/token-storage');
+const { clearAppProviders, providerFor, registerAppProvider } = require('../src/auth/providers');
 
-function request(port, route, headers) {
+const OFFICE_CLIENT_ID = '1b171d2e-040f-4e4c-b841-dbb1eb8023c7';
+const OFFICE_SCOPES = ['User.Read', 'Presence.Read', 'Calendars.Read', 'offline_access'];
+
+function request(port, target, headers) {
   return new Promise((resolve, reject) => {
-    const req = http.get({
-      host: '127.0.0.1',
-      port,
-      path: route,
-      headers: Object.assign({ Host: '127.0.0.1:' + port }, headers || {}),
-    }, res => {
+    const req = http.request({ hostname: '127.0.0.1', port, path: target, headers: headers || {} }, res => {
       const chunks = [];
       res.on('data', chunk => chunks.push(chunk));
-      res.on('end', () => {
-        const text = Buffer.concat(chunks).toString('utf8');
-        let body = null;
-        try { body = text ? JSON.parse(text) : null; } catch (e) {}
-        resolve({ status: res.statusCode, headers: res.headers, body });
-      });
+      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
     });
     req.on('error', reject);
+    req.end();
   });
 }
 
-test.afterEach(() => sysserver.stop());
-
-test('forged native and unrelated served-app requests cannot obtain OAuth credentials', async () => {
-  const port = await sysserver.start({ appFolders: { unrelated: { root: process.cwd() } } });
-  const forged = await request(port, '/api/oauth-tokens.json?provider=google&scopes=read:user', {
+function officeHeaders(port) {
+  return {
     'Sec-Fetch-Site': 'same-origin',
-    Origin: 'http://127.0.0.1:' + port,
-  });
-  const servedApp = await request(port, '/api/oauth-tokens.json?provider=microsoft&scopes=Calendars.Read', {
-    'Sec-Fetch-Site': 'same-origin',
-    Referer: 'http://127.0.0.1:' + port + '/apps/unrelated/index.html',
-  });
-  const oldConnect = await request(port, '/api/oauth-connect?provider=microsoft&scopes=Calendars.Read', {
-    'Sec-Fetch-Site': 'same-origin',
-  });
-  assert.equal(forged.status, 404);
-  assert.equal(servedApp.status, 404);
-  assert.equal(oldConnect.status, 404);
-  assert.doesNotMatch(JSON.stringify([forged.body, servedApp.body, oldConnect.body]), /accessToken|refreshToken/);
-});
-
-test('Office operations require and rotate a bounded session capability', async () => {
-  let now = 1000;
-  let calls = 0;
-  const port = await sysserver.start({
-    now: () => now,
-    officeCapabilityTtlMs: 100,
-    getOfficeData: async () => { calls++; return { ok: true, profile: { displayName: 'Example' }, presence: null, events: [] }; },
-    connectOffice: async () => ({ ok: true }),
-  });
-  const first = sysserver.issueOfficeCapability();
-  const missing = await request(port, '/api/office/data', { 'Sec-Fetch-Site': 'same-origin' });
-  assert.equal(missing.status, 403);
-  assert.equal(calls, 0);
-
-  const allowed = await request(port, '/api/office/data?provider=google&scopes=admin', {
-    'Sec-Fetch-Site': 'same-origin',
-    Authorization: 'Bearer ' + first,
-  });
-  assert.equal(allowed.status, 200);
-  assert.equal(allowed.body.ok, true);
-  assert.equal(calls, 1);
-  assert.doesNotMatch(JSON.stringify(allowed.body), /accessToken|refreshToken/);
-  const second = allowed.headers['x-open-quake-capability'];
-  assert.match(second, /^[A-Za-z0-9_-]{43}$/);
-
-  const replay = await request(port, '/api/office/data', {
-    'Sec-Fetch-Site': 'same-origin',
-    Authorization: 'Bearer ' + first,
-  });
-  assert.equal(replay.status, 403);
-  assert.equal(calls, 1);
-
-  now += 101;
-  const expired = await request(port, '/api/office/data', {
-    'Sec-Fetch-Site': 'same-origin',
-    Authorization: 'Bearer ' + second,
-  });
-  assert.equal(expired.status, 403);
-  assert.equal(calls, 1);
-});
-
-test('Office external actions use the host launcher without racing the calendar capability', async () => {
-  const opened = [];
-  const teamsMeetingUrl = 'https://teams.microsoft.com/l/meetup-join/example';
-  const calendarUrl = 'https://outlook.office.com/calendar';
-  const workEventUrl = 'https://outlook.office365.com/calendar/item/work-event';
-  const personalEventUrl = 'https://outlook.live.com/calendar/item/personal-event';
-  const port = await sysserver.start({
-    onOpenExternal: value => { opened.push(value); return true; },
-    getOfficeData: async () => ({ ok: true, events: [] }),
-  });
-  const first = sysserver.issueOfficeCapability();
-  const missing = await request(port, '/api/office/open?url=' + encodeURIComponent('https://teams.microsoft.com/v2/'), {
-    'Sec-Fetch-Site': 'cross-site',
-  });
-  assert.equal(missing.status, 403);
-
-  const [allowed, calendar] = await Promise.all([
-    request(port, '/api/office/open?url=' + encodeURIComponent('https://teams.microsoft.com/v2/'), {
-      'Sec-Fetch-Site': 'same-origin',
-    }),
-    request(port, '/api/office/data', {
-      'Sec-Fetch-Site': 'same-origin',
-      Authorization: 'Bearer ' + first,
-    }),
-  ]);
-  assert.equal(allowed.status, 200);
-  assert.equal(allowed.body.ok, true);
-  assert.equal(calendar.status, 200);
-  assert.equal(calendar.body.ok, true);
-  assert.deepEqual(opened, ['https://teams.microsoft.com/v2/']);
-
-  for (const target of [teamsMeetingUrl, calendarUrl, workEventUrl, personalEventUrl]) {
-    const result = await request(port, '/api/office/open?url=' + encodeURIComponent(target), {
-      'Sec-Fetch-Site': 'same-origin',
-    });
-    assert.equal(result.status, 200);
-    assert.equal(result.body.ok, true);
-  }
-  assert.deepEqual(opened, [
-    'https://teams.microsoft.com/v2/',
-    teamsMeetingUrl,
-    calendarUrl,
-    workEventUrl,
-    personalEventUrl,
-  ]);
-
-  const rejectedScheme = await request(port, '/api/office/open?url=' + encodeURIComponent('file:///C:/Windows/System32/calc.exe'), {
-    'Sec-Fetch-Site': 'same-origin',
-  });
-  assert.equal(rejectedScheme.status, 200);
-  assert.equal(rejectedScheme.body.ok, false);
-  assert.equal(opened.length, 5);
-
-  const rejectedHost = await request(port, '/api/office/open?url=' + encodeURIComponent('https://example.com/'), {
-    'Sec-Fetch-Site': 'same-origin',
-  });
-  assert.equal(rejectedHost.status, 200);
-  assert.equal(rejectedHost.body.ok, false);
-  assert.equal(opened.length, 5);
-});
-
-test('Office app, meeting, and keypress actions are fixed host callbacks protected by same-origin checks', async () => {
-  const calls = [];
-  const port = await sysserver.start({
-    onOfficeAction: async (kind, index, shortcutIndex, target) => { calls.push({ kind, index, shortcutIndex, target }); return { ok: true }; },
-  });
-  const crossSite = await request(port, '/api/office/action/app/2', { 'Sec-Fetch-Site': 'cross-site' });
-  const appAction = await request(port, '/api/office/action/app/2', { 'Sec-Fetch-Site': 'same-origin' });
-  const shortcut = await request(port, '/api/office/action/shortcut/3/1', { 'Sec-Fetch-Site': 'same-origin' });
-  const eighthShortcut = await request(port, '/api/office/action/shortcut/3/7', { 'Sec-Fetch-Site': 'same-origin' });
-  const meetingUrl = 'https://teams.microsoft.com/l/meetup-join/example?tenantId=abc';
-  const meeting = await request(port, '/api/office/action/meeting?url=' + encodeURIComponent(meetingUrl), { 'Sec-Fetch-Site': 'same-origin' });
-  const foreignMeeting = await request(port, '/api/office/action/meeting?url=' + encodeURIComponent('https://example.com/l/meetup-join/example'), { 'Sec-Fetch-Site': 'same-origin' });
-  const ninthShortcut = await request(port, '/api/office/action/shortcut/3/8', { 'Sec-Fetch-Site': 'same-origin' });
-  const arbitrary = await request(port, '/api/office/action/app/99', { 'Sec-Fetch-Site': 'same-origin' });
-
-  assert.equal(crossSite.status, 403);
-  assert.equal(appAction.status, 200);
-  assert.equal(appAction.body.ok, true);
-  assert.equal(shortcut.body.ok, true);
-  assert.equal(eighthShortcut.body.ok, true);
-  assert.equal(meeting.body.ok, true);
-  assert.equal(foreignMeeting.body.ok, false);
-  assert.equal(ninthShortcut.body.ok, false);
-  assert.equal(arbitrary.body.ok, false);
-  assert.deepEqual(calls, [
-    { kind: 'app', index: 2, shortcutIndex: undefined, target: undefined },
-    { kind: 'shortcut', index: 3, shortcutIndex: 1, target: undefined },
-    { kind: 'shortcut', index: 3, shortcutIndex: 7, target: undefined },
-    { kind: 'meeting', index: undefined, shortcutIndex: undefined, target: meetingUrl },
-  ]);
-});
-
-test('leaving Office or replacing its session invalidates the previous capability', async () => {
-  const port = await sysserver.start({ getOfficeData: async () => ({ ok: true }) });
-  const oldCapability = sysserver.issueOfficeCapability();
-  sysserver.setActivePage(null);
-  const replacement = sysserver.issueOfficeCapability();
-  assert.notEqual(replacement, oldCapability);
-  const wrongSession = await request(port, '/api/office/data', {
-    'Sec-Fetch-Site': 'same-origin',
-    Authorization: 'Bearer ' + oldCapability,
-  });
-  assert.equal(wrongSession.status, 403);
-});
-
-test('Host and cross-site rejection remain fail-closed without consuming a valid capability', async () => {
-  let calls = 0;
-  const port = await sysserver.start({ getOfficeData: async () => { calls++; return { ok: true }; } });
-  const capability = sysserver.issueOfficeCapability();
-  const foreignHost = await request(port, '/api/office/data', {
-    Host: 'attacker.example',
-    'Sec-Fetch-Site': 'same-origin',
-    Authorization: 'Bearer ' + capability,
-  });
-  const crossSite = await request(port, '/api/office/data', {
-    'Sec-Fetch-Site': 'cross-site',
-    Authorization: 'Bearer ' + capability,
-  });
-  const allowed = await request(port, '/api/office/data', {
-    'Sec-Fetch-Site': 'same-origin',
-    Authorization: 'Bearer ' + capability,
-  });
-  assert.equal(foreignHost.status, 403);
-  assert.equal(crossSite.status, 403);
-  assert.equal(allowed.status, 200);
-  assert.equal(calls, 1);
-});
-
-test('OAuth access DTO never includes the refresh token', async () => {
-  const stored = {
-    provider: 'microsoft',
-    tokenType: 'Bearer',
-    accessToken: 'synthetic-access-value',
-    refreshToken: 'synthetic-refresh-value',
-    expiresAt: Date.now() + 3600000,
-    scope: OFFICE_SCOPES.join(' '),
+    Referer: 'http://127.0.0.1:' + port + '/apps/office/index.html',
   };
+}
+
+test.afterEach(() => {
+  sysserver.stop();
+  clearAppProviders();
+});
+
+test('Office is app-scoped and no global Microsoft provider remains', async () => {
+  const manifest = require('../community-apps/office/app.json');
+  assert.equal(manifest.oauth.clientId, OFFICE_CLIENT_ID);
+  assert.deepEqual(manifest.oauth.scopes, OFFICE_SCOPES);
+  assert.equal(require('../apps/apps.json').some(app => app.id === 'office'), false);
+  registerAppProvider({
+    id: 'app:office', name: 'Microsoft 365', clientId: OFFICE_CLIENT_ID,
+    authUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+    tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+    scopes: OFFICE_SCOPES, redirectUri: 'http://localhost:5173/oauth/callback', usesPkce: true,
+  });
   const handler = new OAuthHandler({
-    storage: {
-      getTokens: () => Object.assign({}, stored),
-      getProviderSettings: () => ({ clientId: 'public-client' }),
+    storage: { getProviderSettings: () => ({}), getTokens: () => null },
+    openExternal: () => true,
+  });
+
+  const url = new URL(await handler.generateAuthUrl('app:office', OFFICE_SCOPES));
+  assert.equal(providerFor('microsoft'), null);
+  assert.equal(providerFor('app:office').clientId, OFFICE_CLIENT_ID);
+  assert.equal(url.searchParams.get('client_id'), OFFICE_CLIENT_ID);
+  assert.deepEqual(url.searchParams.get('scope').split(' '), OFFICE_SCOPES);
+});
+
+test('app-scoped OAuth is managed from the drop-in app editor, not global Microsoft settings', () => {
+  const configSource = fs.readFileSync(path.join(__dirname, '..', 'app', 'config.js'), 'utf8');
+  const preloadSource = fs.readFileSync(path.join(__dirname, '..', 'app', 'config-preload.js'), 'utf8');
+  const mainSource = fs.readFileSync(path.join(__dirname, '..', 'app', 'main.js'), 'utf8');
+
+  assert.match(configSource, /def && def\.oauth \? '<div id="appOAuth"><\/div>'/);
+  assert.match(configSource, /appendDropInOAuthSetup[\s\S]*getAppOAuthStatus\(def\.id\)[\s\S]*connectAppOAuth\(def\.id\)[\s\S]*disconnectAppOAuth\(def\.id\)/);
+  assert.match(preloadSource, /getAppOAuthStatus[\s\S]*connectAppOAuth[\s\S]*disconnectAppOAuth/);
+  assert.match(mainSource, /ipcMain\.handle\('getAppOAuthStatus'[\s\S]*ipcMain\.handle\('connectAppOAuth'[\s\S]*ipcMain\.handle\('disconnectAppOAuth'/);
+  assert.match(mainSource, /dropInOAuth\.connect\(def\.id, Array\.isArray\(def\.oauth\.scopes\)/);
+  assert.doesNotMatch(configSource, /connectOAuthProvider\('microsoft'/);
+});
+
+test('Office drop-in server receives OAuth already bound to its requesting app', async () => {
+  const calls = [];
+  const opened = [];
+  const officeRoot = path.join(__dirname, '..', 'community-apps', 'office');
+  const port = await sysserver.start({
+    appFolders: { office: { root: officeRoot, server: path.join(officeRoot, 'server.js') } },
+    getAppConfig: appId => appId === 'office' ? { app: 'office', options: {} } : null,
+    oauth: {
+      status: appId => ({ ok: true, provider: 'app:' + appId, configured: true, connected: false, scopes: [] }),
+      connect: (appId, scopes) => { calls.push({ appId, scopes }); return { ok: true }; },
+      disconnect: () => ({ ok: true }),
+      getAccessToken: () => null,
     },
-    openExternal: () => false,
+    appHost: {
+      openExternal: value => { opened.push(value); return true; },
+      launchApp: () => false,
+      focusTeams: () => ({ ok: false }),
+      focusApp: () => ({ ok: false }),
+      hasAppWindow: () => ({ ok: false }),
+      tapCombo: () => false,
+    },
   });
-  const dto = await handler.getValidAccessToken('microsoft', OFFICE_SCOPES);
-  assert.equal(dto.accessToken, stored.accessToken);
-  assert.equal(Object.hasOwn(dto, 'refreshToken'), false);
-  handler.stop();
+
+  const connected = await request(port, '/app-api/connect', officeHeaders(port));
+  assert.equal(connected.status, 200);
+  assert.deepEqual(JSON.parse(connected.body), { ok: true });
+  assert.deepEqual(calls, [{ appId: 'office', scopes: OFFICE_SCOPES }]);
+
+  const status = await request(port, '/app-api/auth-status', officeHeaders(port));
+  assert.equal(JSON.parse(status.body).provider, 'app:office');
+  assert.doesNotMatch(status.body, /accessToken|refreshToken/);
+
+  const allowed = await request(port, '/app-api/open?url=' + encodeURIComponent('https://www.office.com/'), officeHeaders(port));
+  const rejected = await request(port, '/app-api/open?url=' + encodeURIComponent('https://example.com/'), officeHeaders(port));
+  assert.equal(JSON.parse(allowed.body).ok, true);
+  assert.equal(JSON.parse(rejected.body).ok, false);
+  assert.deepEqual(opened, ['https://www.office.com/']);
 });
 
-test('Microsoft OAuth uses the fixed Open-Quake public client ID', async () => {
-  const handler = new OAuthHandler({
-    storage: { getProviderSettings: () => ({ clientId: 'ignored-user-override' }) },
-    openExternal: () => false,
-  });
-  const url = new URL(await handler.generateAuthUrl('microsoft', OFFICE_SCOPES));
-
-  assert.equal(MICROSOFT_CLIENT_ID, '1b171d2e-040f-4e4c-b841-dbb1eb8023c7');
-  assert.equal(providerFor('microsoft').clientId, MICROSOFT_CLIENT_ID);
-  assert.equal(url.searchParams.get('client_id'), MICROSOFT_CLIENT_ID);
-  handler.stop();
+test('legacy global Office HTTP routes are retired', async () => {
+  const port = await sysserver.start({});
+  for (const target of ['/office', '/api/office/data', '/api/office/connect', '/api/office/action/app/0']) {
+    const response = await request(port, target, { 'Sec-Fetch-Site': 'same-origin' });
+    assert.notEqual(response.status, 200, target);
+  }
 });
 
-test('Microsoft client settings are immutable and legacy overrides are removed', () => {
+test('legacy global Microsoft tokens migrate once into the Office app namespace', () => {
   let saves = 0;
   const config = {
-    settings: { oauth: { providers: { microsoft: { clientId: 'legacy', clientSecret: 'legacy-secret' } }, tokens: {} } },
+    settings: {
+      oauth: {
+        providers: { microsoft: { clientId: 'legacy', clientSecret: 'legacy-secret' } },
+        tokens: { microsoft: { accessToken: 'old-access', refreshToken: 'old-refresh', scope: OFFICE_SCOPES.join(' ') } },
+      },
+    },
   };
   const storage = new TokenStorage({ getConfig: () => config, saveConfig: () => { saves += 1; return true; } });
 
-  assert.equal(storage.getProviderSettings('microsoft').clientId, MICROSOFT_CLIENT_ID);
+  const migrated = storage.getTokens('app:office');
+  assert.equal(migrated.provider, 'app:office');
+  assert.equal(migrated.refreshToken, 'old-refresh');
+  assert.equal(config.settings.oauth.tokens.microsoft, undefined);
   assert.equal(config.settings.oauth.providers.microsoft, undefined);
   assert.equal(saves, 1);
-  assert.throws(() => storage.setProviderSettings('microsoft', { clientId: 'replacement' }), /built into Open-Quake/);
 });
 
-test('OAuth refresh rotation remains internal while the access DTO stays minimal', async () => {
-  let stored = {
-    provider: 'microsoft',
-    accessToken: 'expired-synthetic-access',
-    refreshToken: 'old-synthetic-refresh',
-    expiresAt: 1,
-    scope: OFFICE_SCOPES.join(' '),
-  };
-  const handler = new OAuthHandler({
-    storage: {
-      getTokens: () => Object.assign({}, stored),
-      getProviderSettings: () => ({ clientId: 'public-client' }),
-      setTokens: (_provider, next) => { stored = Object.assign({}, next); },
-    },
-    openExternal: () => false,
-  });
-  handler.fetchToken = async () => ({
-    access_token: 'rotated-synthetic-access',
-    refresh_token: 'rotated-synthetic-refresh',
-    expires_in: 3600,
-    scope: OFFICE_SCOPES.join(' '),
-  });
-  const dto = await handler.getValidAccessToken('microsoft', OFFICE_SCOPES);
-  assert.equal(dto.accessToken, 'rotated-synthetic-access');
-  assert.equal(Object.hasOwn(dto, 'refreshToken'), false);
-  assert.equal(stored.refreshToken, 'rotated-synthetic-refresh');
-  handler.stop();
-});
-
-test('Office Graph service fixes provider, scopes, and operations in the main process', async () => {
-  const tokenCalls = [];
-  const connectCalls = [];
-  const graphCalls = [];
-  const service = createOfficeGraph({
-    getAccessToken: async (provider, scopes) => {
-      tokenCalls.push({ provider, scopes: Array.from(scopes) });
-      return { accessToken: 'synthetic-access-value' };
-    },
-    connectOAuth: async (provider, scopes) => connectCalls.push({ provider, scopes: Array.from(scopes) }),
-    now: () => new Date('2026-08-11T12:00:00.000Z'),
-    fetchImpl: async (url, options) => {
-      graphCalls.push({ url, authorization: options.headers.Authorization });
-      if (url.endsWith('/me/presence')) return { ok: true, json: async () => ({ availability: 'Available' }) };
-      if (url.includes('/calendarView?')) return { ok: true, json: async () => ({ value: [{ subject: 'Example' }] }) };
-      return { ok: true, json: async () => ({ displayName: 'Example' }) };
-    },
-  });
-  const result = await service.getData();
-  await service.connect();
-  assert.deepEqual(tokenCalls, [{ provider: 'microsoft', scopes: Array.from(OFFICE_SCOPES) }]);
-  assert.deepEqual(connectCalls, [{ provider: 'microsoft', scopes: Array.from(OFFICE_SCOPES) }]);
-  assert.equal(graphCalls.length, 3);
-  assert.ok(graphCalls.every(call => call.url.startsWith('https://graph.microsoft.com/v1.0/')));
-  assert.ok(graphCalls.every(call => call.authorization === 'Bearer synthetic-access-value'));
-  assert.deepEqual(result, {
-    ok: true,
-    profile: { displayName: 'Example' },
-    presence: { availability: 'Available' },
-    events: [{
-      id: '',
-      subject: 'Example',
-      start: null,
-      end: null,
-      startTimeZone: null,
-      endTimeZone: null,
-      location: '',
-      isCancelled: false,
-      isAllDay: false,
-      showAs: 'busy',
-      status: 'busy',
-      isOnlineMeeting: false,
-      joinUrl: null,
-      webLink: null,
-    }],
-  });
-  assert.doesNotMatch(JSON.stringify(result), /accessToken|refreshToken/);
-});
-
-test('Office Graph service normalizes meeting metadata needed for reactive calendar states', async () => {
-  const service = createOfficeGraph({
-    getAccessToken: async () => ({ accessToken: 'synthetic-access-value' }),
-    connectOAuth: async () => undefined,
-    now: () => new Date('2026-08-11T12:00:00.000Z'),
-    fetchImpl: async (url) => {
-      if (url.endsWith('/me/presence')) return { ok: true, json: async () => ({ availability: 'inAMeeting', activity: 'inACall' }) };
-      if (url.includes('/calendarView?')) return { ok: true, json: async () => ({ value: [{
-        id: 'evt-1',
-        subject: 'Daily Standup',
-        start: { dateTime: '2026-08-11T12:15:00', timeZone: 'UTC' },
-        end: { dateTime: '2026-08-11T12:45:00', timeZone: 'UTC' },
-        location: { displayName: 'Room 1' },
-        isCancelled: false,
-        isOnlineMeeting: true,
-        onlineMeeting: { joinWebUrl: 'https://teams.microsoft.com/l/meetup-join/abc' },
-        webLink: 'https://outlook.office.com/calendar/item/abc',
-        showAs: 'busy',
-      }] }) };
-      return { ok: true, json: async () => ({ displayName: 'Example User', userPrincipalName: 'example@contoso.com' }) };
-    },
-  });
-
-  const result = await service.getData();
-  assert.equal(result.events[0].start, '2026-08-11T12:15:00.000Z');
-  assert.equal(result.events[0].end, '2026-08-11T12:45:00.000Z');
-  assert.equal(result.events[0].joinUrl, 'https://teams.microsoft.com/l/meetup-join/abc');
-  assert.equal(result.events[0].location, 'Room 1');
-  assert.equal(result.events[0].status, 'busy');
-});
-
-test('preload and Office renderer sources expose no OAuth token getter', () => {
-  const root = path.join(__dirname, '..');
-  const preload = fs.readFileSync(path.join(root, 'app', 'panel-preload.js'), 'utf8')
-    + fs.readFileSync(path.join(root, 'app', 'config-preload.js'), 'utf8');
-  const office = fs.readFileSync(path.join(root, 'app', 'office.js'), 'utf8');
-  assert.doesNotMatch(preload, /getOAuthTokens|get-oauth-tokens/);
-  assert.doesNotMatch(office, /accessToken|refreshToken|graph\.microsoft\.com|oauth-tokens/);
-});
-
-test('editor configuration DTO removes OAuth credentials without mutating stored configuration', () => {
+test('renderer configuration omits all OAuth tokens and provider secrets', () => {
   const stored = {
     settings: {
       oauth: {
-        providers: { microsoft: { clientId: 'public-client', clientSecret: 'synthetic-client-secret' } },
-        tokens: { microsoft: { accessToken: 'synthetic-access-value', refreshToken: 'synthetic-refresh-value' } },
+        providers: { 'app:office': { clientId: OFFICE_CLIENT_ID, clientSecret: 'synthetic-secret' } },
+        tokens: { 'app:office': { accessToken: 'synthetic-access', refreshToken: 'synthetic-refresh' } },
       },
     },
     grids: [],
   };
   const dto = configForRenderer(stored);
   assert.deepEqual(dto.settings.oauth.tokens, {});
-  assert.equal(Object.hasOwn(dto.settings.oauth.providers.microsoft, 'clientId'), false);
-  assert.equal(Object.hasOwn(dto.settings.oauth.providers.microsoft, 'clientSecret'), false);
-  assert.equal(stored.settings.oauth.tokens.microsoft.refreshToken, 'synthetic-refresh-value');
-  assert.equal(stored.settings.oauth.providers.microsoft.clientSecret, 'synthetic-client-secret');
+  assert.equal(dto.settings.oauth.providers['app:office'].clientId, OFFICE_CLIENT_ID);
+  assert.equal(Object.hasOwn(dto.settings.oauth.providers['app:office'], 'clientSecret'), false);
+  assert.equal(stored.settings.oauth.tokens['app:office'].refreshToken, 'synthetic-refresh');
 });

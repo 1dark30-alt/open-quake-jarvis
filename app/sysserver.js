@@ -12,7 +12,6 @@
  *   GET /agenda /events -> the Agenda/Events dev apps (list + embedded grid; reuse /haschedule-data)
  *   GET /keyshortcuts -> Keyboard Shortcuts app page   GET /shortcuts -> system/page/custom shortcuts JSON
  *   GET /grid-tiles  -> the active app page's embedded grid (resolved icons) — Music/Agenda/Events
- *   GET /api/office/* -> capability-gated Microsoft 365 data/connect operations (tokens stay in main)
  *   GET /api/github/* -> capability-gated GitHub OAuth/status/actions operations (tokens stay in main)
  *   GET /media/<cmd> -> transport (play/pause/next/prev) via onMedia
  *   GET /launch?i=N  -> launch the active app grid's tile N via onLaunch (runAction)
@@ -72,9 +71,6 @@ const STATIC_FILES = {
   '/chatview-config.js': 'application/javascript; charset=utf-8',
   '/chatview-main.js': 'application/javascript; charset=utf-8',
   '/chatview-ptt.js': 'application/javascript; charset=utf-8',
-  '/office.js': 'application/javascript; charset=utf-8',
-  '/officeCalendar.js': 'application/javascript; charset=utf-8',
-  '/office.css': 'text/css; charset=utf-8',
   '/touchDragScroll.js': 'application/javascript; charset=utf-8',
   '/githubPanelState.js': 'application/javascript; charset=utf-8',
   '/github.js': 'application/javascript; charset=utf-8',
@@ -96,11 +92,8 @@ const STATIC_FILES = {
   '/obsview.js': 'application/javascript; charset=utf-8',
   '/obsview.css': 'text/css; charset=utf-8',
 };
-for (const appId of ['teams', 'outlook', 'word', 'excel', 'powerpoint', 'onenote', 'onedrive', 'office']) {
-  STATIC_FILES['/office-icons/' + appId + '.svg'] = 'image/svg+xml; charset=utf-8';
-}
 
-let server = null, onMedia = null, onLaunch = null, getGridTiles = null, getAppConfig = null, getOfficeData = null, connectOffice = null, onOpenExternal = null, onMeetingAction = null, onOfficeAction = null, getShortcuts = null;
+let server = null, onMedia = null, onLaunch = null, getGridTiles = null, getAppConfig = null, onOpenExternal = null, onMeetingAction = null, getShortcuts = null;
 let githubApp = null;
 let getMeetingState = null, onMeetingRecord = null;   // meeting recorder: panel poller + start/stop/setMic remote
 let onMeetingLibrary = null, resolveMeetingAudio = null;   // recordings library + transcription/analysis remotes
@@ -112,7 +105,7 @@ let onLucidCleanup = null, onLucidRewrite = null, onLucidReview = null, onLucidS
 const lucidSubscribers = new Set();   // open SSE responses for the LucidType page (pushed by main via lucidBroadcast)
 let diagnosticsHtml = FALLBACK;
 let obsviewHtml = FALLBACK;
-let musicHtml = FALLBACK, chatHtml = FALLBACK, officeHtml = FALLBACK, githubHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK, slideHtml = FALLBACK, lucidtypeHtml = FALLBACK, lucidtypeDictateHtml = FALLBACK;
+let musicHtml = FALLBACK, chatHtml = FALLBACK, githubHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK, slideHtml = FALLBACK, lucidtypeHtml = FALLBACK, lucidtypeDictateHtml = FALLBACK;
 // Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
 // Voice-panel app registry: appId (also the URL path prefix) -> { handlers, voiceToken, htmlFile,
 // htmlContent }. `handlers` is a voicepanel-host.js handlers object; every voice app shares the
@@ -127,10 +120,8 @@ const obsSubscribers = new Set();       // open SSE responses for the served /ob
 const staticAssets = {};   // request path -> { body, type }; populated at start()
 let appFolders = {};        // drop-in served app id -> { root, proxy }; supplied by main.js
 let appOAuth = null;        // drop-in OAuth capability (main.js) -> scoped per app in serveAppApi
+let appHost = null;         // trusted host operations available only to installed server.js modules
 const appServers = {};      // app id -> required server module
-const DEFAULT_OFFICE_CAPABILITY_TTL_MS = 24 * 60 * 60 * 1000;
-let officeCapability = null;
-let officeCapabilityTtlMs = DEFAULT_OFFICE_CAPABILITY_TTL_MS;
 const DEFAULT_GITHUB_CAPABILITY_TTL_MS = 24 * 60 * 60 * 1000;
 let githubCapability = null;
 let githubCapabilityTtlMs = DEFAULT_GITHUB_CAPABILITY_TTL_MS;
@@ -140,12 +131,6 @@ function headers(type) { return { 'Content-Type': type, 'Cache-Control': 'no-sto
 function html(res, body) { res.writeHead(200, headers('text/html; charset=utf-8')); res.end(body); }
 function json(res, obj) { res.writeHead(200, headers('application/json; charset=utf-8')); res.end(JSON.stringify(obj)); }
 function done(res, ok) { res.writeHead(ok ? 200 : 400, headers('application/json')); res.end(JSON.stringify({ ok: !!ok })); }
-function officeJson(res, obj, nextCapability) {
-  const h = headers('application/json; charset=utf-8');
-  if (nextCapability) h['X-Open-Quake-Capability'] = nextCapability;
-  res.writeHead(200, h);
-  res.end(JSON.stringify(obj));
-}
 function githubJson(res, obj, nextCapability) {
   const h = headers('application/json; charset=utf-8');
   if (nextCapability) h['X-Open-Quake-Capability'] = nextCapability;
@@ -153,36 +138,6 @@ function githubJson(res, obj, nextCapability) {
   res.end(JSON.stringify(obj));
 }
 
-function newOfficeCapability() {
-  officeCapability = {
-    token: crypto.randomBytes(32).toString('base64url'),
-    expiresAt: currentTime() + officeCapabilityTtlMs,
-  };
-  return officeCapability.token;
-}
-
-function issueOfficeCapability() {
-  if (officeCapability && officeCapability.expiresAt > currentTime()) return officeCapability.token;
-  return newOfficeCapability();
-}
-
-function clearOfficeCapability() {
-  officeCapability = null;
-}
-
-function consumeOfficeCapability(req) {
-  const auth = String(req.headers.authorization || '');
-  const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(auth);
-  if (!match || !officeCapability) return null;
-  if (officeCapability.expiresAt <= currentTime()) {
-    clearOfficeCapability();
-    return null;
-  }
-  const supplied = Buffer.from(match[1]);
-  const expected = Buffer.from(officeCapability.token);
-  if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return null;
-  return newOfficeCapability();
-}
 function newGitHubCapability() {
   githubCapability = { token: crypto.randomBytes(32).toString('base64url'), expiresAt: currentTime() + githubCapabilityTtlMs };
   return githubCapability.token;
@@ -214,15 +169,25 @@ function setAppFolders(folders) {
 // are cached by absolute path too).
 // Editor -> drop-in server bridge: run one /app-api-style action for the config window (which is not
 // a served page, so it can't hit /app-api itself). Same handle() contract and options resolution.
+function appOAuthContext(appId) {
+  return appOAuth ? {
+    status: () => appOAuth.status(appId),
+    connect: (scopes, creds) => appOAuth.connect(appId, scopes, creds),
+    disconnect: () => appOAuth.disconnect(appId),
+    getAccessToken: scopes => appOAuth.getAccessToken(appId, scopes),
+  } : null;
+}
+function appServerContext(appId, query, body) {
+  return { appId, query: query || {}, options: appOptions(appId), body: body || null, oauth: appOAuthContext(appId), host: appHost };
+}
 async function callAppServer(appId, action, body) {
   const mod = appServer(appId);
   if (!mod || typeof mod.handle !== 'function') return { ok: false, error: 'app has no server' };
   try {
-    return await mod.handle(String(action || ''), {
-      appId, query: {}, options: appOptions(appId),
-      body: body != null ? Buffer.from(JSON.stringify(body)) : null,
-    });
-  } catch (e) { return { ok: false, error: e.message || 'app server failed' }; }
+    return await mod.handle(String(action || ''), appServerContext(
+      appId, {}, body != null ? Buffer.from(JSON.stringify(body)) : null,
+    ));
+  } catch (e) { return { ok: false, error: e.message || 'app server failed', code: e.code || '' }; }
 }
 function invalidateAppServer(id) {
   const mod = appServers[id];
@@ -471,16 +436,7 @@ async function serveAppApi(req, res, full, url) {
       // a query string can't hold, e.g. captured PCM audio. GET requests leave body null.
       let body = null;
       if (req.method === 'POST') { try { body = await readRawBody(req); } catch (e) { return done(res, false); } }
-      // Drop-in OAuth, scoped to THIS app: the wrapper bakes in the trusted appId (from the referer, not
-      // forgeable), so an app can only touch its own `app:<id>` provider. Tokens are used here in main;
-      // the app's server.js should return results to its page, never the token itself.
-      const oauth = appOAuth ? {
-        status: () => appOAuth.status(appId),
-        connect: (scopes, creds) => appOAuth.connect(appId, scopes, creds),
-        disconnect: () => appOAuth.disconnect(appId),
-        getAccessToken: (scopes) => appOAuth.getAccessToken(appId, scopes),
-      } : null;
-      const result = await mod.handle(action, { appId, query: queryObject(full), options: appOptions(appId), body, oauth });
+      const result = await mod.handle(action, appServerContext(appId, queryObject(full), body));
       const status = result && result.ok === false && result.error === 'unknown action' ? 400 : 200;
       res.writeHead(status, headers('application/json; charset=utf-8'));
       res.end(JSON.stringify(result == null ? { ok: true } : result));
@@ -522,33 +478,6 @@ function sameOrigin(req) {
   try { const o = new URL(origin); return o.protocol === 'http:' && (o.hostname === '127.0.0.1' || o.hostname === 'localhost') && Number(o.port) === loopbackPort(); }
   catch (e) { return false; }
 }
-function allowedOfficeExternalUrl(value) {
-  try {
-    const parsed = new URL(value);
-    if (parsed.protocol !== 'https:') return null;
-    const host = parsed.hostname.toLowerCase();
-    const allowed = host === 'teams.microsoft.com'
-      || host === 'teams.live.com'
-      || host === 'outlook.office.com'
-      || host === 'outlook.office365.com'
-      || host === 'outlook.live.com'
-      || host === 'www.office.com'
-      || host === 'office.com';
-    return allowed ? parsed.href : null;
-  } catch (e) { return null; }
-}
-function allowedTeamsMeetingUrl(value) {
-  const target = allowedOfficeExternalUrl(value);
-  if (!target) return null;
-  try {
-    const parsed = new URL(target);
-    const host = parsed.hostname.toLowerCase();
-    return !parsed.port
-      && (host === 'teams.microsoft.com' || host === 'teams.live.com')
-      && /^\/(?:l|meet)\//i.test(parsed.pathname) ? parsed.href : null;
-  } catch (e) { return null; }
-}
-
 // Voice-panel apps: the only routes in this server that need a request body (turn text, raw PCM
 // audio) rather than a query string -- so they're the only ones allowed to be POST. Everything
 // else stays GET-only, unchanged. Suffixes are relative to the app's own prefix (/claude-voice,
@@ -698,7 +627,6 @@ async function handler(req, res) {
   if (url === '/recorder') return html(res, recorderHtml);   // hidden meeting-recorder capture page
   if (url === '/slidecapture') return html(res, slideHtml);  // hidden slide-capture window
   if (url === '/chat') return html(res, chatHtml);
-  if (url === '/office') return html(res, officeHtml);
   if (url === '/github') return html(res, githubHtml);
   if (url === '/haschedule') return html(res, hascheduleHtml);
   if (url === '/agenda') return html(res, agendaHtml);
@@ -755,23 +683,6 @@ async function handler(req, res) {
     const appId = requestingAppId(req);
     const cfg = appId && getAppConfig ? getAppConfig(appId) : null;
     return cfg ? json(res, cfg) : done(res, false);
-  }
-  // Opening a host-owned URL is a non-secret side effect guarded by the same-origin check above.
-  // It deliberately does not consume Office's rotating data capability: calendar polling and a
-  // touchscreen action may occur concurrently, and sharing the one-time capability would make one
-  // request invalidate the other and strand the renderer with an expired token.
-  if (url === '/api/office/open') {
-    const target = allowedOfficeExternalUrl(queryValue(full, 'url'));
-    const ok = !!target && typeof onOpenExternal === 'function' && !!onOpenExternal(target);
-    return json(res, { ok });
-  }
-  if (url === '/api/office/data' || url === '/api/office/connect') {
-    const nextCapability = consumeOfficeCapability(req);
-    if (!nextCapability) { res.writeHead(403); res.end(); return; }
-    const operation = url === '/api/office/data' ? getOfficeData : connectOffice;
-    if (typeof operation !== 'function') return officeJson(res, { ok: false, error: 'Office service unavailable' }, nextCapability);
-    try { return officeJson(res, await operation(), nextCapability); }
-    catch (e) { return officeJson(res, { ok: false, error: e.message || 'Office request failed', code: e.code || '' }, nextCapability); }
   }
   if (url.indexOf('/api/github/') === 0) return serveGitHubApi(req, res, full, url);
   if (url === '/app-proxy') return serveAppProxy(req, res, full);
@@ -1110,25 +1021,6 @@ async function handler(req, res) {
     const p = typeof resolveMeetingAudio === 'function' ? resolveMeetingAudio(q.get('kind') || '', q.get('name') || '') : null;
     return streamFileRange(req, res, p, 'audio/wav');
   }
-  if (url.indexOf('/api/office/action/') === 0) {
-    if (url === '/api/office/action/meeting') {
-      const target = allowedTeamsMeetingUrl(queryValue(full, 'url'));
-      let result = { ok: false, error: 'Invalid Microsoft Teams meeting link.' };
-      if (target && typeof onOfficeAction === 'function') {
-        try { result = await onOfficeAction('meeting', undefined, undefined, target); }
-        catch (e) { result = { ok: false, error: e.message || 'Office action failed' }; }
-      }
-      return json(res, result);
-    }
-    const match = /^\/api\/office\/action\/(app)\/([0-3])$/.exec(url)
-      || /^\/api\/office\/action\/(shortcut)\/([0-3])\/([0-7])$/.exec(url);
-    let result = { ok: false, error: 'unknown Office action' };
-    if (match && typeof onOfficeAction === 'function') {
-      try { result = await onOfficeAction(match[1], Number(match[2]), match[3] == null ? undefined : Number(match[3])); }
-      catch (e) { result = { ok: false, error: e.message || 'Office action failed' }; }
-    }
-    return json(res, result);
-  }
   if (url === '/launch') {
     const m = /[?&]i=(\d+)/.exec(full);
     let ok = false;
@@ -1148,11 +1040,8 @@ function start(opts) {
   getGridTiles = opts.getGridTiles || null;
   getAppConfig = opts.getAppConfig || null;
   appOAuth = opts.oauth || null;
-  getOfficeData = opts.getOfficeData || null;
-  connectOffice = opts.connectOffice || null;
+  appHost = opts.appHost || null;
   currentTime = typeof opts.now === 'function' ? opts.now : Date.now;
-  officeCapabilityTtlMs = Number.isFinite(opts.officeCapabilityTtlMs) && opts.officeCapabilityTtlMs > 0
-    ? opts.officeCapabilityTtlMs : DEFAULT_OFFICE_CAPABILITY_TTL_MS;
   githubCapabilityTtlMs = Number.isFinite(opts.githubCapabilityTtlMs) && opts.githubCapabilityTtlMs > 0
     ? opts.githubCapabilityTtlMs : DEFAULT_GITHUB_CAPABILITY_TTL_MS;
   githubApp = opts.githubApp || null;
@@ -1174,7 +1063,6 @@ function start(opts) {
   onLucidRewrite = opts.onLucidRewrite || null;
   onLucidReview = opts.onLucidReview || null;
   onLucidSetMode = opts.onLucidSetMode || null;
-  onOfficeAction = opts.onOfficeAction || null;
   getShortcuts = opts.getShortcuts || null;
   discordApp = opts.discordApp || null;
   if (discordApp) {
@@ -1214,7 +1102,6 @@ function start(opts) {
     try { recorderHtml = fs.readFileSync(path.join(__dirname, 'recorderview.html'), 'utf8'); } catch (e) {}
     try { slideHtml = fs.readFileSync(path.join(__dirname, 'slidecapture.html'), 'utf8'); } catch (e) {}
     try { chatHtml = fs.readFileSync(path.join(__dirname, 'chatview.html'), 'utf8'); } catch (e) {}
-    try { officeHtml = fs.readFileSync(path.join(__dirname, 'office.html'), 'utf8'); } catch (e) {}
     try { githubHtml = fs.readFileSync(path.join(__dirname, 'github.html'), 'utf8'); } catch (e) {}
     try { hascheduleHtml = fs.readFileSync(path.join(__dirname, 'haschedule.html'), 'utf8'); } catch (e) {}
     try { agendaHtml = fs.readFileSync(path.join(__dirname, 'agenda.html'), 'utf8'); } catch (e) {}
@@ -1261,7 +1148,6 @@ function setActivePage(which) {
 function stop() {
   nowplaying.stop();
   if (server) { try { server.close(); } catch (e) {} server = null; }
-  clearOfficeCapability();
   clearGitHubCapability();
   for (const res of discordSubscribers) { try { res.end(); } catch (e) {} }
   discordSubscribers.clear();
@@ -1270,12 +1156,10 @@ function stop() {
     discordApp.stop();
     discordApp = null;
   }
-  getOfficeData = null;
-  connectOffice = null;
-  onOfficeAction = null;
+  appOAuth = null;
+  appHost = null;
   githubApp = null;
   currentTime = Date.now;
-  officeCapabilityTtlMs = DEFAULT_OFFICE_CAPABILITY_TTL_MS;
   githubCapabilityTtlMs = DEFAULT_GITHUB_CAPABILITY_TTL_MS;
 }
 
@@ -1286,4 +1170,4 @@ function lucidBroadcast(payload) {
   for (const res of lucidSubscribers) { try { res.write(line); } catch (e) { lucidSubscribers.delete(res); } }
 }
 
-module.exports = { start, stop, setActivePage, setAppFolders, invalidateAppServer, callAppServer, issueOfficeCapability, clearOfficeCapability, issueGitHubCapability, clearGitHubCapability, lucidBroadcast };
+module.exports = { start, stop, setActivePage, setAppFolders, invalidateAppServer, callAppServer, issueGitHubCapability, clearGitHubCapability, lucidBroadcast };

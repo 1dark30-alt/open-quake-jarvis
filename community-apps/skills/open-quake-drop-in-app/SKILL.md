@@ -134,10 +134,11 @@ Avoid adding routes named for a single integration, such as `/api/qnap/...`, unl
 
 ### OAuth (per-app)
 
-A served app can integrate with one OAuth 2.0 + PKCE provider. Declare it in `app.json`, and the user supplies the client credentials via app options:
+A served app can integrate with one OAuth 2.0 + PKCE provider. Declare it in `app.json`. A shipped public client may put its non-secret `clientId` in the OAuth block; otherwise the user supplies client credentials via app options:
 
 ```json
-"oauth": { "name": "Spotify", "authUrl": "https://accounts.spotify.com/authorize",
+"oauth": { "name": "Spotify", "clientId": "public-client-id",
+  "authUrl": "https://accounts.spotify.com/authorize",
   "tokenUrl": "https://accounts.spotify.com/api/token", "scopes": ["playlist-read-private"] },
 "options": [
   { "key": "oauthClientId", "label": "Client ID", "type": "text" },
@@ -152,7 +153,7 @@ async function handle(action, context) {
   const o = context.oauth, opt = context.options;
   if (action === 'auth-status') return o.status();                       // { connected, configured, scopes }
   if (action === 'connect') return o.connect(['playlist-read-private'],  // opens the browser to sign in
-    { clientId: opt.oauthClientId, clientSecret: opt.oauthClientSecret });
+    opt.oauthClientId ? { clientId: opt.oauthClientId, clientSecret: opt.oauthClientSecret } : undefined);
   if (action === 'disconnect') return o.disconnect();
   if (action === 'my-playlists') {                                       // use the token HERE, in main:
     const t = await o.getAccessToken();                                 // { accessToken, ... } or null

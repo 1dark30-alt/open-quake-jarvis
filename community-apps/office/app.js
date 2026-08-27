@@ -1,7 +1,6 @@
 (function () {
   'use strict';
 
-  var capability = '';
   var officeLoad = null;
   var officeOptions = {};
   var selectedAppIndex = 0;
@@ -57,30 +56,12 @@
     element.classList.toggle('bad', !!bad);
   }
 
-  function readCapability() {
-    try { return new URLSearchParams(location.hash.slice(1)).get('_cap') || ''; }
-    catch (e) { return ''; }
-  }
-
-  function rememberCapability(next) {
-    if (!next) return;
-    capability = next;
-    try { history.replaceState(null, '', location.pathname + location.search + '#_cap=' + encodeURIComponent(next)); }
-    catch (e) {}
-  }
-
-  function officeFetch(path) {
-    capability = capability || readCapability();
-    if (!capability) return Promise.reject(new Error('Office session authorization is missing.'));
-    return fetch(path, {
-      cache: 'no-store',
-      headers: { Authorization: 'Bearer ' + capability },
-    }).then(function (response) {
-      rememberCapability(response.headers.get('X-Open-Quake-Capability'));
+  function api(action, params) {
+    var query = new URLSearchParams(params || {});
+    var suffix = query.toString();
+    return fetch('/app-api/' + action + (suffix ? '?' + suffix : ''), { cache: 'no-store' }).then(function (response) {
       if (!response.ok) {
-        throw new Error(response.status === 403
-          ? 'Office session authorization expired.'
-          : 'Office service failed (HTTP ' + response.status + ').');
+        throw new Error('Office service failed (HTTP ' + response.status + ').');
       }
       return response.json();
     });
@@ -141,10 +122,7 @@
   function openExternal(url) {
     if (!url) return Promise.resolve(false);
     setStatus('Opening…', false);
-    return fetch('/api/office/open?url=' + encodeURIComponent(url), { cache: 'no-store' }).then(function (response) {
-      if (!response.ok) throw new Error('Open-Quake could not open that destination.');
-      return response.json();
-    }).then(function (result) {
+    return api('open', { url: url }).then(function (result) {
       if (!result || !result.ok) throw new Error('Open-Quake could not open that destination.');
       setStatus('', false);
       return true;
@@ -156,10 +134,7 @@
 
   function openTeamsApp() {
     setStatus('Opening Microsoft Teams…', false);
-    return fetch('/meeting-action/teams/focus', { cache: 'no-store' }).then(function (response) {
-      if (!response.ok) throw new Error('Teams action failed.');
-      return response.json();
-    }).then(function (result) {
+    return api('app', { index: 0 }).then(function (result) {
       if (!result || !result.ok) throw new Error((result && result.error) || 'Microsoft Teams could not be opened.');
       setStatus('', false);
       return true;
@@ -175,14 +150,9 @@
 
   function runOfficeAction(kind, index, shortcutIndex, target) {
     setStatus(kind === 'app' ? 'Opening Office app…' : kind === 'meeting' ? 'Opening meeting…' : 'Sending keyboard shortcut…', false);
-    var path = kind === 'meeting'
-      ? '/api/office/action/meeting?url=' + encodeURIComponent(target || '')
-      : '/api/office/action/' + kind + '/' + index;
-    if (kind === 'shortcut') path += '/' + shortcutIndex;
-    return fetch(path, { cache: 'no-store' }).then(function (response) {
-      if (!response.ok) throw new Error('Office action failed.');
-      return response.json();
-    }).then(function (result) {
+    var params = kind === 'meeting' ? { url: target || '' } : { index: index };
+    if (kind === 'shortcut') params.shortcutIndex = shortcutIndex;
+    return api(kind, params).then(function (result) {
       if (!result || !result.ok) throw new Error((result && result.error) || 'Office action failed.');
       setStatus('', false);
       return true;
@@ -208,7 +178,7 @@
       var appId = APP_PRESENTATION[officeOptions['app' + (index + 1)]] ? officeOptions['app' + (index + 1)] : DEFAULT_APPS[index];
       var app = APP_PRESENTATION[appId];
       var mode = officeOptions['mode' + (index + 1)] || 'prefer-desktop';
-      var iconHtml = '<img src="/office-icons/' + encodeURIComponent(appId) + '.svg" alt="">';
+      var iconHtml = '<img src="office-icons/' + encodeURIComponent(appId) + '.svg" alt="">';
       button.className = 'header-action office-app-control ' + app.className + (index === selectedAppIndex ? ' selected' : '');
       button.innerHTML = '<span class="office-app-mark" aria-hidden="true">' + iconHtml + '</span>'
         + '<span class="app-nav-copy"><strong>' + escapeHtml(app.name) + '</strong><small>' + escapeHtml(mode === 'web' ? 'Web' : mode === 'desktop' ? 'Desktop' : 'Desktop / web') + '</small></span>';
@@ -251,10 +221,7 @@
   }
 
   function loadOfficeConfig() {
-    return fetch('/app-config?app=office', { cache: 'no-store' }).then(function (response) {
-      if (!response.ok) throw new Error('Office configuration unavailable.');
-      return response.json();
-    }).then(function (config) {
+    return api('config').then(function (config) {
       renderConfiguredControls(config && config.options);
     }).catch(function () {
       renderConfiguredControls({});
@@ -347,10 +314,12 @@
   function showAuth(message) {
     $('auth').classList.remove('hidden');
     $('authMsg').textContent = message || '';
+    $('disconnect').hidden = true;
   }
 
   function hideAuth() {
     $('auth').classList.add('hidden');
+    $('disconnect').hidden = false;
   }
 
   function applyState(data) {
@@ -376,7 +345,7 @@
 
   function loadOffice() {
     if (officeLoad) return officeLoad;
-    officeLoad = officeFetch('/api/office/data').then(applyState).catch(function (error) {
+    officeLoad = api('data').then(applyState).catch(function (error) {
       setStatus(error.message || 'Could not reach the Open-Quake Office service.', true);
       renderCalendarError();
     }).finally(function () {
@@ -399,7 +368,7 @@
     var button = $('connect');
     button.disabled = true;
     $('authMsg').textContent = 'Opening Microsoft sign-in…';
-    officeFetch('/api/office/connect').then(function (result) {
+    api('connect').then(function (result) {
       $('authMsg').textContent = result && result.ok
         ? 'Finish sign-in in the browser; this deck will refresh automatically.'
         : ((result && result.error) || 'Could not start sign-in.');
@@ -409,6 +378,17 @@
     }).finally(function () {
       button.disabled = false;
     });
+  });
+
+  $('disconnect').addEventListener('click', function () {
+    var button = $('disconnect');
+    button.disabled = true;
+    api('disconnect').then(function (result) {
+      if (!result || !result.ok) throw new Error((result && result.error) || 'Could not disconnect.');
+      applyState({ ok: false, error: 'Microsoft 365 is disconnected.' });
+    }).catch(function (error) {
+      setStatus(error.message || 'Could not disconnect.', true);
+    }).finally(function () { button.disabled = false; });
   });
 
   loadOfficeConfig();

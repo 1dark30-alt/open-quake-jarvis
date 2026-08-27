@@ -10,7 +10,6 @@ function configForRenderer(config) {
   Object.entries(providers).forEach(([provider, settings]) => {
     if (!settings || typeof settings !== 'object') return;
     delete settings.clientSecret;
-    if (provider === 'microsoft') delete settings.clientId;
   });
   return clone;
 }

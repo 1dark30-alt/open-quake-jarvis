@@ -8,13 +8,18 @@
 // and the error is kept for the panel to show.
 //
 // Everything external is injected (folders, base URL, fetch, fs, clock) so tests run with a fake
-// diarizer and temp dirs — same DI shape as officeActions/meetingRecorder.
+// diarizer and temp dirs — same DI shape as the other meeting services.
 
 const path = require('path');
 const http = require('http');
 const https = require('https');
 const { safeName } = require('./meetingLibrary');
-const { normalizeName } = require('./officeGraph');   // "Last, First" -> "First Last" (idempotent on clean names)
+
+function normalizeName(value) {
+  const name = String(value || '').trim();
+  const comma = name.indexOf(',');
+  return comma < 0 ? name : (name.slice(comma + 1).trim() + ' ' + name.slice(0, comma).trim()).trim();
+}
 
 const TIMEOUT_MS = 3600000;      // the API doc's own guidance: budget a full hour
 const HEALTH_TTL_MS = 10000;     // re-probe /health at most this often

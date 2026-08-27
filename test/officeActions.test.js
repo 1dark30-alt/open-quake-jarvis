@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createOfficeActions } = require('../app/officeActions');
+const { createOfficeActions } = require('../community-apps/office/officeActions');
 
 function harness(options, overrides) {
   const calls = { apps: [], urls: [], combos: [], focus: [], running: [] };

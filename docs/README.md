@@ -14,7 +14,7 @@ Detailed guides for open-quake. Back to the [project README](../README.md).
 - **[System monitor](system-monitor.md)** — live CPU/GPU/RAM/disk/network/battery
 - **[Open WebUI chat + voice](ai-chat.md)** — chat to your LLM, hold the knob to talk
 - **[AI Voice](ai-voice.md)** — one voice+text app, five backends: a real Claude Code / Codex / Copilot agent session (talk or type, touch approvals), or plain chat against Open WebUI or any OpenAI-compatible API with your own key
-- **[Microsoft 365 panel](apps.md)** — profile, presence, and upcoming calendar via Microsoft Graph, plus configurable app shortcuts and one-tap Join meeting
+- **[Microsoft 365 drop-in](apps.md)** — installable profile, presence, and calendar panel with its own OAuth connection, configurable app shortcuts, and one-tap Join meeting
 - **[Settings & knob](settings.md)** — launch mode, rotation, RGB ring, knob behavior, mic
 - **[Reserved Display](reserved-display.md)** — keep normal Windows apps off the Quake display
 

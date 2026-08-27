@@ -1,5 +1,9 @@
 # Office App: Current State and Suggested Improvements
 
+> Historical analysis: as of 2026-08-26, Office is a community drop-in under
+> `community-apps/office/`, uses app-scoped OAuth (`app:office`), and is no longer a bundled
+> page or global Auth-tab provider. Paths and runtime details below describe the former design.
+
 **Assessment date:** 2026-08-11  
 **Status:** Source-verified current-state review; no implementation changes made
 

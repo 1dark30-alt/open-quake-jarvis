@@ -60,6 +60,13 @@ Design invariants a conforming host MUST preserve:
     { "key": "token", "label": "API token",  "type": "secret", "serverOnly": true }
   ],
   "server": "server.js",
+  "oauth": {
+    "name": "Example account",
+    "clientId": "public-client-id",
+    "authUrl": "https://identity.example/authorize",
+    "tokenUrl": "https://identity.example/token",
+    "scopes": ["profile.read"]
+  },
   "proxy": { "methods": ["GET"], "verifySslOption": "verifySsl", "allow": [{ "option": "host" }] }
 }
 ```
@@ -75,6 +82,7 @@ uses all of them at once. See `apps/apps.json` or any `community-apps/` folder f
 | `served` | bool | no | `false` = static `file://`; `true` = served over loopback HTTP. Default `false`. |
 | `options` | array | no | User-set option descriptors (§2.5). Default `[]`. |
 | `server` | string | served only | Relative path to a host-side Node module (§5.1). Triggers the exec-code warning on import. |
+| `oauth` | object | served only | App-scoped OAuth provider definition (§5.5). |
 | `proxy` | object | served only | Outbound-fetch allow-list for the app's page (§5.2). |
 | `knob` | bool | served only | `true` = the panel knob defaults to "App controlled" on this app's pages, delivering knob events to the page's `window.oqKnob` (§5.4). Default `false`. |
 | `grid` | object | served only | OPTIONAL embedded editable tile grid carried by the app: `{ cols, rows, defaults }` (column/row count + default tile contents). MAY be ignored by a host that doesn't support in-app grids. |
@@ -199,7 +207,7 @@ if the resolved path is inside the app root). It MUST export:
 
 ```js
 exports.handle = async function (action, context) {
-  // context = { appId, query, options }
+  // context = { appId, query, options, body, oauth, host }
   //   appId   : string  — this app's id
   //   query   : object  — parsed query params of the /app-api/<action> request
   //   options : object  — the app's resolved options (incl. secrets and serverOnly)
@@ -216,6 +224,11 @@ reach its own server module. Exceptions become HTTP 500 `{ ok:false, error }`.
 If no server module is present, the host still answers a built-in `/app-api/open?url=…` action
 that opens an `http(s)` URL in the user's external browser (host's `openExternal`). A fork MAY
 offer additional built-in actions but MUST keep them side-effect-safe and same-origin-gated.
+
+`body` is a raw `Buffer` for POST requests and `null` for GET. `oauth` is present only when the
+manifest declares §5.5. The reference host also exposes trusted platform operations through
+`host` to installed server modules; these are host-specific, and server modules already run with
+the full privileges described in §6.3.
 
 ### 5.2 Outbound proxy (`proxy`)
 
@@ -290,6 +303,25 @@ console.log('OQX_RING::custom:' + JSON.stringify({ hue: 200, sat: 255, effect: 1
 clamped; malformed payloads are ignored. Brightness always follows the user's setting, and the
 host restores the normal ring automatically when the page changes.
 
+### 5.5 App-scoped OAuth (`oauth`, `context.oauth`)
+
+A served app MAY declare an OAuth public client with `name`, `authUrl`, `tokenUrl`, optional
+`revokeUrl`, `scopes`, and optional fixed public `clientId`. Authorization and token endpoints
+MUST use HTTPS. The host registers it only as `app:<app-id>`; an app MUST NOT choose or access a
+global provider id.
+
+The app's server module receives `context.oauth` with `status()`, `connect(scopes, credentials?)`,
+`disconnect()`, and `getAccessToken(scopes)`. Every operation is already bound to the requesting
+app id. Tokens remain in the host process and MUST NOT be returned to page JavaScript. Apps without
+a fixed public `clientId` MAY collect client credentials as secret/server-only options and pass
+them to `connect`; fixed public clients SHOULD declare `clientId` in the manifest.
+
+The reference editor also shows account status, Connect/Reconnect, declared permissions, and
+Disconnect controls inside the settings for every app page whose installed manifest declares
+`oauth`. Those controls use the same `app:<app-id>` binding; app OAuth providers do not appear in
+the global OAuth settings list. An app may additionally expose the lifecycle in its panel UI
+through its server module, as long as tokens remain inside the host process.
+
 ---
 
 ## 6. Security model (normative)
@@ -314,11 +346,9 @@ The served server binds `127.0.0.1` only, and:
   require `Sec-Fetch-Site: same-origin` (with an `Origin`-based fallback that fails closed). Only
   the static page + asset routes are reachable by top-level navigation.
 - **No global OAuth-token API:** same-origin request metadata is not app or native-process
-  authentication. A served or drop-in app MUST NOT receive host OAuth access or refresh tokens.
-  Built-in integrations that need OAuth-protected data use a host-controlled, scope-fixed operation
-  plus a random, memory-only capability delivered outside normal HTTP requests. The reference Office
-  capability is carried in the page URL fragment, rotated after each authorized operation, expires,
-  and is cleared when the page is no longer active.
+  authentication. A served or drop-in app MUST NOT receive another provider's OAuth access or
+  refresh tokens. App OAuth is exposed only to that app's trusted server module through the
+  `app:<app-id>`-bound §5.5 facade; tokens MUST never be returned to page JavaScript.
 
 ### 6.3 Informed consent for host code (import warning)
 
@@ -378,7 +408,7 @@ agree on:
    `serverOnly` excluded from both (§4, §5.3).
 3. The served route shape: `/apps/<id>/<entry>`, `/app-config?app=<id>`, `/app-proxy?url=…`,
    `/app-proxy/config`, `/app-api/<action>`.
-4. The server-module contract: `exports.handle(action, { appId, query, options })` (§5.1).
+4. The server-module contract: `exports.handle(action, { appId, query, options, body, oauth })` (§5.1).
 5. The proxy allow-rule semantics and the private-host block on `pattern` rules (§5.2).
 
 Hosts MAY add fields/routes/option types beyond these; apps relying on extensions are

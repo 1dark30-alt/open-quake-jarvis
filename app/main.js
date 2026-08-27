@@ -41,9 +41,6 @@ const { createSecretStore } = require('./secretStore');
 const { OAuthHandler } = require('../src/auth/oauth-handler');
 const { TokenStorage } = require('../src/auth/token-storage');
 const { providers: oauthProviders, providerFor: oauthProviderFor, registerAppProvider, clearAppProviders, REDIRECT_URI: OAUTH_REDIRECT_URI } = require('../src/auth/providers');
-const { createOfficeGraph } = require('./officeGraph');
-const { createOfficeActions } = require('./officeActions');
-const { officeShortcutImageDataUrl } = require('./officeShortcutIcons');
 const { GitHubService, GITHUB_ACCESS_SCOPES, normalizeClientId: normalizeGitHubClientId, normalizeSettings: normalizeGitHubSettings, parseRepository: parseGitHubRepository, validRef: validGitHubRef } = require('./githubService');
 const { configForRenderer } = require('./oauthConfigBoundary');
 const nowplaying = require('./nowplaying');   // same singleton sysserver polls — read its snapshot to target transport
@@ -965,11 +962,18 @@ function syncAppOAuthProviders() {
     if (!/^https:\/\//i.test(o.authUrl || '') || !/^https:\/\//i.test(o.tokenUrl || '')) return;   // https endpoints only
     registerAppProvider({
       id: OAUTH_APP_PID(a.id), name: String(o.name || a.name || a.id),
+      clientId: String(o.clientId || ''),
       authUrl: o.authUrl, tokenUrl: o.tokenUrl, revokeUrl: /^https:\/\//i.test(o.revokeUrl || '') ? o.revokeUrl : '',
       scopes: Array.isArray(o.scopes) ? o.scopes : [], redirectUri: OAUTH_REDIRECT_URI, usesPkce: true,
       accessTokenExpiresSkewMs: 5 * 60 * 1000,
     });
   });
+}
+function appOAuthDefinition(appId) {
+  const id = String(appId || '').toLowerCase();
+  if (!SAFE_APP_ID.test(id)) return null;
+  syncAppOAuthProviders();
+  return loadApps().find(a => a && a.id === id && a._folder && a.served && a.oauth && typeof a.oauth === 'object') || null;
 }
 const dropInOAuth = {
   status(appId) { const pid = OAUTH_APP_PID(appId); return oauthProviderFor(pid) ? oauthHandler.status(pid) : { provider: pid, configured: false, connected: false, scopes: [] }; },
@@ -987,42 +991,24 @@ const githubService = new GitHubService({
   oauth: oauthHandler,
   openExternal: async value => openExternalUrl(value),
 });
-const officeGraph = createOfficeGraph({
-  getAccessToken: (provider, scopes) => oauthHandler.getValidAccessToken(provider, scopes),
-  connectOAuth: (provider, scopes) => oauthHandler.connect(provider, scopes),
-});
-const officeActions = createOfficeActions({
-  getOptions: () => {
-    const active = activeServedAppConfig('office');
-    return active ? active.options : {};
-  },
+async function openAppServerExternal(value) {
+  const raw = String(value || '');
+  if (raw === 'ms-teams:' || raw === 'msteams:') {
+    return new Promise(resolve => exec('start ' + raw, { windowsHide: true }, err => resolve(!err)));
+  }
+  let target;
+  try { target = new URL(raw); } catch (e) { return false; }
+  if (!['http:', 'https:', 'ms-teams:', 'msteams:'].includes(target.protocol)) return false;
+  try { await shell.openExternal(target.href); return true; }
+  catch (e) { console.log('app server open error:', e.message); return false; }
+}
+const dropInHost = Object.freeze({
+  openExternal: openAppServerExternal,
   launchApp: value => actionRunner.launchApp(value, actionDeps),
-  openExternal: async value => {
-    // A validated Teams meeting deep link deliberately bypasses the browser's client chooser.
-    // Unlike the bare launch protocol below, use shell.openExternal so URL query separators never
-    // pass through cmd.exe.
-    if (/^msteams:\/\/(?:teams\.microsoft\.com|teams\.live\.com)\//i.test(value)) {
-      try { await shell.openExternal(value); return true; }
-      catch (e) { console.log('Teams meeting open error:', e.message); return false; }
-    }
-    // Teams desktop: `start ms-teams:` (via cmd, exactly as a Shell-command tile runs it) is the
-    // invocation that reliably restores a CLOSED new-Teams window from the tray. shell.openExternal
-    // and `start "" ms-teams:` (empty title) do NOT — they leave the window hidden. User-validated.
-    if (value === 'ms-teams:' || value === 'msteams:') {
-      return new Promise(resolve => {
-        exec('start ' + value, { windowsHide: true }, err => {
-          if (err) console.log('Teams launch error:', err.message);
-          resolve(!err);
-        });
-      });
-    }
-    return openExternalUrl(value);
-  },
   focusTeams: () => meetingControl.focusTeamsWindow(),
   focusApp: names => meetingControl.focusProcessWindow(names),
   hasAppWindow: names => meetingControl.hasProcessWindow(names),
   tapCombo: combo => mediaKeys.tapCombo(combo),
-  fs,
 });
 
 // Build the file: URL for an app page, encoding its options as a #hash (file:// drops a ?query).
@@ -1047,7 +1033,7 @@ function appPageUrl(page) {
     const opts = page.options || {};                                         // non-secret options only; secrets are served by /app-config
     const qs = [appOptionQuery(def, opts, o => o.type !== 'secret' && !o.serverOnly), themeParams(page)].filter(Boolean).join('&');
     if (def._folder) return 'http://127.0.0.1:' + serverPort + '/apps/' + encodeURIComponent(def.id) + '/' + appEntryUrlPath(def.entry || def.file) + (qs ? '?' + qs : '');
-    const capability = !sysserver ? '' : def.id === 'office' ? sysserver.issueOfficeCapability() : def.id === 'github' ? sysserver.issueGitHubCapability() : '';
+    const capability = !sysserver ? '' : def.id === 'github' ? sysserver.issueGitHubCapability() : '';
     return 'http://127.0.0.1:' + serverPort + '/' + def.id + (qs ? '?' + qs : '') + (capability ? '#_cap=' + encodeURIComponent(capability) : '');
   }
   const file = def._folder ? path.join(def._dir, def.entry || def.file) : path.join(APPS_DIR, def.file);
@@ -1070,11 +1056,6 @@ function activeServedAppConfig(appId) {
     if (appId === 'office' && /^app[1-4]Shortcut[1-8](IconImage|Icon|Label|Keys)$/.test(o.key) && !(o.key in opts)) return;
     let v = (o.key in opts) ? opts[o.key] : o.default;
     if (o.type === 'bool') v = !!v;
-    if (appId === 'office' && /^app[1-4]Shortcut[1-8]IconImage$/.test(o.key)) {
-      options[o.key] = '';
-      options[o.key + 'Src'] = officeShortcutImageDataUrl(v, fs) || '';
-      return;
-    }
     options[o.key] = v == null ? '' : v;
   });
   return { app: appId, options };
@@ -1175,7 +1156,7 @@ function oauthProviderPayload() {
       scopes: p.suggestedScopes || p.scopes,
       managedClient: !!p.clientId,
       hasClientSecret: !!settings.clientSecret,
-      enabled: id === 'microsoft',
+      enabled: false,
     });
   });
   const discordSettings = normalizeDiscordSettings((config.settings || {}).discord);
@@ -2171,7 +2152,9 @@ function writeOutlookMeetingInfo(wavName) {   // wavName = basename (recorder st
     if (!info) return info;
     const mine = String(m.myName || '').trim();
     const fix = n => {
-      let t = require('./officeGraph').normalizeName(n);   // belt-and-braces "Last, First" flip (idempotent)
+      let t = String(n || '').trim();
+      const comma = t.indexOf(',');
+      if (comma >= 0) t = (t.slice(comma + 1).trim() + ' ' + t.slice(0, comma).trim()).trim();
       if (mine && canon(t) === canon(mine)) t = mine;
       return t;
     };
@@ -2204,8 +2187,11 @@ function writeOutlookMeetingInfo(wavName) {   // wavName = basename (recorder st
     } catch (e) { console.log('[meeting] calendar info write failed: ' + e.message); }
   };
   if (m.meetingInfoSource === 'microsoft365') {
-    officeGraph.getMeetingInfo({ skipPrefixes: m.outlookSkipPrefixes || '' })
-      .then(saveInfo)
+    sysserver.callAppServer('office', 'meeting-info', { skipPrefixes: m.outlookSkipPrefixes || '' })
+      .then(result => {
+        if (!result || !result.ok) throw new Error(result && result.error || 'Microsoft 365 app unavailable');
+        saveInfo(result.meeting);
+      })
       .catch(e => console.log('[meeting] Microsoft 365 lookup failed: ' + (e.message || e)));
     return;
   }
@@ -3338,9 +3324,8 @@ app.whenReady().then(async () => {
     try { const n = parseInt(fs.readFileSync(portFile, 'utf8'), 10); if (n >= 1024 && n <= 65535) preferredPort = n; } catch (e) {}
     syncAppOAuthProviders();                                  // register drop-in apps' declared OAuth providers
     serverPort = await sysserver.start({
-      preferredPort, oauth: dropInOAuth,
+      preferredPort, oauth: dropInOAuth, appHost: dropInHost,
       onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig,
-      getOfficeData: officeGraph.getData, connectOffice: officeGraph.connect, onOfficeAction: officeActions.run,
       githubApp: githubService,
       onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(),
       getMeetingState: meetingStateForPanel, onMeetingRecord: onMeetingRecordRequest,
@@ -3666,7 +3651,6 @@ app.whenReady().then(async () => {
     try {
       const id = String(provider || '').toLowerCase();
       if (id === 'discord') await discordService.authorize();
-      else if (id === 'microsoft') await oauthHandler.connect(id, scopes);
       else return { ok: false, error: 'unsupported OAuth provider' };
       return { ok: true, providers: oauthProviderPayload() };
     }
@@ -3676,16 +3660,40 @@ app.whenReady().then(async () => {
     if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
     try {
       const id = String(provider || '').toLowerCase();
-      if (id !== 'discord' && id !== 'microsoft') return { ok: false, error: 'unsupported OAuth provider' };
-      const isDiscord = id === 'discord';
-      const r = isDiscord ? (discordService.disconnectAuthorization(), { ok: true }) : await oauthHandler.revokeToken(provider);
-      if (String(provider || '').toLowerCase() === 'microsoft' && sysserver) {
-        sysserver.clearOfficeCapability();
-        pushToPanel();
-      }
+      if (id !== 'discord') return { ok: false, error: 'unsupported OAuth provider' };
+      discordService.disconnectAuthorization();
+      const r = { ok: true };
       return Object.assign({}, r, { providers: oauthProviderPayload() });
     }
     catch (err) { return { ok: false, error: err.message || String(err) }; }
+  });
+  // App-scoped OAuth lifecycle for the selected drop-in app's own editor. The renderer supplies
+  // only an app id; provider identity and scopes are taken from the installed manifest so one app
+  // cannot request another provider's tokens or expand its declared permissions.
+  ipcMain.handle('getAppOAuthStatus', (e, appId) => {
+    if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
+    const def = appOAuthDefinition(appId);
+    if (!def) return { ok: false, error: 'This installed app does not declare OAuth' };
+    return Object.assign({ ok: true, name: String(def.oauth.name || def.name || def.id) }, dropInOAuth.status(def.id));
+  });
+  ipcMain.handle('connectAppOAuth', async (e, appId) => {
+    if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
+    try {
+      const def = appOAuthDefinition(appId);
+      if (!def) return { ok: false, error: 'This installed app does not declare OAuth' };
+      const result = await dropInOAuth.connect(def.id, Array.isArray(def.oauth.scopes) ? def.oauth.scopes : []);
+      return Object.assign({}, result, { status: dropInOAuth.status(def.id) });
+    } catch (err) { return { ok: false, error: err.message || String(err), code: err.code || '' }; }
+  });
+  ipcMain.handle('disconnectAppOAuth', async (e, appId) => {
+    if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
+    try {
+      const def = appOAuthDefinition(appId);
+      if (!def) return { ok: false, error: 'This installed app does not declare OAuth' };
+      const result = await dropInOAuth.disconnect(def.id);
+      pushToPanel();
+      return result;
+    } catch (err) { return { ok: false, error: err.message || String(err), code: err.code || '' }; }
   });
   ipcMain.handle('getGitHubStatus', (e) => isFrom(e, configWin) ? githubService.publicSettings() : { ok: false, error: 'unauthorized' });
   ipcMain.handle('connectGitHub', async e => isFrom(e, configWin) ? githubService.connect() : { ok: false, error: 'unauthorized' });
@@ -3813,7 +3821,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('checkOutlookMeetings', async (e, source) => {
     if (!isFrom(e, configWin)) return null;
     if (source === 'microsoft365') {
-      try { return await officeGraph.checkConnection(); }
+      try { return await sysserver.callAppServer('office', 'check-connection'); }
       catch (err) { return { ok: false, error: err.message || String(err), code: err.code || '' }; }
     }
     return new Promise(resolve => {
@@ -3831,6 +3839,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('getApps', (e) => {
     if (!isFrom(e, configWin)) return [];
     const catalog = appCatalog();
+    syncAppOAuthProviders();
     try { if (sysserver && sysserver.setAppFolders) sysserver.setAppFolders(catalog.servedApps); } catch (er) {}
     return catalog.apps;
   });

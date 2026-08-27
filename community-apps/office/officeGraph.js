@@ -162,7 +162,7 @@ function createOfficeGraph({ getAccessToken, connectOAuth, fetchImpl = global.fe
   async function accessToken() {
     const token = await getAccessToken('microsoft', OFFICE_SCOPES);
     if (!(token && token.accessToken)) {
-      const err = new Error('Microsoft 365 is not connected. Connect it on the Auth settings tab first.');
+      const err = new Error('Microsoft 365 is not connected. Open the Microsoft 365 app and choose Connect.');
       err.code = 'not_connected';
       throw err;
     }
