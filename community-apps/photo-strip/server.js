@@ -17,9 +17,11 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_IMAGES = 10000;
 const MAX_DIRECTORIES = 2000;
 const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
+const MAX_DELETE_BODY_BYTES = 2048;
 
 let cache = null;
 let pendingScan = null;
+let trashFileOverride = null;
 
 function truthy(value) {
   return value === true || value === '1' || value === 'true';
@@ -166,7 +168,7 @@ function publicLibrary(library) {
   };
 }
 
-async function loadImage(options, id) {
+async function resolveKnownImage(options, id) {
   if (!/^[a-f0-9]{24}$/.test(String(id || ''))) return { ok: false, error: 'invalid image id' };
   const library = await getLibrary(options, false);
   const image = library.byId.get(String(id));
@@ -181,6 +183,14 @@ async function loadImage(options, id) {
     return { ok: false, error: 'image no longer exists' };
   }
   if (!contained(image.root, realFile) || !stat.isFile()) return { ok: false, error: 'image not found' };
+
+  return { ok: true, image, realFile, stat };
+}
+
+async function loadImage(options, id) {
+  const resolved = await resolveKnownImage(options, id);
+  if (!resolved.ok) return resolved;
+  const { image, realFile, stat } = resolved;
   if (stat.size > MAX_IMAGE_BYTES) return { ok: false, error: 'image is too large' };
 
   try {
@@ -192,6 +202,39 @@ async function loadImage(options, id) {
   }
 }
 
+function deleteIdFromBody(body) {
+  if (!Buffer.isBuffer(body) || !body.length || body.length > MAX_DELETE_BODY_BYTES) return '';
+  try {
+    const parsed = JSON.parse(body.toString('utf8'));
+    return parsed && typeof parsed === 'object' && typeof parsed.id === 'string' ? parsed.id : '';
+  } catch (error) {
+    return '';
+  }
+}
+
+async function trashFile(file) {
+  if (typeof trashFileOverride === 'function') return trashFileOverride(file);
+  let electron;
+  try { electron = require('electron'); } catch (error) { electron = null; }
+  if (!(electron && electron.shell && typeof electron.shell.trashItem === 'function')) {
+    throw new Error('Recycle Bin is unavailable');
+  }
+  return electron.shell.trashItem(file);
+}
+
+async function deleteImage(options, id) {
+  if (!truthy((options || {}).allowDelete)) return { ok: false, error: 'photo deletion is disabled' };
+  const resolved = await resolveKnownImage(options, id);
+  if (!resolved.ok) return resolved;
+  try {
+    await trashFile(resolved.realFile);
+  } catch (error) {
+    return { ok: false, error: 'photo could not be moved to the Recycle Bin' };
+  }
+  resetCache();
+  return { ok: true, id: resolved.image.id, name: resolved.image.name };
+}
+
 async function handle(action, context) {
   const ctx = context || {};
   const options = ctx.options || {};
@@ -200,6 +243,11 @@ async function handle(action, context) {
     return publicLibrary(await getLibrary(options, force));
   }
   if (action === 'image') return loadImage(options, ctx.query && ctx.query.id);
+  if (action === 'delete') {
+    const id = deleteIdFromBody(ctx.body);
+    if (!id) return { ok: false, error: 'invalid request body' };
+    return deleteImage(options, id);
+  }
   return { ok: false, error: 'unknown action' };
 }
 
@@ -218,6 +266,11 @@ module.exports = {
     scanLibrary,
     publicLibrary,
     contained,
+    deleteIdFromBody,
+    deleteImage,
     resetCache,
+    setTrashFileImpl(implementation) {
+      trashFileOverride = typeof implementation === 'function' ? implementation : null;
+    },
   },
 };

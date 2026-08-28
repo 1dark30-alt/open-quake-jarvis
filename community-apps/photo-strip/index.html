@@ -14,11 +14,20 @@
     </section>
 
     <section id="stripStage" class="strip-stage" aria-live="polite" hidden>
-      <article class="strip-card" data-offset="-2"><img alt=""></article>
-      <article class="strip-card" data-offset="-1"><img alt=""></article>
-      <article class="strip-card active" data-offset="0"><img alt=""></article>
-      <article class="strip-card" data-offset="1"><img alt=""></article>
-      <article class="strip-card" data-offset="2"><img alt=""></article>
+      <div class="strip-deck current">
+        <article class="strip-card" data-offset="-2"><img alt=""></article>
+        <article class="strip-card" data-offset="-1"><img alt=""></article>
+        <article class="strip-card active" data-offset="0"><img alt=""></article>
+        <article class="strip-card" data-offset="1"><img alt=""></article>
+        <article class="strip-card" data-offset="2"><img alt=""></article>
+      </div>
+      <div class="strip-deck" aria-hidden="true">
+        <article class="strip-card" data-offset="-2"><img alt=""></article>
+        <article class="strip-card" data-offset="-1"><img alt=""></article>
+        <article class="strip-card active" data-offset="0"><img alt=""></article>
+        <article class="strip-card" data-offset="1"><img alt=""></article>
+        <article class="strip-card" data-offset="2"><img alt=""></article>
+      </div>
     </section>
 
     <section id="emptyState" class="empty-state">
@@ -40,6 +49,7 @@
       <button id="previousButton" type="button" aria-label="Previous photo"><span aria-hidden="true">‹</span><small>Previous</small></button>
       <button id="pauseButton" class="primary" type="button" aria-label="Pause slideshow"><span id="pauseIcon" aria-hidden="true">Ⅱ</span><small id="pauseLabel">Pause</small></button>
       <button id="nextButton" type="button" aria-label="Next photo"><span aria-hidden="true">›</span><small>Next</small></button>
+      <button id="deleteButton" class="danger" type="button" aria-label="Delete current photo" hidden><span aria-hidden="true">⌫</span><small>Delete</small></button>
       <button id="settingsButton" type="button" aria-label="Photo Strip settings"><span aria-hidden="true">⚙</span><small>Settings</small></button>
     </nav>
 
@@ -54,6 +64,21 @@
         <div class="settings-actions">
           <button id="refreshButton" type="button">Refresh library</button>
           <button id="closeSettingsButton" class="primary" type="button">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="deletePanel" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="deleteTitle" hidden>
+      <div class="settings-card delete-card">
+        <div class="settings-copy">
+          <p class="eyebrow danger-text">Remove photo</p>
+          <h2 id="deleteTitle">Move this photo to the Recycle Bin?</h2>
+          <p id="deleteName" class="delete-name"></p>
+          <p class="settings-hint">The original file will leave its photo folder. You may be able to restore it from the operating system Recycle Bin or Trash.</p>
+        </div>
+        <div class="settings-actions">
+          <button id="cancelDeleteButton" type="button">Keep photo</button>
+          <button id="confirmDeleteButton" class="danger" type="button">Move to Recycle Bin</button>
         </div>
       </div>
     </section>

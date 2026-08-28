@@ -74,6 +74,24 @@ button { font: inherit; }
   background: #050608;
 }
 
+.strip-deck {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: translate3d(0, 0, 0);
+  pointer-events: none;
+  will-change: opacity, transform;
+}
+
+.strip-deck.current { opacity: 1; z-index: 1; }
+.strip-deck.entering { z-index: 2; }
+.strip-deck.entering.transition-fade { animation: deck-fade-in var(--transition-ms) ease both; }
+.strip-deck.leaving.transition-fade { animation: deck-fade-out var(--transition-ms) ease both; }
+.strip-deck.entering.transition-slide.forward { animation: deck-slide-in-forward var(--transition-ms) cubic-bezier(.22,.8,.22,1) both; }
+.strip-deck.leaving.transition-slide.forward { animation: deck-slide-out-forward var(--transition-ms) cubic-bezier(.22,.8,.22,1) both; }
+.strip-deck.entering.transition-slide.backward { animation: deck-slide-in-backward var(--transition-ms) cubic-bezier(.22,.8,.22,1) both; }
+.strip-deck.leaving.transition-slide.backward { animation: deck-slide-out-backward var(--transition-ms) cubic-bezier(.22,.8,.22,1) both; }
+
 .strip-card {
   position: absolute;
   top: 20px;
@@ -114,9 +132,6 @@ button { font: inherit; }
 }
 .strip-card[data-offset="1"] { left: 64%; width: 26%; opacity: 0.76; transform: scale(0.97); }
 .strip-card[data-offset="2"] { left: 87%; width: 18%; }
-
-.strip-stage.step-forward .strip-card { animation: strip-forward var(--transition-ms) cubic-bezier(.22,.8,.22,1); }
-.strip-stage.step-backward .strip-card { animation: strip-backward var(--transition-ms) cubic-bezier(.22,.8,.22,1); }
 
 .empty-state {
   position: absolute;
@@ -212,10 +227,14 @@ button { font: inherit; }
   cursor: pointer;
 }
 
+.controls button[hidden] { display: none; }
+
 .controls button span { font-size: 28px; line-height: 1; }
 .controls button small { font-size: 13px; font-weight: 700; }
 .controls button.primary,
 .settings-actions button.primary { border-color: var(--accent); background: var(--accent); color: #07101b; }
+.controls button.danger,
+.settings-actions button.danger { border-color: #ff6b6b; background: rgba(184, 37, 47, 0.34); color: #fff; }
 .controls button:focus-visible,
 .settings-actions button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .controls button:active,
@@ -253,6 +272,9 @@ button { font: inherit; }
 .settings-copy .settings-hint { color: var(--muted); font-size: 16px; }
 .settings-actions { display: grid; gap: 12px; }
 .settings-actions button { min-width: 210px; font-size: 18px; font-weight: 700; }
+.delete-card { border-color: rgba(255, 107, 107, 0.42); }
+.danger-text { color: #ff8181; }
+.delete-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
 
 .toast {
   position: absolute;
@@ -274,8 +296,12 @@ button { font: inherit; }
 @keyframes photo-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes photo-slide-forward { from { opacity: .45; transform: translate3d(8%, 0, 0) scale(1.015); } to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); } }
 @keyframes photo-slide-backward { from { opacity: .45; transform: translate3d(-8%, 0, 0) scale(1.015); } to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); } }
-@keyframes strip-forward { from { transform: translateX(3%); } to { transform: translateX(0); } }
-@keyframes strip-backward { from { transform: translateX(-3%); } to { transform: translateX(0); } }
+@keyframes deck-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes deck-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes deck-slide-in-forward { from { opacity: 0; transform: translate3d(4%, 0, 0); } to { opacity: 1; transform: translate3d(0, 0, 0); } }
+@keyframes deck-slide-out-forward { from { opacity: 1; transform: translate3d(0, 0, 0); } to { opacity: .18; transform: translate3d(-4%, 0, 0); } }
+@keyframes deck-slide-in-backward { from { opacity: 0; transform: translate3d(-4%, 0, 0); } to { opacity: 1; transform: translate3d(0, 0, 0); } }
+@keyframes deck-slide-out-backward { from { opacity: 1; transform: translate3d(0, 0, 0); } to { opacity: .18; transform: translate3d(4%, 0, 0); } }
 @keyframes ken-burns { from { transform: scale(1.015) translate3d(-.4%, .2%, 0); } to { transform: scale(1.075) translate3d(1.2%, -.7%, 0); } }
 
 @media (prefers-reduced-motion: reduce) {

@@ -16,3 +16,8 @@ Photo Strip does not attempt frame-level timing or animation control.
 
 The panel knob rotates through photos. A single press pauses or resumes, and a double press opens
 the settings summary. Touch or click the photograph to reveal the temporary control overlay.
+
+Photo deletion is off by default. Enable **Allow deleting photos** in the page's App settings to
+show a Delete control. The panel asks for confirmation each time, then requests that the host move
+the original file to the operating system Recycle Bin or Trash. Photo Strip never falls back to a
+permanent delete if that facility is unavailable.

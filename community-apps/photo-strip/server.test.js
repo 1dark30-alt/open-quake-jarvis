@@ -22,7 +22,10 @@ function write(root, relative, content) {
   return file;
 }
 
-test.beforeEach(() => server._test.resetCache());
+test.beforeEach(() => {
+  server._test.resetCache();
+  server._test.setTrashFileImpl(null);
+});
 test.after(() => {
   for (const root of tempRoots) {
     const resolved = path.resolve(root);
@@ -98,18 +101,91 @@ test('renderer boundary exposes opaque ids and rejects arbitrary path-shaped req
   assert.deepEqual(traversal, { ok: false, error: 'invalid image id' });
 });
 
+test('deletion stays disabled unless the editor option is enabled', async () => {
+  const root = tempDir();
+  const file = write(root, 'keep.jpg');
+  let trashCalls = 0;
+  server._test.setTrashFileImpl(async () => { trashCalls += 1; });
+  const library = await server.handle('library', { options: { folder1: root }, query: {} });
+  const result = await server.handle('delete', {
+    options: { folder1: root, allowDelete: false },
+    body: Buffer.from(JSON.stringify({ id: library.images[0].id })),
+  });
+  assert.deepEqual(result, { ok: false, error: 'photo deletion is disabled' });
+  assert.equal(trashCalls, 0);
+  assert.equal(fs.existsSync(file), true);
+});
+
+test('enabled deletion moves only a scanned opaque-id photo through the trash adapter', async () => {
+  const root = tempDir();
+  const file = write(root, 'remove.jpg');
+  const trashed = `${file}.trashed`;
+  const options = { folder1: root, allowDelete: true };
+  const library = await server.handle('library', { options, query: {} });
+  server._test.setTrashFileImpl(async target => {
+    assert.equal(target, fs.realpathSync(file));
+    fs.renameSync(target, trashed);
+  });
+
+  const result = await server.handle('delete', {
+    options,
+    body: Buffer.from(JSON.stringify({ id: library.images[0].id })),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.id, library.images[0].id);
+  assert.equal(result.name, 'remove.jpg');
+  assert.equal('file' in result, false);
+  assert.equal(fs.existsSync(file), false);
+  assert.equal(fs.existsSync(trashed), true);
+
+  const refreshed = await server.handle('library', { options, query: {} });
+  assert.equal(refreshed.count, 0);
+});
+
+test('delete rejects malformed bodies and path-shaped identifiers without touching the filesystem', async () => {
+  const root = tempDir();
+  write(root, 'safe.jpg');
+  let trashCalls = 0;
+  server._test.setTrashFileImpl(async () => { trashCalls += 1; });
+  const options = { folder1: root, allowDelete: true };
+
+  assert.deepEqual(await server.handle('delete', { options, body: Buffer.from('{') }), { ok: false, error: 'invalid request body' });
+  assert.deepEqual(await server.handle('delete', {
+    options,
+    body: Buffer.from(JSON.stringify({ id: '..\\outside.jpg' })),
+  }), { ok: false, error: 'invalid image id' });
+  assert.equal(trashCalls, 0);
+});
+
 test('manifest keeps every picked folder out of the renderer URL', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'app.json'), 'utf8'));
   assert.equal(manifest.id, 'photo-strip');
   assert.equal(manifest.served, true);
   assert.equal(manifest.server, 'server.js');
   assert.equal(manifest.knob, true);
+  assert.equal(manifest.version, '1.0.1');
   const folders = manifest.options.filter(option => /^folder[1-4]$/.test(option.key));
   assert.equal(folders.length, 4);
   folders.forEach(option => {
     assert.equal(option.type, 'folder');
     assert.equal(option.serverOnly, true);
   });
+  const allowDelete = manifest.options.find(option => option.key === 'allowDelete');
+  assert.equal(allowDelete.type, 'bool');
+  assert.equal(allowDelete.default, false);
   const renderer = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
   assert.doesNotMatch(renderer, /\brequire\s*\(|\bnode:fs\b|\bfs\.(?:read|readdir|stat)/);
+});
+
+test('panel uses two complete strip decks and keeps deletion behind the configured control', () => {
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const renderer = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
+  assert.equal((html.match(/class="strip-deck/g) || []).length, 2);
+  assert.match(html, /id="deleteButton"[^>]*hidden/);
+  assert.match(renderer, /elements\.delete\.hidden = !settings\.allowDelete/);
+  assert.match(renderer, /fetchJson\('\/app-api\/delete'/);
+  assert.match(css, /\.controls button\[hidden\]\s*\{\s*display:\s*none/);
+  assert.match(css, /deck-fade-in/);
+  assert.match(css, /deck-slide-in-forward/);
 });

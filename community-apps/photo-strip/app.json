@@ -1,7 +1,7 @@
 {
   "id": "photo-strip",
   "name": "Photo Strip",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Ambient local-folder photo frame with full-width single-photo and panoramic strip layouts.",
   "entry": "index.html",
   "served": true,
@@ -126,6 +126,13 @@
       "label": "Show filename and date",
       "type": "bool",
       "default": false
+    },
+    {
+      "key": "allowDelete",
+      "label": "Allow deleting photos",
+      "type": "bool",
+      "default": false,
+      "help": "Shows a Delete control on the panel. Every deletion requires confirmation and moves the photo to the operating system Recycle Bin or Trash."
     }
   ]
 }

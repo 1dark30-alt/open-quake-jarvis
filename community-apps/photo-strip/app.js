@@ -21,6 +21,7 @@
     transitionDuration: numberInRange(params.get('transitionDuration'), 0, 2000, 250),
     kenBurns: readBool('kenBurns', false),
     showMetadata: readBool('showMetadata', false),
+    allowDelete: readBool('allowDelete', false),
     dark: readBool('_dark', true),
     accent: params.get('_accent') || '#5ea2ff',
   };
@@ -32,7 +33,7 @@
     singleCurrent: byId('singleCurrent'),
     singleIncoming: byId('singleIncoming'),
     stripStage: byId('stripStage'),
-    stripCards: Array.from(document.querySelectorAll('.strip-card')),
+    stripDecks: Array.from(document.querySelectorAll('.strip-deck')),
     empty: byId('emptyState'),
     emptyTitle: byId('emptyTitle'),
     emptyMessage: byId('emptyMessage'),
@@ -46,11 +47,16 @@
     pauseIcon: byId('pauseIcon'),
     pauseLabel: byId('pauseLabel'),
     next: byId('nextButton'),
+    delete: byId('deleteButton'),
     settings: byId('settingsButton'),
     settingsPanel: byId('settingsPanel'),
     settingsSummary: byId('settingsSummary'),
     refresh: byId('refreshButton'),
     closeSettings: byId('closeSettingsButton'),
+    deletePanel: byId('deletePanel'),
+    deleteName: byId('deleteName'),
+    cancelDelete: byId('cancelDeleteButton'),
+    confirmDelete: byId('confirmDeleteButton'),
     toast: byId('toast'),
   };
 
@@ -58,6 +64,7 @@
   document.documentElement.style.setProperty('--fit', settings.fit);
   document.documentElement.style.setProperty('--transition-ms', `${settings.transitionDuration}ms`);
   elements.app.classList.toggle('ken-burns', settings.kenBurns && settings.mode === 'single');
+  elements.delete.hidden = !settings.allowDelete;
 
   const state = {
     library: null,
@@ -70,6 +77,10 @@
     renderToken: 0,
     paused: false,
     settingsOpen: false,
+    deleteOpen: false,
+    activeStripDeck: 0,
+    stripIncomingDeck: null,
+    stripInitialized: false,
     disposed: false,
   };
 
@@ -79,10 +90,10 @@
     onChange: renderPhoto,
   });
 
-  function fetchJson(url) {
+  function fetchJson(url, options) {
     const abort = new AbortController();
     state.requestControllers.add(abort);
-    return fetch(url, { cache: 'no-store', signal: abort.signal })
+    return fetch(url, Object.assign({ cache: 'no-store' }, options || {}, { signal: abort.signal }))
       .then(response => response.json())
       .finally(() => state.requestControllers.delete(abort));
   }
@@ -101,10 +112,11 @@
         controller.setItems([]);
         return;
       }
+      resetPhotoSurfaces();
       hideEmpty();
       controller.setItems(state.images);
       controller.setPaused(state.paused);
-      controller.setVisible(!document.hidden && !state.settingsOpen);
+      controller.setVisible(!document.hidden && !state.settingsOpen && !state.deleteOpen);
     }).catch(error => {
       if (error.name === 'AbortError') return;
       console.error('Photo Strip library error:', error);
@@ -182,7 +194,7 @@
 
   function renderSingle(entry, direction) {
     if (!entry) return;
-    const first = !elements.singleCurrent.src;
+    const first = !elements.singleCurrent.getAttribute('src');
     if (first || settings.transition === 'none' || !direction) {
       elements.singleCurrent.src = entry.dataUrl;
       elements.singleCurrent.alt = entry.item.name;
@@ -213,7 +225,34 @@
 
   function renderStrip(loaded, direction) {
     const byOffset = new Map(loaded.filter(Boolean).map(entry => [entry.offset, entry]));
-    elements.stripCards.forEach(card => {
+    if (state.stripIncomingDeck !== null) finishStripTransition();
+    if (!state.stripInitialized || !direction || settings.transition === 'none') {
+      const deck = elements.stripDecks[state.activeStripDeck];
+      fillStripDeck(deck, byOffset);
+      deck.className = 'strip-deck current';
+      deck.setAttribute('aria-hidden', 'false');
+      state.stripInitialized = true;
+      return;
+    }
+
+    const outgoingIndex = state.activeStripDeck;
+    const incomingIndex = outgoingIndex === 0 ? 1 : 0;
+    const outgoing = elements.stripDecks[outgoingIndex];
+    const incoming = elements.stripDecks[incomingIndex];
+    fillStripDeck(incoming, byOffset);
+    incoming.className = 'strip-deck';
+    incoming.setAttribute('aria-hidden', 'false');
+    void incoming.offsetWidth;
+    const movement = direction < 0 ? 'backward' : 'forward';
+    outgoing.className = `strip-deck current leaving transition-${settings.transition} ${movement}`;
+    incoming.className = `strip-deck entering transition-${settings.transition} ${movement}`;
+    state.stripIncomingDeck = incomingIndex;
+    clearTimeout(state.transitionTimer);
+    state.transitionTimer = setTimeout(finishStripTransition, settings.transitionDuration + 30);
+  }
+
+  function fillStripDeck(deck, byOffset) {
+    Array.from(deck.querySelectorAll('.strip-card')).forEach(card => {
       const offset = Number(card.dataset.offset);
       const entry = byOffset.get(offset);
       const image = card.querySelector('img');
@@ -227,11 +266,46 @@
       image.src = entry.dataUrl;
       image.alt = entry.item.name;
     });
-    elements.stripStage.classList.remove('step-forward', 'step-backward');
-    if (direction) {
-      void elements.stripStage.offsetWidth;
-      elements.stripStage.classList.add(direction < 0 ? 'step-backward' : 'step-forward');
-    }
+  }
+
+  function clearStripDeck(deck) {
+    Array.from(deck.querySelectorAll('.strip-card')).forEach(card => {
+      card.hidden = false;
+      const image = card.querySelector('img');
+      image.removeAttribute('src');
+      image.alt = '';
+    });
+  }
+
+  function finishStripTransition() {
+    if (state.stripIncomingDeck === null) return;
+    clearTimeout(state.transitionTimer);
+    state.transitionTimer = null;
+    const outgoing = elements.stripDecks[state.activeStripDeck];
+    const incoming = elements.stripDecks[state.stripIncomingDeck];
+    outgoing.className = 'strip-deck';
+    outgoing.setAttribute('aria-hidden', 'true');
+    clearStripDeck(outgoing);
+    incoming.className = 'strip-deck current';
+    incoming.setAttribute('aria-hidden', 'false');
+    state.activeStripDeck = state.stripIncomingDeck;
+    state.stripIncomingDeck = null;
+  }
+
+  function resetPhotoSurfaces() {
+    clearTimeout(state.transitionTimer);
+    state.transitionTimer = null;
+    state.stripIncomingDeck = null;
+    state.activeStripDeck = 0;
+    state.stripInitialized = false;
+    elements.singleCurrent.removeAttribute('src');
+    elements.singleIncoming.removeAttribute('src');
+    elements.singleIncoming.className = 'single-photo incoming';
+    elements.stripDecks.forEach((deck, index) => {
+      clearStripDeck(deck);
+      deck.className = index === 0 ? 'strip-deck current' : 'strip-deck';
+      deck.setAttribute('aria-hidden', index === 0 ? 'false' : 'true');
+    });
   }
 
   function releaseUnusedImages(keepIds) {
@@ -261,7 +335,7 @@
   }
 
   function showControls() {
-    if (state.settingsOpen) return;
+    if (state.settingsOpen || state.deleteOpen) return;
     elements.controls.classList.add('visible');
     elements.shade.classList.add('visible');
     elements.controls.setAttribute('aria-hidden', 'false');
@@ -288,15 +362,62 @@
   function closeSettings() {
     state.settingsOpen = false;
     elements.settingsPanel.hidden = true;
-    controller.setVisible(!document.hidden);
+    controller.setVisible(!document.hidden && !state.deleteOpen);
     showControls();
+  }
+
+  function currentPhoto() {
+    return state.images[controller.currentIndex()] || null;
+  }
+
+  function openDelete() {
+    if (!settings.allowDelete) return;
+    const photo = currentPhoto();
+    if (!photo) return;
+    hideControls();
+    state.deleteOpen = true;
+    controller.setVisible(false);
+    elements.deleteName.textContent = photo.name;
+    elements.deletePanel.hidden = false;
+    elements.confirmDelete.disabled = false;
+    elements.confirmDelete.textContent = 'Move to Recycle Bin';
+  }
+
+  function closeDelete(showOverlay) {
+    state.deleteOpen = false;
+    elements.deletePanel.hidden = true;
+    controller.setVisible(!document.hidden && !state.settingsOpen);
+    if (showOverlay !== false) showControls();
+  }
+
+  function confirmDelete() {
+    const photo = currentPhoto();
+    if (!settings.allowDelete || !photo || elements.confirmDelete.disabled) return;
+    elements.confirmDelete.disabled = true;
+    elements.confirmDelete.textContent = 'Moving…';
+    fetchJson('/app-api/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: photo.id }),
+    }).then(result => {
+      if (!(result && result.ok)) throw new Error((result && result.error) || 'Photo could not be removed');
+      state.imageCache.delete(photo.id);
+      closeDelete(false);
+      return loadLibrary(true).then(() => showToast('Photo moved to the Recycle Bin.'));
+    }).catch(error => {
+      if (error.name === 'AbortError') return;
+      console.error('Photo Strip delete error:', error);
+      elements.confirmDelete.disabled = false;
+      elements.confirmDelete.textContent = 'Move to Recycle Bin';
+      showToast(error.message || 'Photo could not be removed.');
+    });
   }
 
   function updateSettingsSummary() {
     const library = state.library;
     const photoCount = library ? library.count : 0;
     const folderCount = library ? library.availableFolders : 0;
-    elements.settingsSummary.textContent = `${photoCount.toLocaleString()} photo${photoCount === 1 ? '' : 's'} from ${folderCount} available folder${folderCount === 1 ? '' : 's'} · ${settings.mode === 'strip' ? 'Photo Strip' : 'Single Photo'} · ${settings.shuffle ? 'Shuffle' : 'Sequential'} · ${Math.round(settings.intervalMs / 1000)}s`;
+    elements.settingsSummary.textContent = `${photoCount.toLocaleString()} photo${photoCount === 1 ? '' : 's'} from ${folderCount} available folder${folderCount === 1 ? '' : 's'} · ${settings.mode === 'strip' ? 'Photo Strip' : 'Single Photo'} · ${settings.shuffle ? 'Shuffle' : 'Sequential'} · ${Math.round(settings.intervalMs / 1000)}s · Delete ${settings.allowDelete ? 'on' : 'off'}`;
   }
 
   function showToast(message) {
@@ -315,11 +436,12 @@
     if (event.key === 'ArrowRight') { event.preventDefault(); controller.next(); showControls(); }
     else if (event.key === 'ArrowLeft') { event.preventDefault(); controller.previous(); showControls(); }
     else if (event.key === ' ') { event.preventDefault(); togglePause(); }
+    else if (event.key === 'Escape' && state.deleteOpen) closeDelete();
     else if (event.key === 'Escape' && state.settingsOpen) closeSettings();
   }
 
   function onVisibilityChange() {
-    controller.setVisible(!document.hidden && !state.settingsOpen);
+    controller.setVisible(!document.hidden && !state.settingsOpen && !state.deleteOpen);
     if (document.hidden) hideControls();
   }
 
@@ -333,9 +455,7 @@
     state.requestControllers.forEach(abort => abort.abort());
     state.requestControllers.clear();
     state.imageCache.clear();
-    elements.singleCurrent.src = '';
-    elements.singleIncoming.src = '';
-    elements.stripCards.forEach(card => card.querySelector('img').removeAttribute('src'));
+    resetPhotoSurfaces();
     document.removeEventListener('visibilitychange', onVisibilityChange);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('pagehide', cleanup);
@@ -345,15 +465,18 @@
   elements.previous.addEventListener('click', event => { event.stopPropagation(); controller.previous(); showControls(); });
   elements.pause.addEventListener('click', event => { event.stopPropagation(); togglePause(); });
   elements.next.addEventListener('click', event => { event.stopPropagation(); controller.next(); showControls(); });
+  elements.delete.addEventListener('click', event => { event.stopPropagation(); openDelete(); });
   elements.settings.addEventListener('click', event => { event.stopPropagation(); openSettings(); });
   elements.closeSettings.addEventListener('click', closeSettings);
+  elements.cancelDelete.addEventListener('click', closeDelete);
+  elements.confirmDelete.addEventListener('click', confirmDelete);
   elements.refresh.addEventListener('click', () => loadLibrary(true));
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('pagehide', cleanup);
 
   window.oqKnob = function (event) {
-    if (!event || state.settingsOpen) return false;
+    if (!event || state.settingsOpen || state.deleteOpen) return false;
     if (event.type === 'rotate') {
       if (event.dir < 0) controller.previous(); else controller.next();
       showControls();
