@@ -22,6 +22,7 @@
     kenBurns: readBool('kenBurns', false),
     showMetadata: readBool('showMetadata', false),
     allowDelete: readBool('allowDelete', false),
+    allowDirectDelete: readBool('allowDirectDelete', false),
     dark: readBool('_dark', true),
     accent: params.get('_accent') || '#5ea2ff',
   };
@@ -54,7 +55,9 @@
     refresh: byId('refreshButton'),
     closeSettings: byId('closeSettingsButton'),
     deletePanel: byId('deletePanel'),
+    deleteTitle: byId('deleteTitle'),
     deleteName: byId('deleteName'),
+    deleteHint: byId('deleteHint'),
     cancelDelete: byId('cancelDeleteButton'),
     confirmDelete: byId('confirmDeleteButton'),
     toast: byId('toast'),
@@ -378,9 +381,17 @@
     state.deleteOpen = true;
     controller.setVisible(false);
     elements.deleteName.textContent = photo.name;
+    if (settings.allowDirectDelete) {
+      elements.deleteTitle.textContent = 'Delete this photo?';
+      elements.deleteHint.textContent = 'Photo Strip will try the Recycle Bin first. If that fails, it will delete directly from the selected share. Recovery then depends on your NAS Network Recycle Bin.';
+      elements.confirmDelete.textContent = 'Delete photo';
+    } else {
+      elements.deleteTitle.textContent = 'Move this photo to the Recycle Bin?';
+      elements.deleteHint.textContent = 'The original file will leave its photo folder. You may be able to restore it from the operating system Recycle Bin or Trash.';
+      elements.confirmDelete.textContent = 'Move to Recycle Bin';
+    }
     elements.deletePanel.hidden = false;
     elements.confirmDelete.disabled = false;
-    elements.confirmDelete.textContent = 'Move to Recycle Bin';
   }
 
   function closeDelete(showOverlay) {
@@ -394,7 +405,7 @@
     const photo = currentPhoto();
     if (!settings.allowDelete || !photo || elements.confirmDelete.disabled) return;
     elements.confirmDelete.disabled = true;
-    elements.confirmDelete.textContent = 'Moving…';
+    elements.confirmDelete.textContent = 'Deleting…';
     fetchJson('/app-api/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -403,12 +414,15 @@
       if (!(result && result.ok)) throw new Error((result && result.error) || 'Photo could not be removed');
       state.imageCache.delete(photo.id);
       closeDelete(false);
-      return loadLibrary(true).then(() => showToast('Photo moved to the Recycle Bin.'));
+      const message = result.method === 'direct'
+        ? 'Photo deleted from the network share.'
+        : 'Photo moved to the Recycle Bin.';
+      return loadLibrary(true).then(() => showToast(message));
     }).catch(error => {
       if (error.name === 'AbortError') return;
       console.error('Photo Strip delete error:', error);
       elements.confirmDelete.disabled = false;
-      elements.confirmDelete.textContent = 'Move to Recycle Bin';
+      elements.confirmDelete.textContent = settings.allowDirectDelete ? 'Delete photo' : 'Move to Recycle Bin';
       showToast(error.message || 'Photo could not be removed.');
     });
   }
@@ -417,7 +431,8 @@
     const library = state.library;
     const photoCount = library ? library.count : 0;
     const folderCount = library ? library.availableFolders : 0;
-    elements.settingsSummary.textContent = `${photoCount.toLocaleString()} photo${photoCount === 1 ? '' : 's'} from ${folderCount} available folder${folderCount === 1 ? '' : 's'} · ${settings.mode === 'strip' ? 'Photo Strip' : 'Single Photo'} · ${settings.shuffle ? 'Shuffle' : 'Sequential'} · ${Math.round(settings.intervalMs / 1000)}s · Delete ${settings.allowDelete ? 'on' : 'off'}`;
+    const deleteMode = !settings.allowDelete ? 'off' : settings.allowDirectDelete ? 'on + network fallback' : 'on';
+    elements.settingsSummary.textContent = `${photoCount.toLocaleString()} photo${photoCount === 1 ? '' : 's'} from ${folderCount} available folder${folderCount === 1 ? '' : 's'} · ${settings.mode === 'strip' ? 'Photo Strip' : 'Single Photo'} · ${settings.shuffle ? 'Shuffle' : 'Sequential'} · ${Math.round(settings.intervalMs / 1000)}s · Delete ${deleteMode}`;
   }
 
   function showToast(message) {

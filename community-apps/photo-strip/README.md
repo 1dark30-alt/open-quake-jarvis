@@ -19,5 +19,10 @@ the settings summary. Touch or click the photograph to reveal the temporary cont
 
 Photo deletion is off by default. Enable **Allow deleting photos** in the page's App settings to
 show a Delete control. The panel asks for confirmation each time, then requests that the host move
-the original file to the operating system Recycle Bin or Trash. Photo Strip never falls back to a
-permanent delete if that facility is unavailable.
+the original file to the operating system Recycle Bin or Trash.
+
+Windows may not provide Recycle Bin support for mapped drives or UNC network shares. For a NAS such
+as QNAP, also enable **Allow direct delete fallback**. Photo Strip still tries the operating-system
+Recycle Bin first, but if that fails it deletes directly from the share. Recovery in that case
+depends entirely on the NAS Network Recycle Bin being enabled for the share; otherwise the deletion
+may be permanent.

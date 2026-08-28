@@ -1,7 +1,7 @@
 {
   "id": "photo-strip",
   "name": "Photo Strip",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Ambient local-folder photo frame with full-width single-photo and panoramic strip layouts.",
   "entry": "index.html",
   "served": true,
@@ -133,6 +133,14 @@
       "type": "bool",
       "default": false,
       "help": "Shows a Delete control on the panel. Every deletion requires confirmation and moves the photo to the operating system Recycle Bin or Trash."
+    },
+    {
+      "key": "allowDirectDelete",
+      "label": "Allow direct delete fallback",
+      "type": "bool",
+      "default": false,
+      "showIf": { "key": "allowDelete", "value": true },
+      "help": "For network shares where Windows cannot use the Recycle Bin. If recycling fails, deletes directly from the share; recovery depends on the NAS recycle bin configuration."
     }
   ]
 }

@@ -22,6 +22,7 @@ const MAX_DELETE_BODY_BYTES = 2048;
 let cache = null;
 let pendingScan = null;
 let trashFileOverride = null;
+let deleteFileOverride = null;
 
 function truthy(value) {
   return value === true || value === '1' || value === 'true';
@@ -222,6 +223,11 @@ async function trashFile(file) {
   return electron.shell.trashItem(file);
 }
 
+async function deleteFile(file) {
+  if (typeof deleteFileOverride === 'function') return deleteFileOverride(file);
+  return fsp.unlink(file);
+}
+
 async function deleteImage(options, id) {
   if (!truthy((options || {}).allowDelete)) return { ok: false, error: 'photo deletion is disabled' };
   const resolved = await resolveKnownImage(options, id);
@@ -229,10 +235,21 @@ async function deleteImage(options, id) {
   try {
     await trashFile(resolved.realFile);
   } catch (error) {
-    return { ok: false, error: 'photo could not be moved to the Recycle Bin' };
+    if (!truthy((options || {}).allowDirectDelete)) {
+      return { ok: false, error: 'Recycle Bin is unavailable for this location. Enable Allow direct delete fallback in App settings for a network share.' };
+    }
+    const direct = await resolveKnownImage(options, id);
+    if (!direct.ok) return direct;
+    try {
+      await deleteFile(direct.realFile);
+    } catch (directError) {
+      return { ok: false, error: 'photo could not be deleted from the network share' };
+    }
+    resetCache();
+    return { ok: true, id: direct.image.id, name: direct.image.name, method: 'direct' };
   }
   resetCache();
-  return { ok: true, id: resolved.image.id, name: resolved.image.name };
+  return { ok: true, id: resolved.image.id, name: resolved.image.name, method: 'trash' };
 }
 
 async function handle(action, context) {
@@ -271,6 +288,9 @@ module.exports = {
     resetCache,
     setTrashFileImpl(implementation) {
       trashFileOverride = typeof implementation === 'function' ? implementation : null;
+    },
+    setDeleteFileImpl(implementation) {
+      deleteFileOverride = typeof implementation === 'function' ? implementation : null;
     },
   },
 };
