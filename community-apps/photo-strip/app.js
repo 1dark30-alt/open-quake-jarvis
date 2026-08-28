@@ -431,8 +431,9 @@
     const library = state.library;
     const photoCount = library ? library.count : 0;
     const folderCount = library ? library.availableFolders : 0;
+    const libraryLimit = library ? library.limit : 0;
     const deleteMode = !settings.allowDelete ? 'off' : settings.allowDirectDelete ? 'on + network fallback' : 'on';
-    elements.settingsSummary.textContent = `${photoCount.toLocaleString()} photo${photoCount === 1 ? '' : 's'} from ${folderCount} available folder${folderCount === 1 ? '' : 's'} · ${settings.mode === 'strip' ? 'Photo Strip' : 'Single Photo'} · ${settings.shuffle ? 'Shuffle' : 'Sequential'} · ${Math.round(settings.intervalMs / 1000)}s · Delete ${deleteMode}`;
+    elements.settingsSummary.textContent = `${photoCount.toLocaleString()} photo${photoCount === 1 ? '' : 's'} · limit ${libraryLimit.toLocaleString()} · ${folderCount} available folder${folderCount === 1 ? '' : 's'} · ${settings.mode === 'strip' ? 'Photo Strip' : 'Single Photo'} · ${settings.shuffle ? 'Shuffle' : 'Sequential'} · ${Math.round(settings.intervalMs / 1000)}s · Delete ${deleteMode}`;
   }
 
   function showToast(message) {

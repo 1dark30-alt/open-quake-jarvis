@@ -15,6 +15,7 @@ const IMAGE_TYPES = Object.freeze({
 const FOLDER_KEYS = Object.freeze(['folder1', 'folder2', 'folder3', 'folder4']);
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_IMAGES = 10000;
+const DEFAULT_IMAGE_LIMIT = 500;
 const MAX_DIRECTORIES = 2000;
 const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
 const MAX_DELETE_BODY_BYTES = 2048;
@@ -32,6 +33,14 @@ function supportedImage(name) {
   return !!IMAGE_TYPES[path.extname(String(name || '')).toLowerCase()];
 }
 
+function imageLimit(options) {
+  const value = (options || {}).maxPhotos;
+  if (value == null || String(value).trim() === '') return DEFAULT_IMAGE_LIMIT;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_IMAGE_LIMIT;
+  return Math.min(MAX_IMAGES, Math.max(1, Math.floor(parsed)));
+}
+
 function configuredFolders(options) {
   const seen = new Set();
   return FOLDER_KEYS.map(key => String((options || {})[key] || '').trim())
@@ -46,7 +55,11 @@ function configuredFolders(options) {
 }
 
 function cacheKey(options) {
-  return JSON.stringify({ folders: configuredFolders(options), recursive: truthy((options || {}).recursive) });
+  return JSON.stringify({
+    folders: configuredFolders(options),
+    recursive: truthy((options || {}).recursive),
+    maxPhotos: imageLimit(options),
+  });
 }
 
 function imageId(file) {
@@ -77,7 +90,7 @@ async function scanFolder(folder, recursive, state) {
 
   state.availableFolders += 1;
   const queue = [rootReal];
-  while (queue.length && state.items.length < MAX_IMAGES && state.directories < MAX_DIRECTORIES) {
+  while (queue.length && state.items.length < state.limit && state.directories < MAX_DIRECTORIES) {
     const current = queue.shift();
     state.directories += 1;
     let entries;
@@ -90,7 +103,7 @@ async function scanFolder(folder, recursive, state) {
 
     entries.sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' }));
     for (const entry of entries) {
-      if (state.items.length >= MAX_IMAGES) break;
+      if (state.items.length >= state.limit) break;
       const full = path.join(current, entry.name);
       if (recursive && entry.isDirectory()) {
         queue.push(full);
@@ -123,9 +136,12 @@ async function scanLibrary(options) {
     messages: [],
     availableFolders: 0,
     directories: 0,
+    limit: imageLimit(options),
   };
   for (const folder of folders) await scanFolder(folder, truthy((options || {}).recursive), state);
-  if (state.items.length >= MAX_IMAGES) state.messages.push(`Library capped at ${MAX_IMAGES.toLocaleString()} photos.`);
+  if (state.items.length >= state.limit) {
+    state.messages.push(`Library limited to ${state.limit.toLocaleString()} photo${state.limit === 1 ? '' : 's'} by App settings.`);
+  }
   if (state.directories >= MAX_DIRECTORIES) state.messages.push(`Recursive scan capped at ${MAX_DIRECTORIES.toLocaleString()} folders.`);
   const byId = new Map(state.items.map(item => [item.id, item]));
   return {
@@ -136,6 +152,7 @@ async function scanLibrary(options) {
     folderCount: folders.length,
     availableFolders: state.availableFolders,
     messages: state.messages,
+    limit: state.limit,
   };
 }
 
@@ -165,6 +182,7 @@ function publicLibrary(library) {
     folderCount: library.folderCount,
     availableFolders: library.availableFolders,
     messages: library.messages.slice(),
+    limit: library.limit,
     images: library.items.map(item => ({ id: item.id, name: item.name, date: item.date })),
   };
 }
@@ -278,7 +296,9 @@ module.exports = {
   _test: {
     IMAGE_TYPES,
     MAX_IMAGES,
+    DEFAULT_IMAGE_LIMIT,
     configuredFolders,
+    imageLimit,
     supportedImage,
     scanLibrary,
     publicLibrary,

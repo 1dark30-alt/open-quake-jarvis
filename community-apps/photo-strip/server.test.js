@@ -51,6 +51,27 @@ test('folder list settings trim blanks and deduplicate selected folders', () => 
   }), [path.resolve(root)]);
 });
 
+test('library size defaults to 500 and stays within the hard ceiling', () => {
+  assert.equal(server._test.DEFAULT_IMAGE_LIMIT, 500);
+  assert.equal(server._test.imageLimit({}), 500);
+  assert.equal(server._test.imageLimit({ maxPhotos: '' }), 500);
+  assert.equal(server._test.imageLimit({ maxPhotos: '250.9' }), 250);
+  assert.equal(server._test.imageLimit({ maxPhotos: '0' }), 1);
+  assert.equal(server._test.imageLimit({ maxPhotos: '50000' }), server._test.MAX_IMAGES);
+});
+
+test('configured library size stops scanning early and participates in the cache key', async () => {
+  const root = tempDir();
+  ['one.jpg', 'two.jpg', 'three.jpg', 'four.jpg'].forEach(name => write(root, name));
+  const one = await server.handle('library', { options: { folder1: root, maxPhotos: '1' }, query: {} });
+  const three = await server.handle('library', { options: { folder1: root, maxPhotos: '3' }, query: {} });
+  assert.equal(one.count, 1);
+  assert.equal(one.limit, 1);
+  assert.match(one.messages.join(' '), /limited to 1 photo/i);
+  assert.equal(three.count, 3);
+  assert.equal(three.limit, 3);
+});
+
 test('non-recursive scans ignore subfolders and unsupported files', async () => {
   const root = tempDir();
   write(root, 'one.jpg');
@@ -218,13 +239,18 @@ test('manifest keeps every picked folder out of the renderer URL', () => {
   assert.equal(manifest.served, true);
   assert.equal(manifest.server, 'server.js');
   assert.equal(manifest.knob, true);
-  assert.equal(manifest.version, '1.0.2');
+  assert.equal(manifest.version, '1.0.3');
   const folders = manifest.options.filter(option => /^folder[1-4]$/.test(option.key));
   assert.equal(folders.length, 4);
   folders.forEach(option => {
     assert.equal(option.type, 'folder');
     assert.equal(option.serverOnly, true);
   });
+  const maxPhotos = manifest.options.find(option => option.key === 'maxPhotos');
+  assert.equal(maxPhotos.type, 'select');
+  assert.equal(maxPhotos.default, '500');
+  assert.equal(maxPhotos.serverOnly, true);
+  assert.deepEqual(maxPhotos.choices.map(choice => choice[0]), ['100', '250', '500', '1000', '2500', '10000']);
   const allowDelete = manifest.options.find(option => option.key === 'allowDelete');
   assert.equal(allowDelete.type, 'bool');
   assert.equal(allowDelete.default, false);

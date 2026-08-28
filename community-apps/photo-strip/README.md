@@ -7,8 +7,9 @@ App settings.
 The renderer never receives folder paths and has no filesystem access. The app-local
 `server.js` scans only the configured folders, returns opaque image IDs, and validates each
 requested image against the cached scan and its selected root before reading it. Scans are
-asynchronous, cached for five minutes, manually refreshable, and bounded to 10,000 images and
-2,000 directories.
+asynchronous, cached for five minutes, manually refreshable, and bounded to 2,000 directories.
+**Maximum library size** defaults to 500 photos and can be changed in App settings from 100 up to
+the hard ceiling of 10,000. The renderer itself keeps only the current photo neighbourhood loaded.
 
 JPEG, PNG, WebP, and GIF files are supported. GIFs use Chromium's normal image rendering, so an
 animated GIF plays while it is the current slide and restarts if it is evicted and loaded again;
