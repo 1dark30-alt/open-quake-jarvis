@@ -135,6 +135,17 @@
   .emptystate .big { color: #cfe0f2; font-size: 15px; margin-bottom: 6px; }
   :focus-visible { outline: 2px solid #4ea3ff; outline-offset: 1px; }
   .warn { color: #e8b04b; }
+  /* status pill for section headers (device / integration state) */
+  .stpill { display: inline-block; font-size: 10px; text-transform: none; letter-spacing: .3px; border-radius: 999px; padding: 2px 9px; margin-left: 8px; vertical-align: middle; border: 1px solid; }
+  .stpill.ok { color: #7fb59a; border-color: #2f5d44; background: #12271c; }
+  .stpill.off { color: #8aa0b6; border-color: #2a3a4e; background: #182230; }
+  .stpill.err { color: #e88; border-color: #6a2f3a; background: #2a161c; }
+  /* knob-action matrix as a bordered table */
+  .knobtbl { display: grid; grid-template-columns: 110px 1fr 1fr 1fr; border: 1px solid #233246; border-radius: 8px; overflow: hidden; margin-top: 6px; max-width: 780px; }
+  .knobtbl > * { padding: 8px 10px; border-bottom: 1px solid #1a2431; display: flex; align-items: center; }
+  .knobtbl .kth { background: #0e141c; color: #6f8298; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600; }
+  .knobtbl > :nth-last-child(-n+4) { border-bottom: none; }
+  .knobtbl label { width: auto; color: #91a4ba; font-size: 13.5px; }
   /* Theme live preview + preset chips */
   .thprev { display: flex; gap: 16px; align-items: center; border: 1px solid #233246; border-radius: 10px; padding: 16px; max-width: 460px; }
   .thprev .thtile { width: 64px; height: 64px; border-radius: 12px; border: 1px solid; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }

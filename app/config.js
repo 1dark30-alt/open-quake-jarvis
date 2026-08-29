@@ -3592,8 +3592,9 @@
       <p class="hint">Reopens the first-launch mode picker and device walkthrough.</p>`;
 
     // Hardware tab — knob ring + microphone
+    const devSeen = !!(ledState && ledState.deviceSeen);
     const hwHtml = `
-      <p class="sectitle">Knob ring</p>
+      <p class="sectitle">Knob ring <span class="stpill ${devSeen ? 'ok' : 'off'}">${devSeen ? 'Device connected' : 'Device not detected'}</span></p>
       <div class="row"><label>Effect</label>
         <select id="sEffect" style="width:230px">${effOpts}</select></div>
       <div class="row"><label>Color</label>
@@ -3603,16 +3604,19 @@
       <p class="hint" style="margin:-4px 0 0">The ring follows your theme accent by default — tick Override to set a fixed color here.</p>
       <div class="row"><label>Brightness</label>
         <input type="range" id="sBright" min="0" max="255" value="${L.brightness}" style="width:200px">
-        <span id="sBrightVal" class="hint" style="margin:0 0 0 10px">${L.brightness}</span></div>
+        <span id="sBrightVal" class="hint" style="margin:0 0 0 10px">${Math.round(L.brightness / 255 * 100)}%</span></div>
       <div class="row"><label>Effect speed</label>
         <input type="range" id="sSpeed" min="0" max="255" value="${L.speed}" style="width:200px">
-        <span id="sSpeedVal" class="hint" style="margin:0 0 0 10px">${L.speed}</span></div>
-      <div style="margin-top:6px"><label>Knob — turn / click / double-click</label></div>
-      <div style="display:grid; grid-template-columns: 110px 1fr 1fr 1fr; gap:8px; align-items:center; margin-top:6px">
-        <span></span>
-        <span class="hint" style="font-weight:bold">Turn</span>
-        <span class="hint" style="font-weight:bold">Click</span>
-        <span class="hint" style="font-weight:bold">Double-click</span>
+        <span id="sSpeedVal" class="hint" style="margin:0 0 0 10px">${Math.round(L.speed / 255 * 100)}%</span></div>
+      <details class="hint"><summary>Ring changes preview on the device instantly; <b>Store ring settings on device</b> writes them to its own memory so they survive a power cycle even without the PC.</summary> (Effect “All Off” turns the ring off. Animated effects use the color/speed; solid effects ignore speed.)</details>
+      <div class="row" style="margin-top:6px"><button id="sSaveLed"${devSeen ? '' : ' disabled'}>Store ring settings on device</button><span id="sSaveLedMsg" class="hint" style="margin:0 0 0 10px"></span></div>
+
+      <p class="sectitle">Knob controls</p>
+      <div class="knobtbl">
+        <span class="kth"></span>
+        <span class="kth">Turn</span>
+        <span class="kth">Press</span>
+        <span class="kth">Double-press</span>
         <label>Grid</label>
         ${knobSelHtml('knGridTurn', KNOB_TURN_OPTS, knobOf('grid', 'turn'), 'width:100%')}
         ${knobSelHtml('knGridClick', KNOB_CLICK_OPTS, knobOf('grid', 'click'), 'width:100%')}
@@ -3626,9 +3630,8 @@
         ${knobSelHtml('knAppClick', KNOB_CLICK_OPTS, knobOf('app', 'click'), 'width:100%')}
         ${knobSelHtml('knAppDblclick', KNOB_DBLCLICK_OPTS, knobOf('app', 'dblclick'), 'width:100%')}
       </div>
-      <details class="hint"><summary>What turning / clicking the knob does on each kind of page.</summary> Any page can override this in its <b>Advanced</b> settings. (“Select button” highlights tiles as you turn; “Enter” activates the highlighted button, play/pauses music, or sends an Enter key.)</details>
-      <details class="hint"><summary>Changes apply to the ring instantly.</summary> <b>Save to device</b> writes them to the device's own memory so they survive a power-cycle. (Effect “All Off” turns the ring off. Animated effects use the color/speed; solid effects ignore speed.)</details>
-      <div class="row" style="margin-top:6px"><button id="sSaveLed">Save to device</button><span id="sSaveLedMsg" class="hint" style="margin:0 0 0 10px"></span></div>
+      <details class="hint"><summary>What turning / pressing the knob does on each kind of page.</summary> Any page can override this in its <b>Advanced</b> settings. (“Select button” highlights tiles as you turn; “Enter” activates the highlighted button, play/pauses music, or sends an Enter key.)</details>
+      <div class="row" style="margin-top:6px"><button id="sKnobReset">Reset knob controls to defaults</button></div>
 
       <p class="sectitle">Microphone</p>
       <div class="row"><label>At launch</label>
@@ -4607,11 +4610,12 @@
       document.getElementById('sEffect').onchange = e => live({ effect: parseInt(e.target.value, 10) });
       const cv = document.getElementById('sColorVal');
       document.getElementById('sColor').onchange = e => { const { hue, sat } = hexToHsv(e.target.value); cv.textContent = `H${hue} S${sat}`; live({ hue, sat, accentOverride: true }); sOvr.checked = true; sColEl.disabled = false; };
+      const pct = v => Math.round((parseInt(v, 10) || 0) / 255 * 100) + '%';
       const bv = document.getElementById('sBrightVal');
-      document.getElementById('sBright').oninput = e => { bv.textContent = e.target.value; };
+      document.getElementById('sBright').oninput = e => { bv.textContent = pct(e.target.value); };
       document.getElementById('sBright').onchange = e => live({ brightness: parseInt(e.target.value, 10) });
       const sv = document.getElementById('sSpeedVal');
-      document.getElementById('sSpeed').oninput = e => { sv.textContent = e.target.value; };
+      document.getElementById('sSpeed').oninput = e => { sv.textContent = pct(e.target.value); };
       document.getElementById('sSpeed').onchange = e => live({ speed: parseInt(e.target.value, 10) });
       document.getElementById('sSaveLed').onclick = async () => {
         const msg = document.getElementById('sSaveLedMsg'); msg.textContent = 'saving…';
@@ -4630,6 +4634,12 @@
         document.getElementById(id + 'Click').onchange = e => setKnob(type, 'click', e.target.value);
         document.getElementById(id + 'Dblclick').onchange = e => setKnob(type, 'dblclick', e.target.value);
       });
+      const knobResetBtn = document.getElementById('sKnobReset');
+      if (knobResetBtn) knobResetBtn.onclick = () => {
+        if (!ask('Reset every knob turn/press/double-press mapping to the defaults?')) return;
+        if (config.settings) delete config.settings.knob;
+        markDirty(); renderSettings();
+      };
     } else if (tab === 'monitor') {
       // Monitor mode — knob turn/tap behavior (applied by the main process while in monitor mode)
       document.getElementById('sReserved').onchange = e => setS('reservedDisplay', e.target.checked);

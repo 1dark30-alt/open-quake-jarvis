@@ -4025,7 +4025,9 @@ app.whenReady().then(async () => {
     if (!isFrom(e, configWin)) return null;
     let cur = null;
     try { cur = await dev.getLighting(); } catch (er) {}
-    return Object.assign({}, lighting(), cur && Object.keys(cur).length ? cur : {});
+    // deviceSeen: a connector owns a live device — the editor shows connection state from it.
+    const seen = !!dev.active;
+    return Object.assign({}, lighting(), cur && Object.keys(cur).length ? cur : {}, { deviceSeen: seen });
   });
   ipcMain.on('setLighting', (e, L) => {
     if (!isFrom(e, configWin)) return;
