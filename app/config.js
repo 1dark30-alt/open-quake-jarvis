@@ -135,12 +135,12 @@
     return `<div class="row" style="gap:8px; flex-wrap:wrap">
       <label style="width:auto">Group</label>
       <label class="iconopt" style="width:auto"><input type="checkbox" id="gUseGroup" ${(g.useGroup && !missing) ? 'checked' : ''}> Use grid group</label>
-      <select id="gGroupId" style="flex:1; min-width:140px">
+      <select id="gGroupId" style="flex:1; min-width:140px${(g.useGroup && !missing) ? '' : ';display:none'}">
         <option value="">— pick a group —</option>
         ${list.map(x => `<option value="${esc(x.id)}" ${x.id === cur ? 'selected' : ''}>${esc(x.name || '(unnamed)')}</option>`).join('')}
         ${missing ? `<option value="${esc(cur)}" selected>(missing — pick another)</option>` : ''}
       </select>
-      <label class="iconopt" style="width:auto; opacity:0.55" title="Schedule support is coming in the next phase."><input type="checkbox" id="gUseSchedule" ${g.useSchedule ? 'checked' : ''} disabled> Use schedule</label>
+      <label class="iconopt" style="width:auto; opacity:0.55${(g.useGroup && !missing) ? '' : ';display:none'}" title="Schedule support is coming in the next phase."><input type="checkbox" id="gUseSchedule" ${g.useSchedule ? 'checked' : ''} disabled> Use schedule</label>
     </div>`;
   }
   function wireGroupSelectRow(g) {
@@ -396,18 +396,35 @@
 
   // ---- per-page global shortcut ----
   function shortcutRowHtml(g) {
-    return `<div class="row" style="margin-top:6px"><label style="width:auto">Hotkey shortcut</label>
+    return `<div class="row" style="margin-top:6px"><label style="width:auto">Jump-to-page shortcut</label>
       <span class="hkwrap"><input id="gShortcut" readonly placeholder="click, then press keys" value="${esc(g.shortcut || '')}"><button id="gShortcutClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span>
-      <label style="width:auto;margin-left:14px;font-weight:normal;cursor:pointer"><input type="checkbox" id="gShortcutNoRot" ${g.shortcutStopsRotation ? 'checked' : ''}> Disables rotation</label></div>
-      <details class="hint"><summary>Global hotkey that jumps the panel to this page from anywhere.</summary> Click the box and press a combo that includes a modifier (e.g. Ctrl+Alt+1). If another app already owns that combo, it just won't fire. <b>Disables rotation</b> turns auto-rotation off when the hotkey fires, so the panel stays on this page until you start rotation again (knob, tray, or panel).</details>`;
+      <label id="gShortcutNoRotLbl" style="width:auto;margin-left:14px;font-weight:normal;cursor:pointer${g.shortcut ? '' : ';opacity:.5'}"><input type="checkbox" id="gShortcutNoRot" ${g.shortcutStopsRotation ? 'checked' : ''}${g.shortcut ? '' : ' disabled'}> Pause rotation when this shortcut is used</label>
+      <span id="gShortcutWarn" class="hint warn" style="margin:0 0 0 8px"></span></div>
+      <details class="hint"><summary>Global hotkey that jumps the panel to this page from anywhere.</summary> Click the box and press a combo that includes a modifier (e.g. Ctrl+Alt+1). If another app already owns that combo, it just won't fire. <b>Pause rotation</b> turns auto-rotation off when the shortcut fires, so the panel stays on this page until you start rotation again (knob, tray, or panel).</details>`;
   }
   function wireShortcutRow(g) {
     const inp = document.getElementById('gShortcut'); if (!inp) return;
-    inp.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { g.shortcut = acc; inp.value = acc; renderGrids(); markDirty(); } };
+    const ownLabel = () => 'page \u201c' + (g.name || '(unnamed)') + '\u201d';
+    const syncNoRot = () => {
+      const nr = document.getElementById('gShortcutNoRot'), lbl = document.getElementById('gShortcutNoRotLbl');
+      if (nr) nr.disabled = !g.shortcut;
+      if (lbl) lbl.style.opacity = g.shortcut ? '' : '.5';
+    };
+    refreshHotkeyWarn('gShortcut', ownLabel());
+    inp.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { g.shortcut = acc; inp.value = acc; renderGrids(); markDirty(); syncNoRot(); refreshHotkeyWarn('gShortcut', ownLabel()); } };
     const clr = document.getElementById('gShortcutClear');
-    if (clr) clr.onclick = () => { delete g.shortcut; inp.value = ''; renderGrids(); markDirty(); };
+    if (clr) clr.onclick = () => { delete g.shortcut; inp.value = ''; renderGrids(); markDirty(); syncNoRot(); refreshHotkeyWarn('gShortcut', ownLabel()); };
     const nr = document.getElementById('gShortcutNoRot');
     if (nr) nr.onchange = e => { if (e.target.checked) g.shortcutStopsRotation = true; else delete g.shortcutStopsRotation; markDirty(); };
+  }
+  // Shared "Page behavior" section: side button strip (when the app supports one), rotation,
+  // jump-to-page shortcut, and Advanced settings — identical across grid, dashboard, and app forms.
+  function pageBehaviorHtml(g, withGrid) {
+    return `<p class="sectitle" style="margin-top:18px">Page behavior</p>`
+      + (withGrid ? `<div class="row"><label style="width:auto">Side button strip</label>
+        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a strip of launcher tiles beside the page</label></div>
+      <p class="hint">Pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '')
+      + rotRowHtml(g) + shortcutRowHtml(g) + advRowHtml(g);
   }
   // Every global hotkey binding in the config, labeled — for conflict warnings beside hotkey fields.
   function allHotkeyBindings() {
@@ -423,6 +440,12 @@
     const me = st.meeting || {};
     [['slideHotkeyToggle', 'slide-capture toggle'], ['slideHotkeySelect', 'slide window select'], ['slideHotkeyManual', 'manual slide capture']]
       .forEach(([k, l]) => { if (me[k]) out.push({ key: me[k], label: l }); });
+    // App-page activation hotkeys (LucidType, Live Translate, AI Voice translation) are global too.
+    const OPT_HOTKEYS = [['dictationHotkey', 'dictation'], ['applyHotkey', 'apply text'], ['cleanupHotkey', 'cleanup'], ['rewriteHotkey', 'rewrite'], ['micHotkey', 'translation toggle'], ['translateHotkey', 'translation toggle']];
+    (config.grids || []).forEach(g => {
+      const o = g.options || {};
+      OPT_HOTKEYS.forEach(([k, l]) => { if (o[k]) out.push({ key: o[k], label: l + ' on \u201c' + (g.name || '(unnamed)') + '\u201d' }); });
+    });
     return out;
   }
   // Warn text when `acc` is already bound elsewhere; ownLabel excludes the field's own binding.
@@ -1268,18 +1291,30 @@
     const g = curGrid(); const el = document.getElementById('gridmeta');
     if (!g) { el.innerHTML = '<p class="hint">No grid. Click “+ Add Grid”.</p>'; return; }
     el.innerHTML = `
+      <p class="sectitle">Grid layout</p>
       <div class="row"><label>Name</label><input id="gName" value="${esc(g.name)}"></div>
       <div class="row"><label>Columns</label><input id="gCols" type="number" min="1" max="12" value="${g.cols}" style="width:90px">
-        <label style="width:auto;margin-left:10px">Rows</label><input id="gRows" type="number" min="1" max="6" value="${g.rows}" style="width:90px"></div>
+        <label style="width:auto;margin-left:10px">Rows</label><input id="gRows" type="number" min="1" max="6" value="${g.rows}" style="width:90px">
+        <span class="hint" style="margin:0 0 0 12px">shown on the 1920\u00d7480 panel</span></div>
       ${groupSelectRowHtml(g)}
-      ${rotRowHtml(g)}
-      ${shortcutRowHtml(g)}
-      ${advRowHtml(g)}
-      <div class="row"><button id="gFocus">Focus on device</button></div>
-      <div class="dangerzone"><button class="danger" id="gDelete">Delete grid</button></div>`;
+      ${pageBehaviorHtml(g, false)}
+      <div class="row"><button id="gFocus">Show on device</button></div>`;
+    const pd = document.getElementById('pagedanger');
+    if (pd) pd.innerHTML = '<div class="dangerzone"><button class="danger" id="gDelete">Delete grid</button></div>';
     document.getElementById('gName').oninput = e => { g.name = e.target.value; renderGrids(); markDirty(); };
-    document.getElementById('gCols').onchange = e => { clearAllMerges(g); g.cols = Math.max(1, Math.min(12, +e.target.value || 1)); ensureTiles(g); ti = -1; selEnd = -1; render(); markDirty(); };
-    document.getElementById('gRows').onchange = e => { clearAllMerges(g); g.rows = Math.max(1, Math.min(6, +e.target.value || 1)); ensureTiles(g); ti = -1; selEnd = -1; render(); markDirty(); };
+    const tilesLostBy = (cols, rows) => (g.tiles || []).filter((t, i) => t && t.type && (Math.floor(i / g.cols) >= rows || (i % g.cols) >= cols)).length;
+    document.getElementById('gCols').onchange = e => {
+      const next = Math.max(1, Math.min(12, +e.target.value || 1));
+      const lost = next < g.cols ? tilesLostBy(next, g.rows) : 0;
+      if (lost && !ask('Shrinking to ' + next + ' column' + (next === 1 ? '' : 's') + ' removes ' + lost + ' configured tile' + (lost === 1 ? '' : 's') + '. Continue?')) { e.target.value = g.cols; return; }
+      clearAllMerges(g); g.cols = next; ensureTiles(g); ti = -1; selEnd = -1; render(); markDirty();
+    };
+    document.getElementById('gRows').onchange = e => {
+      const next = Math.max(1, Math.min(6, +e.target.value || 1));
+      const lost = next < g.rows ? tilesLostBy(g.cols, next) : 0;
+      if (lost && !ask('Shrinking to ' + next + ' row' + (next === 1 ? '' : 's') + ' removes ' + lost + ' configured tile' + (lost === 1 ? '' : 's') + '. Continue?')) { e.target.value = g.rows; return; }
+      clearAllMerges(g); g.rows = next; ensureTiles(g); ti = -1; selEnd = -1; render(); markDirty();
+    };
     document.getElementById('gDelete').onclick = deleteCurrentPage;
     { const fb = document.getElementById('gFocus'); if (fb) fb.onclick = focusCurrentPage; }
     wireGroupSelectRow(g); wireRotRow(g); wireShortcutRow(g); wireAdvRow(g);
@@ -1405,7 +1440,7 @@
   // ---- tile form (left) ----
   function renderForm() {
     const g = curGrid(); const el = document.getElementById('tileform');
-    if (!g || ti < 0) { el.innerHTML = '<div class="emptystate"><div class="big">No tile selected</div>Click a tile in the grid above to edit its label, icon, and action.</div>'; document.getElementById('iconpane').innerHTML = ''; return; }
+    if (!g || ti < 0) { el.innerHTML = '<div class="emptystate"><div class="big">No tile selected</div>Select a tile to edit its action, label, and icon.</div>'; document.getElementById('iconpane').innerHTML = ''; return; }
     const t = g.tiles[ti];
     if (t.type === 'macro' && !Array.isArray(t.steps)) t.steps = [];
     let body;
@@ -1894,13 +1929,8 @@
       <div class="row" style="margin-top:10px"><label style="width:auto">Browser profile</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gUA" ${g.desktopUA ? 'checked' : ''}> Use desktop browser profile</label></div>
       <details class="hint"><summary>Makes this page look like desktop Chrome instead of an embedded app.</summary> Turn on for sites that won't load or let you sign in inside the panel (e.g. claude.ai, chatgpt.com). The panel keeps its own login, separate from your PC browser.</details>
-      <div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
-        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the dashboard</label></div>
-      <p class="hint">Adds a strip of launcher tiles beside the web view — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>
-      ${rotRowHtml(g)}
-      ${shortcutRowHtml(g)}
-      ${advRowHtml(g)}
-      <div class="row" style="margin-top:10px"><button id="gFocus">Focus on device</button></div>
+      ${pageBehaviorHtml(g, true)}
+      <div class="row" style="margin-top:10px"><button id="gFocus">Show on device</button></div>
       <p class="hint" id="authHint"></p>
       <p class="hint">Shown full-screen on the panel. Knob scrolls · tap clicks · double-click the knob returns to the page selector.</p>
       <div class="dangerzone"><button class="danger" id="gDelete">Delete page</button></div>`;
@@ -2015,7 +2045,7 @@
         <legend style="padding:0 6px; color:#9fb3c8; font-size:13px">Panels</legend>
         <div><label class="iconopt" style="width:auto"><input type="checkbox" id="pArt" ${optVal(g, 'art', true) ? 'checked' : ''}> Show album art</label></div>
         <div><label class="iconopt" style="width:auto"><input type="checkbox" id="pLyrics" ${optVal(g, 'lyrics', false) ? 'checked' : ''}> Show lyrics</label></div>
-        <div><label class="iconopt" style="width:auto"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Buttons (grid)</label></div>
+        <div><label class="iconopt" style="width:auto"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Controls grid</label></div>
         <p class="hint" style="margin:6px 0 0">Only two may be checked at once (screen space). Grid size/tiles are on the <b>Buttons</b> tab.</p>
       </fieldset>`;
     // HA Dashboard: dashboard picker (fetched from HA on render), kiosk-mode flags, then the standard Buttons toggle.
@@ -2030,9 +2060,7 @@
           <label class="iconopt" style="width:auto"><input type="checkbox" id="haHideHeader" ${optVal(g, 'hideHeader', false) ? 'checked' : ''}> Hide header</label>
           <label class="iconopt" style="width:auto"><input type="checkbox" id="haHideSidebar" ${optVal(g, 'hideSidebar', false) ? 'checked' : ''}> Hide sidebar</label></div>
         <details class="hint"><summary>Requires the <b>kiosk-mode</b> integration installed on your Home Assistant instance — these only set the URL flags it reads.</summary> Kiosk mode hides both header and sidebar; the other two hide just one.</details>
-      </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
-        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
-      <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
+      </div>`;
     // Custom shortcuts cheat-sheet: edited right here, but the list itself is global/shared — see
     // shortcutRowsHtml's comment and docs/charter-keyshortcuts.md.
     const keyShortcutsBox = `<div style="margin-top:10px">
@@ -2041,9 +2069,7 @@
         This list is shared — editing it here updates every page that has the Keyboard Shortcuts app.</details>
         <div id="sShortcutRows">${shortcutRowsHtml((config.settings || {}).customShortcuts)}</div>
         <button id="sShortcutAdd" type="button" style="margin-top:8px">+ Add another shortcut</button>
-      </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
-        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
-      <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
+      </div>`;
     // Claude Code voice app: project picker (dynamic dir list -- can't be a static apps.json enum)
     // plus the rest of the app's options, hand-rendered here same as HA Dashboard's box does for its
     // own picker + flags rather than delegating to the generic renderAppOpts(). See docs/claude-voice.md
@@ -2099,9 +2125,7 @@
         <div class="row" style="margin-top:10px"><label>Panel prompt</label>
           <button id="cvEditPrompt" type="button">Edit prompt file</button></div>
         <details class="hint"><summary>Your own instructions for panel sessions (claude-panel-prompt.md, opens in your default editor).</summary> Appended to the built-in voice prompt; text inside &lt;!-- comment markers --&gt; is ignored. Applies from the next session start. Never affects terminal Claude Code.</details>` : '') + `
-      </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
-        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
-      <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
+      </div>`;
     const lucidTypeBox = `<div style="margin-top:10px">
         <p class="sectitle">Microphone</p>
         <div class="row"><label>Capture device</label>
@@ -2125,7 +2149,7 @@
         <div class="row"><label style="width:auto">Apply text</label>
           <span class="hkwrap"><input id="ltApplyKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'applyHotkey', ''))}"><button id="ltApplyKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
         <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltApplyStops" ${optVal(g, 'applyStopsRecording', true) ? 'checked' : ''}> Apply text also stops recording</label></div>
-        <p class="hint">Global combos (need a modifier) that fire from any app. To <b>jump to this page</b>, use the page's <b>Hotkey shortcut</b> above. Applies on Save.</p>
+        <p class="hint">Global combos (need a modifier) that fire from any app. To <b>jump to this page</b>, use the page's <b>Jump-to-page shortcut</b> below. Applies on Save.</p>
 
         <p class="sectitle" style="margin-top:16px">Notifications</p>
         <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltSwitch" ${optVal(g, 'switchOnDictate', true) ? 'checked' : ''}> Switch the panel to this page when dictation starts</label></div>
@@ -2179,9 +2203,7 @@
           <div class="row"><label style="width:auto">Custom</label></div>
           <textarea id="ltRewriteCustom" rows="3" style="width:100%" placeholder="Used when mode = Custom">${esc(optVal(g, 'rewriteCustomPrompt', ''))}</textarea>
         </details>
-      </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
-        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
-      <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
+      </div>`;
     const xlProvider = optVal(g, 'provider', 'soniox') === 'ai' ? 'ai' : 'soniox';
     const liveTranslateBox = `<div style="margin-top:10px">
         <div class="row"><label>Provider</label>
@@ -2223,25 +2245,19 @@
           <input id="xlSaveFolder" value="${esc(optVal(g, 'saveFolder', ''))}" placeholder="Documents\\OpenQuake Translations" readonly style="flex:1">
           <button id="xlSaveFolderBrowse" type="button">Browse…</button></div>
         <p class="hint">Where saved translations are written. Blank = Documents\\OpenQuake Translations.</p>
-      </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
-        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
-      <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
-    const optsBlock = isMusic ? musicBox : isHaDash ? haBox : isKeyShortcuts ? keyShortcutsBox : isVoiceApp ? claudeVoiceBox : isLucidType ? lucidTypeBox : isLiveTranslate ? liveTranslateBox : isOffice ? officeOptionsHtml(g, def) : ('<div id="appOpts"></div>' + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
-        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
-      <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : ''));
+      </div>`;
+    const optsBlock = isMusic ? musicBox : isHaDash ? haBox : isKeyShortcuts ? keyShortcutsBox : isVoiceApp ? claudeVoiceBox : isLucidType ? lucidTypeBox : isLiveTranslate ? liveTranslateBox : isOffice ? officeOptionsHtml(g, def) : '<div id="appOpts"></div>';
     el.innerHTML = tabBar + `
       <div class="row"><label>Name</label><input id="gName" value="${esc(g.name)}"></div>
       <div class="row"><label>App</label><select id="gApp" style="flex:1;width:auto">
         <option value="">— choose an app —</option>
         ${appDefs.filter(a => a.id === g.app || appVisible(a)).sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })).map(a => `<option value="${esc(a.id)}" ${a.id === g.app ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
-      </select><button id="refreshApps" type="button" title="Reload app manifests">Refresh</button></div>
+      </select><button id="refreshApps" type="button" title="Reload app manifests">Reload app list</button></div>
       ${def && def.oauth ? '<div id="appOAuth"></div>' : ''}
       ${optsBlock}
-      ${rotRowHtml(g)}
-      ${shortcutRowHtml(g)}
-      ${advRowHtml(g)}
-      <div class="row" style="margin-top:10px"><button id="gFocus">Focus on device</button></div>
-      <p class="hint">${def ? esc(def.name) + ' runs locally and shows full-screen on the panel.' : 'Pick an app, then set its options below.'}</p>
+      ${pageBehaviorHtml(g, canGrid && !isMusic)}
+      <div class="row" style="margin-top:10px"><button id="gFocus">Show on device</button></div>
+      ${def ? '' : '<p class="hint">Pick an app, then set its options below.</p>'}
       <div class="dangerzone"><button class="danger" id="gDelete">Delete page</button></div>`;
     const atb = document.getElementById('atBtns'); if (atb) atb.onclick = () => { dashTab = 'buttons'; render(); };
     document.getElementById('gName').oninput = e => { g.name = e.target.value; renderGrids(); markDirty(); };
@@ -3189,6 +3205,8 @@
   }
   function deleteCurrentPage() {
     if (config.grids.length <= 1) return;
+    const gname = (config.grids[gi] || {}).name || '(unnamed)';
+    if (!ask('Delete page \u201c' + gname + '\u201d? It disappears from the panel when you Save & apply.')) return;
     const removedId = (config.grids[gi] || {}).id;
     (config.panes || []).forEach(p => {
       if (Array.isArray(p.slots)) p.slots = p.slots.filter(s => s && s.pageId !== removedId);
@@ -3221,6 +3239,8 @@
     // In software Panes mode, panes are the primary unit — their tab moves to the far left.
     if (tpn) tpn.style.order = softwarePaneMode() ? '-1' : '';
 
+    // The below-preview danger zone belongs only to the grid page form; every other view clears it.
+    { const pd = document.getElementById('pagedanger'); if (pd) pd.innerHTML = ''; }
     // Settings takes the full window: the Pages sidebar is unrelated to settings tasks, so collapse
     // it (and its splitter) while the settings view is open. The header button doubles as the exit.
     const inSettings = view === 'settings';
