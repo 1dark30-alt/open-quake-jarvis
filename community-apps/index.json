@@ -33,19 +33,19 @@
       "server": true
     },
     {
-      "id": "duplicati-dash",
-      "name": "Duplicati Dashboard",
-      "description": "Backup status board for a Duplicati server — every job with a green/red result dot, live progress while running, and one tap to open the web UI on the PC.",
-      "version": "1.0.2",
-      "zip": "duplicati-dash.zip",
-      "server": true
-    },
-    {
       "id": "dev-services",
       "name": "Dev Services",
       "description": "Configure up to 12 local HTTP/HTTPS services and see four at a glance, including listening state, port owner, expected-process mismatches, URL and folder shortcuts, and guarded process stopping on supported platforms.",
       "version": "1.0.1",
       "zip": "dev-services.zip",
+      "server": true
+    },
+    {
+      "id": "duplicati-dash",
+      "name": "Duplicati Dashboard",
+      "description": "Backup status board for a Duplicati server — every job with a green/red result dot, live progress while running, and one tap to open the web UI on the PC.",
+      "version": "1.0.2",
+      "zip": "duplicati-dash.zip",
       "server": true
     },
     {
