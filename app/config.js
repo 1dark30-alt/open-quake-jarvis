@@ -3862,18 +3862,23 @@
     const ow = (s.owui && typeof s.owui === 'object') ? s.owui : { url: '', apiKey: '', model: '' };
     const obs = (s.obs && typeof s.obs === 'object') ? s.obs : {};
     const authHtml = `
-      <p class="sectitle">Home Assistant</p>
+      <div class="card">
+      <p class="sectitle">Home Assistant <span id="sHaPill" class="stpill ${ha.useHa ? 'ok' : 'off'}">${ha.useHa ? 'Enabled' : 'Disabled'}</span></p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="sHaUse" ${ha.useHa ? 'checked' : ''}> Use Home Assistant</label>
         <button id="sHaRefresh" type="button" style="margin-left:12px" ${ha.useHa ? '' : 'disabled'}>Refresh Configuration</button>
         <span id="sHaStatus" class="hint" style="margin:0 0 0 10px"></span></div>
+      <div id="sHaFields"${ha.useHa ? '' : ' style="display:none"'}>
       <details class="hint"><summary>When on, open-quake caches your HA dashboards, areas, devices, entities, floors, and labels at startup.</summary> The Home Assistant Dashboard app and (later) entity-aware features depend on this cache.</details>
       <div class="row"><label>URL</label>
         <input type="text" id="sHaUrl" value="${esc(ha.url || '')}" placeholder="http://homeassistant.local:8123" style="flex:1"></div>
       <div class="row"><label>Long-Lived Access Token</label>
         <input type="password" id="sHaToken" value="${esc(ha.token || '')}" placeholder="paste your long-lived access token" style="flex:1"></div>
       <p class="hint">The token is stored encrypted at rest (same secret store as your dashboard tokens). It only leaves the main process for features that need it.</p>
+      </div>
+      </div>
 
-      <p class="sectitle">Open WebUI</p>
+      <div class="card">
+      <p class="sectitle">Open WebUI <span class="stpill ${ow.url ? 'ok' : 'off'}">${ow.url ? 'Configured' : 'Not configured'}</span></p>
       <div class="row"><label>URL</label>
         <input type="text" id="sOwUrl" value="${esc(ow.url || '')}" placeholder="http://192.168.1.25:3000" style="flex:1"></div>
       <div class="row"><label>API key</label>${secretInput(ow.apiKey || '', 'id="sOwKey" placeholder="paste an Open WebUI API key"', 'flex:1')}</div>
@@ -3882,10 +3887,13 @@
         <button id="sOwTest" type="button" style="margin-left:8px">Check connection</button></div>
       <p class="hint" id="sOwStatus" style="min-height:16px;margin:2px 0 0"></p>
       <details class="hint"><summary>One connection shared by the meeting <b>Analysis AI</b> (Open WebUI option on the Meeting tab) and the <b>Open WebUI Voice</b> panel app.</summary> The key is stored encrypted at rest. In Open WebUI: avatar (bottom-left) → Settings → Account → API Keys — an admin may need to enable API keys first.</details>
+      </div>
 
-      <p class="sectitle">OBS Studio</p>
+      <div class="card">
+      <p class="sectitle">OBS Studio <span id="sObsPill" class="stpill ${obs.enabled ? 'ok' : 'off'}">${obs.enabled ? 'Enabled' : 'Disabled'}</span></p>
       <div class="row"><label>Enable</label>
         <input type="checkbox" id="sObsEnabled" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">connect to OBS for the OBS switcher app and OBS tiles</span></div>
+      <div id="sObsFields"${obs.enabled ? '' : ' style="display:none"'}>
       <div class="row"><label>Host</label>
         <input type="text" id="sObsHost" value="${esc(obs.host || '127.0.0.1')}" placeholder="127.0.0.1" style="width:200px">
         <label style="width:auto;margin:0 8px 0 16px">Port</label>
@@ -3896,10 +3904,14 @@
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sObsAuto" style="width:auto;flex:none"> automatically if OBS restarts</label></div>
       <p class="hint" id="sObsStatus" style="min-height:16px;margin:2px 0 0"></p>
       <details class="hint"><summary>In OBS: <b>Tools → WebSocket Server Settings</b> → enable the server, then <b>Show Connect Info</b> for the port and password.</summary> The password is stored encrypted at rest and never leaves the main process.</details>
+      </div>
+      </div>
 
+      <div class="card">
       <p class="sectitle">OAuth 2.0</p>
       <details class="hint"><summary>Connect services once for built-in integrations.</summary> OAuth tokens stay in the main process, are encrypted at rest, and are refreshed before expiry; drop-in apps cannot request them.</details>
-      <div id="sOauthList"><p class="hint">Loading OAuth providers...</p></div>`;
+      <div id="sOauthList"><p class="hint">Loading OAuth providers...</p></div>
+      </div>`;
 
     // Drop-In Apps tab — manage user-installed app folders (import/export/delete) + storage location
     const diHtml = `
@@ -4062,7 +4074,8 @@
       let diSearchI = '', diSearchD = '';
       let diSrcFilter = 'all';       // Discover source filter: 'all' or a repo index
       let diHideInstalled = true;    // Discover: hide already-installed apps (on by default)
-      const diFilterI = { src: new Set(), upd: false };   // Installed filter (by source / has-update)
+      const diFilterI = { src: new Set(), st: new Set() };   // Installed filter (by source / status)
+      const diSortI = { col: 'name', dir: 1 };               // Installed sort (column + direction)
       const diStatus = {};           // id -> {state:'ok'|'upd'|'err', from, to}
       let diLastChecked = null;
       let diCatalog = null;          // merged repo catalog for Discover (lazy, cached)
@@ -4172,12 +4185,14 @@
             <span id="diActiveFilters"></span>
             <span style="flex:1"></span>
             <div class="diFilterWrap"><button id="diFilterBtn">Filter</button><div id="diFmenu" class="diFmenu"></div></div>
-            <button id="diCheckAll" class="primary">Check for updates</button>
+            <span id="diChecked" class="hint" style="margin:0"></span>
+            <button id="diCheckAll">Check for updates</button>
             <span id="diUpdateAllWrap"></span>
           </div>
           <div id="diCount" class="diCount"></div>
           <div id="diIList"></div>`;
         const se = document.getElementById('diSearchI'); se.value = diSearchI; se.oninput = () => { diSearchI = se.value; renderInstalledList(); };
+        const ck = document.getElementById('diChecked'); if (ck && diLastChecked) ck.textContent = 'checked ' + fmtAgo(diLastChecked);
         document.getElementById('diFilterBtn').onclick = e => { e.stopPropagation(); document.getElementById('diFmenu').classList.toggle('open'); };
         document.getElementById('diFmenu').onclick = e => e.stopPropagation();
         document.getElementById('diCheckAll').onclick = () => checkAll();
@@ -4189,9 +4204,11 @@
         const idxs = Array.from(new Set(diInstalled.map(a => repoIndexOf(a.source)).filter(i => i >= 0))).sort((a, b) => a - b);
         m.innerHTML = (idxs.length ? '<div class="diFh">Source</div>' + idxs.map(i => `<label><input type="checkbox" data-k="src" data-v="${i}" ${diFilterI.src.has(i) ? 'checked' : ''}> ${esc(nameOf(i))}</label>`).join('') : '')
           + '<div class="diFh">Status</div>'
-          + `<label><input type="checkbox" data-k="upd" ${diFilterI.upd ? 'checked' : ''}> Has update</label>`;
+          + `<label><input type="checkbox" data-k="st" data-v="ok" ${diFilterI.st.has('ok') ? 'checked' : ''}> Ready</label>`
+          + `<label><input type="checkbox" data-k="st" data-v="upd" ${diFilterI.st.has('upd') ? 'checked' : ''}> Update available</label>`
+          + `<label><input type="checkbox" data-k="st" data-v="err" ${diFilterI.st.has('err') ? 'checked' : ''}> Error</label>`;
         m.querySelectorAll('input').forEach(inp => inp.onchange = () => {
-          if (inp.dataset.k === 'upd') diFilterI.upd = inp.checked;
+          if (inp.dataset.k === 'st') { const v = inp.dataset.v; if (inp.checked) diFilterI.st.add(v); else diFilterI.st.delete(v); }
           else { const val = +inp.dataset.v; if (inp.checked) diFilterI.src.add(val); else diFilterI.src.delete(val); }
           renderActiveChips(); renderInstalledList();
         });
@@ -4201,9 +4218,10 @@
         const host = document.getElementById('diActiveFilters'); if (!host) return;
         const chips = [];
         diFilterI.src.forEach(i => chips.push({ k: 'src', v: i, label: nameOf(i) }));
-        if (diFilterI.upd) chips.push({ k: 'upd', v: '', label: 'Has update' });
+        const ST_LABELS = { ok: 'Ready', upd: 'Update available', err: 'Error' };
+        diFilterI.st.forEach(v => chips.push({ k: 'st', v, label: ST_LABELS[v] }));
         host.innerHTML = chips.map(c => `<span class="diFchip" data-k="${c.k}" data-v="${c.v}">${esc(c.label)}<span class="x">×</span></span>`).join('');
-        host.querySelectorAll('.diFchip .x').forEach(x => x.onclick = e => { const c = e.currentTarget.parentElement; if (c.dataset.k === 'upd') diFilterI.upd = false; else diFilterI.src.delete(+c.dataset.v); renderFilterMenu(); renderInstalledList(); });
+        host.querySelectorAll('.diFchip .x').forEach(x => x.onclick = e => { const c = e.currentTarget.parentElement; if (c.dataset.k === 'st') diFilterI.st.delete(c.dataset.v); else diFilterI.src.delete(+c.dataset.v); renderFilterMenu(); renderInstalledList(); });
       };
       const installedStatusHtml = a => {
         const s = diStatus[a.id];
@@ -4214,16 +4232,30 @@
       const renderInstalledList = () => {
         const host = document.getElementById('diIList'); if (!host) return;
         const q = diSearchI.trim().toLowerCase();
+        const stateOf = a => (diStatus[a.id] && diStatus[a.id].state) || 'ok';
         const rows = diInstalled.filter(a => {
           const idx = repoIndexOf(a.source);
           if (diFilterI.src.size && !diFilterI.src.has(idx)) return false;
-          if (diFilterI.upd && !(diStatus[a.id] && diStatus[a.id].state === 'upd')) return false;
+          if (diFilterI.st.size && !diFilterI.st.has(stateOf(a))) return false;
           if (q && !((a.name || '').toLowerCase().includes(q) || (a.id || '').toLowerCase().includes(q))) return false;
           return true;
         });
+        // column sort (click a header to toggle)
+        const cmpVer = (x, y) => { const pa = String(x || '').split('.').map(Number), pb = String(y || '').split('.').map(Number); for (let i = 0; i < 3; i++) { const d = (pa[i] || 0) - (pb[i] || 0); if (d) return d; } return 0; };
+        const stRank = { upd: 0, err: 1, ok: 2 };
+        rows.sort((a, b) => {
+          const dir = diSortI.dir;
+          let d = 0;
+          if (diSortI.col === 'version') d = cmpVer(a.version, b.version);
+          else if (diSortI.col === 'source') d = nameOf(repoIndexOf(a.source)).localeCompare(nameOf(repoIndexOf(b.source)));
+          else if (diSortI.col === 'status') d = stRank[stateOf(a)] - stRank[stateOf(b)];
+          else d = String(a.name || '').localeCompare(String(b.name || ''));
+          return d * dir || String(a.name || '').localeCompare(String(b.name || ''));
+        });
         const updIds = diInstalled.filter(a => diStatus[a.id] && diStatus[a.id].state === 'upd').map(a => a.id);
         const uaw = document.getElementById('diUpdateAllWrap');
-        if (uaw) { uaw.innerHTML = updIds.length ? `<button id="diUpdateAll">Update all (${updIds.length})</button>` : ''; const ua = document.getElementById('diUpdateAll'); if (ua) ua.onclick = () => updateAll(updIds); }
+        if (uaw) { uaw.innerHTML = updIds.length ? `<button id="diUpdateAll" class="primary">${updIds.length} update${updIds.length === 1 ? '' : 's'} available — Update all</button>` : ''; const ua = document.getElementById('diUpdateAll'); if (ua) ua.onclick = () => updateAll(updIds); }
+        const ckEl = document.getElementById('diChecked'); if (ckEl) ckEl.textContent = diLastChecked ? 'checked ' + fmtAgo(diLastChecked) : '';
         const cnt = document.getElementById('diCount');
         if (cnt) {
           let t = rows.length + ' app' + (rows.length === 1 ? '' : 's') + (rows.length !== diInstalled.length ? ' of ' + diInstalled.length : '');
@@ -4232,8 +4264,9 @@
         }
         if (!diInstalled.length) { host.innerHTML = '<p class="hint">No drop-in apps installed yet — see the <b>Discover</b> tab.</p>'; return; }
         if (!rows.length) { host.innerHTML = '<p class="hint">No apps match.</p>'; return; }
+        const sortTh = (col, label, w) => `<th style="width:${w}"><button class="diThSort" data-col="${col}">${label}${diSortI.col === col ? (diSortI.dir > 0 ? ' ▴' : ' ▾') : ''}</button></th>`;
         host.innerHTML = `<table class="diTbl"><thead><tr>
-            <th style="width:40%">App</th><th style="width:84px">Version</th><th style="width:150px">Source</th><th>Status</th><th style="width:40px"></th>
+            ${sortTh('name', 'App', '40%')}${sortTh('version', 'Version', '84px')}${sortTh('source', 'Source', '150px')}${sortTh('status', 'Status', 'auto')}<th style="width:40px"></th>
           </tr></thead><tbody>` + rows.map(a => {
             const idx = repoIndexOf(a.source);
             const src = a.source ? `<span class="diSrcName${isPriv(idx) ? ' priv' : ''}" title="R${idx >= 0 ? idx : '?'}">${esc(nameOf(idx))}</span>` : '';
@@ -4243,7 +4276,7 @@
               <td class="diVer">${a.version ? 'v' + esc(a.version) : ''}</td>
               <td>${src}</td>
               <td>${installedStatusHtml(a)}</td>
-              <td class="diKebab"><button class="diKb" title="More" data-id="${esc(a.id)}">⋯</button>
+              <td class="diKebab"><button class="diKb" title="More actions" aria-label="More actions for ${esc(a.name)}" aria-haspopup="menu" data-id="${esc(a.id)}">⋯</button>
                 <div class="diMenu">
                   <button class="diExport" data-id="${esc(a.id)}">Export…</button>
                   ${canReinstall ? `<button class="diReinstall" data-id="${esc(a.id)}">Reinstall</button>` : ''}
@@ -4252,6 +4285,11 @@
                 </div>
               </td></tr>`;
           }).join('') + '</tbody></table>';
+        host.querySelectorAll('.diThSort').forEach(b => b.onclick = () => {
+          const col = b.dataset.col;
+          if (diSortI.col === col) diSortI.dir = -diSortI.dir; else { diSortI.col = col; diSortI.dir = 1; }
+          renderInstalledList();
+        });
         host.querySelectorAll('.diKb').forEach(b => b.onclick = e => { e.stopPropagation(); const menu = e.currentTarget.parentElement.querySelector('.diMenu'); const wasOpen = menu.classList.contains('open'); closeDiMenus(); if (!wasOpen) menu.classList.add('open'); });
         host.querySelectorAll('.diMenu').forEach(m => m.onclick = e => e.stopPropagation());
         host.querySelectorAll('.diUp').forEach(b => b.onclick = e => doUpdate(e.currentTarget.dataset.id));
@@ -4420,6 +4458,8 @@
       useBox.onchange = e => {
         saveHa({ useHa: e.target.checked });
         refBtn.disabled = !e.target.checked;
+        const f = document.getElementById('sHaFields'); if (f) f.style.display = e.target.checked ? '' : 'none';
+        const pill = document.getElementById('sHaPill'); if (pill) { pill.textContent = e.target.checked ? 'Enabled' : 'Disabled'; pill.className = 'stpill ' + (e.target.checked ? 'ok' : 'off'); }
         if (!e.target.checked) { statusEl.textContent = 'Use HA is off. Save to clear the cache on next launch.'; statusEl.style.color = '#7e93ab'; }
         else statusEl.textContent = 'Click Refresh Configuration to load.';
       };
@@ -4463,7 +4503,14 @@
         markDirty();
       };
       const obsEnabled = document.getElementById('sObsEnabled');
-      if (obsEnabled) { obsEnabled.checked = obs.enabled === true; obsEnabled.onchange = e => saveObs({ enabled: e.target.checked }); }
+      if (obsEnabled) {
+        obsEnabled.checked = obs.enabled === true;
+        obsEnabled.onchange = e => {
+          saveObs({ enabled: e.target.checked });
+          const f = document.getElementById('sObsFields'); if (f) f.style.display = e.target.checked ? '' : 'none';
+          const pill = document.getElementById('sObsPill'); if (pill) { pill.textContent = e.target.checked ? 'Enabled' : 'Disabled'; pill.className = 'stpill ' + (e.target.checked ? 'ok' : 'off'); }
+        };
+      }
       const obsAuto = document.getElementById('sObsAuto');
       if (obsAuto) { obsAuto.checked = obs.autoReconnect !== false; obsAuto.onchange = e => saveObs({ autoReconnect: e.target.checked }); }
       const obsHost = document.getElementById('sObsHost'); if (obsHost) obsHost.oninput = e => saveObs({ host: e.target.value.trim() });
@@ -4518,7 +4565,7 @@
             <div class="row"><label>Scopes</label><span class="hint" style="margin:0">${esc((p.scopes || []).join(' '))}</span></div>
             <div class="row" style="gap:8px">
               <button class="oauthConnect" data-provider="${esc(p.provider)}" ${p.enabled ? '' : 'disabled'}>${p.connected ? 'Reconnect' : 'Connect'}</button>
-              <button class="oauthDisconnect danger" data-provider="${esc(p.provider)}" ${p.connected && p.enabled ? '' : 'disabled'}>Disconnect</button>
+              <button class="oauthDisconnect" data-provider="${esc(p.provider)}" ${p.connected && p.enabled ? '' : 'disabled'}>Disconnect</button>
               ${p.enabled ? '' : '<span class="hint" style="margin:0">Framework placeholder</span>'}
             </div>
           </div>`).join('');
