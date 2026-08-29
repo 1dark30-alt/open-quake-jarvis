@@ -42,6 +42,8 @@ contextBridge.exposeInMainWorld('openQuakeConfig', {
   setupTouchscreen() { return ipcRenderer.invoke('setupTouchscreen'); },
   clearTouchCalibration() { return ipcRenderer.invoke('clearTouchCalibration'); },
   getLighting() { return ipcRenderer.invoke('getLighting'); },
+  getMonitorState() { return ipcRenderer.invoke('getMonitorState'); },
+  enterMonitorMode() { return ipcRenderer.invoke('enterMonitorModeFromEditor'); },
   setLighting(lighting) { ipcRenderer.send('setLighting', lighting); },
   saveLightingToDevice() { return ipcRenderer.invoke('saveLightingToDevice'); },
   listRunningApps() { return ipcRenderer.invoke('listRunningApps'); },

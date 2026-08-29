@@ -3650,25 +3650,26 @@
     // Monitor tab — reserved-display protection and intentional normal-monitor behavior
     const monHtml = `
       <p class="sectitle">Reserved Display</p>
-      <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="sReserved" ${s.reservedDisplay ? 'checked' : ''}> Prevent normal application windows from remaining on the Quake display</label></div>
-      <details class="hint"><summary>Windows only. Windows dragged or relocated onto the Quake are returned to another display.</summary> If your other displays disconnect, their positions are held and restored when a display returns. Open Quake, Windows shell surfaces, and secure desktop screens are left alone.</details>
-      <p class="hint">Protection is suspended in Monitor Mode and resumes when Monitor Mode exits. This does not change the panel's USB keepalive.</p>
+      <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="sReserved" ${s.reservedDisplay ? 'checked' : ''}> Keep application windows off the panel display</label></div>
+      <details class="hint"><summary>Windows only. Windows dragged or relocated onto the Quake are returned to another display; protection is suspended while Monitor mode is active and resumes when it exits.</summary> If your other displays disconnect, their positions are held and restored when a display returns. Open Quake, Windows shell surfaces, and secure desktop screens are left alone. This does not change the panel's USB keepalive.</details>
 
-      <p class="sectitle">Monitor mode</p>
-      <details class="hint"><summary>Use the device as a normal monitor: it shows your Windows desktop and touch acts as the mouse.</summary> Enter it from the tray menu or a “System → monitor” tile; exit from the tray. These set what the knob does while in monitor mode.</details>
+      <p class="sectitle">Monitor mode <span id="sMonPill" class="stpill off">checking…</span></p>
+      <details class="hint"><summary>Use the device as a normal monitor: it shows your Windows desktop and touch acts as the mouse.</summary> Enter it below, from the tray menu, or with a “System → monitor” tile; exit from the tray. These set what the knob does while in Monitor mode.</details>
+      <div class="row"><button id="sMonEnter" disabled>Enter Monitor mode</button><span id="sMonEnterMsg" class="hint" style="margin:0 0 0 10px"></span></div>
       <div class="row"><label>Knob turn</label>
         <select id="sMonTurn" style="width:230px">
           <option value="scroll">Scroll</option>
           <option value="volume">Adjust volume</option>
         </select></div>
-      <div class="row"><label>Knob tap</label>
+      <div class="row"><label>Knob press</label>
         <select id="sMonTap" style="width:230px">
           <option value="enter">Enter</option>
           <option value="leftclick">Left-click</option>
           <option value="rightclick">Right-click</option>
           <option value="mute">Mute / unmute</option>
         </select></div>
-      <p class="hint">A single knob press does the “tap” action. Double-press is unbound in monitor mode.</p>`;
+      <div class="row"><label>Double-press</label>
+        <select disabled style="width:230px" title="Double-press is not bindable in Monitor mode"><option>No action</option></select></div>`;
 
     // Meeting tab — recording folder, mic, auto-record + app allowlist, silence auto-stop, echo gate
     const meHtml = `
@@ -3829,17 +3830,31 @@
       <p class="hint">The preview is live; the panel itself changes when you <b>Save &amp; apply</b>.</p>`;
 
     // Apps tab — show/hide which apps appear in the App picker (doesn't touch pages already using an app)
-    const appRow = (a, checked) => `<div class="row">
-        <label class="iconopt" style="width:auto; gap:9px"><input type="checkbox" class="appShow" data-id="${esc(a.id)}" data-dev="${a.dev ? 1 : 0}" ${checked ? 'checked' : ''}> ${esc(a.name)}</label>
+    const appRow = (a, checked) => `<div class="row approw" data-name="${esc(String(a.name || '').toLowerCase())}">
+        <label class="iconopt" style="width:auto; gap:9px; min-width:0"><input type="checkbox" class="appShow" data-id="${esc(a.id)}" data-dev="${a.dev ? 1 : 0}" ${checked ? 'checked' : ''}> <span class="appic">${esc(a.icon || '▣')}</span> ${esc(a.name)}${a.description ? `<span class="note approwdesc">${esc(a.description)}</span>` : ''}</label>
       </div>`;
     const regularApps = appDefs.filter(a => !a.dev), devApps = appDefs.filter(a => a.dev);
+    const builtinApps = regularApps.filter(a => !a._folder), dropinApps = regularApps.filter(a => a._folder);
     const appsHtml = `
+      <div class="row" style="gap:10px">
+        <input id="appFilter" type="search" placeholder="Filter apps…" style="max-width:260px">
+        <span id="appCount" class="hint" style="margin:0"></span>
+        <span style="flex:1"></span>
+        <button id="appShowAll">Show all</button>
+        <button id="appHideAll">Hide all</button>
+      </div>
       <p class="hint">Untick an app to hide it from the <b>App</b> dropdown when building a page. This only changes what's offered — pages already using a hidden app keep working.</p>
-      ${regularApps.length ? regularApps.map(a => appRow(a, !appHidden(a.id))).join('') : '<p class="hint">No apps found.</p>'}
+      <p class="sectitle">Built-in</p>
+      ${builtinApps.length ? builtinApps.map(a => appRow(a, !appHidden(a.id))).join('') : '<p class="hint">No apps found.</p>'}
+      <p class="sectitle">Installed (drop-in)</p>
+      ${dropinApps.length ? dropinApps.map(a => appRow(a, !appHidden(a.id))).join('') : '<p class="hint">None installed — see <b>Drop-in apps</b>.</p>'}
       ${devApps.length ? `
-        <label class="iconopt" style="width:auto; gap:9px; margin:22px 0 0"><input type="checkbox" id="devMaster" ${devEnabled() ? 'checked' : ''}> show developer apps</label>
+      <details style="margin-top:22px"${devEnabled() ? ' open' : ''}>
+        <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Developer apps</summary>
+        <label class="iconopt" style="width:auto; gap:9px; margin:10px 0 0"><input type="checkbox" id="devMaster" ${devEnabled() ? 'checked' : ''}> show developer apps in the picker</label>
         <p class="hint">Specified in apps.json.</p>
-        ${devEnabled() ? devApps.map(a => appRow(a, devShown(a.id))).join('') : ''}` : ''}`;
+        ${devEnabled() ? devApps.map(a => appRow(a, devShown(a.id))).join('') : ''}
+      </details>` : ''}`;
 
     // Auth tab — credentials shared across the app (Home Assistant, Open WebUI). Token and API key
     // are stored encrypted at rest via secretStore (same path as settings.spotify.refreshToken).
@@ -3965,6 +3980,32 @@
     const setS = (k, v) => { if (!config.settings) config.settings = {}; config.settings[k] = v; markDirty(); };
 
     if (tab === 'apps') {
+      // visible/hidden summary + filter + bulk show/hide (regular apps only; dev apps have their own master)
+      const updateAppCount = () => {
+        const boxes = [...el.querySelectorAll('.appShow')].filter(c => c.dataset.dev !== '1');
+        const hidden = boxes.filter(c => !c.checked).length;
+        const cnt = document.getElementById('appCount');
+        if (cnt) cnt.textContent = (boxes.length - hidden) + ' visible · ' + hidden + ' hidden';
+      };
+      updateAppCount();
+      const appFilterEl = document.getElementById('appFilter');
+      if (appFilterEl) appFilterEl.oninput = e => {
+        const q = e.target.value.trim().toLowerCase();
+        el.querySelectorAll('.approw').forEach(r => { r.style.display = !q || (r.dataset.name || '').includes(q) ? '' : 'none'; });
+      };
+      const showAllBtn = document.getElementById('appShowAll');
+      if (showAllBtn) showAllBtn.onclick = () => {
+        if (!config.settings) config.settings = {};
+        config.settings.hiddenApps = [];
+        markDirty(); renderSettings();
+      };
+      const hideAllBtn = document.getElementById('appHideAll');
+      if (hideAllBtn) hideAllBtn.onclick = () => {
+        if (!ask('Hide every app from the page builder? Pages already using them keep working.')) return;
+        if (!config.settings) config.settings = {};
+        config.settings.hiddenApps = appDefs.filter(a => !a.dev).map(a => a.id);
+        markDirty(); renderSettings();
+      };
       el.querySelectorAll('.appShow').forEach(c => c.onchange = e => {
         const id = e.target.dataset.id, isDev = e.target.dataset.dev === '1';
         if (!config.settings) config.settings = {};
@@ -3978,6 +4019,7 @@
           config.settings.hiddenApps = hidden;
         }
         markDirty();
+        updateAppCount();
       });
       const dm = document.getElementById('devMaster');   // master: just reveals the developer-app list in this tab
       if (dm) dm.onchange = e => { if (!config.settings) config.settings = {}; config.settings.devApps = e.target.checked; markDirty(); renderSettings(); };
@@ -4641,8 +4683,29 @@
         markDirty(); renderSettings();
       };
     } else if (tab === 'monitor') {
-      // Monitor mode — knob turn/tap behavior (applied by the main process while in monitor mode)
+      // Monitor mode — knob turn/press behavior (applied by the main process while in monitor mode)
       document.getElementById('sReserved').onchange = e => setS('reservedDisplay', e.target.checked);
+      // Live state pill + direct enter action (enter-only; exit stays on the tray)
+      const monPill = document.getElementById('sMonPill'), monBtn = document.getElementById('sMonEnter'), monMsg = document.getElementById('sMonEnterMsg');
+      const refreshMonState = async () => {
+        let st = null;
+        try { st = await configApi.getMonitorState(); } catch (e) {}
+        if (!monPill || !st) { if (monPill) { monPill.textContent = 'state unknown'; } return; }
+        monPill.textContent = st.active ? 'Active' : 'Not active';
+        monPill.className = 'stpill ' + (st.active ? 'ok' : 'off');
+        if (monBtn) {
+          monBtn.disabled = st.active || !st.hasPanel;
+          if (monMsg) monMsg.textContent = st.active ? 'Exit from the tray menu.' : (st.hasPanel ? '' : 'Needs the device display (Panel/Monitor run mode).');
+        }
+      };
+      refreshMonState();
+      if (monBtn) monBtn.onclick = async () => {
+        monBtn.disabled = true;
+        let r = null;
+        try { r = await configApi.enterMonitorMode(); } catch (e) {}
+        if (!(r && r.ok) && monMsg) monMsg.textContent = (r && r.error) || 'Could not enter Monitor mode.';
+        refreshMonState();
+      };
       const saveMon = patch => { if (!config.settings) config.settings = {}; config.settings.monitor = Object.assign(currentMon(), patch); markDirty(); };
       document.getElementById('sMonTurn').value = mon.knobTurn;
       document.getElementById('sMonTap').value = mon.knobTap;

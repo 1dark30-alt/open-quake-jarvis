@@ -4021,6 +4021,19 @@ app.whenReady().then(async () => {
   // then live-previews edits as the user drags. Both are gated to the config window (isFrom) like every
   // other device-control channel. (These were dropped by mistake in the b2ae172 security rewrite, which
   // kept the preload channels + renderer callers but lost the main-process handlers.)
+  // Monitor-mode state + enter action for the editor's Monitor settings page. Enter-only: exiting
+  // stays tray-only, since in monitor mode the editor may be on a display the user can't see.
+  ipcMain.handle('getMonitorState', (e) => {
+    if (!isFrom(e, configWin)) return null;
+    return { active: !!monitorMode, hasPanel: !!(panelWin && !panelWin.isDestroyed()) };
+  });
+  ipcMain.handle('enterMonitorModeFromEditor', (e) => {
+    if (!isFrom(e, configWin)) return { ok: false };
+    if (monitorMode) return { ok: true };
+    if (!panelWin || panelWin.isDestroyed()) return { ok: false, error: 'no panel window — Monitor mode needs the device display' };
+    enterMonitorMode();
+    return { ok: !!monitorMode };
+  });
   ipcMain.handle('getLighting', async (e) => {
     if (!isFrom(e, configWin)) return null;
     let cur = null;
