@@ -1186,7 +1186,7 @@
       const d = document.createElement('div');
       d.className = 'gridrow' + (i === gi ? ' active' : '');
       const left = document.createElement('span'); left.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden';
-      const grip = document.createElement('span'); grip.className = 'griphandle'; grip.title = 'Drag to reorder'; grip.textContent = '☰';
+      const grip = document.createElement('span'); grip.className = 'griphandle'; grip.title = 'Drag to reorder — or focus the row and press Alt+↑ / Alt+↓'; grip.textContent = '☰';
       const ptype = document.createElement('span'); ptype.className = 'ptype';
       ptype.textContent = g.kind === 'web' ? 'D' : g.kind === 'app' ? 'A' : 'G';
       ptype.title = g.kind === 'web' ? 'Dashboard page' : g.kind === 'app' ? 'App page' : 'Grid page';
@@ -1201,6 +1201,21 @@
       d.appendChild(top);
       if (g.shortcut) { const sub = document.createElement('span'); sub.className = 'gsub badge'; sub.title = 'Hotkey shortcut'; sub.textContent = g.shortcut; d.appendChild(sub); }
       d.onclick = () => { view = 'pages'; gi = i; ti = -1; selEnd = -1; render(); };
+      // keyboard access: Tab to a row, Enter/Space selects, Alt+Arrow moves it up/down
+      d.tabIndex = 0;
+      d.setAttribute('role', 'button');
+      d.setAttribute('aria-label', (g.name || '(unnamed)') + (g.hidden ? ', hidden' : ''));
+      d.onkeydown = e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); d.onclick(); }
+        else if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+          e.preventDefault();
+          const to = i + (e.key === 'ArrowUp' ? -1 : 1);
+          movePage(i, to);
+          const rows = document.querySelectorAll('#gridlist .gridrow');
+          const moved = rows[Math.max(0, Math.min(rows.length - 1, to))];
+          if (moved) moved.focus();
+        }
+      };
       d.draggable = true;
       d.ondragstart = e => { pageDragFrom = i; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(i)); } catch (er) {} };
       d.ondragover = e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; d.classList.add('dragover'); };
@@ -1234,10 +1249,8 @@
       ${rotRowHtml(g)}
       ${shortcutRowHtml(g)}
       ${advRowHtml(g)}
-      <div class="row">
-        <button id="gFocus">Focus on device</button>
-        <button class="danger" id="gDelete">Delete grid</button>
-      </div>`;
+      <div class="row"><button id="gFocus">Focus on device</button></div>
+      <div class="dangerzone"><button class="danger" id="gDelete">Delete grid</button></div>`;
     document.getElementById('gName').oninput = e => { g.name = e.target.value; renderGrids(); markDirty(); };
     document.getElementById('gCols').onchange = e => { clearAllMerges(g); g.cols = Math.max(1, Math.min(12, +e.target.value || 1)); ensureTiles(g); ti = -1; selEnd = -1; render(); markDirty(); };
     document.getElementById('gRows').onchange = e => { clearAllMerges(g); g.rows = Math.max(1, Math.min(6, +e.target.value || 1)); ensureTiles(g); ti = -1; selEnd = -1; render(); markDirty(); };
@@ -1297,8 +1310,11 @@
     } else if (merged) {
       el.innerHTML = `<b>Merged tile</b><button id="unmergeBtn">Unmerge</button><span class="hint">split back into single cells</span>`;
       document.getElementById('unmergeBtn').onclick = () => unmergeTile(g);
+    } else if (ti >= 0) {
+      // contextual: only offer merging once a first tile is selected
+      el.innerHTML = `<span class="hint"><b>Shift-click</b> another tile to merge this one into a bigger button.</span>`;
     } else {
-      el.innerHTML = `<span class="hint">Tip: click a tile, then <b>Shift-click</b> another to select a block — a Merge button appears here.</span>`;
+      el.innerHTML = '';
     }
   }
   function flattenAt(g, idx) {                                    // fully un-merge any merge touching cell idx
@@ -1363,7 +1379,7 @@
   // ---- tile form (left) ----
   function renderForm() {
     const g = curGrid(); const el = document.getElementById('tileform');
-    if (!g || ti < 0) { el.innerHTML = '<p class="hint">Pick a tile above to edit it.</p>'; document.getElementById('iconpane').innerHTML = ''; return; }
+    if (!g || ti < 0) { el.innerHTML = '<div class="emptystate"><div class="big">No tile selected</div>Click a tile in the grid above to edit its label, icon, and action.</div>'; document.getElementById('iconpane').innerHTML = ''; return; }
     const t = g.tiles[ti];
     if (t.type === 'macro' && !Array.isArray(t.steps)) t.steps = [];
     let body;
@@ -1838,6 +1854,7 @@
     el.innerHTML = tabBar + `
       <div class="row"><label>Name</label><input id="gName" value="${esc(g.name)}"></div>
       <div class="row"><label>URL</label><input id="gUrl" value="${esc(g.url)}" placeholder="https://…  (dashboard, monitoring page, etc.)"></div>
+      <p class="sectitle" style="margin-top:16px">Browser behavior</p>
       <div class="row"><label>Auth</label><select id="gAuth">
         <option value="none" ${g.auth.type === 'none' ? 'selected' : ''}>None</option>
         <option value="ha" ${g.auth.type === 'ha' ? 'selected' : ''}>Home Assistant token</option>
@@ -1848,8 +1865,8 @@
       <div class="row" style="margin-top:10px"><label style="width:auto">Links</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gExt" ${g.linksExternal ? 'checked' : ''}> Open clicked links in my PC browser</label></div>
       <p class="hint">When on, tapping a link inside this page (e.g. a helpdesk ticket) opens it in your PC's default browser instead of on the panel — the page itself stays up on the device.</p>
-      <div class="row" style="margin-top:10px"><label style="width:auto">Identity</label>
-        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gUA" ${g.desktopUA ? 'checked' : ''}> Use a desktop browser identity</label></div>
+      <div class="row" style="margin-top:10px"><label style="width:auto">Browser profile</label>
+        <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gUA" ${g.desktopUA ? 'checked' : ''}> Use desktop browser profile</label></div>
       <details class="hint"><summary>Makes this page look like desktop Chrome instead of an embedded app.</summary> Turn on for sites that won't load or let you sign in inside the panel (e.g. claude.ai, chatgpt.com). The panel keeps its own login, separate from your PC browser.</details>
       <div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the dashboard</label></div>
@@ -1857,9 +1874,10 @@
       ${rotRowHtml(g)}
       ${shortcutRowHtml(g)}
       ${advRowHtml(g)}
-      <div class="row" style="margin-top:10px"><button id="gFocus">Focus on device</button><button class="danger" id="gDelete" style="margin-left:8px">Delete page</button></div>
+      <div class="row" style="margin-top:10px"><button id="gFocus">Focus on device</button></div>
       <p class="hint" id="authHint"></p>
-      <p class="hint">Shown full-screen on the panel. Knob scrolls · tap clicks · double-click the knob returns to the page selector.</p>`;
+      <p class="hint">Shown full-screen on the panel. Knob scrolls · tap clicks · double-click the knob returns to the page selector.</p>
+      <div class="dangerzone"><button class="danger" id="gDelete">Delete page</button></div>`;
     const dtb = document.getElementById('dtBtns'); if (dtb) dtb.onclick = () => { dashTab = 'buttons'; render(); };
     document.getElementById('gName').oninput = e => { g.name = e.target.value; renderGrids(); markDirty(); };
     document.getElementById('gUrl').oninput = e => { g.url = e.target.value; markDirty(); };
@@ -1942,24 +1960,26 @@
     const isCliBackend = cvBackend === 'claude' || cvBackend === 'codex' || cvBackend === 'copilot';
     // Permission-mode choice sets differ per CLI backend (they map to each CLI's own flags), so they
     // live here rather than in the single ai-voice apps.json entry.
+    // [value, short label, supporting text] — the label is what the closed <select> shows, so it stays
+    // short; the supporting text renders as a hint under the field for the selected mode.
     const CV_MODES = {
       claude: { default: 'manual', choices: [
-        ['manual', 'Manual — ask before every action (touch approval on the panel)'],
-        ['acceptEdits', 'Accept edits — auto-approve file changes'],
-        ['plan', "Plan — describe, don't act, until approved"],
-        ['bypassPermissions', 'Full auto — no prompts (use with care)'],
+        ['manual', 'Manual', 'Ask before every action (touch approval on the panel).'],
+        ['acceptEdits', 'Accept edits', 'Auto-approve file changes; still ask for everything else.'],
+        ['plan', 'Plan', "Describe, don't act, until approved."],
+        ['bypassPermissions', 'Full auto', 'No prompts — use with care.'],
       ] },
       codex: { default: 'ask-for-approval', choices: [
-        ['read-only', 'Read Only — Codex can read files in the workspace; approval required to edit files or access the internet'],
-        ['ask-for-approval', 'Ask for approval — Codex can read, edit, and run commands in the workspace; approval required for the internet or other files'],
-        ['approve-for-me', 'Approve for me — only ask for actions detected as potentially unsafe'],
-        ['full-access', 'Full Access — Codex can edit files outside the workspace and use the internet without asking (use with caution)'],
+        ['read-only', 'Read only', 'Codex can read files in the workspace; approval required to edit files or access the internet.'],
+        ['ask-for-approval', 'Ask for approval', 'Codex can read, edit, and run commands in the workspace; approval required for the internet or other files.'],
+        ['approve-for-me', 'Approve for me', 'Only ask for actions detected as potentially unsafe.'],
+        ['full-access', 'Full access', 'Codex can edit files outside the workspace and use the internet without asking — use with caution.'],
       ] },
       copilot: { default: 'manual', choices: [
-        ['manual', 'Manual — ask before every action (touch approval on the panel)'],
-        ['plan', "Plan — describe, don't act, until approved"],
-        ['auto', 'Approve for me — file changes and commands run automatically'],
-        ['autopilot', 'Full auto — runs until the task is done, no prompts at all'],
+        ['manual', 'Manual', 'Ask before every action (touch approval on the panel).'],
+        ['plan', 'Plan', "Describe, don't act, until approved."],
+        ['auto', 'Approve for me', 'File changes and commands run automatically.'],
+        ['autopilot', 'Full auto', 'Runs until the task is done, no prompts at all.'],
       ] },
     };
     const isOffice = g.app === 'office';
@@ -2046,7 +2066,8 @@
           <select id="cvProfile" style="flex:1">${(((config.settings || {}).aiProfiles) || []).map((p, i) => `<option value="${esc(p.id)}" ${(cvVal('profilePick', '') || (((config.settings || {}).aiProfiles) || [{}])[0].id) === p.id ? 'selected' : ''}>${esc(p.name || '(unnamed)')}</option>`).join('')}</select></div>
         <details class="hint"><summary>The AI profile this page starts with — a named instruction that shapes the AI (translate, summarize, write…).</summary> Switch live from the panel's <b>Profile</b> button; manage the list under <b>Settings → AI Profiles</b>.</details>` + (!cvModes ? '' : `
         <div class="row" style="margin-top:10px"><label>Permission mode</label>
-          <select id="cvPermMode" style="flex:1">${cvModes.choices.map(c => `<option value="${esc(c[0])}" ${cvMode === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>`) + (cvBackend === 'claude' ? `
+          <select id="cvPermMode" style="flex:1">${cvModes.choices.map(c => `<option value="${esc(c[0])}" ${cvMode === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>
+        <p class="hint" id="cvPermModeHint" style="margin:2px 0 0">${esc((cvModes.choices.find(c => c[0] === cvMode) || [])[2] || '')}</p>`) + (cvBackend === 'claude' ? `
         <div class="row"><label>Touch approval</label>
           <label class="iconopt" style="width:auto"><input type="checkbox" id="cvApprovals" ${cvVal('approvalsEnabled', false) ? 'checked' : ''}> when in Manual mode</label></div>
         <div class="row" style="margin-top:10px"><label>Panel prompt</label>
@@ -2198,8 +2219,9 @@
       ${rotRowHtml(g)}
       ${shortcutRowHtml(g)}
       ${advRowHtml(g)}
-      <div class="row" style="margin-top:10px"><button id="gFocus">Focus on device</button><button class="danger" id="gDelete" style="margin-left:8px">Delete page</button></div>
-      <p class="hint">${def ? esc(def.name) + ' runs locally and shows full-screen on the panel.' : 'Pick an app, then set its options below.'}</p>`;
+      <div class="row" style="margin-top:10px"><button id="gFocus">Focus on device</button></div>
+      <p class="hint">${def ? esc(def.name) + ' runs locally and shows full-screen on the panel.' : 'Pick an app, then set its options below.'}</p>
+      <div class="dangerzone"><button class="danger" id="gDelete">Delete page</button></div>`;
     const atb = document.getElementById('atBtns'); if (atb) atb.onclick = () => { dashTab = 'buttons'; render(); };
     document.getElementById('gName').oninput = e => { g.name = e.target.value; renderGrids(); markDirty(); };
     document.getElementById('gApp').onchange = e => { setApp(g, e.target.value); render(); markDirty(); };
@@ -2271,7 +2293,11 @@
       const cvProjectsRootBrowse = document.getElementById('cvProjectsRootBrowse');
       if (cvProjectsRootBrowse) cvProjectsRootBrowse.onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('cvProjectsRoot').value = p; setOpt('projectsRoot', p); } };
       const cvPermMode = document.getElementById('cvPermMode');
-      if (cvPermMode) cvPermMode.onchange = e => setOpt('permissionMode', e.target.value);
+      if (cvPermMode) cvPermMode.onchange = e => {
+        setOpt('permissionMode', e.target.value);
+        const h = document.getElementById('cvPermModeHint');
+        if (h && cvModes) h.textContent = (cvModes.choices.find(c => c[0] === e.target.value) || [])[2] || '';
+      };
       const cvProfile = document.getElementById('cvProfile');
       if (cvProfile) cvProfile.onchange = e => setOpt('profilePick', e.target.value);
       const cvApprovals = document.getElementById('cvApprovals');   // claude-only rows
@@ -2521,7 +2547,7 @@
         <p class="hint">This account and its encrypted tokens belong only to <b>${esc(def.name || def.id)}</b>; other drop-in apps cannot access them.</p>
         <div class="row" style="gap:8px">
           <button id="appOauthConnect" ${configured ? '' : 'disabled'}>${connected ? 'Reconnect' : 'Connect'}</button>
-          <button id="appOauthDisconnect" class="danger" ${connected ? '' : 'disabled'}>Disconnect</button>
+          <button id="appOauthDisconnect" ${connected ? '' : 'disabled'}>Disconnect</button>
         </div>`;
       const connect = box.querySelector('#appOauthConnect');
       if (connect) connect.onclick = async () => {
@@ -2863,7 +2889,7 @@
         <p class="hint" style="margin:4px 0 8px"><a href="#" id="dcGuide">Discord connection guide ↗</a>${provider && provider.customApplication ? ' · Save changes before connecting or reconnecting so the selected application and permission groups are used.' : ''}</p>
         <div class="row" style="gap:8px">
           <button id="dcConnect"${provider && provider.enabled ? '' : ' disabled'}>${connected ? 'Reconnect' : 'Connect'}</button>
-          <button class="danger" id="dcDisconnect"${connected && provider.enabled ? '' : ' disabled'}>Disconnect</button>
+          <button id="dcDisconnect"${connected && provider.enabled ? '' : ' disabled'}>Disconnect</button>
         </div>`;
       const message = (text, bad) => { const target = box.querySelector('#dcMsg'); if (target) { target.textContent = text || ''; target.style.color = bad ? '#c98' : '#7e93ab'; } };
       const guide = box.querySelector('#dcGuide');
@@ -2930,18 +2956,22 @@
           <span class="hint" style="margin:0">${connected ? 'Connected' : status && status.configured ? 'Ready to connect' : 'Not configured'}</span>
           <span id="ghMsg" class="hint" style="margin:0 0 0 auto">${esc(notice || '')}</span>
         </div>
-        <div class="row"><label>OAuth Client ID</label><input id="ghClientId" value="${esc(localProvider.clientId || '')}" placeholder="Iv1…" autocomplete="off" style="flex:1"></div>
-        <details class="hint"><summary>Create a GitHub OAuth App, enable <b>Device Flow</b>, and paste its public Client ID.</summary> For GitHub's required callback field, use <code>http://127.0.0.1:53682/callback</code>; Device Flow never contacts it and open-quake does not listen on that port. No client secret is used or stored.</details>
+        <div class="row" style="gap:8px">
+          <button id="ghConnect" ${connected ? '' : 'class="primary"'}>${connected ? 'Reconnect' : 'Connect'}</button>
+          <button id="ghDisconnect"${connected ? '' : ' disabled'}>Disconnect</button>
+        </div>
+        <div id="ghDevice" class="row" style="display:none"><label>Device code</label><strong id="ghDeviceCode" style="font:700 20px Consolas,monospace;letter-spacing:.12em;color:#9b7cff"></strong><span class="hint" style="margin:0">Enter this in the GitHub page opened in your browser.</span></div>
+        <details${connected ? '' : ' open'} style="margin-top:10px">
+          <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Connection settings</summary>
+          <div class="row" style="margin-top:8px"><label>OAuth Client ID</label><input id="ghClientId" value="${esc(localProvider.clientId || '')}" placeholder="Iv1…" autocomplete="off" style="flex:1"></div>
+          <details class="hint"><summary>Create a GitHub OAuth App, enable <b>Device Flow</b>, and paste its public Client ID.</summary> For GitHub's required callback field, use <code>http://127.0.0.1:53682/callback</code>; Device Flow never contacts it and open-quake does not listen on that port. No client secret is used or stored.</details>
+          <div class="row"><label>Permissions</label><span class="hint" style="margin:0">repo · offline_access</span></div>
+          <p class="hint" style="margin:4px 0 8px"><a href="#" id="ghGuide">GitHub connection guide ↗</a> · <a href="#" id="ghCreate">Create OAuth App ↗</a> · Save changes before connecting or reconnecting.</p>
+        </details>
+        <p class="sectitle" style="margin-top:14px">Repository defaults</p>
         <div class="row"><label>Starting repository</label><input id="ghRepository" value="${esc(local.repository || '')}" placeholder="optional owner/repository" autocomplete="off" style="flex:1"></div>
         <div class="row"><label>Starting branch</label><input id="ghBranch" value="${esc(local.branch || '')}" placeholder="optional; blank uses each repository's default" autocomplete="off" style="flex:1"></div>
-        <p class="hint">These are optional. The touchscreen GitHub page lists every repository your account can access and remembers the last one selected on this device.</p>
-        <div class="row"><label>Permissions</label><span class="hint" style="margin:0">repo · offline_access</span></div>
-        <div id="ghDevice" class="row" style="display:none"><label>Device code</label><strong id="ghDeviceCode" style="font:700 20px Consolas,monospace;letter-spacing:.12em;color:#9b7cff"></strong><span class="hint" style="margin:0">Enter this in the GitHub page opened in your browser.</span></div>
-        <p class="hint" style="margin:4px 0 8px"><a href="#" id="ghGuide">GitHub connection guide ↗</a> · <a href="#" id="ghCreate">Create OAuth App ↗</a> · Save changes before connecting or reconnecting.</p>
-        <div class="row" style="gap:8px">
-          <button id="ghConnect">${connected ? 'Reconnect' : 'Connect'}</button>
-          <button class="danger" id="ghDisconnect"${connected ? '' : ' disabled'}>Disconnect</button>
-        </div>`;
+        <p class="hint">These are optional. The touchscreen GitHub page lists every repository your account can access and remembers the last one selected on this device.</p>`;
 
       const message = (text, bad) => { const target = box.querySelector('#ghMsg'); if (target) { target.textContent = text || ''; target.style.color = bad ? '#c98' : '#7e93ab'; } };
       box.querySelector('#ghClientId').oninput = event => { localProvider.clientId = event.target.value; markDirty(); };
@@ -4755,6 +4785,7 @@
   const addPageMenu = document.getElementById('addPageMenu');
   document.getElementById('addPageMenuBtn').onclick = e => { e.stopPropagation(); addPageMenu.classList.toggle('open'); };
   document.addEventListener('click', e => { if (!e.target.closest('.addwrap')) addPageMenu.classList.remove('open'); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') addPageMenu.classList.remove('open'); });
   document.getElementById('addGrid').onclick = () => { addPageMenu.classList.remove('open'); addPage('grid'); };
   document.getElementById('addDash').onclick = () => { addPageMenu.classList.remove('open'); addPage('web'); };
   document.getElementById('addApp').onclick = () => { addPageMenu.classList.remove('open'); addPage('app'); };

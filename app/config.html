@@ -14,7 +14,7 @@
   .main { flex: 1; display: flex; min-height: 0; }
   .col { padding: 14px; overflow: auto; }
   /* Sidebar: header, filter, and add controls stay fixed; only the page list scrolls */
-  .grids { width: 240px; flex: none; display: flex; flex-direction: column; overflow: hidden; }
+  .grids { width: 240px; flex: none; display: flex; flex-direction: column; overflow: hidden; background: #0d1219; }
   .grids .pagelists { flex: 1 1 auto; min-height: 0; overflow: auto; margin-top: 8px; }
   #pageFilter { background: #0a111a; font-size: 13px; padding: 6px 9px; }
   .addwrap { position: relative; }
@@ -29,7 +29,7 @@
   .gridrow.active { background: #16314f; border-color: #2b6fb0; }
   .gridrow .badge { font-size: 11px; color: #7e93ab; flex: none; }
   .gridrow .gsub { padding-left: 28px; }
-  .gridrow.dragover { border-color: #7CFFB2; box-shadow: 0 0 0 2px #7CFFB2; }
+  .gridrow.dragover { border-color: #4ea3ff; box-shadow: 0 0 0 2px #4ea3ff; }
   .gridrow .griphandle { cursor: grab; opacity: .35; user-select: none; flex: none; }
   .gridrow:hover .griphandle { opacity: 1; color: #dbe5f0; }
   /* page-type chip: one icon system for Grid / Dashboard / App rows */
@@ -64,8 +64,8 @@
   .setbody { flex: 1; min-width: 0; }
   .setbody .sectitle { margin: 28px 0 10px; padding-top: 18px; border-top: 1px solid #1e2733; }
   .setbody .sectitle:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
-  input, select { background: #0e141c; color: #dbe5f0; border: 1px solid #2a3a4e; border-radius: 6px; padding: 7px 9px; font-size: 14px; width: 100%; }
-  .row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+  input, select { background: #0a111a; color: #dbe5f0; border: 1px solid #2a3a4e; border-radius: 6px; padding: 7px 9px; font-size: 14px; width: 100%; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
   .row label { width: 110px; color: #91a4ba; font-size: 14px; flex: none; }
   .officeShortcutHead, .officeShortcutRow { display: grid; grid-template-columns: minmax(220px,.8fr) minmax(180px,1fr) minmax(220px,1.15fr) auto; gap: 12px; align-items: center; }
   .officeShortcutHead { margin: 10px 0 4px; padding: 0 4px; color: #6f8298; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
@@ -93,12 +93,12 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center; color: #bcd; overflow: hidden; }
   .cell:hover { border-color: #2b6fb0; }
   .cell.empty { background: #0d141d; border-style: dashed; color: #3a4a5e; }
-  .cell.sel { border-color: #7CFFB2; box-shadow: 0 0 0 2px rgba(124,255,178,.45); }
+  .cell.sel { border-color: #4ea3ff; box-shadow: 0 0 0 2px rgba(78,163,255,.45); }
   .cell.insel { background: #1b4a7a !important; border-color: #4ea3ff; box-shadow: inset 0 0 0 3px #4ea3ff; }
   .cell .ic { font-size: 30px; line-height: 1; } .cell .lb { font-size: 12px; margin-top: 4px; color: #91a4ba; }
   .cell.span .ic { font-size: 48px; } .cell.span .cimg { width: 52px; height: 52px; }
   .cell .cimg { width: 34px; height: 34px; object-fit: contain; }
-  .cell.dragover { border-color: #7CFFB2; box-shadow: 0 0 0 2px #7CFFB2; }
+  .cell.dragover { border-color: #4ea3ff; box-shadow: 0 0 0 2px #4ea3ff; }
   .cell img { pointer-events: none; -webkit-user-drag: none; }
   .mergebar { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; min-height: 20px; }
   .mergebar.active { background: #13243a; border: 1px solid #2b6fb0; border-radius: 8px; padding: 10px 14px; }
@@ -122,6 +122,10 @@
   .iconpreview .em { font-size: 52px; line-height: 1; }
   .iconpreview img { width: 64px; height: 64px; object-fit: contain; }
   .iconpreview .none { color: #41566b; font-size: 13px; }
+  .dangerzone { margin-top: 26px; padding-top: 14px; border-top: 1px solid #472531; }
+  .emptystate { text-align: center; color: #6f8298; border: 1px dashed #233246; border-radius: 10px; padding: 28px 16px; font-size: 13.5px; max-width: 460px; }
+  .emptystate .big { color: #cfe0f2; font-size: 15px; margin-bottom: 6px; }
+  :focus-visible { outline: 2px solid #4ea3ff; outline-offset: 1px; }
   .hint { color: #8aa0b6; font-size: 13px; line-height: 1.55; max-width: 78ch; margin-top: 8px; }
   /* long help collapses to its first sentence; native <details>, no JS */
   details.hint summary { cursor: pointer; display: inline; list-style: none; }
@@ -140,12 +144,12 @@
   .rtItem.sel { background: #16314f; border-color: #2b6fb0; }
   .rtItem .rtiName { font-size: 13px; font-weight: 600; color: #dbe5f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rtItem .rtiSub { font-size: 11px; color: #6f8298; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
-  .rtItem .rtiPage { color: #7CFFB2; }
+  .rtItem .rtiPage { color: #8aa0b6; }
   .rtDetail { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
   .rtDetailHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .rtHeadBtns { display: flex; gap: 8px; flex: none; }
-  button.rtRun { background: #1f7a44; border-color: #2f9d57; color: #eafff2; }
-  button.rtRun:hover { background: #248a4e; }
+  button.rtRun { background: #1e6fd0; border-color: #2b8bff; color: #fff; }
+  button.rtRun:hover { background: #2b7ee0; }
   button.rtRun:disabled { background: #17311f; border-color: #24503a; color: #5b8a70; cursor: default; }
   .rtField { display: flex; flex-direction: column; gap: 4px; }
   .rtField > label { width: auto; color: #91a4ba; font-size: 14px; }
@@ -200,8 +204,8 @@
   .diUpd { color: #e8b04b; font-variant-numeric: tabular-nums; } .diUpd .diDot { background: #e8b04b; }
   .diErr { color: #c98; } .diErr .diDot { background: #8a5a2a; }
   .diNone { color: #41566b; }
-  button.diUp { background: #1f7a44; border-color: #2f9d57; color: #eafff2; padding: 4px 10px; font-size: 12px; margin-left: 8px; }
-  button.diUp:hover { background: #248a4e; }
+  button.diUp { background: #1e6fd0; border-color: #2b8bff; color: #fff; padding: 4px 10px; font-size: 12px; margin-left: 8px; }
+  button.diUp:hover { background: #2b7ee0; }
   .diKebab { position: relative; text-align: right; }
   button.diKb { background: transparent; border: 1px solid transparent; color: #91a4ba; font-size: 18px; line-height: 1; padding: 2px 8px; }
   .diTbl tbody tr:hover button.diKb { border-color: #2a3a4e; }
