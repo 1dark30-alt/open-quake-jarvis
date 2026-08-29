@@ -409,6 +409,33 @@
     const nr = document.getElementById('gShortcutNoRot');
     if (nr) nr.onchange = e => { if (e.target.checked) g.shortcutStopsRotation = true; else delete g.shortcutStopsRotation; markDirty(); };
   }
+  // Every global hotkey binding in the config, labeled — for conflict warnings beside hotkey fields.
+  function allHotkeyBindings() {
+    const out = [];
+    (config.grids || []).forEach(g => { if (g.shortcut) out.push({ key: g.shortcut, label: 'page “' + (g.name || '(unnamed)') + '”' }); });
+    (config.panes || []).forEach(p => { if (p.shortcut) out.push({ key: p.shortcut, label: 'pane “' + (p.name || '(unnamed)') + '”' }); });
+    const st = config.settings || {};
+    if ((st.rotation || {}).hotkey) out.push({ key: st.rotation.hotkey, label: 'rotation start/pause' });
+    const ps = st.pageStep || {};
+    if (ps.nextHotkey) out.push({ key: ps.nextHotkey, label: 'Page forward' });
+    if (ps.prevHotkey) out.push({ key: ps.prevHotkey, label: 'Page back' });
+    if ((st.dashboardReload || {}).hotkey) out.push({ key: st.dashboardReload.hotkey, label: 'Reload dashboard' });
+    const me = st.meeting || {};
+    [['slideHotkeyToggle', 'slide-capture toggle'], ['slideHotkeySelect', 'slide window select'], ['slideHotkeyManual', 'manual slide capture']]
+      .forEach(([k, l]) => { if (me[k]) out.push({ key: me[k], label: l }); });
+    return out;
+  }
+  // Warn text when `acc` is already bound elsewhere; ownLabel excludes the field's own binding.
+  function hotkeyConflictText(acc, ownLabel) {
+    if (!acc) return '';
+    const hit = allHotkeyBindings().find(b => b.key === acc && b.label !== ownLabel);
+    return hit ? '⚠ also bound to ' + hit.label : '';
+  }
+  // Refresh the warn span next to a hotkey input (span id = input id + 'Warn', when present).
+  function refreshHotkeyWarn(inputId, ownLabel) {
+    const inp = document.getElementById(inputId), w = document.getElementById(inputId + 'Warn');
+    if (inp && w) w.textContent = hotkeyConflictText(inp.value, ownLabel);
+  }
   // Build an Electron accelerator from a keydown. Global bindings require a modifier;
   // focused-app actions may also use bare keys such as F5.
   function accelFromEvent(e, allowBare) {
@@ -3495,16 +3522,15 @@
 
     // Software tab — on launch + screen rotation
     const swHtml = `
-      <p class="sectitle">Run mode</p>
-      <div class="row"><label style="width:auto">How you run open-quake</label>
+      <div class="row"><label>Run mode</label>
         <select id="sRunMode" style="width:300px">
           <option value="panel">Panel — QUAKE / open-bedrock hardware</option>
           <option value="software">Software — normal desktop window</option>
           <option value="monitor">Monitor — QUAKE as a regular monitor</option>
         </select></div>
-      <div class="row"><button id="sRunSetup">Re-run first-time setup…</button></div>
       <details class="hint"><summary><b>Software</b> mode runs in an ordinary desktop window and needs no special hardware — ideal for the meeting workflow on any PC.</summary> <b>Panel</b> and <b>Monitor</b> use the QUAKE display. A mode change applies as soon as you click <b>Save</b> — no restart.</details>
 
+      <div id="sSwDeps"${s.runMode === 'software' ? '' : ' style="display:none"'}>
       <p class="sectitle">Software window</p>
       <div class="row"><label style="width:auto">Show</label>
         <select id="sSwDisplay" style="width:230px">
@@ -3512,6 +3538,7 @@
           <option value="pane">Panes — stacked pages</option>
         </select></div>
       <details class="hint"><summary>Software mode only. A <b>pane</b> (created on the sidebar's Panes tab) stacks several of your pages vertically — the window grows to fit them, so a big screen shows them all at once.</summary> In Panes view the window's ☰ button switches between your panes, just like it switches pages. With no usable pane the window falls back to normal Pages. Applies on <b>Save</b>.</details>
+      </div>
 
       <p class="sectitle">On launch</p>
       <div class="row"><label style="width:auto">Editor window</label>
@@ -3533,18 +3560,22 @@
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sRotD"> Dashboards</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sRotA"> Apps</label></div>
       <div class="row"><label>Hotkey</label>
-        <span class="hkwrap"><input id="sRotKey" readonly placeholder="click, then press keys" value="${esc(rot.hotkey || '')}"><button id="sRotKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
+        <span class="hkwrap"><input id="sRotKey" readonly placeholder="click, then press keys" value="${esc(rot.hotkey || '')}"><button id="sRotKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span><span id="sRotKeyWarn" class="hint warn" style="margin:0 0 0 8px"></span></div>
       <details class="hint"><summary>A page rotates only if its category is ticked here <i>and</i> that page's own “Include in rotation” box is checked — the box appears on each page once its category is enabled.</summary> Start/stop any time from the knob menu (double-click) or the tray.</details>
       <details class="hint"><summary>The <b>hotkey</b> starts and pauses rotation from anywhere, even when open-quake isn't focused.</summary> Click the box and press a combo that includes a modifier (e.g. Ctrl+Alt+R). If another app — or one of your page hotkeys — already owns the combo, it just won't fire.</details>
       </div>
 
+      <p class="sectitle">Global shortcuts</p>
       <div class="row"><label>Page forward</label>
-        <span class="hkwrap"><input id="sPageNextKey" readonly placeholder="click, then press keys" value="${esc(pageStep.nextHotkey || '')}"><button id="sPageNextKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
+        <span class="hkwrap"><input id="sPageNextKey" readonly placeholder="click, then press keys" value="${esc(pageStep.nextHotkey || '')}"><button id="sPageNextKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span><span id="sPageNextKeyWarn" class="hint warn" style="margin:0 0 0 8px"></span></div>
       <div class="row"><label>Page back</label>
-        <span class="hkwrap"><input id="sPagePrevKey" readonly placeholder="click, then press keys" value="${esc(pageStep.prevHotkey || '')}"><button id="sPagePrevKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
+        <span class="hkwrap"><input id="sPagePrevKey" readonly placeholder="click, then press keys" value="${esc(pageStep.prevHotkey || '')}"><button id="sPagePrevKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span><span id="sPagePrevKeyWarn" class="hint warn" style="margin:0 0 0 8px"></span></div>
       <details class="hint"><summary>Global hotkeys that step the panel <b>forward</b> / <b>back</b> through your visible pages — in the order they're listed here, wrapping around the ends.</summary> Hidden pages are skipped. These work anytime, independent of rotation.</details>
+      <div class="row"><label>Reload dashboard</label>
+        <span class="hkwrap"><input id="sDashReloadKey" readonly placeholder="click, then press keys" value="${esc(dashReload.hotkey || '')}"><button id="sDashReloadKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span><span id="sDashReloadKeyWarn" class="hint warn" style="margin:0 0 0 8px"></span></div>
+      <details class="hint"><summary>A global combo that force-reloads the current dashboard page from anywhere, even when open-quake isn't focused.</summary> Switching away to another page and back does <b>not</b> reload a dashboard (that's what keeps its session/scroll state) — this hotkey is the way to force one. Only acts while a dashboard page is showing; does nothing on a grid or app page.</details>
 
-      <p class="sectitle">Icons</p>
+      <p class="sectitle">Network and icons</p>
       <div class="row"><label>Work offline</label>
         <input type="checkbox" id="sOfflineIcons" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">never fetch icons from the internet — use cached icons and emoji only</span></div>
       <details class="hint"><summary>Home Assistant tiles pull their glyphs from a public icon CDN (jsDelivr) the first time each one is shown, then cache them for good.</summary> Turn this on for locked-down machines: the panel makes <b>zero</b> outbound icon requests and falls back to the emoji glyph for anything not already cached. Seed the cache first by opening the tiles once on a normal network.</details>
@@ -3556,10 +3587,9 @@
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sFocusPauseRot" ${focusFollow.enabled ? '' : 'disabled'}> Pause auto-rotation</label></div>
       <details class="hint"><summary>Map apps to a page under that page's Advanced settings → “Focus trigger app(s)”.</summary> Detection polls in the background and only switches once the newly-focused app has held focus for a couple seconds, so quick alt-tabbing won't cause flicker — and manually navigating the panel away is never overridden; it only re-triggers on the next focus change. With <b>Pause auto-rotation</b> on, rotation holds off the moment a mapped app takes focus and picks back up the moment it loses focus.</details>
 
-      <p class="sectitle">Dashboards</p>
-      <div class="row"><label>Reload hotkey</label>
-        <span class="hkwrap"><input id="sDashReloadKey" readonly placeholder="click, then press keys" value="${esc(dashReload.hotkey || '')}"><button id="sDashReloadKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
-      <details class="hint"><summary>A global combo that force-reloads the current dashboard page from anywhere, even when open-quake isn't focused.</summary> Switching away to another page and back does <b>not</b> reload a dashboard (that's what keeps its session/scroll state) — this hotkey is the way to force one. Only acts while a dashboard page is showing; does nothing on a grid or app page.</details>`;
+      <p class="sectitle">Setup &amp; troubleshooting</p>
+      <div class="row"><button id="sRunSetup">Re-run first-time setup…</button></div>
+      <p class="hint">Reopens the first-launch mode picker and device walkthrough.</p>`;
 
     // Hardware tab — knob ring + microphone
     const hwHtml = `
@@ -4475,7 +4505,7 @@
     if (tab === 'software') {
       const runModeVal = (s.runMode === 'software' || s.runMode === 'monitor') ? s.runMode : 'panel';
       const runSel = document.getElementById('sRunMode');
-      if (runSel) { runSel.value = runModeVal; runSel.onchange = e => setS('runMode', e.target.value); }
+      if (runSel) { runSel.value = runModeVal; runSel.onchange = e => { setS('runMode', e.target.value); const d = document.getElementById('sSwDeps'); if (d) d.style.display = e.target.value === 'software' ? '' : 'none'; }; }
       const runSetupBtn = document.getElementById('sRunSetup');
       if (runSetupBtn) runSetupBtn.onclick = () => { try { configApi.openWelcome(); } catch (e) {} };
       // Software window: pages (default) vs stacked panes. Which pane shows is runtime state (the
@@ -4525,6 +4555,16 @@
       const ppKey = document.getElementById('sPagePrevKey'), ppKeyClr = document.getElementById('sPagePrevKeyClear');
       ppKey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { const ps = currentPageStep(); ps.prevHotkey = acc; ppKey.value = acc; savePageStep(ps); } };
       ppKeyClr.onclick = () => { const ps = currentPageStep(); delete ps.prevHotkey; ppKey.value = ''; savePageStep(ps); };
+
+      // Conflict warnings beside each shortcut field — refreshed on render and after every change.
+      const SW_HOTKEY_OWNERS = [['sRotKey', 'rotation start/pause'], ['sPageNextKey', 'Page forward'], ['sPagePrevKey', 'Page back'], ['sDashReloadKey', 'Reload dashboard']];
+      const refreshAllWarns = () => SW_HOTKEY_OWNERS.forEach(([id, own]) => refreshHotkeyWarn(id, own));
+      refreshAllWarns();
+      [[rotKey, rotKeyClr], [pnKey, pnKeyClr], [ppKey, ppKeyClr], [dashReloadKey, dashReloadKeyClr]].forEach(([inp, clr]) => {
+        const kd = inp.onkeydown, ck = clr.onclick;
+        inp.onkeydown = e => { kd(e); refreshAllWarns(); };
+        clr.onclick = () => { ck(); refreshAllWarns(); };
+      });
 
     } else if (tab === 'hardware') {
       const keepAwake = document.getElementById('sKeepAwake');
