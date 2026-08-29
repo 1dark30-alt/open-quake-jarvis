@@ -398,33 +398,29 @@
   function shortcutRowHtml(g) {
     return `<div class="row" style="margin-top:6px"><label style="width:auto">Jump-to-page shortcut</label>
       <span class="hkwrap"><input id="gShortcut" readonly placeholder="click, then press keys" value="${esc(g.shortcut || '')}"><button id="gShortcutClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span>
-      <label id="gShortcutNoRotLbl" style="width:auto;margin-left:14px;font-weight:normal;cursor:pointer${g.shortcut ? '' : ';opacity:.5'}"><input type="checkbox" id="gShortcutNoRot" ${g.shortcutStopsRotation ? 'checked' : ''}${g.shortcut ? '' : ' disabled'}> Pause rotation when this shortcut is used</label>
+      <label id="gShortcutNoRotLbl" style="width:auto;margin-left:14px;font-weight:normal;cursor:pointer"><input type="checkbox" id="gShortcutNoRot" ${g.shortcutStopsRotation ? 'checked' : ''}> Pause rotation when this shortcut is used</label>
       <span id="gShortcutWarn" class="hint warn" style="margin:0 0 0 8px"></span></div>
       <details class="hint"><summary>Global hotkey that jumps the panel to this page from anywhere.</summary> Click the box and press a combo that includes a modifier (e.g. Ctrl+Alt+1). If another app already owns that combo, it just won't fire. <b>Pause rotation</b> turns auto-rotation off when the shortcut fires, so the panel stays on this page until you start rotation again (knob, tray, or panel).</details>`;
   }
   function wireShortcutRow(g) {
     const inp = document.getElementById('gShortcut'); if (!inp) return;
     const ownLabel = () => 'page \u201c' + (g.name || '(unnamed)') + '\u201d';
-    const syncNoRot = () => {
-      const nr = document.getElementById('gShortcutNoRot'), lbl = document.getElementById('gShortcutNoRotLbl');
-      if (nr) nr.disabled = !g.shortcut;
-      if (lbl) lbl.style.opacity = g.shortcut ? '' : '.5';
-    };
     refreshHotkeyWarn('gShortcut', ownLabel());
-    inp.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { g.shortcut = acc; inp.value = acc; renderGrids(); markDirty(); syncNoRot(); refreshHotkeyWarn('gShortcut', ownLabel()); } };
+    inp.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { g.shortcut = acc; inp.value = acc; renderGrids(); markDirty(); refreshHotkeyWarn('gShortcut', ownLabel()); } };
     const clr = document.getElementById('gShortcutClear');
-    if (clr) clr.onclick = () => { delete g.shortcut; inp.value = ''; renderGrids(); markDirty(); syncNoRot(); refreshHotkeyWarn('gShortcut', ownLabel()); };
+    if (clr) clr.onclick = () => { delete g.shortcut; inp.value = ''; renderGrids(); markDirty(); refreshHotkeyWarn('gShortcut', ownLabel()); };
     const nr = document.getElementById('gShortcutNoRot');
     if (nr) nr.onchange = e => { if (e.target.checked) g.shortcutStopsRotation = true; else delete g.shortcutStopsRotation; markDirty(); };
   }
   // Shared "Page behavior" section: side button strip (when the app supports one), rotation,
   // jump-to-page shortcut, and Advanced settings — identical across grid, dashboard, and app forms.
   function pageBehaviorHtml(g, withGrid) {
-    return `<p class="sectitle" style="margin-top:18px">Page behavior</p>`
+    return `<div class="card" style="margin-top:18px"><p class="sectitle">Page behavior</p>`
       + (withGrid ? `<div class="row"><label style="width:auto">Side button strip</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a strip of launcher tiles beside the page</label></div>
-      <p class="hint">Pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '')
-      + rotRowHtml(g) + shortcutRowHtml(g) + advRowHtml(g);
+      ${g.gridOn ? `<div id="pbStripDeps" style="margin-left:12px">${gridSizeRowHtml(g, g.app === 'music')}<p class="hint" style="margin:2px 0 8px">Tiles are edited on the <b>Buttons</b> tab.</p></div>`
+        : `<p class="hint">Placement and size options appear here when enabled; tiles live on the <b>Buttons</b> tab.</p>`}` : '')
+      + rotRowHtml(g) + shortcutRowHtml(g) + advRowHtml(g) + `</div>`;
   }
   // Every global hotkey binding in the config, labeled — for conflict warnings beside hotkey fields.
   function allHotkeyBindings() {
@@ -1307,7 +1303,7 @@
       ${pageBehaviorHtml(g, false)}
       <div class="row"><button id="gFocus">Show on device</button></div>`;
     const pd = document.getElementById('pagedanger');
-    if (pd) pd.innerHTML = '<div class="dangerzone"><button class="danger" id="gDelete">Delete grid</button></div>';
+    if (pd) pd.innerHTML = '<div class="dangerzone"><p class="dzlabel">Danger zone</p><button class="danger" id="gDelete">Delete grid</button></div>';
     document.getElementById('gName').oninput = e => { g.name = e.target.value; renderGrids(); markDirty(); };
     const tilesLostBy = (cols, rows) => (g.tiles || []).filter((t, i) => t && t.type && (Math.floor(i / g.cols) >= rows || (i % g.cols) >= cols)).length;
     document.getElementById('gCols').onchange = e => {
@@ -1940,7 +1936,7 @@
       <div class="row" style="margin-top:10px"><button id="gFocus">Show on device</button></div>
       <p class="hint" id="authHint"></p>
       <p class="hint">Shown full-screen on the panel. Knob scrolls · tap clicks · double-click the knob returns to the page selector.</p>
-      <div class="dangerzone"><button class="danger" id="gDelete">Delete page</button></div>`;
+      <div class="dangerzone"><p class="dzlabel">Danger zone</p><button class="danger" id="gDelete">Delete page</button></div>`;
     const dtb = document.getElementById('dtBtns'); if (dtb) dtb.onclick = () => { dashTab = 'buttons'; render(); };
     document.getElementById('gName').oninput = e => { g.name = e.target.value; renderGrids(); markDirty(); };
     document.getElementById('gUrl').oninput = e => { g.url = e.target.value; markDirty(); };
@@ -1955,7 +1951,7 @@
       else { dashTab = 'page'; }
       ti = -1; selEnd = -1; render(); markDirty();
     };
-    wireRotRow(g); wireShortcutRow(g); wireAdvRow(g);
+    wireRotRow(g); wireShortcutRow(g); wireAdvRow(g); wireGridSizeRow(g);
     renderAuthFields(g);
   }
   function setAuthType(g, type) {
@@ -2142,16 +2138,16 @@
         <p class="sectitle">Microphone</p>
         <div class="row"><label>Capture device</label>
           <select id="ltMic" style="flex:1"><option value="">System default</option></select></div>
-        <div class="row"><button id="ltTest" type="button">Test microphone</button><span class="hint" style="margin:0 0 0 8px">live input level while testing</span></div>
-        <div class="row"><div id="ltMeterWrap" style="flex:1;height:14px;border-radius:7px;background:#0e1822;overflow:hidden;display:none"><div id="ltMeter" style="height:100%;width:0%;background:#7CFFB2;transition:width .06s"></div></div></div>
+        <div class="row"><button id="ltTest" type="button">Test microphone</button>
+          <div id="ltMeterWrap" style="flex:1;height:14px;border-radius:7px;background:#0e1822;border:1px solid #1b2838;overflow:hidden;margin-left:10px"><div id="ltMeter" style="height:100%;width:0%;background:#7CFFB2;transition:width .06s"></div></div></div>
         <p class="hint">The mic used for dictation. Set the input <b>level</b> in Windows Sound settings; speak with the test on and watch the bar.</p>
-        <p class="sectitle" style="margin-top:16px">Dictation</p>
+        <p class="sectitle formsec" style="margin-top:16px">Dictation</p>
         <div class="row"><label style="width:auto">Voice pause tolerance</label>
           <input type="number" id="ltPause" min="400" max="2500" step="100" value="${esc(String(optVal(g, 'silenceMs', 400)))}" style="width:110px">
           <span class="hint" style="margin:0 0 0 8px">ms of silence before a phrase is transcribed (400–2500; 400–800 works well)</span></div>
         <details class="hint"><summary>Lower = snappier; higher = fewer mid-sentence cutoffs.</summary> Applies on the next dictation start.</details>
 
-        <p class="sectitle" style="margin-top:16px">Hotkeys</p>
+        <p class="sectitle formsec" style="margin-top:16px">Hotkeys</p>
         <div class="row"><label style="width:auto">Start / stop dictation</label>
           <span class="hkwrap"><input id="ltDictKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'dictationHotkey', ''))}"><button id="ltDictKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
         <div class="row"><label style="width:auto">When starting a new dictation</label>
@@ -2164,13 +2160,13 @@
         <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltApplyStops" ${optVal(g, 'applyStopsRecording', true) ? 'checked' : ''}> Apply text also stops recording</label></div>
         <p class="hint">Global combos (need a modifier) that fire from any app. To <b>jump to this page</b>, use the page's <b>Jump-to-page shortcut</b> below. Applies on Save.</p>
 
-        <p class="sectitle" style="margin-top:16px">Notifications</p>
+        <p class="sectitle formsec" style="margin-top:16px">Notifications</p>
         <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltSwitch" ${optVal(g, 'switchOnDictate', true) ? 'checked' : ''}> Switch the panel to this page when dictation starts</label></div>
         <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltColor" ${optVal(g, 'notifyColorChange', false) ? 'checked' : ''}> Turn the tray icon red while recording</label></div>
         <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltBeep" ${optVal(g, 'notifyBeep', false) ? 'checked' : ''}> Beep on dictation start/stop</label></div>
         <p class="hint">Transcription server is the global <b>Settings → TTS/STT</b>; override it for this page under <b>Advanced settings</b> below.</p>
 
-        <p class="sectitle" style="margin-top:18px">AI (Cleanup &amp; Rewrite)</p>
+        <p class="sectitle formsec" style="margin-top:18px">AI (Cleanup &amp; Rewrite)</p>
         <div class="row"><label style="width:auto">Backend</label>
           <select id="ltAiBackend" style="width:230px">
             <option value="claude">Claude</option><option value="codex">Codex</option>
@@ -2181,6 +2177,7 @@
           <div class="row"><label>Endpoint URL</label><input id="ltEndpoint" value="${esc(optVal(g, 'endpoint', ''))}" placeholder="https://host/v1" style="flex:1"></div>
           <div class="row"><label>API key</label><input id="ltEndpointKey" type="password" value="${esc(optVal(g, 'endpointKey', ''))}" placeholder="blank if none" style="flex:1"></div>
           <div class="row"><label>Timeout (ms)</label><input type="number" id="ltAiTimeout" min="1000" max="600000" step="1000" value="${esc(String(optVal(g, 'aiTimeoutMs', 30000)))}" style="width:120px"></div>
+          <div class="row"><button id="ltEndpointTest" type="button">Check connection</button><span id="ltEndpointTestMsg" class="hint" style="margin:0 0 0 10px"></span></div>
         </div>
         <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltOverrideModel" ${optVal(g, 'overrideModel', false) ? 'checked' : ''}> Override model</label></div>
         <div id="ltModelRow" style="display:${optVal(g, 'overrideModel', false) ? '' : 'none'}">
@@ -2275,7 +2272,7 @@
       ${pageBehaviorHtml(g, canGrid && !isMusic)}
       <div class="row" style="margin-top:10px"><button id="gFocus">Show on device</button></div>
       ${def ? '' : '<p class="hint">Pick an app, then set its options below.</p>'}
-      <div class="dangerzone"><button class="danger" id="gDelete">Delete page</button></div>`;
+      <div class="dangerzone"><p class="dzlabel">Danger zone</p><button class="danger" id="gDelete">Delete page</button></div>`;
     const atb = document.getElementById('atBtns'); if (atb) atb.onclick = () => { dashTab = 'buttons'; render(); };
     document.getElementById('gName').oninput = e => { g.name = e.target.value; renderGrids(); markDirty(); };
     document.getElementById('gApp').onchange = e => { setApp(g, e.target.value); render(); markDirty(); };
@@ -2484,7 +2481,7 @@
         }).catch(() => fill([]));
       })();
       document.getElementById('ltTest').onclick = e => {
-        if (ltMeterStop) { ltMeterStop(); ltMeterStop = null; const w = document.getElementById('ltMeterWrap'); if (w) w.style.display = 'none'; e.target.textContent = 'Test microphone'; }
+        if (ltMeterStop) { ltMeterStop(); ltMeterStop = null; const b = document.getElementById('ltMeter'); if (b) b.style.width = '0%'; e.target.textContent = 'Test microphone'; }
         else { startLtMeter(document.getElementById('ltMic').value); e.target.textContent = 'Stop test'; }
       };
       const ltDictKey = document.getElementById('ltDictKey'), ltApplyKey = document.getElementById('ltApplyKey');
@@ -2508,6 +2505,19 @@
       document.getElementById('ltOverrideModel').onchange = e => { setOpt('overrideModel', e.target.checked); document.getElementById('ltModelRow').style.display = e.target.checked ? '' : 'none'; };
       document.getElementById('ltModel').oninput = e => setOpt('model', e.target.value.trim());
       document.getElementById('ltAiTimeout').onchange = e => { const v = Math.max(1000, Math.min(600000, parseInt(e.target.value, 10) || 30000)); e.target.value = v; setOpt('aiTimeoutMs', v); };
+      // Check connection: probes <endpoint>/models with the values as typed (no Save needed first).
+      const ltEpTest = document.getElementById('ltEndpointTest'), ltEpMsg = document.getElementById('ltEndpointTestMsg');
+      if (ltEpTest) ltEpTest.onclick = async () => {
+        const url = (document.getElementById('ltEndpoint').value || '').trim();
+        if (!url) { ltEpMsg.textContent = 'Enter an endpoint URL first.'; ltEpMsg.className = 'hint warn'; return; }
+        ltEpTest.disabled = true; ltEpMsg.className = 'hint'; ltEpMsg.textContent = 'Checking…';
+        try {
+          const r = await configApi.probeApiModels(url, document.getElementById('ltEndpointKey').value || '');
+          if (!(r && r.ok)) throw new Error((r && r.error) || 'connection failed');
+          ltEpMsg.textContent = 'Connected — ' + (r.models || []).length + ' model(s)';
+        } catch (err) { ltEpMsg.textContent = 'Failed: ' + (err.message || err); ltEpMsg.className = 'hint warn'; }
+        finally { ltEpTest.disabled = false; }
+      };
       // Cleanup section
       const ltCleanupKey = document.getElementById('ltCleanupKey');
       ltCleanupKey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { ltCleanupKey.value = acc; setOpt('cleanupHotkey', acc); } };
@@ -2576,7 +2586,7 @@
     } else {
       renderAppOpts(g, def);
     }
-    wireRotRow(g); wireShortcutRow(g); wireAdvRow(g);
+    wireRotRow(g); wireShortcutRow(g); wireAdvRow(g); wireGridSizeRow(g);
     enforceMusicCap(g);
   }
   // OAuth belongs to the installed app, so its lifecycle controls sit with that app's page
