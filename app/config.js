@@ -397,8 +397,7 @@
   // ---- per-page global shortcut ----
   function shortcutRowHtml(g) {
     return `<div class="row" style="margin-top:6px"><label style="width:auto">Hotkey shortcut</label>
-      <input id="gShortcut" readonly placeholder="click, then press keys" value="${esc(g.shortcut || '')}" style="width:200px">
-      <button id="gShortcutClear" style="margin-left:8px">Clear</button>
+      <span class="hkwrap"><input id="gShortcut" readonly placeholder="click, then press keys" value="${esc(g.shortcut || '')}"><button id="gShortcutClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span>
       <label style="width:auto;margin-left:14px;font-weight:normal;cursor:pointer"><input type="checkbox" id="gShortcutNoRot" ${g.shortcutStopsRotation ? 'checked' : ''}> Disables rotation</label></div>
       <details class="hint"><summary>Global hotkey that jumps the panel to this page from anywhere.</summary> Click the box and press a combo that includes a modifier (e.g. Ctrl+Alt+1). If another app already owns that combo, it just won't fire. <b>Disables rotation</b> turns auto-rotation off when the hotkey fires, so the panel stays on this page until you start rotation again (knob, tray, or panel).</details>`;
   }
@@ -2090,16 +2089,14 @@
 
         <p class="sectitle" style="margin-top:16px">Hotkeys</p>
         <div class="row"><label style="width:auto">Start / stop dictation</label>
-          <input id="ltDictKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'dictationHotkey', ''))}" style="width:220px">
-          <button id="ltDictKeyClear" type="button" style="margin-left:8px">Clear</button></div>
+          <span class="hkwrap"><input id="ltDictKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'dictationHotkey', ''))}"><button id="ltDictKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
         <div class="row"><label style="width:auto">Starting again</label>
           <select id="ltStartMode" style="width:230px">
             <option value="clear" ${optVal(g, 'startMode', 'clear') === 'append' ? '' : 'selected'}>Clears the box and starts fresh</option>
             <option value="append" ${optVal(g, 'startMode', 'clear') === 'append' ? 'selected' : ''}>Appends to the existing text</option>
           </select></div>
         <div class="row"><label style="width:auto">Apply text</label>
-          <input id="ltApplyKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'applyHotkey', ''))}" style="width:220px">
-          <button id="ltApplyKeyClear" type="button" style="margin-left:8px">Clear</button></div>
+          <span class="hkwrap"><input id="ltApplyKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'applyHotkey', ''))}"><button id="ltApplyKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
         <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltApplyStops" ${optVal(g, 'applyStopsRecording', true) ? 'checked' : ''}> Apply text also stops recording</label></div>
         <p class="hint">Global combos (need a modifier) that fire from any app. To <b>jump to this page</b>, use the page's <b>Hotkey shortcut</b> above. Applies on Save.</p>
 
@@ -2130,8 +2127,7 @@
         <details class="advsec" style="margin-top:14px">
           <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Cleanup — fix grammar / filler</summary>
           <div class="row" style="margin-top:8px"><label style="width:auto">Hotkey</label>
-            <input id="ltCleanupKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'cleanupHotkey', ''))}" style="width:220px">
-            <button id="ltCleanupKeyClear" type="button" style="margin-left:8px">Clear</button></div>
+            <span class="hkwrap"><input id="ltCleanupKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'cleanupHotkey', ''))}"><button id="ltCleanupKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
           <div class="row" style="margin-top:6px"><label style="width:auto">Prompt</label></div>
           <textarea id="ltCleanupPrompt" rows="5" style="width:100%">${esc(optVal(g, 'cleanupPrompt', '') || LT_DEFAULT_CLEANUP_PROMPT)}</textarea>
           <p class="hint">System prompt for Cleanup. Applies on Save.</p>
@@ -2140,8 +2136,7 @@
         <details class="advsec" style="margin-top:10px">
           <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Rewrite — restyle</summary>
           <div class="row" style="margin-top:8px"><label style="width:auto">Hotkey</label>
-            <input id="ltRewriteKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'rewriteHotkey', ''))}" style="width:220px">
-            <button id="ltRewriteKeyClear" type="button" style="margin-left:8px">Clear</button></div>
+            <span class="hkwrap"><input id="ltRewriteKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'rewriteHotkey', ''))}"><button id="ltRewriteKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
           <div class="row"><label style="width:auto">Default mode</label>
             <select id="ltRewriteMode" style="width:200px">
               <option value="professional">Professional</option><option value="concise">Concise</option>
@@ -2194,8 +2189,7 @@
           <select id="xlMic" style="flex:1"><option value="">System default</option></select></div>
         <p class="hint">The mic used for live translation (also selectable from the panel's Settings).</p>
         <div class="row" style="margin-top:10px"><label>Toggle hotkey</label>
-          <input id="xlHotkey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'micHotkey', ''))}" style="width:220px">
-          <button id="xlHotkeyClear" type="button" style="margin-left:8px">Clear</button></div>
+          <span class="hkwrap"><input id="xlHotkey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'micHotkey', ''))}"><button id="xlHotkeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
         <p class="hint">A global key combo (needs a modifier) that starts/stops translation from any app — it switches to this page and toggles the mic. Applies on Save.</p>
         <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="xlSave" ${optVal(g, 'saveToFile', false) ? 'checked' : ''}> Save transcript to a file</label></div>
         <div class="row"><label>Save folder</label>
@@ -3200,6 +3194,13 @@
     // In software Panes mode, panes are the primary unit — their tab moves to the far left.
     if (tpn) tpn.style.order = softwarePaneMode() ? '-1' : '';
 
+    // Settings takes the full window: the Pages sidebar is unrelated to settings tasks, so collapse
+    // it (and its splitter) while the settings view is open. The header button doubles as the exit.
+    const inSettings = view === 'settings';
+    const sidebarEl = document.querySelector('.grids'); if (sidebarEl) sidebarEl.style.display = inSettings ? 'none' : '';
+    const splitEl = document.getElementById('colsplit'); if (splitEl) splitEl.style.display = inSettings ? 'none' : '';
+    const sBtn = document.getElementById('settingsBtn'); if (sBtn) sBtn.textContent = inSettings ? '← Back to pages' : '⚙ Settings';
+
     if (view === 'settings') { renderSettings(); return; }
     if (view === 'groups') { renderGroupMeta(); renderTiles(); renderForm(); return; }
     if (view === 'panes') { renderPaneEditor(); return; }
@@ -3350,8 +3351,7 @@
     el.innerHTML = `
       <div class="row"><label>Name</label><input id="pnName" value="${esc(p.name)}"></div>
       <div class="row" style="margin-top:6px"><label style="width:auto">Hotkey shortcut</label>
-        <input id="pnShortcut" readonly placeholder="click, then press keys" value="${esc(p.shortcut || '')}" style="width:200px">
-        <button id="pnShortcutClear" style="margin-left:8px">Clear</button>
+        <span class="hkwrap"><input id="pnShortcut" readonly placeholder="click, then press keys" value="${esc(p.shortcut || '')}"><button id="pnShortcutClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span>
         <label style="width:auto;margin-left:14px;font-weight:normal;cursor:pointer"><input type="checkbox" id="pnShortcutNoRot" ${p.shortcutStopsRotation ? 'checked' : ''}> Disables rotation</label></div>
       <details class="hint"><summary>Global hotkey that switches the software window to this pane from anywhere (flipping it to Panes view if needed).</summary> Press a combo that includes a modifier. <b>Disables rotation</b> turns auto-rotation off when it fires.</details>
       <div class="row" style="margin-top:6px"><label style="width:auto">Rotation</label>
@@ -3533,18 +3533,15 @@
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sRotD"> Dashboards</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sRotA"> Apps</label></div>
       <div class="row"><label>Hotkey</label>
-        <input id="sRotKey" readonly placeholder="click, then press keys" value="${esc(rot.hotkey || '')}" style="width:200px">
-        <button id="sRotKeyClear" style="margin-left:8px">Clear</button></div>
+        <span class="hkwrap"><input id="sRotKey" readonly placeholder="click, then press keys" value="${esc(rot.hotkey || '')}"><button id="sRotKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
       <details class="hint"><summary>A page rotates only if its category is ticked here <i>and</i> that page's own “Include in rotation” box is checked — the box appears on each page once its category is enabled.</summary> Start/stop any time from the knob menu (double-click) or the tray.</details>
       <details class="hint"><summary>The <b>hotkey</b> starts and pauses rotation from anywhere, even when open-quake isn't focused.</summary> Click the box and press a combo that includes a modifier (e.g. Ctrl+Alt+R). If another app — or one of your page hotkeys — already owns the combo, it just won't fire.</details>
       </div>
 
       <div class="row"><label>Page forward</label>
-        <input id="sPageNextKey" readonly placeholder="click, then press keys" value="${esc(pageStep.nextHotkey || '')}" style="width:200px">
-        <button id="sPageNextKeyClear" style="margin-left:8px">Clear</button></div>
+        <span class="hkwrap"><input id="sPageNextKey" readonly placeholder="click, then press keys" value="${esc(pageStep.nextHotkey || '')}"><button id="sPageNextKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
       <div class="row"><label>Page back</label>
-        <input id="sPagePrevKey" readonly placeholder="click, then press keys" value="${esc(pageStep.prevHotkey || '')}" style="width:200px">
-        <button id="sPagePrevKeyClear" style="margin-left:8px">Clear</button></div>
+        <span class="hkwrap"><input id="sPagePrevKey" readonly placeholder="click, then press keys" value="${esc(pageStep.prevHotkey || '')}"><button id="sPagePrevKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
       <details class="hint"><summary>Global hotkeys that step the panel <b>forward</b> / <b>back</b> through your visible pages — in the order they're listed here, wrapping around the ends.</summary> Hidden pages are skipped. These work anytime, independent of rotation.</details>
 
       <p class="sectitle">Icons</p>
@@ -3561,8 +3558,7 @@
 
       <p class="sectitle">Dashboards</p>
       <div class="row"><label>Reload hotkey</label>
-        <input id="sDashReloadKey" readonly placeholder="click, then press keys" value="${esc(dashReload.hotkey || '')}" style="width:200px">
-        <button id="sDashReloadKeyClear" style="margin-left:8px">Clear</button></div>
+        <span class="hkwrap"><input id="sDashReloadKey" readonly placeholder="click, then press keys" value="${esc(dashReload.hotkey || '')}"><button id="sDashReloadKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
       <details class="hint"><summary>A global combo that force-reloads the current dashboard page from anywhere, even when open-quake isn't focused.</summary> Switching away to another page and back does <b>not</b> reload a dashboard (that's what keeps its session/scroll state) — this hotkey is the way to force one. Only acts while a dashboard page is showing; does nothing on a grid or app page.</details>`;
 
     // Hardware tab — knob ring + microphone
@@ -3723,7 +3719,7 @@
       </details>
 
       <details class="advsec" style="margin-top:22px">
-      <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Advanced Settings</summary>
+      <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Advanced settings</summary>
       <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meOutlook" ${me.outlookEnabled ? 'checked' : ''}> Pull meeting information from my calendar</label></div>
       <details class="hint"><summary>When a recording starts, saves the matching appointment (subject, attendees, organizer, body…) as <b>&lt;recording&gt;.json</b> beside the WAV.</summary> The file travels through transcription, where its attendee list improves speaker identification. Ad-hoc calls with nothing scheduled save nothing.</details>
       <div class="row"><label>Calendar source</label>
@@ -3801,7 +3797,6 @@
       </div>`;
     const regularApps = appDefs.filter(a => !a.dev), devApps = appDefs.filter(a => a.dev);
     const appsHtml = `
-      <p class="sectitle">Apps</p>
       <p class="hint">Untick an app to hide it from the <b>App</b> dropdown when building a page. This only changes what's offered — pages already using a hidden app keep working.</p>
       ${regularApps.length ? regularApps.map(a => appRow(a, !appHidden(a.id))).join('') : '<p class="hint">No apps found.</p>'}
       ${devApps.length ? `
@@ -3832,7 +3827,7 @@
       <div class="row"><label>API key</label>${secretInput(ow.apiKey || '', 'id="sOwKey" placeholder="paste an Open WebUI API key"', 'flex:1')}</div>
       <div class="row"><label>Default model</label>
         <input type="text" id="sOwModel" value="${esc(ow.model || '')}" placeholder="e.g. llama3.2" style="flex:1">
-        <button id="sOwTest" type="button" style="margin-left:8px">Test connection</button></div>
+        <button id="sOwTest" type="button" style="margin-left:8px">Check connection</button></div>
       <p class="hint" id="sOwStatus" style="min-height:16px;margin:2px 0 0"></p>
       <details class="hint"><summary>One connection shared by the meeting <b>Analysis AI</b> (Open WebUI option on the Meeting tab) and the <b>Open WebUI Voice</b> panel app.</summary> The key is stored encrypted at rest. In Open WebUI: avatar (bottom-left) → Settings → Account → API Keys — an admin may need to enable API keys first.</details>
 
@@ -3844,7 +3839,7 @@
         <label style="width:auto;margin:0 8px 0 16px">Port</label>
         <input type="text" id="sObsPort" value="${esc(obs.port || '4455')}" placeholder="4455" style="width:90px"></div>
       <div class="row"><label>Password</label>${secretInput(obs.password || '', 'id="sObsPass" placeholder="from OBS → Tools → WebSocket Server Settings"', 'flex:1')}
-        <button id="sObsTest" type="button" style="margin-left:8px">Test connection</button></div>
+        <button id="sObsTest" type="button" style="margin-left:8px">Check connection</button></div>
       <div class="row"><label>Reconnect</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sObsAuto" style="width:auto;flex:none"> automatically if OBS restarts</label></div>
       <p class="hint" id="sObsStatus" style="min-height:16px;margin:2px 0 0"></p>
@@ -3856,7 +3851,6 @@
 
     // Drop-In Apps tab — manage user-installed app folders (import/export/delete) + storage location
     const diHtml = `
-      <p class="sectitle">Drop-In Apps</p>
       <p class="hint" style="margin-bottom:2px">Self-contained app folders. Manage installed apps, get updates, discover new ones, and configure repositories.</p>
       <div id="diSubbar" class="diSubbar"></div>
       <div id="diMsg" class="hint" style="margin:0 0 10px;min-height:16px"></div>
@@ -3877,7 +3871,6 @@
 
     // AI Profiles (Smart Profiles): the global library the AI Voice app's Profile picker offers.
     const apHtml = `
-      <p class="sectitle">AI Profiles</p>
       <details class="hint"><summary>Named instructions for the <b>AI Voice</b> app — pick one on the panel (the Profile button) and the AI behaves accordingly: translate, summarize, write, and so on.</summary> The instruction is sent to the AI as its role for the conversation. An empty instruction (General Chat) means plain, unmodified chat. Every AI Voice page remembers its own current profile. Remember to Save.</details>
       <div id="sAiProfileRows">${aiProfileRowsHtml((config.settings || {}).aiProfiles)}</div>
       <button id="sAiProfileAdd" type="button" style="margin-top:10px">+ Add profile</button>`;
@@ -3885,34 +3878,53 @@
     // Routines: saved prompts an "AI Routine" tile re-runs with one tap. Its own tab rather than a
     // second list under AI Profiles -- that tab is already full.
     const rtHtml = `
-      <p class="sectitle">Routines</p>
       <details class="hint"><summary>A routine is a saved request plus which <b>AI Chat</b> page — and, for the agent backends, which <b>folder</b> — runs it.</summary> Put one on a tile (tile type <b>AI Routine</b>) and tapping it switches the panel to that page and sends the request, with the agent's normal tools and approvals. You can also save one straight from the panel: the <b>+ Routine</b> button beside Send on any AI Chat page keeps whatever you just typed or asked for. Remember to Save.</details>
       <div id="sRoutineRows">${routineEditorHtml()}</div>`;
     // Two-level settings nav: grouped vertical category list instead of a wrapping tab strip.
     const NAV = [
       ['General', [['software', 'Software'], ['theme', 'Theme']]],
       ['Device', [['hardware', 'Hardware'], ['monitor', 'Monitor']]],
-      ['Apps', [['apps', 'Apps'], ['dropin', 'Drop-In Apps']]],
+      ['Apps', [['apps', 'Apps'], ['dropin', 'Drop-in apps']]],
       ['Integrations', [['auth', 'Auth'], ['ttsstt', 'TTS/STT']]],
       ['Automation', [['aiprofiles', 'AI Profiles'], ['routines', 'Routines'], ['meeting', 'Meeting']]],
     ];
+    // Every settings page opens with a normal title + one-sentence purpose; small uppercase labels
+    // are reserved for its subsections.
+    const TAB_META = {
+      software: ['Software', 'Run mode, launch behavior, screen rotation, and global shortcuts.'],
+      theme: ['Theme', 'Light/dark appearance and the accent color.'],
+      hardware: ['Hardware', 'Knob ring, knob controls, microphone, display, and touchscreen.'],
+      monitor: ['Monitor', 'Reserved-display protection and Monitor-mode knob behavior.'],
+      apps: ['Apps', 'Choose which apps the page builder offers.'],
+      dropin: ['Drop-in apps', 'Install, update, and manage self-contained app folders.'],
+      auth: ['Auth', 'Connections and credentials shared across the app.'],
+      ttsstt: ['TTS/STT', 'The default speech-to-text and text-to-speech servers.'],
+      aiprofiles: ['AI Profiles', 'Named instructions the AI Voice app can switch between.'],
+      routines: ['Routines', 'Saved requests that run on an AI Chat page with one tap.'],
+      meeting: ['Meeting', 'Recording, transcription, and analysis workflow.'],
+    };
+    const meta = TAB_META[tab] || ['Settings', ''];
     el.innerHTML = `
-      <p class="sectitle">Settings</p>
       <div class="setwrap">
         <nav class="setnav">
+          <p class="sectitle">Settings</p>
           ${NAV.map(([grp, items]) => `<p class="setgroup">${grp}</p>`
             + items.map(([id, lb]) => `<button class="setitem${tab === id ? ' on' : ''}" data-tab="${id}">${lb}</button>`).join('')).join('')}
-          <button id="sBack" class="setback">← Back to pages</button>
         </nav>
         <div class="setbody">
+          <h2 class="settitle">${meta[0]}</h2>
+          <p class="setdesc">${meta[1]}</p>
           ${tab === 'software' ? swHtml : tab === 'hardware' ? hwHtml : tab === 'theme' ? thHtml : tab === 'apps' ? appsHtml : tab === 'dropin' ? diHtml : tab === 'auth' ? authHtml : tab === 'aiprofiles' ? apHtml : tab === 'routines' ? rtHtml : tab === 'meeting' ? meHtml : tab === 'ttsstt' ? ttsHtml : monHtml}
         </div>
       </div>`;
 
-    el.querySelectorAll('.setitem').forEach(b => b.onclick = () => { settingsTab = b.dataset.tab; renderSettings(); });
+    el.querySelectorAll('.setitem').forEach(b => b.onclick = () => {
+      settingsTab = b.dataset.tab;
+      renderSettings();
+      const sc = document.querySelector('.col.editor'); if (sc) sc.scrollTop = 0;   // new category opens at its top
+    });
     wireAiProfileRows();   // no-op unless the AI Profiles tab is showing
     wireRoutineRows();     // no-op unless the Routines tab is showing
-    document.getElementById('sBack').onclick = () => { view = 'pages'; render(); };
     const setS = (k, v) => { if (!config.settings) config.settings = {}; config.settings[k] = v; markDirty(); };
 
     if (tab === 'apps') {

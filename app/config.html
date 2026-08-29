@@ -60,11 +60,19 @@
   .setnav .setitem { background: transparent; border: none; border-radius: 7px; text-align: left; padding: 7px 10px; color: #8aa0b6; font-size: 13px; }
   .setnav .setitem:hover { background: #182230; color: #dbe5f0; }
   .setnav .setitem.on { background: #16314f; color: #fff; }
-  .setnav .setback { margin-top: 20px; }
   .setbody { flex: 1; min-width: 0; }
+  .setbody .settitle { font-size: 20px; font-weight: 700; margin: 0 0 2px; color: #dbe5f0; }
+  .setbody .setdesc { color: #8aa0b6; font-size: 13px; margin: 0 0 14px; }
+  .setbody .setdesc + .sectitle, .setbody .settitle + .sectitle { border-top: 0; padding-top: 4px; margin-top: 10px; }
   .setbody .sectitle { margin: 28px 0 10px; padding-top: 18px; border-top: 1px solid #1e2733; }
   .setbody .sectitle:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
-  input, select { background: #0a111a; color: #dbe5f0; border: 1px solid #2a3a4e; border-radius: 6px; padding: 7px 9px; font-size: 14px; width: 100%; }
+  input, select, textarea { background: #0a111a; color: #dbe5f0; border: 1px solid #2a3a4e; border-radius: 6px; padding: 7px 9px; font-size: 14px; width: 100%; }
+  textarea { font-family: inherit; resize: vertical; }
+  /* hotkey input with an inline clear icon (button keeps its original id for the existing wiring) */
+  .hkwrap { position: relative; display: inline-flex; width: 200px; flex: none; }
+  .hkwrap input { width: 100%; padding-right: 26px; }
+  .hkwrap .inclear { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; padding: 0; line-height: 1; font-size: 11px; background: transparent; border: none; color: #8aa0b6; border-radius: 4px; }
+  .hkwrap .inclear:hover { background: #243246; color: #fff; }
   .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
   .row label { width: 110px; color: #91a4ba; font-size: 14px; flex: none; }
   .officeShortcutHead, .officeShortcutRow { display: grid; grid-template-columns: minmax(220px,.8fr) minmax(180px,1fr) minmax(220px,1.15fr) auto; gap: 12px; align-items: center; }
