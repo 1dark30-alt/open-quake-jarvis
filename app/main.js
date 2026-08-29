@@ -3695,7 +3695,12 @@ app.whenReady().then(async () => {
       return result;
     } catch (err) { return { ok: false, error: err.message || String(err), code: err.code || '' }; }
   });
-  ipcMain.handle('getGitHubStatus', (e) => isFrom(e, configWin) ? githubService.publicSettings() : { ok: false, error: 'unauthorized' });
+  ipcMain.handle('getGitHubStatus', async (e) => {
+    if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };
+    const st = githubService.publicSettings();
+    if (st.connected) { try { st.login = await githubService.accountLogin(); } catch (er) {} }
+    return st;
+  });
   ipcMain.handle('connectGitHub', async e => isFrom(e, configWin) ? githubService.connect() : { ok: false, error: 'unauthorized' });
   ipcMain.handle('pollGitHubConnect', async e => {
     if (!isFrom(e, configWin)) return { ok: false, error: 'unauthorized' };

@@ -543,12 +543,19 @@
   // per-page g.options value — see docs/charter-keyshortcuts.md. Rendering always shows at least
   // one (possibly blank) row; a blank row isn't written to config until the user types into it.
   function shortcutRowsHtml(list) {
-    const rows = Array.isArray(list) && list.length ? list : [{ shortcut: '', description: '' }];
-    return rows.map((r, i) => `<div class="row" data-idx="${i}" style="margin-top:6px">
-        <input class="scShortcut" placeholder="e.g. Ctrl+Shift+E" value="${esc(r.shortcut || '')}" style="width:180px">
+    const rows = Array.isArray(list) && list.length ? list : [];
+    if (!rows.length) return `<div class="emptystate" style="max-width:420px"><div class="big">No shortcuts yet</div>Add rows to build the cheat-sheet the panel displays.</div>`;
+    const seen = new Map();
+    rows.forEach(r => { const k = String(r.shortcut || '').trim().toLowerCase(); if (k) seen.set(k, (seen.get(k) || 0) + 1); });
+    return `<div class="row" style="margin-top:4px"><span class="hint" style="margin:0;width:180px;text-transform:uppercase;font-size:11px;letter-spacing:.5px">Shortcut</span><span class="hint" style="margin:0 0 0 8px;text-transform:uppercase;font-size:11px;letter-spacing:.5px">Description</span></div>`
+      + rows.map((r, i) => {
+        const dup = String(r.shortcut || '').trim() && seen.get(String(r.shortcut).trim().toLowerCase()) > 1;
+        return `<div class="row" data-idx="${i}" style="margin-top:6px">
+        <input class="scShortcut" placeholder="e.g. Ctrl+Shift+E" value="${esc(r.shortcut || '')}" style="width:180px${dup ? ';border-color:#e8b04b' : ''}"${dup ? ' title="Duplicate shortcut"' : ''}>
         <input class="scDesc" placeholder="what it does" value="${esc(r.description || '')}" style="flex:1;margin-left:8px">
-        <button class="scRemove" type="button" data-rm="${i}" title="Remove" style="margin-left:8px">✕</button>
-      </div>`).join('');
+        <button class="scRemove" type="button" data-rm="${i}" title="Remove this shortcut" aria-label="Remove shortcut row" style="margin-left:8px">✕</button>
+      </div>`;
+      }).join('');
   }
   function wireShortcutRows() {
     const host = document.getElementById('sShortcutRows');
@@ -2053,9 +2060,10 @@
     const haBox = `<div id="haDashBox" style="margin-top:10px">
         <div class="row"><label>Dashboard</label>
           <select id="haDashSel" style="flex:1"><option value="${esc(curDash)}" selected>${esc(curDash)} (current)</option></select>
-          <button id="haDashRefresh" type="button" title="Reload from HA">Refresh</button></div>
+          <button id="haDashRefresh" type="button" title="Reload the dashboard list from Home Assistant">Refresh dashboards</button></div>
         <p class="hint" id="haDashMsg" style="margin:4px 0 0">Loading dashboards…</p>
-        <div class="row" style="margin-top:10px"><label style="width:auto">URL flags</label>
+        <p class="sectitle" style="margin-top:14px">Dashboard display</p>
+        <div class="row"><label style="width:auto">URL flags</label>
           <label class="iconopt" style="width:auto"><input type="checkbox" id="haKiosk" ${optVal(g, 'kiosk', false) ? 'checked' : ''}> Kiosk mode</label>
           <label class="iconopt" style="width:auto"><input type="checkbox" id="haHideHeader" ${optVal(g, 'hideHeader', false) ? 'checked' : ''}> Hide header</label>
           <label class="iconopt" style="width:auto"><input type="checkbox" id="haHideSidebar" ${optVal(g, 'hideSidebar', false) ? 'checked' : ''}> Hide sidebar</label></div>
@@ -2064,11 +2072,11 @@
     // Custom shortcuts cheat-sheet: edited right here, but the list itself is global/shared — see
     // shortcutRowsHtml's comment and docs/charter-keyshortcuts.md.
     const keyShortcutsBox = `<div style="margin-top:10px">
-        <details class="hint" style="margin:0 0 8px"><summary>Free-text shortcut/description rows for other programs.</summary> Shown as
+        <details class="hint" style="margin:0 0 8px"><summary>A cheat-sheet the panel displays — these rows are informational only; open-quake does not bind them.</summary> Shown as
         <b>Custom</b> on the panel, alongside open-quake's own rotation hotkey and every page's jump shortcut.
         This list is shared — editing it here updates every page that has the Keyboard Shortcuts app.</details>
         <div id="sShortcutRows">${shortcutRowsHtml((config.settings || {}).customShortcuts)}</div>
-        <button id="sShortcutAdd" type="button" style="margin-top:8px">+ Add another shortcut</button>
+        <button id="sShortcutAdd" type="button" style="margin-top:8px">+ Add shortcut</button>
       </div>`;
     // Claude Code voice app: project picker (dynamic dir list -- can't be a static apps.json enum)
     // plus the rest of the app's options, hand-rendered here same as HA Dashboard's box does for its
@@ -2211,6 +2219,7 @@
       </div>`;
     const xlProvider = optVal(g, 'provider', 'soniox') === 'ai' ? 'ai' : 'soniox';
     const liveTranslateBox = `<div style="margin-top:10px">
+        <p class="sectitle">Translation service</p>
         <div class="row"><label>Provider</label>
           <select id="xlProvider" style="flex:1">
             <option value="soniox" ${xlProvider === 'soniox' ? 'selected' : ''}>Soniox — cloud real-time translation (recommended)</option>
@@ -2238,18 +2247,21 @@
         <div class="row" style="margin-top:10px"><label>Target language</label>
           <input id="xlTargetLang" value="${esc(optVal(g, 'targetLanguage', 'en'))}" placeholder="en (or any language name)" style="width:230px"></div>
         <details class="hint"><summary>Any OpenAI-compatible chat endpoint (DeepSeek ≈ $0.10/hr, OpenAI, a local Open WebUI/Ollama…).</summary> Utterances are transcribed by your <b>Settings → TTS/STT</b> server first — its model must be <b>multilingual</b> (Parakeet v3 or Whisper small/medium/large; the Distil-Whisper models are English-only) — then translated with recent-line context, so captions arrive per phrase — a beat behind speech, not word-by-word like Soniox. Key stored encrypted, used only from the main process.</details>`}
-        <p class="sectitle" style="margin-top:14px">Microphone</p>
+        <p class="sectitle" style="margin-top:14px">Microphone &amp; activation</p>
         <div class="row"><label>Capture device</label>
           <select id="xlMic" style="flex:1"><option value="">System default</option></select></div>
         <p class="hint">The mic used for live translation (also selectable from the panel's Settings).</p>
-        <div class="row" style="margin-top:10px"><label>Toggle hotkey</label>
-          <span class="hkwrap"><input id="xlHotkey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'micHotkey', ''))}"><button id="xlHotkeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
-        <p class="hint">A global key combo (needs a modifier) that starts/stops translation from any app — it switches to this page and toggles the mic. Applies on Save.</p>
-        <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="xlSave" ${optVal(g, 'saveToFile', false) ? 'checked' : ''}> Save transcript to a file</label></div>
+        <div class="row" style="margin-top:10px"><label style="width:auto">Toggle translation shortcut</label>
+          <span class="hkwrap"><input id="xlHotkey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'micHotkey', ''))}"><button id="xlHotkeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span><span id="xlHotkeyWarn" class="hint warn" style="margin:0 0 0 8px"></span></div>
+        <p class="hint">Starts/stops translation from any app — it switches to this page and toggles the mic. This is separate from the <b>Jump-to-page shortcut</b> below, which only navigates. Applies on Save.</p>
+        <p class="sectitle" style="margin-top:14px">Transcript saving</p>
+        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="xlSave" ${optVal(g, 'saveToFile', false) ? 'checked' : ''}> Save transcript to a file</label></div>
+        <div id="xlSaveDeps"${optVal(g, 'saveToFile', false) ? '' : ' style="display:none"'}>
         <div class="row"><label>Save folder</label>
           <input id="xlSaveFolder" value="${esc(optVal(g, 'saveFolder', ''))}" placeholder="Documents\\OpenQuake Translations" readonly style="flex:1">
           <button id="xlSaveFolderBrowse" type="button">Browse…</button></div>
-        <p class="hint">Where saved translations are written. Blank = Documents\\OpenQuake Translations.</p>
+        <p class="hint">Where saved translations are written. Blank = <b>Documents\\OpenQuake Translations</b> (the default).</p>
+        </div>
       </div>`;
     const optsBlock = isMusic ? musicBox : isHaDash ? haBox : isKeyShortcuts ? keyShortcutsBox : isVoiceApp ? claudeVoiceBox : isLucidType ? lucidTypeBox : isLiveTranslate ? liveTranslateBox : isOffice ? officeOptionsHtml(g, def) : '<div id="appOpts"></div>';
     el.innerHTML = tabBar + `
@@ -2519,7 +2531,7 @@
       const sh = document.getElementById('xlSourceHint'); if (sh) sh.oninput = e => setOpt('sourceHint', e.target.value.trim());
       const xlLangLink = document.getElementById('xlLangLink'); if (xlLangLink) xlLangLink.onclick = e => { e.preventDefault(); configApi.openExternal('https://soniox.com/docs/stt/concepts/supported-languages'); };
       document.getElementById('xlTargetLang').oninput = e => setOpt('targetLanguage', e.target.value.trim());
-      document.getElementById('xlSave').onchange = e => setOpt('saveToFile', e.target.checked);
+      document.getElementById('xlSave').onchange = e => { setOpt('saveToFile', e.target.checked); const d = document.getElementById('xlSaveDeps'); if (d) d.style.display = e.target.checked ? '' : 'none'; };
       document.getElementById('xlSaveFolderBrowse').onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('xlSaveFolder').value = p; setOpt('saveFolder', p); } };
       // AI provider fields. The endpoint preset is a convenience that fills URL + model; the stored
       // truth is always aiBaseUrl/aiModel, so "Custom" covers Open WebUI, Ollama, or anything else.
@@ -2533,7 +2545,13 @@
         document.getElementById('xlAiKey').onchange = e => setOpt('aiApiKey', e.target.value);
         document.getElementById('xlAiModel').oninput = e => setOpt('aiModel', e.target.value.trim());
       }
-      const xlHotkey = document.getElementById('xlHotkey'); if (xlHotkey) { xlHotkey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { xlHotkey.value = acc; setOpt('micHotkey', acc); } }; document.getElementById('xlHotkeyClear').onclick = () => { xlHotkey.value = ''; setOpt('micHotkey', ''); }; }
+      const xlHotkey = document.getElementById('xlHotkey');
+      if (xlHotkey) {
+        const xlOwn = () => 'translation toggle on “' + (g.name || '(unnamed)') + '”';
+        refreshHotkeyWarn('xlHotkey', xlOwn());
+        xlHotkey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { xlHotkey.value = acc; setOpt('micHotkey', acc); refreshHotkeyWarn('xlHotkey', xlOwn()); } };
+        document.getElementById('xlHotkeyClear').onclick = () => { xlHotkey.value = ''; setOpt('micHotkey', ''); refreshHotkeyWarn('xlHotkey', xlOwn()); };
+      }
       // Microphone dropdown — the app's default capture device (same pattern as LucidType/Meeting).
       // enumerateDevices exposes labels only after a getUserMedia grant, so grab-then-release once.
       (function () {
@@ -3052,11 +3070,11 @@
       const localProvider = config.settings.oauth.providers.github;
       box.innerHTML = `<div class="row" style="gap:8px;align-items:center">
           <label style="width:auto;font-weight:bold">GitHub account</label>
-          <span class="hint" style="margin:0">${connected ? 'Connected' : status && status.configured ? 'Ready to connect' : 'Not configured'}</span>
+          <span class="hint" style="margin:0">${connected ? 'Connected' + (status && status.login ? ' as ' + esc(status.login) : '') : status && status.configured ? 'Ready to connect' : 'Not configured'}</span>
           <span id="ghMsg" class="hint" style="margin:0 0 0 auto">${esc(notice || '')}</span>
         </div>
         <div class="row" style="gap:8px">
-          <button id="ghConnect" ${connected ? '' : 'class="primary"'}>${connected ? 'Reconnect' : 'Connect'}</button>
+          <button id="ghConnect" ${connected ? '' : 'class="primary"'}>${connected ? 'Change account' : 'Connect'}</button>
           <button id="ghDisconnect"${connected ? '' : ' disabled'}>Disconnect</button>
         </div>
         <div id="ghDevice" class="row" style="display:none"><label>Device code</label><strong id="ghDeviceCode" style="font:700 20px Consolas,monospace;letter-spacing:.12em;color:#9b7cff"></strong><span class="hint" style="margin:0">Enter this in the GitHub page opened in your browser.</span></div>
@@ -3068,13 +3086,17 @@
           <p class="hint" style="margin:4px 0 8px"><a href="#" id="ghGuide">GitHub connection guide ↗</a> · <a href="#" id="ghCreate">Create OAuth App ↗</a> · Save changes before connecting or reconnecting.</p>
         </details>
         <p class="sectitle" style="margin-top:14px">Repository defaults</p>
-        <div class="row"><label>Starting repository</label><input id="ghRepository" value="${esc(local.repository || '')}" placeholder="optional owner/repository" autocomplete="off" style="flex:1"></div>
+        <div class="row"><label>Starting repository</label><input id="ghRepository" value="${esc(local.repository || '')}" placeholder="optional owner/repository" autocomplete="off" style="flex:1"><span id="ghRepoWarn" class="hint warn" style="margin:0 0 0 8px"></span></div>
         <div class="row"><label>Starting branch</label><input id="ghBranch" value="${esc(local.branch || '')}" placeholder="optional; blank uses each repository's default" autocomplete="off" style="flex:1"></div>
-        <p class="hint">These are optional. The touchscreen GitHub page lists every repository your account can access and remembers the last one selected on this device.</p>`;
+        <p class="hint">These are optional — blank keeps the last repository and branch selected on the device. The touchscreen GitHub page lists every repository your account can access.</p>`;
 
       const message = (text, bad) => { const target = box.querySelector('#ghMsg'); if (target) { target.textContent = text || ''; target.style.color = bad ? '#c98' : '#7e93ab'; } };
       box.querySelector('#ghClientId').oninput = event => { localProvider.clientId = event.target.value; markDirty(); };
-      box.querySelector('#ghRepository').oninput = event => { local.repository = event.target.value; markDirty(); };
+      box.querySelector('#ghRepository').oninput = event => {
+        local.repository = event.target.value; markDirty();
+        const w = box.querySelector('#ghRepoWarn'), v = event.target.value.trim();
+        if (w) w.textContent = v && !/^[\w.-]+\/[\w.-]+$/.test(v) ? 'expected owner/repository' : '';
+      };
       box.querySelector('#ghBranch').oninput = event => { local.branch = event.target.value; markDirty(); };
       box.querySelector('#ghGuide').onclick = event => { event.preventDefault(); configApi.openExternal(guideUrl); };
       box.querySelector('#ghCreate').onclick = event => { event.preventDefault(); configApi.openExternal(createUrl); };
@@ -3107,6 +3129,7 @@
         message('Enter the device code in GitHub…'); poll(result);
       };
       box.querySelector('#ghDisconnect').onclick = async event => {
+        if (!ask('Disconnect the GitHub account from this device? Repositories stop loading until you connect again.')) return;
         if (!ask('Disconnect GitHub and remove the stored OAuth tokens?')) return;
         event.currentTarget.disabled = true; message('Disconnecting…');
         let result;

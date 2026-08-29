@@ -6238,7 +6238,7 @@
     "options": [
       {
         "key": "interval",
-        "label": "Refresh",
+        "label": "Refresh interval",
         "type": "select",
         "default": "600",
         "choices": [
@@ -6262,7 +6262,8 @@
             "3600",
             "1 hour"
           ]
-        ]
+        ],
+        "help": "How often the panel re-reads Home Assistant schedules, calendars, and automations."
       }
     ]
   },
