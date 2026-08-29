@@ -2082,6 +2082,7 @@
       return cvModes && cvModes.choices.some(c => c[0] === v) ? v : (cvModes ? cvModes.default : '');
     })();
     const claudeVoiceBox = `<div id="cvBox" style="margin-top:10px">
+        <p class="sectitle">Agent</p>
         <div class="row"><label>Backend</label>
           <select id="cvBackend" style="flex:1">
             <option value="claude" ${cvBackend === 'claude' ? 'selected' : ''}>Claude Code — CLI agent with tools</option>
@@ -2105,24 +2106,27 @@
           <input id="cvApiModel" value="${esc(cvVal('apiModel', ''))}" placeholder="e.g. gpt-4o-mini" style="width:320px" autocomplete="off">
           <span class="hint" id="cvApiModelHint" style="margin:0 0 0 8px"></span></div>
         <p class="hint">Any OpenAI-compatible chat endpoint. Plain conversation — no tools, no file access. The key is stored encrypted and never reaches the panel page.</p>` : `
+        <p class="sectitle" style="margin-top:14px">Workspace</p>
         <div class="row"><label>Default folder</label>
           <input id="cvProjectPath" value="${esc(cvVal('projectDir', ''))}" style="flex:1">
           <button id="cvProjectPathBrowse" type="button">Browse…</button></div>
-        <p class="hint">Where new sessions start until a folder is picked on the panel (Change folder). The panel's pick updates this. Created automatically if it doesn't exist yet.</p>
+        <p class="hint">Where a new session begins. The panel's <b>Change folder</b> pick updates this; created automatically if it doesn't exist yet.</p>
         <div class="row" style="margin-top:10px"><label style="width:auto">Folders root</label>
           <input id="cvProjectsRoot" value="${esc(cvVal('projectsRoot', ''))}" style="flex:1">
           <button id="cvProjectsRootBrowse" type="button">Browse…</button></div>
-        <p class="hint">The folder the panel's Change folder list scans.</p>`) + `
+        <p class="hint">What the panel's folder picker can browse.</p>`) + `
         <p class="hint">Voice STT/TTS servers are set globally under <b>Settings → TTS/STT</b>. Override them for just this page in <b>Advanced settings</b> below.</p>
-        <div class="row" style="margin-top:10px"><label>Default profile</label>
+        <p class="sectitle" style="margin-top:14px">Profile &amp; instructions</p>
+        <div class="row"><label>Default profile</label>
           <select id="cvProfile" style="flex:1">${(((config.settings || {}).aiProfiles) || []).map((p, i) => `<option value="${esc(p.id)}" ${(cvVal('profilePick', '') || (((config.settings || {}).aiProfiles) || [{}])[0].id) === p.id ? 'selected' : ''}>${esc(p.name || '(unnamed)')}</option>`).join('')}</select></div>
         <details class="hint"><summary>The AI profile this page starts with — a named instruction that shapes the AI (translate, summarize, write…).</summary> Switch live from the panel's <b>Profile</b> button; manage the list under <b>Settings → AI Profiles</b>.</details>` + (!cvModes ? '' : `
-        <div class="row" style="margin-top:10px"><label>Permission mode</label>
+        <p class="sectitle" style="margin-top:14px">Permissions</p>
+        <div class="row"><label>Permission mode</label>
           <select id="cvPermMode" style="flex:1">${cvModes.choices.map(c => `<option value="${esc(c[0])}" ${cvMode === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>
         <p class="hint" id="cvPermModeHint" style="margin:2px 0 0">${esc((cvModes.choices.find(c => c[0] === cvMode) || [])[2] || '')}</p>`) + (cvBackend === 'claude' ? `
-        <div class="row"><label>Touch approval</label>
-          <label class="iconopt" style="width:auto"><input type="checkbox" id="cvApprovals" ${cvVal('approvalsEnabled', false) ? 'checked' : ''}> when in Manual mode</label></div>
-        <div class="row" style="margin-top:10px"><label>Panel prompt</label>
+        <div class="row" id="cvApprovalsRow"${cvMode === 'manual' ? '' : ' style="display:none"'}><label>Touch approval</label>
+          <label class="iconopt" style="width:auto"><input type="checkbox" id="cvApprovals" ${cvVal('approvalsEnabled', false) ? 'checked' : ''}> approve each action by tapping the panel</label></div>
+        <div class="row" style="margin-top:10px"><label style="width:auto">Session instructions</label>
           <button id="cvEditPrompt" type="button">Edit prompt file</button></div>
         <details class="hint"><summary>Your own instructions for panel sessions (claude-panel-prompt.md, opens in your default editor).</summary> Appended to the built-in voice prompt; text inside &lt;!-- comment markers --&gt; is ignored. Applies from the next session start. Never affects terminal Claude Code.</details>` : '') + `
       </div>`;
@@ -2130,18 +2134,19 @@
         <p class="sectitle">Microphone</p>
         <div class="row"><label>Capture device</label>
           <select id="ltMic" style="flex:1"><option value="">System default</option></select></div>
-        <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltTest"> Test microphone (live input level)</label></div>
+        <div class="row"><button id="ltTest" type="button">Test microphone</button><span class="hint" style="margin:0 0 0 8px">live input level while testing</span></div>
         <div class="row"><div id="ltMeterWrap" style="flex:1;height:14px;border-radius:7px;background:#0e1822;overflow:hidden;display:none"><div id="ltMeter" style="height:100%;width:0%;background:#7CFFB2;transition:width .06s"></div></div></div>
         <p class="hint">The mic used for dictation. Set the input <b>level</b> in Windows Sound settings; speak with the test on and watch the bar.</p>
-        <div class="row" style="margin-top:10px"><label style="width:auto">Voice pause tolerance</label>
+        <p class="sectitle" style="margin-top:16px">Dictation</p>
+        <div class="row"><label style="width:auto">Voice pause tolerance</label>
           <input type="number" id="ltPause" min="400" max="2500" step="100" value="${esc(String(optVal(g, 'silenceMs', 400)))}" style="width:110px">
-          <span class="hint" style="margin:0 0 0 8px">ms of silence before a phrase is transcribed</span></div>
-        <p class="hint">Lower = snappier (text appears sooner after you pause); higher = fewer mid-sentence cutoffs. Applies on the next dictation start.</p>
+          <span class="hint" style="margin:0 0 0 8px">ms of silence before a phrase is transcribed (400–2500; 400–800 works well)</span></div>
+        <details class="hint"><summary>Lower = snappier; higher = fewer mid-sentence cutoffs.</summary> Applies on the next dictation start.</details>
 
         <p class="sectitle" style="margin-top:16px">Hotkeys</p>
         <div class="row"><label style="width:auto">Start / stop dictation</label>
           <span class="hkwrap"><input id="ltDictKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'dictationHotkey', ''))}"><button id="ltDictKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
-        <div class="row"><label style="width:auto">Starting again</label>
+        <div class="row"><label style="width:auto">When starting a new dictation</label>
           <select id="ltStartMode" style="width:230px">
             <option value="clear" ${optVal(g, 'startMode', 'clear') === 'append' ? '' : 'selected'}>Clears the box and starts fresh</option>
             <option value="append" ${optVal(g, 'startMode', 'clear') === 'append' ? 'selected' : ''}>Appends to the existing text</option>
@@ -2167,16 +2172,16 @@
         <div id="ltEndpointRows" style="display:${optVal(g, 'useEndpoint', false) ? '' : 'none'}">
           <div class="row"><label>Endpoint URL</label><input id="ltEndpoint" value="${esc(optVal(g, 'endpoint', ''))}" placeholder="https://host/v1" style="flex:1"></div>
           <div class="row"><label>API key</label><input id="ltEndpointKey" type="password" value="${esc(optVal(g, 'endpointKey', ''))}" placeholder="blank if none" style="flex:1"></div>
+          <div class="row"><label>Timeout (ms)</label><input type="number" id="ltAiTimeout" min="1000" max="600000" step="1000" value="${esc(String(optVal(g, 'aiTimeoutMs', 30000)))}" style="width:120px"></div>
         </div>
         <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="ltOverrideModel" ${optVal(g, 'overrideModel', false) ? 'checked' : ''}> Override model</label></div>
         <div id="ltModelRow" style="display:${optVal(g, 'overrideModel', false) ? '' : 'none'}">
           <div class="row"><label>Model</label><input id="ltModel" value="${esc(optVal(g, 'model', ''))}" placeholder="e.g. glm-4.7-flash" style="flex:1"></div>
         </div>
-        <div class="row"><label>Timeout (ms)</label><input type="number" id="ltAiTimeout" min="1000" max="600000" step="1000" value="${esc(String(optVal(g, 'aiTimeoutMs', 30000)))}" style="width:120px"></div>
         <details class="hint"><summary>Cleanup/Rewrite send the box text to this AI.</summary> By default the chosen integrated agent (Claude/Codex/Copilot need the CLI on PATH; Open WebUI uses the <b>Auth</b> tab connection). Tick <b>Use Endpoint</b> to POST to an OpenAI-compatible <code>/chat/completions</code> server directly (needs a model — tick Override model).</details>
 
         <details class="advsec" style="margin-top:14px">
-          <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Cleanup — fix grammar / filler</summary>
+          <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Cleanup — fix grammar / filler <span class="hint" style="margin:0">${optVal(g, 'cleanupHotkey', '') ? '(' + esc(optVal(g, 'cleanupHotkey', '')) + ')' : '(no hotkey)'}</span></summary>
           <div class="row" style="margin-top:8px"><label style="width:auto">Hotkey</label>
             <span class="hkwrap"><input id="ltCleanupKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'cleanupHotkey', ''))}"><button id="ltCleanupKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
           <div class="row" style="margin-top:6px"><label style="width:auto">Prompt</label></div>
@@ -2185,7 +2190,7 @@
         </details>
 
         <details class="advsec" style="margin-top:10px">
-          <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Rewrite — restyle</summary>
+          <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Rewrite — restyle <span class="hint" style="margin:0">${optVal(g, 'rewriteHotkey', '') ? '(' + esc(optVal(g, 'rewriteHotkey', '')) + ')' : '(no hotkey)'}</span></summary>
           <div class="row" style="margin-top:8px"><label style="width:auto">Hotkey</label>
             <span class="hkwrap"><input id="ltRewriteKey" readonly placeholder="click, then press keys" value="${esc(optVal(g, 'rewriteHotkey', ''))}"><button id="ltRewriteKeyClear" class="inclear" title="Clear shortcut" aria-label="Clear shortcut">✕</button></span></div>
           <div class="row"><label style="width:auto">Default mode</label>
@@ -2330,11 +2335,19 @@
       const cvProjectsRootBrowse = document.getElementById('cvProjectsRootBrowse');
       if (cvProjectsRootBrowse) cvProjectsRootBrowse.onclick = async () => { const p = await configApi.pickFolder(); if (p) { document.getElementById('cvProjectsRoot').value = p; setOpt('projectsRoot', p); } };
       const cvPermMode = document.getElementById('cvPermMode');
-      if (cvPermMode) cvPermMode.onchange = e => {
-        setOpt('permissionMode', e.target.value);
+      const CV_DANGER_MODES = ['bypassPermissions', 'full-access', 'autopilot'];
+      const syncPermModeUi = mode => {
         const h = document.getElementById('cvPermModeHint');
-        if (h && cvModes) h.textContent = (cvModes.choices.find(c => c[0] === e.target.value) || [])[2] || '';
+        if (h && cvModes) {
+          const danger = CV_DANGER_MODES.includes(mode);
+          h.textContent = danger ? '⚠ Commands run without approval in this mode.'
+            : (cvModes.choices.find(c => c[0] === mode) || [])[2] || '';
+          h.className = 'hint' + (danger ? ' warn' : '');
+        }
+        const ar = document.getElementById('cvApprovalsRow');
+        if (ar) ar.style.display = mode === 'manual' ? '' : 'none';
       };
+      if (cvPermMode) { syncPermModeUi(cvPermMode.value); cvPermMode.onchange = e => { setOpt('permissionMode', e.target.value); syncPermModeUi(e.target.value); }; }
       const cvProfile = document.getElementById('cvProfile');
       if (cvProfile) cvProfile.onchange = e => setOpt('profilePick', e.target.value);
       const cvApprovals = document.getElementById('cvApprovals');   // claude-only rows
@@ -2449,7 +2462,7 @@
           inputs.forEach(d => { const o = document.createElement('option'); o.value = d.label; o.textContent = d.label; sel.appendChild(o); });
           if (cur && !inputs.some(d => d.label === cur)) { const o = document.createElement('option'); o.value = cur; o.textContent = cur + ' (not connected)'; sel.appendChild(o); }
           sel.value = cur;
-          sel.onchange = e => { setOpt('micDevice', e.target.value); if (document.getElementById('ltTest').checked) startLtMeter(e.target.value); };
+          sel.onchange = e => { setOpt('micDevice', e.target.value); if (ltMeterStop) startLtMeter(e.target.value); };
         };
         navigator.mediaDevices.enumerateDevices().then(devs => {
           if ((devs || []).some(d => d.kind === 'audioinput' && d.label)) return fill(devs);
@@ -2458,7 +2471,10 @@
             .catch(() => fill(devs));
         }).catch(() => fill([]));
       })();
-      document.getElementById('ltTest').onchange = e => { if (e.target.checked) startLtMeter(document.getElementById('ltMic').value); else if (ltMeterStop) ltMeterStop(); };
+      document.getElementById('ltTest').onclick = e => {
+        if (ltMeterStop) { ltMeterStop(); ltMeterStop = null; const w = document.getElementById('ltMeterWrap'); if (w) w.style.display = 'none'; e.target.textContent = 'Test microphone'; }
+        else { startLtMeter(document.getElementById('ltMic').value); e.target.textContent = 'Stop test'; }
+      };
       const ltDictKey = document.getElementById('ltDictKey'), ltApplyKey = document.getElementById('ltApplyKey');
       ltDictKey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { ltDictKey.value = acc; setOpt('dictationHotkey', acc); } };
       document.getElementById('ltDictKeyClear').onclick = () => { ltDictKey.value = ''; setOpt('dictationHotkey', ''); };
