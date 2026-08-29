@@ -135,6 +135,15 @@
   .emptystate .big { color: #cfe0f2; font-size: 15px; margin-bottom: 6px; }
   :focus-visible { outline: 2px solid #4ea3ff; outline-offset: 1px; }
   .warn { color: #e8b04b; }
+  /* Theme live preview + preset chips */
+  .thprev { display: flex; gap: 16px; align-items: center; border: 1px solid #233246; border-radius: 10px; padding: 16px; max-width: 460px; }
+  .thprev .thtile { width: 64px; height: 64px; border-radius: 12px; border: 1px solid; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+  .thprev .thtile span:last-child { font-size: 11px; }
+  .thprev .thclock { font: 700 30px Consolas, monospace; }
+  .presetwrap { position: relative; display: inline-flex; }
+  .presetwrap .px { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; padding: 0; font-size: 9px; line-height: 1; border-radius: 50%; background: #243246; border: 1px solid #3a5068; color: #cfe0f2; display: none; }
+  .presetwrap:hover .px, .presetwrap:focus-within .px { display: block; }
+  .presetwrap button.pc.on { outline: 2px solid #4ea3ff; outline-offset: 1px; }
   .hint { color: #8aa0b6; font-size: 13px; line-height: 1.55; max-width: 78ch; margin-top: 8px; }
   /* long help collapses to its first sentence; native <details>, no JS */
   details.hint summary { cursor: pointer; display: inline; list-style: none; }

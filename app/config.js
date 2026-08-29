@@ -3815,11 +3815,15 @@
       <p class="sectitle">Accent color</p>
       <div class="row"><label>Accent</label>
         <input type="color" id="sAccent" value="${esc(th.accent)}" style="width:54px;height:30px;padding:2px">
-        <span id="sAccentVal" class="hint" style="margin:0 0 0 10px">${esc(th.accent)}</span></div>
+        <input id="sAccentHex" value="${esc(th.accent)}" maxlength="7" spellcheck="false" style="width:100px;font-family:Consolas,monospace">
+        <button id="sAccentReset">Reset to default</button></div>
       <div class="row"><label style="width:auto">Presets</label>
-        <span id="sPresets" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></span>
+        <span id="sPresets" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"></span>
         <button id="sPresetSave" style="margin-left:10px">＋ Save current</button></div>
-      <details class="hint"><summary>Drives the clock digits/hands, the tile-tap highlight, the music play button, and the knob LED ring.</summary> Click a preset to apply; <i>Save current</i> stores it (up to 6); right-click a preset to remove it. Changes apply when you Save.</details>`;
+      <details class="hint"><summary>Drives the clock digits/hands, the tile-tap highlight, the music play button, and the knob LED ring.</summary> Click a preset to apply; <i>Save current</i> stores it (up to 6); hover a preset for its remove button.</details>
+      <p class="sectitle">Preview</p>
+      <div id="thPreview"></div>
+      <p class="hint">The preview is live; the panel itself changes when you <b>Save &amp; apply</b>.</p>`;
 
     // Apps tab — show/hide which apps appear in the App picker (doesn't touch pages already using an app)
     const appRow = (a, checked) => `<div class="row">
@@ -4799,28 +4803,54 @@
       })();
     } else {
       // Theme — global appearance + accent (applied on Save, via the main process)
+      const DEFAULT_ACCENT = '#7CFFB2';
       const saveTheme = patch => { if (!config.settings) config.settings = {}; config.settings.theme = Object.assign(currentTheme(), patch); markDirty(); };
-      const av = document.getElementById('sAccentVal');
-      document.getElementById('sAppear').value = th.appearance;
-      document.getElementById('sAppear').onchange = e => saveTheme({ appearance: e.target.value });
-      document.getElementById('sAccent').oninput = e => { av.textContent = e.target.value; };
-      document.getElementById('sAccent').onchange = e => saveTheme({ accent: e.target.value });
-      const renderPresets = () => {
-        const wrap = document.getElementById('sPresets'); wrap.innerHTML = '';
-        (currentTheme().presets || []).forEach((p, i) => {
-          const b = document.createElement('button');
-          b.title = p + ' (right-click to remove)';
-          b.style.cssText = 'width:26px;height:26px;padding:0;border-radius:6px;border:1px solid #2b3c50;background:' + p;
-          b.onclick = () => { document.getElementById('sAccent').value = p; av.textContent = p; saveTheme({ accent: p }); };
-          b.oncontextmenu = ev => { ev.preventDefault(); const pr = (currentTheme().presets || []).slice(); pr.splice(i, 1); saveTheme({ presets: pr }); renderPresets(); };
-          wrap.appendChild(b);
-        });
+      const col = document.getElementById('sAccent'), hexIn = document.getElementById('sAccentHex');
+      const validHex = v => /^#[0-9a-fA-F]{6}$/.test(v);
+      // Live preview: sample tiles (one selected), clock digits, and a primary button in the accent.
+      const renderPreview = () => {
+        const t = currentTheme();
+        const dark = t.appearance !== 'light';   // 'system' previews dark, matching the editor
+        const bg = dark ? '#0a111a' : '#eef2f7', tile = dark ? '#141d29' : '#ffffff',
+          bd = dark ? '#233246' : '#c8d4e0', txt = dark ? '#91a4ba' : '#4a5a6a';
+        const el = document.getElementById('thPreview');
+        if (el) el.innerHTML = `<div class="thprev" style="background:${bg}; border-color:${bd}">
+          <div class="thtile" style="background:${tile}; border-color:${bd}"><span style="font-size:20px">🏠</span><span style="color:${txt}">Lights</span></div>
+          <div class="thtile" style="background:${tile}; border-color:${t.accent}; box-shadow:0 0 0 2px ${t.accent}55"><span style="font-size:20px">🎵</span><span style="color:${txt}">Music</span></div>
+          <div class="thclock" style="color:${t.accent}">12:34</div>
+          <button style="background:${t.accent}; border-color:${t.accent}; color:#08131f">Play</button>
+        </div>`;
       };
+      const setAccent = v => { col.value = v; hexIn.value = v; saveTheme({ accent: v }); renderPresets(); renderPreview(); };
+      document.getElementById('sAppear').value = th.appearance;
+      document.getElementById('sAppear').onchange = e => { saveTheme({ appearance: e.target.value }); renderPreview(); };
+      col.oninput = e => { hexIn.value = e.target.value; };
+      col.onchange = e => setAccent(e.target.value);
+      hexIn.onchange = e => { const v = e.target.value.trim(); if (validHex(v)) setAccent(v); else e.target.value = currentTheme().accent; };
+      document.getElementById('sAccentReset').onclick = () => setAccent(DEFAULT_ACCENT);
+      function renderPresets() {
+        const wrap = document.getElementById('sPresets'); wrap.innerHTML = '';
+        const cur = String(currentTheme().accent || '').toLowerCase();
+        (currentTheme().presets || []).forEach((p, i) => {
+          const w = document.createElement('span'); w.className = 'presetwrap';
+          const b = document.createElement('button');
+          b.className = 'pc' + (String(p).toLowerCase() === cur ? ' on' : '');
+          b.title = p + (String(p).toLowerCase() === cur ? ' (current accent)' : '');
+          b.setAttribute('aria-label', 'Use preset ' + p);
+          b.style.cssText = 'width:26px;height:26px;padding:0;border-radius:6px;border:1px solid #2b3c50;background:' + p;
+          b.onclick = () => setAccent(p);
+          const x = document.createElement('button'); x.className = 'px'; x.textContent = '✕';
+          x.title = 'Remove preset'; x.setAttribute('aria-label', 'Remove preset ' + p);
+          x.onclick = ev => { ev.stopPropagation(); const pr = (currentTheme().presets || []).slice(); pr.splice(i, 1); saveTheme({ presets: pr }); renderPresets(); };
+          w.appendChild(b); w.appendChild(x); wrap.appendChild(w);
+        });
+      }
       renderPresets();
+      renderPreview();
       document.getElementById('sPresetSave').onclick = () => {
-        const cur = document.getElementById('sAccent').value;
+        const cur = col.value;
         let pr = (currentTheme().presets || []).slice();
-        if (!pr.includes(cur)) { pr.push(cur); if (pr.length > 6) pr = pr.slice(pr.length - 6); }
+        if (!pr.some(x => String(x).toLowerCase() === cur.toLowerCase())) { pr.push(cur); if (pr.length > 6) pr = pr.slice(pr.length - 6); }
         saveTheme({ presets: pr }); renderPresets();
       };
     }
