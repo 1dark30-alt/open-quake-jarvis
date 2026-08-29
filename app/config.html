@@ -13,7 +13,12 @@
   header .sub { color: #6f8298; font-size: 13px; }
   .main { flex: 1; display: flex; min-height: 0; }
   .col { padding: 14px; overflow: auto; }
-  .grids { width: 240px; flex: none; }
+  /* Sidebar: header, filter, and add controls stay fixed; only the page list scrolls */
+  .grids { width: 240px; flex: none; display: flex; flex-direction: column; overflow: hidden; }
+  .grids .pagelists { flex: 1 1 auto; min-height: 0; overflow: auto; margin-top: 8px; }
+  #pageFilter { background: #0a111a; font-size: 13px; padding: 6px 9px; }
+  .addwrap { position: relative; }
+  .addwrap .diMenu { left: 0; right: auto; top: auto; bottom: 38px; min-width: 180px; }
   .colsplit { flex: none; width: 6px; cursor: col-resize; background: #1e2733; position: relative; }
   .colsplit:hover, .colsplit.dragging { background: #2b6fb0; }
   .editor { flex: 1; min-width: 0; }
@@ -22,11 +27,15 @@
   .gridrow .gtop { display: flex; justify-content: flex-start; align-items: center; gap: 8px; min-width: 0; }
   .gridrow:hover { background: #182230; }
   .gridrow.active { background: #16314f; border-color: #2b6fb0; }
-  .gridrow .badge { font-size: 11px; color: #7CFFB2; flex: none; }
-  .gridrow .gsub { padding-left: 24px; }
+  .gridrow .badge { font-size: 11px; color: #7e93ab; flex: none; }
+  .gridrow .gsub { padding-left: 28px; }
   .gridrow.dragover { border-color: #7CFFB2; box-shadow: 0 0 0 2px #7CFFB2; }
-  .gridrow .griphandle { cursor: grab; opacity: .4; user-select: none; flex: none; }
-  .gridrow:hover .griphandle { opacity: .75; }
+  .gridrow .griphandle { cursor: grab; opacity: .35; user-select: none; flex: none; }
+  .gridrow:hover .griphandle { opacity: 1; color: #dbe5f0; }
+  /* page-type chip: one icon system for Grid / Dashboard / App rows */
+  .gridrow .ptype { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 5px; font-size: 11px; font-weight: 700; color: #9fc2ea; background: #1a2740; border: 1px solid #2b3f5e; flex: none; }
+  /* labeled state badge (hidden, etc.) */
+  .gridrow .stbadge { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: #8aa0b6; background: #182230; border: 1px solid #2a3a4e; border-radius: 4px; padding: 1px 5px; flex: none; }
   button { background: #1c2735; color: #dbe5f0; border: 1px solid #2a3a4e; border-radius: 7px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
   button:hover { background: #243246; }
   button.primary { background: #1e6fd0; border-color: #2b8bff; }
@@ -38,10 +47,11 @@
     color: #8aa0b6; padding: 8px 14px; margin-bottom: -1px; font-weight: 500; }
   button.tab:hover { background: transparent; color: #dbe5f0; }
   button.tab.on { color: #ffffff; border-bottom-color: #2b8bff; }
-  /* Sidebar tabbar: three tabs must fit one row even at the 180px minimum sidebar width —
-     wrapping put Panes on a second line where it read as missing. Settings tabbar still wraps. */
-  .grids .tabbar { flex-wrap: nowrap; gap: 2px; }
-  .grids .tabbar .tab { padding: 8px 8px; min-width: 0; }
+  /* Sidebar mode switch: segmented control, distinct from content tabs. Three segments must fit
+     one row even at the 180px minimum sidebar width. */
+  .grids .tabbar { flex-wrap: nowrap; gap: 2px; background: #0e141c; border: 1px solid #1e2733; border-bottom: 1px solid #1e2733; border-radius: 8px; padding: 3px; }
+  .grids .tabbar .tab { flex: 1; min-width: 0; padding: 6px 4px; margin-bottom: 0; border-bottom: none; border-radius: 6px; text-align: center; }
+  .grids .tabbar .tab.on { background: #16314f; border-bottom: none; }
   /* Settings: vertical grouped nav + content column; sections separated by rules */
   .setwrap { display: flex; gap: 22px; align-items: flex-start; }
   .setnav { width: 170px; flex: none; position: sticky; top: 8px; display: flex; flex-direction: column; gap: 2px; }
@@ -265,10 +275,20 @@
         <button id="lTabGroups" class="tab">Groups</button>
         <button id="lTabPanes" class="tab">Panes</button>
       </div>
-      <div id="gridlist"></div>
-      <div id="grouplist" style="display:none"></div>
-      <div id="panelist" style="display:none"></div>
-      <div id="addPageBtns" class="row" style="margin-top:12px; gap:6px; flex-wrap:wrap"><button class="primary" id="addGrid">+ Grid</button><button id="addDash">+ Dashboard</button><button id="addApp">+ App</button></div>
+      <input id="pageFilter" type="search" placeholder="Filter pages…">
+      <div class="pagelists">
+        <div id="gridlist"></div>
+        <div id="grouplist" style="display:none"></div>
+        <div id="panelist" style="display:none"></div>
+      </div>
+      <div id="addPageBtns" class="row addwrap" style="margin-top:12px; gap:6px">
+        <button class="primary" id="addPageMenuBtn">+ Add page</button>
+        <div id="addPageMenu" class="diMenu">
+          <button id="addGrid">▦&nbsp; Grid page</button>
+          <button id="addDash">◱&nbsp; Dashboard page</button>
+          <button id="addApp">▣&nbsp; App page</button>
+        </div>
+      </div>
       <div id="addGroupBtns" class="row" style="margin-top:12px; gap:6px; display:none"><button class="primary" id="addGroup">+ Group</button></div>
       <div id="addPaneBtns" class="row" style="margin-top:12px; gap:6px; display:none"><button class="primary" id="addPane">+ Pane</button></div>
     </div>

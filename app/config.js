@@ -1175,22 +1175,29 @@
   }
 
   // ---- left grid list ----
-  let pageDragFrom = -1;
+  let pageDragFrom = -1, pageFilter = '';
   function renderGrids() {
     const el = document.getElementById('gridlist'); el.innerHTML = '';
+    const q = pageFilter.trim().toLowerCase();
+    let shown = 0;
     config.grids.forEach((g, i) => {
+      if (q && !String(g.name || '').toLowerCase().includes(q)) return;
+      shown++;
       const d = document.createElement('div');
       d.className = 'gridrow' + (i === gi ? ' active' : '');
-      const tag = g.kind === 'web' ? '🌐' : g.kind === 'app' ? '🧩' : '▦';
       const left = document.createElement('span'); left.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden';
       const grip = document.createElement('span'); grip.className = 'griphandle'; grip.title = 'Drag to reorder'; grip.textContent = '☰';
-      const name = document.createElement('span'); name.textContent = `${tag} ${g.name || '(unnamed)'}`; name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap' + (g.hidden ? ';opacity:.55;font-style:italic' : '');
-      left.appendChild(grip); left.appendChild(name);
+      const ptype = document.createElement('span'); ptype.className = 'ptype';
+      ptype.textContent = g.kind === 'web' ? 'D' : g.kind === 'app' ? 'A' : 'G';
+      ptype.title = g.kind === 'web' ? 'Dashboard page' : g.kind === 'app' ? 'App page' : 'Grid page';
+      const name = document.createElement('span'); name.textContent = g.name || '(unnamed)'; name.title = g.name || '';
+      name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap' + (g.hidden ? ';opacity:.55;font-style:italic' : '');
+      left.appendChild(grip); left.appendChild(ptype); left.appendChild(name);
       // Top row is name + grip only -- the shortcut badge used to sit in this same row and steal its
       // width, truncating long page names even though the sidebar had room to spare below. It now gets
       // its own row underneath instead of competing for horizontal space.
       const top = document.createElement('span'); top.className = 'gtop'; top.appendChild(left);
-      if (g.hidden) { const b = document.createElement('span'); b.className = 'badge'; b.title = 'Hidden from page menu, knob cycling, and rotation'; b.textContent = '🚫👁'; top.appendChild(b); }
+      if (g.hidden) { const b = document.createElement('span'); b.className = 'stbadge'; b.title = 'Hidden from page menu, knob cycling, and rotation'; b.textContent = 'hidden'; top.appendChild(b); }
       d.appendChild(top);
       if (g.shortcut) { const sub = document.createElement('span'); sub.className = 'gsub badge'; sub.title = 'Hotkey shortcut'; sub.textContent = g.shortcut; d.appendChild(sub); }
       d.onclick = () => { view = 'pages'; gi = i; ti = -1; selEnd = -1; render(); };
@@ -1202,6 +1209,7 @@
       d.ondragend = () => d.classList.remove('dragover');
       el.appendChild(d);
     });
+    if (q && !shown) el.innerHTML = '<p class="hint">No pages match “' + esc(pageFilter.trim()) + '”.</p>';
   }
   // Reorder pages by drag — keeps the same page selected (by id) and persists on save. Order drives the
   // knob page-selector and the auto-rotation cycle; the live panel page is unaffected (tracked by id).
@@ -3149,6 +3157,7 @@
     // Sidebar: which list is visible + which + buttons row + which tab is highlighted.
     const groupsTab = leftTab === 'groups', panesTab = leftTab === 'panes';
     const pagesTab = !groupsTab && !panesTab;
+    const pf = document.getElementById('pageFilter'); if (pf) pf.style.display = pagesTab ? '' : 'none';
     const elGL = document.getElementById('gridlist'); if (elGL) elGL.style.display = pagesTab ? '' : 'none';
     const elGRP = document.getElementById('grouplist'); if (elGRP) elGRP.style.display = groupsTab ? '' : 'none';
     const elPN = document.getElementById('panelist'); if (elPN) elPN.style.display = panesTab ? '' : 'none';
@@ -4743,9 +4752,13 @@
     else { g = { id: uid(), name: 'New Grid', kind: 'grid', cols: 8, rows: 2, tiles: [] }; ensureTiles(g); }
     config.grids.push(g); gi = config.grids.length - 1; ti = -1; render(); markDirty();
   }
-  document.getElementById('addGrid').onclick = () => addPage('grid');
-  document.getElementById('addDash').onclick = () => addPage('web');
-  document.getElementById('addApp').onclick = () => addPage('app');
+  const addPageMenu = document.getElementById('addPageMenu');
+  document.getElementById('addPageMenuBtn').onclick = e => { e.stopPropagation(); addPageMenu.classList.toggle('open'); };
+  document.addEventListener('click', e => { if (!e.target.closest('.addwrap')) addPageMenu.classList.remove('open'); });
+  document.getElementById('addGrid').onclick = () => { addPageMenu.classList.remove('open'); addPage('grid'); };
+  document.getElementById('addDash').onclick = () => { addPageMenu.classList.remove('open'); addPage('web'); };
+  document.getElementById('addApp').onclick = () => { addPageMenu.classList.remove('open'); addPage('app'); };
+  document.getElementById('pageFilter').oninput = e => { pageFilter = e.target.value; renderGrids(); };
   document.getElementById('addGroup').onclick = () => addGroup();
   document.getElementById('addPane').onclick = () => addPane();
   document.getElementById('lTabPages').onclick = () => { leftTab = 'pages'; render(); };
