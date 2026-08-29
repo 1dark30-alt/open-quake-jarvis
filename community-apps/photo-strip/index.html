@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Photo Strip</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app" class="photo-app" aria-label="Photo Strip slideshow">
+    <section id="singleStage" class="single-stage" aria-live="polite" hidden>
+      <img id="singleCurrent" class="single-photo current" alt="">
+      <img id="singleIncoming" class="single-photo incoming" alt="">
+    </section>
+
+    <section id="stripStage" class="strip-stage" aria-live="polite" hidden>
+      <div class="strip-deck current">
+        <article class="strip-card" data-offset="-2"><img alt=""></article>
+        <article class="strip-card" data-offset="-1"><img alt=""></article>
+        <article class="strip-card active" data-offset="0"><img alt=""></article>
+        <article class="strip-card" data-offset="1"><img alt=""></article>
+        <article class="strip-card" data-offset="2"><img alt=""></article>
+      </div>
+      <div class="strip-deck" aria-hidden="true">
+        <article class="strip-card" data-offset="-2"><img alt=""></article>
+        <article class="strip-card" data-offset="-1"><img alt=""></article>
+        <article class="strip-card active" data-offset="0"><img alt=""></article>
+        <article class="strip-card" data-offset="1"><img alt=""></article>
+        <article class="strip-card" data-offset="2"><img alt=""></article>
+      </div>
+    </section>
+
+    <section id="emptyState" class="empty-state">
+      <div class="empty-mark" aria-hidden="true">▱</div>
+      <div>
+        <p class="eyebrow">Photo Strip</p>
+        <h1 id="emptyTitle">Loading photos…</h1>
+        <p id="emptyMessage">Scanning your configured folders.</p>
+      </div>
+    </section>
+
+    <div id="metadata" class="metadata" hidden>
+      <span id="fileName"></span>
+      <span id="photoDate"></span>
+    </div>
+
+    <div id="controlShade" class="control-shade" aria-hidden="true"></div>
+    <nav id="controls" class="controls" aria-label="Slideshow controls" aria-hidden="true">
+      <button id="previousButton" type="button" aria-label="Previous photo"><span aria-hidden="true">‹</span><small>Previous</small></button>
+      <button id="pauseButton" class="primary" type="button" aria-label="Pause slideshow"><span id="pauseIcon" aria-hidden="true">Ⅱ</span><small id="pauseLabel">Pause</small></button>
+      <button id="nextButton" type="button" aria-label="Next photo"><span aria-hidden="true">›</span><small>Next</small></button>
+      <button id="deleteButton" class="danger" type="button" aria-label="Delete current photo" hidden><span aria-hidden="true">⌫</span><small>Delete</small></button>
+      <button id="settingsButton" type="button" aria-label="Photo Strip settings"><span aria-hidden="true">⚙</span><small>Settings</small></button>
+    </nav>
+
+    <section id="settingsPanel" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
+      <div class="settings-card">
+        <div class="settings-copy">
+          <p class="eyebrow">Photo Strip</p>
+          <h2 id="settingsTitle">Slideshow settings</h2>
+          <p id="settingsSummary"></p>
+          <p class="settings-hint">Choose folders and change presentation options in the open-quake editor under this page’s App settings.</p>
+        </div>
+        <div class="settings-actions">
+          <button id="refreshButton" type="button">Refresh library</button>
+          <button id="closeSettingsButton" class="primary" type="button">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="deletePanel" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="deleteTitle" hidden>
+      <div class="settings-card delete-card">
+        <div class="settings-copy">
+          <p class="eyebrow danger-text">Remove photo</p>
+          <h2 id="deleteTitle">Move this photo to the Recycle Bin?</h2>
+          <p id="deleteName" class="delete-name"></p>
+          <p id="deleteHint" class="settings-hint">The original file will leave its photo folder. You may be able to restore it from the operating system Recycle Bin or Trash.</p>
+        </div>
+        <div class="settings-actions">
+          <button id="cancelDeleteButton" type="button">Keep photo</button>
+          <button id="confirmDeleteButton" class="danger" type="button">Move to Recycle Bin</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </main>
+  <script src="slideshow.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
