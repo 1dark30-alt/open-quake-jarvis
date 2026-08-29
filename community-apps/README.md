@@ -23,6 +23,9 @@ For how to install or submit an app — and a safety note — see the docs:
   every job with a green/red result dot, last run, sizes, versions, and next run;
   live progress while a backup runs; failed jobs surface their error inline; one tap
   opens the Duplicati web UI on the PC. Read-only.
+- **[dev-services](dev-services)** — compact local developer-services panel with four
+  touch-friendly cards per page, live port status, safe URL/folder actions, expected-process
+  mismatch warnings, and guarded process stopping on supported platforms.
 - **[azure](azure)** — touch-first Azure operations dashboard with configurable overview cards,
   subscription health, resources, deployments, alerts, costs, and contextual App Service / VM
   controls. Uses Microsoft Entra OAuth and an app-local server module.
