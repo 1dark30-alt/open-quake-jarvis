@@ -156,7 +156,7 @@
   .chip button { background: transparent; border: none; border-radius: 999px; width: 20px; height: 20px; padding: 0; line-height: 1; font-size: 12px; color: #8aa0b6; }
   .chip button:hover { background: #6a1e2a; color: #ffb4bd; }
   footer { padding: 12px 18px; background: #0c1016; border-top: 1px solid #1e2733; display: flex; align-items: center; gap: 14px; }
-  footer .state { font-size: 13px; margin-right: auto; }
+  footer .state { font-size: 14px; margin-right: auto; }
   footer .state.dirty { color: #ffb454; }
   footer .state.saved { color: #7CFFB2; }
   footer button.primary { padding: 9px 30px; font-size: 14px; }
@@ -254,7 +254,7 @@
 <body>
   <header>
     <h1>open-quake Editor <span id="appVer" style="font-size:13px; font-weight:400; opacity:.6"></span></h1>
-    <span class="sub">edit, then Save to apply to the panel</span>
+    <span class="sub">edit, then Save &amp; apply to push to the panel</span>
     <span class="sub" style="flex:1; text-align:center">🔘 Double-click the knob to switch pages</span>
     <button id="settingsBtn">⚙ Settings</button>
   </header>
@@ -285,7 +285,7 @@
   </div>
   <footer>
     <span id="state" class="state"></span>
-    <button class="primary" id="saveBtn" disabled>Save</button>
+    <button class="primary" id="saveBtn" disabled>Save &amp; apply</button>
   </footer>
 <script src="configMerge.js"></script>
 <script src="config.js"></script>

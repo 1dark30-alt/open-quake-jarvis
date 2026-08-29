@@ -1058,7 +1058,7 @@
 
   // ---- save model (no live edit) ----
   function setState(text, cls) { const el = document.getElementById('state'); el.textContent = text; el.className = 'state' + (cls ? ' ' + cls : ''); }
-  function markDirty() { dirty = true; setState('● unsaved changes', 'dirty'); document.getElementById('saveBtn').disabled = false; }
+  function markDirty() { dirty = true; setState('● Unsaved changes', 'dirty'); document.getElementById('saveBtn').disabled = false; }
   // Native confirm()/alert() leave the window's input state broken in Electron — text fields and
   // <select> popups stop responding because the dialog takes focus and the window never registers
   // getting it back (electron#31917 / #41603). Route EVERY dialog through these; main blurs and
@@ -1067,13 +1067,14 @@
   function ask(msg) { const r = window.confirm(msg); refocusAfterDialog(); return r; }
   function tell(msg) { window.alert(msg); refocusAfterDialog(); }
   async function doSave() {
+    document.getElementById('saveBtn').disabled = true;
+    setState('Saving…');
     try {
       const result = await configApi.saveConfig(config);
       if (!(result && result.ok)) throw new Error(result && result.error || 'secure persistence failed');
       baseConfig = snapConfig(config);   // on-disk now matches the editor — new merge base
       dirty = false;
-      document.getElementById('saveBtn').disabled = true;
-      setState('saved ✓', 'saved');
+      setState('All changes saved ✓', 'saved');
       return true;
     } catch (e) {
       dirty = true;
@@ -1082,7 +1083,7 @@
       const reason = !detail || detail === 'secure persistence failed'
         ? 'secrets could not be stored securely'
         : detail.slice(0, 180);
-      setState('save failed: ' + reason, 'dirty');
+      setState('Unable to apply changes: ' + reason, 'dirty');
       return false;
     }
   }
@@ -3485,6 +3486,7 @@
       <p class="sectitle">Screen rotation</p>
       <div class="row"><label>Auto-rotate</label>
         <input type="checkbox" id="sRot" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">cycle the panel through pages automatically</span></div>
+      <div id="sRotDeps"${rot.enabled ? '' : ' style="display:none"'}>
       <div class="row"><label>Every</label>
         <input type="number" id="sRotInt" min="5" max="3600" value="${rot.interval}" style="width:90px"><span class="hint" style="margin:0 0 0 8px">seconds (5–3600)</span></div>
       <div class="row"><label>Include</label>
@@ -3492,10 +3494,11 @@
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sRotD"> Dashboards</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sRotA"> Apps</label></div>
       <div class="row"><label>Hotkey</label>
-        <input id="sRotKey" readonly placeholder="click, then press keys" value="${esc(rot.hotkey || '')}" style="width:200px"${rot.enabled ? '' : ' disabled'}>
-        <button id="sRotKeyClear" style="margin-left:8px"${rot.enabled ? '' : ' disabled'}>Clear</button></div>
+        <input id="sRotKey" readonly placeholder="click, then press keys" value="${esc(rot.hotkey || '')}" style="width:200px">
+        <button id="sRotKeyClear" style="margin-left:8px">Clear</button></div>
       <details class="hint"><summary>A page rotates only if its category is ticked here <i>and</i> that page's own “Include in rotation” box is checked — the box appears on each page once its category is enabled.</summary> Start/stop any time from the knob menu (double-click) or the tray.</details>
-      <details class="hint"><summary>The <b>hotkey</b> starts and pauses rotation from anywhere, even when open-quake isn't focused.</summary> Click the box and press a combo that includes a modifier (e.g. Ctrl+Alt+R). It's only live while Auto-rotate is on; if another app — or one of your page hotkeys — already owns the combo, it just won't fire.</details>
+      <details class="hint"><summary>The <b>hotkey</b> starts and pauses rotation from anywhere, even when open-quake isn't focused.</summary> Click the box and press a combo that includes a modifier (e.g. Ctrl+Alt+R). If another app — or one of your page hotkeys — already owns the combo, it just won't fire.</details>
+      </div>
 
       <div class="row"><label>Page forward</label>
         <input id="sPageNextKey" readonly placeholder="click, then press keys" value="${esc(pageStep.nextHotkey || '')}" style="width:200px">
@@ -3637,9 +3640,11 @@
       <p class="sectitle">Auto-record</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meAuto" ${me.autoRecord ? 'checked' : ''}> Start recording automatically when a call begins</label></div>
       <details class="hint"><summary>Detects when an app below has an active call (its microphone goes live) and starts recording — even if the panel is on another app.</summary> It never triggers on Claude voice or other microphone use.</details>
+      <div id="meAutoDeps"${me.autoRecord ? '' : ' style="display:none"'}>
       <div class="row"><label>Call apps</label>
         <input id="meApps" value="${esc(me.recordApps)}" style="flex:1"></div>
       <p class="hint">Comma-separated Windows process names that count as a call, e.g. Zoom.exe, Teams.exe, ms-teams.exe.</p>
+      </div>
       <div class="row" style="margin-top:12px"><label>Stop after silence</label>
         <input type="number" id="meSilence" min="0" step="1" value="${Number(me.silenceStopMin) || 0}" style="width:90px"> <span class="hint" style="margin:0 0 0 8px">minutes (0 = never)</span></div>
       <p class="hint">Automatically stop a recording after this many minutes with no audio on either channel.</p>
@@ -4441,7 +4446,7 @@
       document.getElementById('sRotA').checked = !!rot.cats.apps;
       // The hotkey only registers while auto-rotate is on (main.js applyShortcuts), so grey it out with the
       // toggle — same pattern as "Pause auto-rotation" under Desktop focus below.
-      document.getElementById('sRot').onchange = e => { const r = currentRot(); r.enabled = e.target.checked; saveRot(r); rotKey.disabled = rotKeyClr.disabled = !e.target.checked; };
+      document.getElementById('sRot').onchange = e => { const r = currentRot(); r.enabled = e.target.checked; saveRot(r); const deps = document.getElementById('sRotDeps'); if (deps) deps.style.display = e.target.checked ? '' : 'none'; };
       rotKey.onkeydown = e => { e.preventDefault(); const acc = accelFromEvent(e); if (acc) { const r = currentRot(); r.hotkey = acc; rotKey.value = acc; saveRot(r); } };
       rotKeyClr.onclick = () => { const r = currentRot(); delete r.hotkey; rotKey.value = ''; saveRot(r); };
       document.getElementById('sRotInt').onchange = e => { const r = currentRot(); r.interval = Math.max(5, Math.min(3600, parseInt(e.target.value, 10) || 30)); e.target.value = r.interval; saveRot(r); };
@@ -4596,7 +4601,7 @@
       document.getElementById('meHighlight').onchange = e => saveMe({ highlightEnabled: e.target.checked });
       // ---- Meeting Slide Capture ----
       const slideCfgBox = document.querySelector('.slidecfg');
-      const syncSlideEnabled = on => { if (slideCfgBox) { slideCfgBox.style.opacity = on ? '' : '0.45'; slideCfgBox.style.pointerEvents = on ? '' : 'none'; } };
+      const syncSlideEnabled = on => { if (slideCfgBox) slideCfgBox.style.display = on ? '' : 'none'; };
       syncSlideEnabled(document.getElementById('meSlide').checked);
       document.getElementById('meSlide').onchange = e => { saveMe({ slideCaptureEnabled: e.target.checked }); syncSlideEnabled(e.target.checked); };
       document.getElementById('meSlideAuto').onchange = e => saveMe({ slideAutoStartOnSelect: e.target.checked });
@@ -4676,7 +4681,7 @@
       };
       document.getElementById('meTransUrl').oninput = e => saveMe({ transcribeUrl: e.target.value.trim() });
       document.getElementById('meAnalysisAi').onchange = e => saveMe({ analysisAi: e.target.value });
-      document.getElementById('meAuto').onchange = e => saveMe({ autoRecord: e.target.checked });
+      document.getElementById('meAuto').onchange = e => { saveMe({ autoRecord: e.target.checked }); const deps = document.getElementById('meAutoDeps'); if (deps) deps.style.display = e.target.checked ? '' : 'none'; };
       document.getElementById('meApps').oninput = e => saveMe({ recordApps: e.target.value });
       document.getElementById('meSilence').onchange = e => saveMe({ silenceStopMin: Math.max(0, parseInt(e.target.value, 10) || 0) });
       document.getElementById('meEcho').onchange = e => saveMe({ echoGate: e.target.checked });
@@ -4794,7 +4799,7 @@
     try { const v = await configApi.getAppVersion(); const el = document.getElementById('appVer'); if (el && v) el.textContent = 'v' + v; } catch (e) {}
     try { appDefs = await configApi.getApps(); } catch (e) {}
     try { haCacheLocal = await configApi.getHaCache(); } catch (e) {}   // for iconHtml's HA icon resolution
-    render(); setState('');
+    render(); setState('All changes saved', 'saved');
 
     // Pages can arrive while the editor is open — an accepted AI panel is added by the main process,
     // not by this window. Re-read so it shows up (and so this window's next Save doesn't write a
@@ -4834,7 +4839,7 @@
         if (paneIndex >= config.panes.length) paneIndex = config.panes.length - 1;
         if (groupIndex >= config.groups.length) groupIndex = config.groups.length - 1;
         render();
-        setState(dirty ? '● unsaved changes' + mergeNote : 'updated from the panel', dirty ? 'dirty' : '');
+        setState(dirty ? '● Unsaved changes' + mergeNote : 'Loaded changes made on the panel', dirty ? 'dirty' : '');
       };
       configApi.onConfigChangedExternally(() => { clearTimeout(extReloadTimer); applyExternalReload(); });
     }
