@@ -3984,7 +3984,7 @@
 
     // Apps tab — show/hide which apps appear in the App picker (doesn't touch pages already using an app)
     const appRow = (a, checked) => `<div class="row approw" data-name="${esc(String(a.name || '').toLowerCase())}">
-        <label class="iconopt" style="width:auto; gap:9px; min-width:0"><input type="checkbox" class="appShow" data-id="${esc(a.id)}" data-dev="${a.dev ? 1 : 0}" ${checked ? 'checked' : ''}> <span class="appic">${esc(a.icon || '▣')}</span> ${esc(a.name)}${a.description ? `<span class="note approwdesc">${esc(a.description)}</span>` : ''}</label>
+        <label class="iconopt" style="width:auto; gap:9px; min-width:0"><input type="checkbox" class="appShow" data-id="${esc(a.id)}" data-dev="${a.dev ? 1 : 0}" ${checked ? 'checked' : ''}>${a.icon ? ` <span class="appic">${esc(a.icon)}</span>` : ''} ${esc(a.name)}${a.description ? `<span class="note approwdesc">${esc(a.description)}</span>` : ''}</label>
       </div>`;
     const regularApps = appDefs.filter(a => !a.dev), devApps = appDefs.filter(a => a.dev);
     const builtinApps = regularApps.filter(a => !a._folder), dropinApps = regularApps.filter(a => a._folder);
@@ -3999,8 +3999,7 @@
       <p class="hint">Untick an app to hide it from the <b>App</b> dropdown when building a page. This only changes what's offered — pages already using a hidden app keep working.</p>
       <p class="sectitle">Built-in</p>
       ${builtinApps.length ? builtinApps.map(a => appRow(a, !appHidden(a.id))).join('') : '<p class="hint">No apps found.</p>'}
-      <p class="sectitle">Installed (drop-in)</p>
-      ${dropinApps.length ? dropinApps.map(a => appRow(a, !appHidden(a.id))).join('') : '<p class="hint">None installed — see <b>Drop-in apps</b>.</p>'}
+      <p class="hint">Drop-in apps are managed on the <b>Drop-in apps</b> page.</p>
       ${devApps.length ? `
       <details style="margin-top:22px"${devEnabled() ? ' open' : ''}>
         <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Developer apps</summary>
@@ -4168,7 +4167,7 @@
       if (hideAllBtn) hideAllBtn.onclick = () => {
         if (!ask('Hide every app from the page builder? Pages already using them keep working.')) return;
         if (!config.settings) config.settings = {};
-        config.settings.hiddenApps = appDefs.filter(a => !a.dev).map(a => a.id);
+        config.settings.hiddenApps = appDefs.filter(a => !a.dev && !a._folder).map(a => a.id);
         markDirty(); renderSettings();
       };
       el.querySelectorAll('.appShow').forEach(c => c.onchange = e => {
