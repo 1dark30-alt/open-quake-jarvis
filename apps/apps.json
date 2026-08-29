@@ -9,15 +9,83 @@
       "key": "discord",
       "title": "Discord integration",
       "options": [
-        { "key": "enabled", "label": "Enable Discord integration", "type": "bool", "default": true },
-        { "key": "autoReconnect", "label": "Automatic reconnect", "type": "bool", "default": true },
-        { "key": "richPresence", "label": "Rich Presence enabled", "type": "bool", "default": false },
-        { "key": "defaultView", "label": "Default Discord view", "type": "select", "default": "voice", "choices": [["voice", "Voice"], ["chat", "Chat"], ["activity", "Activity"]] },
-        { "key": "showUnavailable", "label": "Show/hide unavailable controls", "type": "bool", "default": true },
-        { "key": "applicationIdOverride", "label": "Custom Discord Application ID", "type": "text", "default": "", "maxLength": 128, "advanced": true, "help": "Development/team override. Leave blank to use the built-in open-quake Discord application. Register http://127.0.0.1:51120/callback for a custom app." },
-        { "key": "customVoiceScopes", "label": "Custom app: Voice permissions", "type": "bool", "default": false, "advanced": true, "help": "Request rpc.voice.read and rpc.voice.write. These scopes require Discord approval or applicable tester access." },
-        { "key": "customMessageScopes", "label": "Custom app: Message permissions", "type": "bool", "default": false, "advanced": true, "help": "Request messages.read for message history and live message events." },
-        { "key": "customNotificationScopes", "label": "Custom app: Notification permissions", "type": "bool", "default": false, "advanced": true, "help": "Request rpc.notifications.read. Discord documents this scope as approved-partner only." }
+        {
+          "key": "enabled",
+          "label": "Enable Discord integration",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "key": "autoReconnect",
+          "label": "Automatic reconnect",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "key": "richPresence",
+          "label": "Rich Presence enabled",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "key": "defaultView",
+          "label": "Default Discord view",
+          "type": "select",
+          "default": "voice",
+          "choices": [
+            [
+              "voice",
+              "Voice"
+            ],
+            [
+              "chat",
+              "Chat"
+            ],
+            [
+              "activity",
+              "Activity"
+            ]
+          ]
+        },
+        {
+          "key": "showUnavailable",
+          "label": "Show/hide unavailable controls",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "key": "applicationIdOverride",
+          "label": "Custom Discord Application ID",
+          "type": "text",
+          "default": "",
+          "maxLength": 128,
+          "advanced": true,
+          "help": "Development/team override. Leave blank to use the built-in open-quake Discord application. Register http://127.0.0.1:51120/callback for a custom app."
+        },
+        {
+          "key": "customVoiceScopes",
+          "label": "Custom app: Voice permissions",
+          "type": "bool",
+          "default": false,
+          "advanced": true,
+          "help": "Request rpc.voice.read and rpc.voice.write. These scopes require Discord approval or applicable tester access."
+        },
+        {
+          "key": "customMessageScopes",
+          "label": "Custom app: Message permissions",
+          "type": "bool",
+          "default": false,
+          "advanced": true,
+          "help": "Request messages.read for message history and live message events."
+        },
+        {
+          "key": "customNotificationScopes",
+          "label": "Custom app: Notification permissions",
+          "type": "bool",
+          "default": false,
+          "advanced": true,
+          "help": "Request rpc.notifications.read. Discord documents this scope as approved-partner only."
+        }
       ]
     }
   },
@@ -27,7 +95,22 @@
     "file": "obsview.html",
     "served": true,
     "options": [
-      { "key": "layout", "label": "Scene buttons", "type": "select", "default": "12x4", "choices": [["12x4", "Normal — 6 across, 24 visible"], ["8x2", "Large — 4 across, 12 visible"]] }
+      {
+        "key": "layout",
+        "label": "Scene buttons",
+        "type": "select",
+        "default": "12x4",
+        "choices": [
+          [
+            "12x4",
+            "Normal — 6 across, 24 visible"
+          ],
+          [
+            "8x2",
+            "Large — 4 across, 12 visible"
+          ]
+        ]
+      }
     ]
   },
   {
@@ -49,25 +132,29 @@
             "12",
             "12-hour"
           ]
-        ]
+        ],
+        "section": "Clock display"
       },
       {
         "key": "seconds",
         "label": "Show seconds",
         "type": "bool",
-        "default": false
+        "default": false,
+        "section": "Clock display"
       },
       {
         "key": "date",
         "label": "Show date & day",
         "type": "bool",
-        "default": true
+        "default": true,
+        "section": "Clock display"
       },
       {
         "key": "weather",
         "label": "Show weather",
         "type": "bool",
-        "default": false
+        "default": false,
+        "section": "Clock display"
       },
       {
         "key": "weatherCity",
@@ -78,7 +165,8 @@
         "showIf": {
           "key": "weather",
           "value": true
-        }
+        },
+        "section": "Clock display"
       },
       {
         "key": "weatherUnit",
@@ -98,7 +186,8 @@
         "showIf": {
           "key": "weather",
           "value": true
-        }
+        },
+        "section": "Clock display"
       }
     ]
   },
@@ -123,14 +212,16 @@
             "Teams"
           ]
         ],
-        "help": "Which platform the Meeting page opens to. Switching tabs on the panel still works for a one-off call on the other platform; this just sets what shows up by default."
+        "help": "Which platform the Meeting page opens to. Switching tabs on the panel still works for a one-off call on the other platform; this just sets what shows up by default.",
+        "section": "Platform"
       },
       {
         "key": "zoomUseDefaults",
-        "label": "Use Zoom's default keymappings",
+        "label": "Zoom tab: use Zoom's default key mappings",
         "type": "bool",
         "default": true,
-        "help": "Zoom ships with these combos already bound (Alt+A mute, Alt+V video, Ctrl+Shift+A/D phone accept/decline, Alt+Q leave) — if you haven't changed Zoom's own Keyboard Shortcuts, leave this on and there's nothing to configure. Turn it off only if you've remapped these in Zoom yourself."
+        "help": "Zoom ships with these combos already bound (Alt+A mute, Alt+V video, Ctrl+Shift+A/D phone accept/decline, Alt+Q leave) — if you haven't changed Zoom's own Keyboard Shortcuts, leave this on and there's nothing to configure. Turn it off only if you've remapped these in Zoom yourself.",
+        "section": "Zoom"
       },
       {
         "key": "zoomMute",
@@ -141,7 +232,8 @@
         "showIf": {
           "key": "zoomUseDefaults",
           "value": false
-        }
+        },
+        "section": "Zoom"
       },
       {
         "key": "zoomVideo",
@@ -152,7 +244,8 @@
         "showIf": {
           "key": "zoomUseDefaults",
           "value": false
-        }
+        },
+        "section": "Zoom"
       },
       {
         "key": "zoomAccept",
@@ -163,7 +256,8 @@
         "showIf": {
           "key": "zoomUseDefaults",
           "value": false
-        }
+        },
+        "section": "Zoom"
       },
       {
         "key": "zoomDecline",
@@ -174,7 +268,8 @@
         "showIf": {
           "key": "zoomUseDefaults",
           "value": false
-        }
+        },
+        "section": "Zoom"
       },
       {
         "key": "zoomLeave",
@@ -185,7 +280,8 @@
         "showIf": {
           "key": "zoomUseDefaults",
           "value": false
-        }
+        },
+        "section": "Zoom"
       }
     ]
   },
@@ -304,7 +400,8 @@
             "cities",
             "Cities"
           ]
-        ]
+        ],
+        "section": "Clock display"
       },
       {
         "key": "display",
@@ -320,7 +417,8 @@
             "analog",
             "Analog"
           ]
-        ]
+        ],
+        "section": "Clock display"
       },
       {
         "key": "format",
@@ -336,13 +434,15 @@
             "24",
             "24-hour"
           ]
-        ]
+        ],
+        "section": "Clock display"
       },
       {
         "key": "seconds",
         "label": "Show seconds",
         "type": "bool",
-        "default": false
+        "default": false,
+        "section": "Clock display"
       },
       {
         "key": "usLayout",
@@ -362,7 +462,8 @@
         "showIf": {
           "key": "mode",
           "value": "us"
-        }
+        },
+        "section": "Clock display"
       },
       {
         "key": "autoOrder",
@@ -373,7 +474,8 @@
         "showIf": {
           "key": "mode",
           "value": "cities"
-        }
+        },
+        "section": "Cities"
       },
       {
         "key": "c1",
@@ -837,7 +939,8 @@
         "showIf": {
           "key": "mode",
           "value": "cities"
-        }
+        },
+        "section": "Cities"
       },
       {
         "key": "l1",
@@ -847,7 +950,8 @@
         "showIf": {
           "key": "mode",
           "value": "cities"
-        }
+        },
+        "section": "Cities"
       },
       {
         "key": "c2",
@@ -1311,7 +1415,8 @@
         "showIf": {
           "key": "mode",
           "value": "cities"
-        }
+        },
+        "section": "Cities"
       },
       {
         "key": "l2",
@@ -1321,7 +1426,8 @@
         "showIf": {
           "key": "mode",
           "value": "cities"
-        }
+        },
+        "section": "Cities"
       },
       {
         "key": "c3",
@@ -1785,7 +1891,8 @@
         "showIf": {
           "key": "mode",
           "value": "cities"
-        }
+        },
+        "section": "Cities"
       },
       {
         "key": "l3",
@@ -1795,7 +1902,8 @@
         "showIf": {
           "key": "mode",
           "value": "cities"
-        }
+        },
+        "section": "Cities"
       },
       {
         "key": "c4",
@@ -2259,7 +2367,8 @@
         "showIf": {
           "key": "mode",
           "value": "cities"
-        }
+        },
+        "section": "Cities"
       },
       {
         "key": "l4",
@@ -2269,7 +2378,8 @@
         "showIf": {
           "key": "mode",
           "value": "cities"
-        }
+        },
+        "section": "Cities"
       },
       {
         "key": "c5",
@@ -2733,7 +2843,8 @@
         "showIf": {
           "key": "mode",
           "value": "cities"
-        }
+        },
+        "section": "Cities"
       },
       {
         "key": "l5",
@@ -2743,7 +2854,8 @@
         "showIf": {
           "key": "mode",
           "value": "cities"
-        }
+        },
+        "section": "Cities"
       },
       {
         "key": "c6",
@@ -3207,7 +3319,8 @@
         "showIf": {
           "key": "mode",
           "value": "cities"
-        }
+        },
+        "section": "Cities"
       },
       {
         "key": "l6",
@@ -3217,7 +3330,8 @@
         "showIf": {
           "key": "mode",
           "value": "cities"
-        }
+        },
+        "section": "Cities"
       }
     ]
   },

@@ -2042,7 +2042,7 @@
     const isLucidType = g.app === 'lucidtype';
     const isLiveTranslate = g.app === 'livetranslate';
     const musicBox = `<fieldset style="border:1px solid #2a3a4e; border-radius:8px; padding:6px 14px 10px; margin:10px 0">
-        <legend style="padding:0 6px; color:#9fb3c8; font-size:13px">Panels</legend>
+        <legend style="padding:0 6px; color:#9fb3c8; font-size:13px">Panels <span id="musicPanelCount" class="hint" style="margin:0"></span></legend>
         <div><label class="iconopt" style="width:auto"><input type="checkbox" id="pArt" ${optVal(g, 'art', true) ? 'checked' : ''}> Show album art</label></div>
         <div><label class="iconopt" style="width:auto"><input type="checkbox" id="pLyrics" ${optVal(g, 'lyrics', false) ? 'checked' : ''}> Show lyrics</label></div>
         <div><label class="iconopt" style="width:auto"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Controls grid</label></div>
@@ -2641,10 +2641,16 @@
   function musicPanels(g) { return { grid: !!g.gridOn, art: !!optVal(g, 'art', true), lyrics: !!optVal(g, 'lyrics', false) }; }
   function enforceMusicCap(g) {
     if (!g || g.app !== 'music') return;
-    const p = musicPanels(g); const full = (p.grid ? 1 : 0) + (p.art ? 1 : 0) + (p.lyrics ? 1 : 0) >= 2;
-    const gg = document.getElementById('gGrid'); if (gg) gg.disabled = full && !p.grid;
-    const pa = document.getElementById('pArt'); if (pa) pa.disabled = full && !p.art;
-    const pl = document.getElementById('pLyrics'); if (pl) pl.disabled = full && !p.lyrics;
+    const p = musicPanels(g); const count = (p.grid ? 1 : 0) + (p.art ? 1 : 0) + (p.lyrics ? 1 : 0);
+    const full = count >= 2;
+    const capTip = 'Screen space fits two panels \u2014 untick one to enable this';
+    [['gGrid', p.grid], ['pArt', p.art], ['pLyrics', p.lyrics]].forEach(([id, on]) => {
+      const el2 = document.getElementById(id); if (!el2) return;
+      el2.disabled = full && !on;
+      const lbl = el2.closest('label'); if (lbl) lbl.title = el2.disabled ? capTip : '';
+    });
+    const cnt = document.getElementById('musicPanelCount');
+    if (cnt) cnt.textContent = count + ' of 2 panels selected';
   }
   function setApp(g, id) {
     const prev = appDefs.find(a => a.id === g.app);
@@ -2666,6 +2672,7 @@
   // manifest default. (#29 wired calls to this helper but never defined it, which threw and broke the
   // whole App-options box -- app settings, incl. Discord's, never rendered; this restores it.)
   function renderOptions(options, values, cssClass) {
+    let lastSection = null;
     return (options || []).map(o => {
       let v = (o.key in values) ? values[o.key] : o.default;
       let field;
@@ -2685,7 +2692,13 @@
       else if (o.type === 'folder') field = `<span class="folderopt" style="display:flex;gap:6px;flex:1"><input ${attrs} value="${esc(v)}" placeholder="${esc(o.placeholder || 'No folder chosen')}" style="flex:1"><button type="button" class="folderbrowse" data-for="${esc(o.key)}">Browse…</button></span>`;
       else field = `<input ${attrs} value="${esc(v)}"${o.maxLength ? ` maxlength="${Number(o.maxLength)}"` : ''}>`;
       const help = o.help ? `<p class="hint" style="margin:-2px 0 10px 78px">${esc(o.help)}</p>` : '';
-      return `<div class="row"><label>${esc(o.label)}</label>${field}</div>${help}`;
+      let heading = '';
+      if (o.section && o.section !== lastSection) { heading = `<p class="sectitle" style="margin-top:16px">${esc(o.section)}</p>`; lastSection = o.section; }
+      // bool without inline text: keep the checkbox and its label together in one clickable row
+      const rowHtml = (o.type === 'bool' && !o.inline)
+        ? `<div class="row"><label class="iconopt" style="width:auto">${field} ${esc(o.label)}</label></div>`
+        : `<div class="row"><label>${esc(o.label)}</label>${field}</div>`;
+      return heading + rowHtml + help;
     }).join('');
   }
   function renderAppOpts(g, def) {
@@ -2742,11 +2755,44 @@
       const inp = Array.prototype.find.call(el.querySelectorAll('input'), i => i.dataset.key === btn.dataset.for);
       if (inp) { inp.value = p; inp.dispatchEvent(new Event('change', { bubbles: true })); }
     });
+    if (def.id === 'clock') appendClockPreview(el, g);
+    if (def.id === 'tzclock') appendTzPreview(el, g);
     if (def.id === 'discord') appendDiscordSetup(el);
     if (def.id === 'github') appendGitHubSetup(el);
     if (def.id === 'deck-host') appendDeckProfiles(el);
     if (def.id === 'dev-services') appendDevServices(el);
     enforceMusicCap(g);
+  }
+  // Compact live previews for the clock pages: re-built on every renderAppOpts pass, so they track
+  // option changes (which re-render via the .aopt onchange handler).
+  function appendClockPreview(el, g) {
+    const secs = !!(g.options || {}).seconds, date = !!(g.options || {}).date, weather = !!(g.options || {}).weather;
+    const d = document.createElement('div');
+    d.innerHTML = `<p class="sectitle" style="margin-top:16px">Preview</p>
+      <div class="thprev" style="background:#0a111a;border-color:#233246;flex-direction:column;align-items:center;gap:8px;max-width:300px">
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="clkdigit">12</span><span class="clkdigit">34</span>${secs ? '<span class="clkdigit" style="font-size:18px;padding:8px 6px">56</span>' : ''}
+        </div>
+        ${date ? '<div class="hint" style="margin:0">Friday \u00b7 Aug 29</div>' : ''}
+        ${weather ? '<div class="hint" style="margin:0">72\u00b0 \u2600\ufe0f Portland</div>' : ''}
+      </div>`;
+    el.appendChild(d);
+  }
+  function appendTzPreview(el, g) {
+    const o = g.options || {};
+    const analog = o.display === 'analog';
+    let n = 4, labels = ['PST', 'MST', 'CST', 'EST'];
+    if (o.mode === 'cities') {
+      labels = [1, 2, 3, 4, 5, 6].map(i => o['c' + i]).filter(Boolean).map((c, i) => (o['l' + (i + 1)] || String(c).split('/').pop() || '').slice(0, 8));
+      n = labels.length || 1; if (!labels.length) labels = ['(pick cities)'];
+    }
+    const cell = lb => analog
+      ? `<div style="text-align:center"><div style="width:44px;height:44px;border-radius:50%;border:2px solid #4ea3ff;position:relative;margin:0 auto"><div style="position:absolute;left:50%;top:50%;width:2px;height:16px;background:#dbe5f0;transform:translate(-50%,-100%) rotate(40deg);transform-origin:bottom"></div></div><div class="hint" style="margin:4px 0 0">${lb}</div></div>`
+      : `<div style="text-align:center"><span class="clkdigit" style="font-size:16px;padding:6px 8px">12:34</span><div class="hint" style="margin:4px 0 0">${lb}</div></div>`;
+    const d = document.createElement('div');
+    d.innerHTML = `<p class="sectitle" style="margin-top:16px">Preview</p>
+      <div class="thprev" style="background:#0a111a;border-color:#233246;gap:14px;flex-wrap:wrap">${labels.map(cell).join('')}</div>`;
+    el.appendChild(d);
   }
   // Stream Deck Host page: manage profiles from the editor (keyboard for names; the panel only
   // offers quick select/remove). Talks to the app's server through the generic appApiCall bridge.
