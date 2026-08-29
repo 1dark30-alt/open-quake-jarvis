@@ -42,9 +42,9 @@
      wrapping put Panes on a second line where it read as missing. Settings tabbar still wraps. */
   .grids .tabbar { flex-wrap: nowrap; gap: 2px; }
   .grids .tabbar .tab { padding: 8px 8px; min-width: 0; }
-  input, select { background: #0e141c; color: #dbe5f0; border: 1px solid #2a3a4e; border-radius: 6px; padding: 7px 9px; font-size: 13px; width: 100%; }
+  input, select { background: #0e141c; color: #dbe5f0; border: 1px solid #2a3a4e; border-radius: 6px; padding: 7px 9px; font-size: 14px; width: 100%; }
   .row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
-  .row label { width: 70px; color: #91a4ba; font-size: 13px; flex: none; }
+  .row label { width: 110px; color: #91a4ba; font-size: 14px; flex: none; }
   .officeShortcutHead, .officeShortcutRow { display: grid; grid-template-columns: minmax(220px,.8fr) minmax(180px,1fr) minmax(220px,1.15fr) auto; gap: 12px; align-items: center; }
   .officeShortcutHead { margin: 10px 0 4px; padding: 0 4px; color: #6f8298; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
   .officeShortcutRow { margin: 8px 0; }
@@ -88,7 +88,7 @@
   .iconopt { display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; font-size: 14px; color: #cfe0f2; }
   .iconopt input { width: auto; }
   .iconopt.disabled { opacity: .45; cursor: default; }
-  .iconopt .note { color: #6f8298; font-size: 12px; }
+  .iconopt .note { color: #8aa0b6; font-size: 13px; }
   .icondetail { margin: 6px 0 0 26px; min-height: 8px; }
   .icondetail .row { margin: 4px 0; }
   .emoji-grid { display: flex; flex-wrap: wrap; gap: 4px; max-height: 150px; overflow-y: auto;
@@ -100,7 +100,12 @@
   .iconpreview .em { font-size: 52px; line-height: 1; }
   .iconpreview img { width: 64px; height: 64px; object-fit: contain; }
   .iconpreview .none { color: #41566b; font-size: 13px; }
-  .hint { color: #6f8298; font-size: 12px; margin-top: 8px; }
+  .hint { color: #8aa0b6; font-size: 13px; line-height: 1.55; max-width: 78ch; margin-top: 8px; }
+  /* long help collapses to its first sentence; native <details>, no JS */
+  details.hint summary { cursor: pointer; display: inline; list-style: none; }
+  details.hint summary::-webkit-details-marker { display: none; }
+  details.hint summary::after { content: " More…"; color: #4ea3ff; white-space: nowrap; }
+  details.hint[open] summary::after { content: " Less"; }
   /* Routines tab: searchable master-detail. Left = compact scannable list + search; right = the one
      selected routine's fields. Stacks on a narrow window. */
   .rtSplit { display: flex; gap: 16px; align-items: flex-start; }
@@ -121,7 +126,7 @@
   button.rtRun:hover { background: #248a4e; }
   button.rtRun:disabled { background: #17311f; border-color: #24503a; color: #5b8a70; cursor: default; }
   .rtField { display: flex; flex-direction: column; gap: 4px; }
-  .rtField > label { width: auto; color: #91a4ba; font-size: 12px; }
+  .rtField > label { width: auto; color: #91a4ba; font-size: 14px; }
   .rtFolderRow { display: flex; gap: 6px; }
   .rtFolderRow input { flex: 1; min-width: 0; }
   .rtFolderRow button { flex: none; }

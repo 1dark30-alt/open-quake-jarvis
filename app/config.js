@@ -400,7 +400,7 @@
       <input id="gShortcut" readonly placeholder="click, then press keys" value="${esc(g.shortcut || '')}" style="width:200px">
       <button id="gShortcutClear" style="margin-left:8px">Clear</button>
       <label style="width:auto;margin-left:14px;font-weight:normal;cursor:pointer"><input type="checkbox" id="gShortcutNoRot" ${g.shortcutStopsRotation ? 'checked' : ''}> Disables rotation</label></div>
-      <p class="hint">Global hotkey that jumps the panel to this page from anywhere. Click the box and press a combo that includes a modifier (e.g. Ctrl+Alt+1). If another app already owns that combo, it just won't fire. <b>Disables rotation</b> turns auto-rotation off when the hotkey fires, so the panel stays on this page until you start rotation again (knob, tray, or panel).</p>`;
+      <details class="hint"><summary>Global hotkey that jumps the panel to this page from anywhere.</summary> Click the box and press a combo that includes a modifier (e.g. Ctrl+Alt+1). If another app already owns that combo, it just won't fire. <b>Disables rotation</b> turns auto-rotation off when the hotkey fires, so the panel stays on this page until you start rotation again (knob, tray, or panel).</details>`;
   }
   function wireShortcutRow(g) {
     const inp = document.getElementById('gShortcut'); if (!inp) return;
@@ -441,7 +441,7 @@
       <p class="hint">When set, the knob's <b>Go to home page</b> action (Settings → Hardware) jumps here. Only one page can be the home page at a time.</p>
       <div class="row" style="margin-top:8px"><label style="width:auto">Hidden</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="gHidden" ${g.hidden ? 'checked' : ''}> Hide from page menu &amp; rotation</label></div>
-      <p class="hint">Skips this page in the double-tap page menu, knob-turn cycling, and auto-rotation — without deleting it. Still reachable via its keyboard shortcut, if it has one. Handy for a page you want to park (e.g. a media dashboard) and bring back later.</p>
+      <details class="hint"><summary>Skips this page in the double-tap page menu, knob-turn cycling, and auto-rotation — without deleting it.</summary> Still reachable via its keyboard shortcut, if it has one. Handy for a page you want to park (e.g. a media dashboard) and bring back later.</details>
       <div class="row" style="margin-top:8px"><label style="width:auto">Appearance</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="gAprOn" ${hasApr ? 'checked' : ''}> Override</label>
         <select id="gApr" style="width:130px;margin-left:8px" ${hasApr ? '' : 'disabled'}>
@@ -486,7 +486,7 @@
           </div>
           <select id="gFocusPicker" style="margin-top:6px"><option value="">Browse running apps…</option></select>
         </div></div>
-      <p class="hint">When <b>Desktop focus</b> is on (Settings → Software), the panel switches to this page whenever one of these apps becomes the focused window on the PC. Matched by process name, not window title.</p>`;
+      <details class="hint"><summary>When <b>Desktop focus</b> is on (Settings → Software), the panel switches to this page whenever one of these apps becomes the focused window on the PC.</summary> Matched by process name, not window title.</details>`;
   }
   // ---- Keyboard Shortcuts app: global Custom cheat-sheet (customShortcuts) ----
   // Edited right on the app's own page-config screen (App tab, like World Clock's city picks),
@@ -825,7 +825,7 @@
         <div class="row"><label>Application</label><select class="officeApp" data-index="${index}">${officeChoiceHtml(def, 'app' + index, value('app' + index))}</select></div>
         <div class="row"><label>Open with</label><select class="officeMode" data-index="${index}">${officeChoiceHtml(def, 'mode' + index, value('mode' + index))}</select></div>
         ${desktopOnly ? `<div class="row"><label>When already open</label><select class="officeDesktopSwitch" data-index="${index}">${officeChoiceHtml(def, 'desktopSwitch' + index, value('desktopSwitch' + index))}</select></div>
-        <p class="hint" style="margin:4px 0 8px"><b>Keep Office panel visible</b> means tapping this header app will not focus or relaunch it when it already has an open window; it only changes the shortcut buttons below. If the app is closed, it still launches. Tapping a shortcut then focuses the app and sends the configured keys.</p>` : ''}
+        <details class="hint" style="margin:4px 0 8px"><summary><b>Keep Office panel visible</b> means tapping this header app will not focus or relaunch it when it already has an open window; it only changes the shortcut buttons below.</summary> If the app is closed, it still launches. Tapping a shortcut then focuses the app and sends the configured keys.</details>` : ''}
         <div class="row"><label>Shortcuts</label><select class="officeShortcutCount" data-index="${index}">${officeChoiceHtml(def, 'app' + index + 'ShortcutCount', shortcutCount)}</select></div>
         <p class="hint" style="margin:8px 0 4px">Bottom-row shortcuts when this app is selected. Use an emoji, or choose a local image/SVG; the emoji remains the fallback if the image is unavailable.</p>
         <div class="officeShortcutHead"><span>Icon</span><span>Label</span><span>Keys</span><span>Action</span></div>
@@ -834,7 +834,7 @@
     }).join('');
     return `<div id="officeOptions" style="margin-top:10px">
         <p class="sectitle">Office header applications</p>
-        <p class="hint">These four apps appear in the panel header. Selecting one opens it and shows 4–8 equally sized shortcut buttons for that app. Changing an application restores its shortcut defaults. <b>Prefer desktop</b> falls back to the web app when needed.</p>
+        <details class="hint"><summary>These four apps appear in the panel header.</summary> Selecting one opens it and shows 4–8 equally sized shortcut buttons for that app. Changing an application restores its shortcut defaults. <b>Prefer desktop</b> falls back to the web app when needed.</details>
         ${appRows}
         <datalist id="officeShortcutIcons">
           ${['🎙️','📹','📞','📴','✉️','↩️','↪️','🚀','📄','💾','🔍','↶','📊','🖥️','➕','▶️','📝','☑️','📁','📋','📥','↻','✨','⚡','⭐','🔒','🔔','✅'].map(icon => `<option value="${icon}">`).join('')}
@@ -1820,7 +1820,7 @@
 
     if (onButtons) {   // ---- Buttons tab: strip side + size; the tile editor renders below (in render()) ----
       el.innerHTML = tabBar + gridSizeRowHtml(g) + groupSelectRowHtml(g) +
-        `<p class="hint">A strip of launcher tiles on the chosen side of the dashboard — 2 rows tall, 1–3 columns wide. Edit the tiles below. Uncheck <b>Add a button grid</b> on the Dashboard tab to remove it.</p>`;
+        `<details class="hint"><summary>A strip of launcher tiles on the chosen side of the dashboard — 2 rows tall, 1–3 columns wide.</summary> Edit the tiles below. Uncheck <b>Add a button grid</b> on the Dashboard tab to remove it.</details>`;
       document.getElementById('dtPage').onclick = () => { dashTab = 'page'; render(); };
       wireGridSizeRow(g); wireGroupSelectRow(g);
       return;
@@ -1841,7 +1841,7 @@
       <p class="hint">When on, tapping a link inside this page (e.g. a helpdesk ticket) opens it in your PC's default browser instead of on the panel — the page itself stays up on the device.</p>
       <div class="row" style="margin-top:10px"><label style="width:auto">Identity</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gUA" ${g.desktopUA ? 'checked' : ''}> Use a desktop browser identity</label></div>
-      <p class="hint">Makes this page look like desktop Chrome instead of an embedded app. Turn on for sites that won't load or let you sign in inside the panel (e.g. claude.ai, chatgpt.com). The panel keeps its own login, separate from your PC browser.</p>
+      <details class="hint"><summary>Makes this page look like desktop Chrome instead of an embedded app.</summary> Turn on for sites that won't load or let you sign in inside the panel (e.g. claude.ai, chatgpt.com). The panel keeps its own login, separate from your PC browser.</details>
       <div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the dashboard</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the web view — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>
@@ -1880,7 +1880,7 @@
     if (t === 'ha') {
       el.innerHTML = `<div class="row"><label>Token</label>${secretInput(g.auth.token, 'id="aTok" placeholder="blank = use the global HA token (Settings → Auth)"')}</div>`;
       document.getElementById('aTok').oninput = e => { g.auth.token = e.target.value; markDirty(); };
-      hint.innerHTML = 'Leave blank to use the <b>global Home Assistant token</b> you already set in Settings → Auth — the panel signs in automatically. Only fill this in if this specific dashboard needs a <i>different</i> HA token (e.g. a second HA instance): profile → Security → Long-Lived Access Tokens → Create, paste above.';
+      hint.innerHTML = '<details class="hint" style="margin:0"><summary>Leave blank to use the <b>global Home Assistant token</b> you already set in Settings → Auth — the panel signs in automatically.</summary> Only fill this in if this specific dashboard needs a <i>different</i> HA token (e.g. a second HA instance): profile → Security → Long-Lived Access Tokens → Create, paste above.</details>';
     } else if (t === 'basic') {
       el.innerHTML = `<div class="row"><label>User</label><input id="aUser" value="${esc(g.auth.user)}"></div>
         <div class="row"><label>Password</label>${secretInput(g.auth.pass, 'id="aPass"')}</div>`;
@@ -1974,16 +1974,16 @@
           <label class="iconopt" style="width:auto"><input type="checkbox" id="haKiosk" ${optVal(g, 'kiosk', false) ? 'checked' : ''}> Kiosk mode</label>
           <label class="iconopt" style="width:auto"><input type="checkbox" id="haHideHeader" ${optVal(g, 'hideHeader', false) ? 'checked' : ''}> Hide header</label>
           <label class="iconopt" style="width:auto"><input type="checkbox" id="haHideSidebar" ${optVal(g, 'hideSidebar', false) ? 'checked' : ''}> Hide sidebar</label></div>
-        <p class="hint">Requires the <b>kiosk-mode</b> integration installed on your Home Assistant instance — these only set the URL flags it reads. Kiosk mode hides both header and sidebar; the other two hide just one.</p>
+        <details class="hint"><summary>Requires the <b>kiosk-mode</b> integration installed on your Home Assistant instance — these only set the URL flags it reads.</summary> Kiosk mode hides both header and sidebar; the other two hide just one.</details>
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
     // Custom shortcuts cheat-sheet: edited right here, but the list itself is global/shared — see
     // shortcutRowsHtml's comment and docs/charter-keyshortcuts.md.
     const keyShortcutsBox = `<div style="margin-top:10px">
-        <p class="hint" style="margin:0 0 8px">Free-text shortcut/description rows for other programs. Shown as
+        <details class="hint" style="margin:0 0 8px"><summary>Free-text shortcut/description rows for other programs.</summary> Shown as
         <b>Custom</b> on the panel, alongside open-quake's own rotation hotkey and every page's jump shortcut.
-        This list is shared — editing it here updates every page that has the Keyboard Shortcuts app.</p>
+        This list is shared — editing it here updates every page that has the Keyboard Shortcuts app.</details>
         <div id="sShortcutRows">${shortcutRowsHtml((config.settings || {}).customShortcuts)}</div>
         <button id="sShortcutAdd" type="button" style="margin-top:8px">+ Add another shortcut</button>
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
@@ -2010,7 +2010,7 @@
             <option value="api" ${cvBackend === 'api' ? 'selected' : ''}>API endpoint — your own key (OpenAI, DeepSeek, OpenRouter, …)</option>
           </select></div>
         <p id="cvCliWarn" class="hint" style="display:none;color:#ff8a8a;font-weight:600"></p>` + (cvBackend === 'owui' ? `
-        <p class="hint">Chats against the Open WebUI connection configured on <b>Settings → Auth</b> (URL, API key, default model). No working folder and no permission modes — the chat API can't touch files or run commands.</p>` : cvBackend === 'api' ? `
+        <details class="hint"><summary>Chats against the Open WebUI connection configured on <b>Settings → Auth</b> (URL, API key, default model).</summary> No working folder and no permission modes — the chat API can't touch files or run commands.</details>` : cvBackend === 'api' ? `
         <div class="row"><label>Endpoint</label>
           <select id="cvApiPreset" style="width:230px">
             <option value="openai">OpenAI</option>
@@ -2035,14 +2035,14 @@
         <p class="hint">Voice STT/TTS servers are set globally under <b>Settings → TTS/STT</b>. Override them for just this page in <b>Advanced settings</b> below.</p>
         <div class="row" style="margin-top:10px"><label>Default profile</label>
           <select id="cvProfile" style="flex:1">${(((config.settings || {}).aiProfiles) || []).map((p, i) => `<option value="${esc(p.id)}" ${(cvVal('profilePick', '') || (((config.settings || {}).aiProfiles) || [{}])[0].id) === p.id ? 'selected' : ''}>${esc(p.name || '(unnamed)')}</option>`).join('')}</select></div>
-        <p class="hint">The AI profile this page starts with — a named instruction that shapes the AI (translate, summarize, write…). Switch live from the panel's <b>Profile</b> button; manage the list under <b>Settings → AI Profiles</b>.</p>` + (!cvModes ? '' : `
+        <details class="hint"><summary>The AI profile this page starts with — a named instruction that shapes the AI (translate, summarize, write…).</summary> Switch live from the panel's <b>Profile</b> button; manage the list under <b>Settings → AI Profiles</b>.</details>` + (!cvModes ? '' : `
         <div class="row" style="margin-top:10px"><label>Permission mode</label>
           <select id="cvPermMode" style="flex:1">${cvModes.choices.map(c => `<option value="${esc(c[0])}" ${cvMode === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}</select></div>`) + (cvBackend === 'claude' ? `
         <div class="row"><label>Touch approval</label>
           <label class="iconopt" style="width:auto"><input type="checkbox" id="cvApprovals" ${cvVal('approvalsEnabled', false) ? 'checked' : ''}> when in Manual mode</label></div>
         <div class="row" style="margin-top:10px"><label>Panel prompt</label>
           <button id="cvEditPrompt" type="button">Edit prompt file</button></div>
-        <p class="hint">Your own instructions for panel sessions (claude-panel-prompt.md, opens in your default editor). Appended to the built-in voice prompt; text inside &lt;!-- comment markers --&gt; is ignored. Applies from the next session start. Never affects terminal Claude Code.</p>` : '') + `
+        <details class="hint"><summary>Your own instructions for panel sessions (claude-panel-prompt.md, opens in your default editor).</summary> Appended to the built-in voice prompt; text inside &lt;!-- comment markers --&gt; is ignored. Applies from the next session start. Never affects terminal Claude Code.</details>` : '') + `
       </div>` + (canGrid ? `<div class="row" style="margin-top:10px"><label style="width:auto">Buttons</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="gGrid" ${g.gridOn ? 'checked' : ''}> Add a button grid beside the app</label></div>
       <p class="hint">Adds a strip of launcher tiles beside the app — pick the side, size, and tiles on the <b>Buttons</b> tab that appears.</p>` : '');
@@ -2095,7 +2095,7 @@
           <div class="row"><label>Model</label><input id="ltModel" value="${esc(optVal(g, 'model', ''))}" placeholder="e.g. glm-4.7-flash" style="flex:1"></div>
         </div>
         <div class="row"><label>Timeout (ms)</label><input type="number" id="ltAiTimeout" min="1000" max="600000" step="1000" value="${esc(String(optVal(g, 'aiTimeoutMs', 30000)))}" style="width:120px"></div>
-        <p class="hint">Cleanup/Rewrite send the box text to this AI. By default the chosen integrated agent (Claude/Codex/Copilot need the CLI on PATH; Open WebUI uses the <b>Auth</b> tab connection). Tick <b>Use Endpoint</b> to POST to an OpenAI-compatible <code>/chat/completions</code> server directly (needs a model — tick Override model).</p>
+        <details class="hint"><summary>Cleanup/Rewrite send the box text to this AI.</summary> By default the chosen integrated agent (Claude/Codex/Copilot need the CLI on PATH; Open WebUI uses the <b>Auth</b> tab connection). Tick <b>Use Endpoint</b> to POST to an OpenAI-compatible <code>/chat/completions</code> server directly (needs a model — tick Override model).</details>
 
         <details class="advsec" style="margin-top:14px">
           <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Cleanup — fix grammar / filler</summary>
@@ -2158,7 +2158,7 @@
           <input id="xlAiModel" value="${esc(optVal(g, 'aiModel', 'deepseek-v4-flash'))}" placeholder="deepseek-v4-flash" style="width:230px"></div>
         <div class="row" style="margin-top:10px"><label>Target language</label>
           <input id="xlTargetLang" value="${esc(optVal(g, 'targetLanguage', 'en'))}" placeholder="en (or any language name)" style="width:230px"></div>
-        <p class="hint">Any OpenAI-compatible chat endpoint (DeepSeek ≈ $0.10/hr, OpenAI, a local Open WebUI/Ollama…). Utterances are transcribed by your <b>Settings → TTS/STT</b> server first — its model must be <b>multilingual</b> (Parakeet v3 or Whisper small/medium/large; the Distil-Whisper models are English-only) — then translated with recent-line context, so captions arrive per phrase — a beat behind speech, not word-by-word like Soniox. Key stored encrypted, used only from the main process.</p>`}
+        <details class="hint"><summary>Any OpenAI-compatible chat endpoint (DeepSeek ≈ $0.10/hr, OpenAI, a local Open WebUI/Ollama…).</summary> Utterances are transcribed by your <b>Settings → TTS/STT</b> server first — its model must be <b>multilingual</b> (Parakeet v3 or Whisper small/medium/large; the Distil-Whisper models are English-only) — then translated with recent-line context, so captions arrive per phrase — a beat behind speech, not word-by-word like Soniox. Key stored encrypted, used only from the main process.</details>`}
         <p class="sectitle" style="margin-top:14px">Microphone</p>
         <div class="row"><label>Capture device</label>
           <select id="xlMic" style="flex:1"><option value="">System default</option></select></div>
@@ -2922,7 +2922,7 @@
           <span id="ghMsg" class="hint" style="margin:0 0 0 auto">${esc(notice || '')}</span>
         </div>
         <div class="row"><label>OAuth Client ID</label><input id="ghClientId" value="${esc(localProvider.clientId || '')}" placeholder="Iv1…" autocomplete="off" style="flex:1"></div>
-        <p class="hint">Create a GitHub OAuth App, enable <b>Device Flow</b>, and paste its public Client ID. For GitHub's required callback field, use <code>http://127.0.0.1:53682/callback</code>; Device Flow never contacts it and open-quake does not listen on that port. No client secret is used or stored.</p>
+        <details class="hint"><summary>Create a GitHub OAuth App, enable <b>Device Flow</b>, and paste its public Client ID.</summary> For GitHub's required callback field, use <code>http://127.0.0.1:53682/callback</code>; Device Flow never contacts it and open-quake does not listen on that port. No client secret is used or stored.</details>
         <div class="row"><label>Starting repository</label><input id="ghRepository" value="${esc(local.repository || '')}" placeholder="optional owner/repository" autocomplete="off" style="flex:1"></div>
         <div class="row"><label>Starting branch</label><input id="ghBranch" value="${esc(local.branch || '')}" placeholder="optional; blank uses each repository's default" autocomplete="off" style="flex:1"></div>
         <p class="hint">These are optional. The touchscreen GitHub page lists every repository your account can access and remembers the last one selected on this device.</p>
@@ -3313,12 +3313,12 @@
         <input id="pnShortcut" readonly placeholder="click, then press keys" value="${esc(p.shortcut || '')}" style="width:200px">
         <button id="pnShortcutClear" style="margin-left:8px">Clear</button>
         <label style="width:auto;margin-left:14px;font-weight:normal;cursor:pointer"><input type="checkbox" id="pnShortcutNoRot" ${p.shortcutStopsRotation ? 'checked' : ''}> Disables rotation</label></div>
-      <p class="hint">Global hotkey that switches the software window to this pane from anywhere (flipping it to Panes view if needed). Press a combo that includes a modifier. <b>Disables rotation</b> turns auto-rotation off when it fires.</p>
+      <details class="hint"><summary>Global hotkey that switches the software window to this pane from anywhere (flipping it to Panes view if needed).</summary> Press a combo that includes a modifier. <b>Disables rotation</b> turns auto-rotation off when it fires.</details>
       <div class="row" style="margin-top:6px"><label style="width:auto">Rotation</label>
         <label class="iconopt" style="width:auto; white-space:nowrap"><input type="checkbox" id="pnRot" ${p.rotate ? 'checked' : ''}> Include in rotation</label>
         <label class="iconopt" style="width:auto;margin-left:14px"><input type="checkbox" id="pnHome" ${config.homePaneId === p.id ? 'checked' : ''}> Set as home pane</label></div>
-      <p class="hint">In Panes view, auto-rotation cycles through the panes with <b>Include in rotation</b> ticked (Settings → Software → Screen rotation controls the on/off and interval). The <b>home pane</b> is where a go-home action lands; only one pane can be home.</p>
-      <p class="hint">A pane stacks up to ${PANE_MAX_SLOTS} of your existing pages per column, one or two columns, so the Software-mode window can fill a bigger screen. Show it via Settings → Software → <b>Software window</b>. Each slot is a full 1920×480 page — the window's shape follows the layout.</p>
+      <details class="hint"><summary>In Panes view, auto-rotation cycles through the panes with <b>Include in rotation</b> ticked (Settings → Software → Screen rotation controls the on/off and interval).</summary> The <b>home pane</b> is where a go-home action lands; only one pane can be home.</details>
+      <details class="hint"><summary>A pane stacks up to ${PANE_MAX_SLOTS} of your existing pages per column, one or two columns, so the Software-mode window can fill a bigger screen.</summary> Show it via Settings → Software → <b>Software window</b>. Each slot is a full 1920×480 page — the window's shape follows the layout.</details>
       <div style="display:flex; gap:14px; align-items:flex-start">
         <div style="flex:1; min-width:0">
           <p class="sectitle" style="margin:0 0 2px">Left column</p>
@@ -3463,7 +3463,7 @@
           <option value="monitor">Monitor — QUAKE as a regular monitor</option>
         </select></div>
       <div class="row"><button id="sRunSetup">Re-run first-time setup…</button></div>
-      <p class="hint"><b>Software</b> mode runs in an ordinary desktop window and needs no special hardware — ideal for the meeting workflow on any PC. <b>Panel</b> and <b>Monitor</b> use the QUAKE display. A mode change applies as soon as you click <b>Save</b> — no restart.</p>
+      <details class="hint"><summary><b>Software</b> mode runs in an ordinary desktop window and needs no special hardware — ideal for the meeting workflow on any PC.</summary> <b>Panel</b> and <b>Monitor</b> use the QUAKE display. A mode change applies as soon as you click <b>Save</b> — no restart.</details>
 
       <p class="sectitle" style="margin-top:22px">Software window</p>
       <div class="row"><label style="width:auto">Show</label>
@@ -3471,7 +3471,7 @@
           <option value="pages">Pages — one page at a time</option>
           <option value="pane">Panes — stacked pages</option>
         </select></div>
-      <p class="hint">Software mode only. A <b>pane</b> (created on the sidebar's Panes tab) stacks several of your pages vertically — the window grows to fit them, so a big screen shows them all at once. In Panes view the window's ☰ button switches between your panes, just like it switches pages. With no usable pane the window falls back to normal Pages. Applies on <b>Save</b>.</p>
+      <details class="hint"><summary>Software mode only. A <b>pane</b> (created on the sidebar's Panes tab) stacks several of your pages vertically — the window grows to fit them, so a big screen shows them all at once.</summary> In Panes view the window's ☰ button switches between your panes, just like it switches pages. With no usable pane the window falls back to normal Pages. Applies on <b>Save</b>.</details>
 
       <p class="sectitle" style="margin-top:22px">On launch</p>
       <div class="row"><label style="width:auto">Editor window</label>
@@ -3480,7 +3480,7 @@
           <option value="minimized">Open minimized to taskbar</option>
           <option value="tray">Tray only (no window)</option>
         </select></div>
-      <p class="hint">Controls the PC-side editor window on launch. In Panel/Monitor mode the device panel always activates too; Tray-only hides the editor — reopen it from the tray icon.</p>
+      <details class="hint"><summary>Controls the PC-side editor window on launch.</summary> In Panel/Monitor mode the device panel always activates too; Tray-only hides the editor — reopen it from the tray icon.</details>
 
       <p class="sectitle" style="margin-top:22px">Screen rotation</p>
       <div class="row"><label>Auto-rotate</label>
@@ -3494,8 +3494,8 @@
       <div class="row"><label>Hotkey</label>
         <input id="sRotKey" readonly placeholder="click, then press keys" value="${esc(rot.hotkey || '')}" style="width:200px"${rot.enabled ? '' : ' disabled'}>
         <button id="sRotKeyClear" style="margin-left:8px"${rot.enabled ? '' : ' disabled'}>Clear</button></div>
-      <p class="hint">A page rotates only if its category is ticked here <i>and</i> that page's own “Include in rotation” box is checked — the box appears on each page once its category is enabled. Start/stop any time from the knob menu (double-click) or the tray.</p>
-      <p class="hint">The <b>hotkey</b> starts and pauses rotation from anywhere, even when open-quake isn't focused. Click the box and press a combo that includes a modifier (e.g. Ctrl+Alt+R). It's only live while Auto-rotate is on; if another app — or one of your page hotkeys — already owns the combo, it just won't fire.</p>
+      <details class="hint"><summary>A page rotates only if its category is ticked here <i>and</i> that page's own “Include in rotation” box is checked — the box appears on each page once its category is enabled.</summary> Start/stop any time from the knob menu (double-click) or the tray.</details>
+      <details class="hint"><summary>The <b>hotkey</b> starts and pauses rotation from anywhere, even when open-quake isn't focused.</summary> Click the box and press a combo that includes a modifier (e.g. Ctrl+Alt+R). It's only live while Auto-rotate is on; if another app — or one of your page hotkeys — already owns the combo, it just won't fire.</details>
 
       <div class="row"><label>Page forward</label>
         <input id="sPageNextKey" readonly placeholder="click, then press keys" value="${esc(pageStep.nextHotkey || '')}" style="width:200px">
@@ -3503,25 +3503,25 @@
       <div class="row"><label>Page back</label>
         <input id="sPagePrevKey" readonly placeholder="click, then press keys" value="${esc(pageStep.prevHotkey || '')}" style="width:200px">
         <button id="sPagePrevKeyClear" style="margin-left:8px">Clear</button></div>
-      <p class="hint">Global hotkeys that step the panel <b>forward</b> / <b>back</b> through your visible pages — in the order they're listed here, wrapping around the ends. Hidden pages are skipped. These work anytime, independent of rotation.</p>
+      <details class="hint"><summary>Global hotkeys that step the panel <b>forward</b> / <b>back</b> through your visible pages — in the order they're listed here, wrapping around the ends.</summary> Hidden pages are skipped. These work anytime, independent of rotation.</details>
 
       <p class="sectitle" style="margin-top:22px">Icons</p>
       <div class="row"><label>Work offline</label>
         <input type="checkbox" id="sOfflineIcons" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">never fetch icons from the internet — use cached icons and emoji only</span></div>
-      <p class="hint">Home Assistant tiles pull their glyphs from a public icon CDN (jsDelivr) the first time each one is shown, then cache them for good. Turn this on for locked-down machines: the panel makes <b>zero</b> outbound icon requests and falls back to the emoji glyph for anything not already cached. Seed the cache first by opening the tiles once on a normal network.</p>
+      <details class="hint"><summary>Home Assistant tiles pull their glyphs from a public icon CDN (jsDelivr) the first time each one is shown, then cache them for good.</summary> Turn this on for locked-down machines: the panel makes <b>zero</b> outbound icon requests and falls back to the emoji glyph for anything not already cached. Seed the cache first by opening the tiles once on a normal network.</details>
 
       <p class="sectitle" style="margin-top:22px">Desktop focus</p>
       <div class="row"><label>Auto-follow</label>
         <input type="checkbox" id="sFocus" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">switch the panel to a page when its mapped app becomes focused on the PC</span></div>
       <div class="row"><label>While focused</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sFocusPauseRot" ${focusFollow.enabled ? '' : 'disabled'}> Pause auto-rotation</label></div>
-      <p class="hint">Map apps to a page under that page's Advanced settings → “Focus trigger app(s)”. Detection polls in the background and only switches once the newly-focused app has held focus for a couple seconds, so quick alt-tabbing won't cause flicker — and manually navigating the panel away is never overridden; it only re-triggers on the next focus change. With <b>Pause auto-rotation</b> on, rotation holds off the moment a mapped app takes focus and picks back up the moment it loses focus.</p>
+      <details class="hint"><summary>Map apps to a page under that page's Advanced settings → “Focus trigger app(s)”.</summary> Detection polls in the background and only switches once the newly-focused app has held focus for a couple seconds, so quick alt-tabbing won't cause flicker — and manually navigating the panel away is never overridden; it only re-triggers on the next focus change. With <b>Pause auto-rotation</b> on, rotation holds off the moment a mapped app takes focus and picks back up the moment it loses focus.</details>
 
       <p class="sectitle" style="margin-top:22px">Dashboards</p>
       <div class="row"><label>Reload hotkey</label>
         <input id="sDashReloadKey" readonly placeholder="click, then press keys" value="${esc(dashReload.hotkey || '')}" style="width:200px">
         <button id="sDashReloadKeyClear" style="margin-left:8px">Clear</button></div>
-      <p class="hint">A global combo that force-reloads the current dashboard page from anywhere, even when open-quake isn't focused. Switching away to another page and back does <b>not</b> reload a dashboard (that's what keeps its session/scroll state) — this hotkey is the way to force one. Only acts while a dashboard page is showing; does nothing on a grid or app page.</p>`;
+      <details class="hint"><summary>A global combo that force-reloads the current dashboard page from anywhere, even when open-quake isn't focused.</summary> Switching away to another page and back does <b>not</b> reload a dashboard (that's what keeps its session/scroll state) — this hotkey is the way to force one. Only acts while a dashboard page is showing; does nothing on a grid or app page.</details>`;
 
     // Hardware tab — knob ring + microphone
     const hwHtml = `
@@ -3558,33 +3558,33 @@
         ${knobSelHtml('knAppClick', KNOB_CLICK_OPTS, knobOf('app', 'click'), 'width:100%')}
         ${knobSelHtml('knAppDblclick', KNOB_DBLCLICK_OPTS, knobOf('app', 'dblclick'), 'width:100%')}
       </div>
-      <p class="hint">What turning / clicking the knob does on each kind of page. Any page can override this in its <b>Advanced</b> settings. (“Select button” highlights tiles as you turn; “Enter” activates the highlighted button, play/pauses music, or sends an Enter key.)</p>
-      <p class="hint">Changes apply to the ring instantly. <b>Save to device</b> writes them to the device's own memory so they survive a power-cycle. (Effect “All Off” turns the ring off. Animated effects use the color/speed; solid effects ignore speed.)</p>
+      <details class="hint"><summary>What turning / clicking the knob does on each kind of page.</summary> Any page can override this in its <b>Advanced</b> settings. (“Select button” highlights tiles as you turn; “Enter” activates the highlighted button, play/pauses music, or sends an Enter key.)</details>
+      <details class="hint"><summary>Changes apply to the ring instantly.</summary> <b>Save to device</b> writes them to the device's own memory so they survive a power-cycle. (Effect “All Off” turns the ring off. Animated effects use the color/speed; solid effects ignore speed.)</details>
       <div class="row" style="margin-top:6px"><button id="sSaveLed">Save to device</button><span id="sSaveLedMsg" class="hint" style="margin:0 0 0 10px"></span></div>
 
       <p class="sectitle" style="margin-top:22px">Microphone</p>
       <div class="row"><label>At launch</label>
         <input type="checkbox" id="sMic" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">enable the device mic when open-quake starts</span></div>
-      <p class="hint">The mic LED and the mic audio are one hardware switch — the light is on whenever the mic is enabled, off when it isn't. Toggle it any time from the tray menu or a “System → mic” tile.</p>
+      <details class="hint"><summary>The mic LED and the mic audio are one hardware switch — the light is on whenever the mic is enabled, off when it isn't.</summary> Toggle it any time from the tray menu or a “System → mic” tile.</details>
 
       <p class="sectitle" style="margin-top:22px">Display</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="sKeepAwake" ${s.keepDisplayAwake ? 'checked' : ''}> Keep the display awake while running (disables the screensaver) — Panel mode only</label></div>
-      <p class="hint">Panel mode only. Keeps the screen from sleeping and stops the Windows screensaver so the QUAKE panel stays lit. <b>Off by default</b> (and always off in Software/Monitor mode) so your normal screensaver works. Windows has no per-display option, so when on it suppresses the screensaver on all displays.</p>
+      <details class="hint"><summary>Panel mode only. Keeps the screen from sleeping and stops the Windows screensaver so the QUAKE panel stays lit.</summary> <b>Off by default</b> (and always off in Software/Monitor mode) so your normal screensaver works. Windows has no per-display option, so when on it suppresses the screensaver on all displays.</details>
 
       <p class="sectitle" style="margin-top:22px">Touchscreen</p>
-      <p class="hint">If touches land on the wrong monitor, click <b>Set up touchscreen</b>. open-quake launches Windows' built-in touch-identify wizard (the one Microsoft buried behind the broken-in-24H2 Tablet PC Settings UI) — accept the UAC prompt, then <b>press Enter on your keyboard</b> to skip past your other monitors as the prompt cycles through them, and <b>tap the panel with your finger</b> only when the prompt appears on the panel. That writes a persistent binding under <code>HKLM\\…\\Wisp\\Pen\\Digimon</code> that survives reboot, sleep, and primary-display swaps.</p>
-      <p class="hint"><b>Clear all calibrations</b> wipes any old <code>tabcal</code> coordinate calibration. You don't normally need it — only run it if your taps land on the right display but are visibly off-target.</p>
+      <details class="hint"><summary>If touches land on the wrong monitor, click <b>Set up touchscreen</b>.</summary> open-quake launches Windows' built-in touch-identify wizard (the one Microsoft buried behind the broken-in-24H2 Tablet PC Settings UI) — accept the UAC prompt, then <b>press Enter on your keyboard</b> to skip past your other monitors as the prompt cycles through them, and <b>tap the panel with your finger</b> only when the prompt appears on the panel. That writes a persistent binding under <code>HKLM\\…\\Wisp\\Pen\\Digimon</code> that survives reboot, sleep, and primary-display swaps.</details>
+      <details class="hint"><summary><b>Clear all calibrations</b> wipes any old <code>tabcal</code> coordinate calibration.</summary> You don't normally need it — only run it if your taps land on the right display but are visibly off-target.</details>
       <div class="row" style="gap:8px"><button id="sTouchSetup">Set up touchscreen</button><button id="sTouchClear">Clear all calibrations</button><span id="sTouchMsg" class="hint" style="margin:0 0 0 10px"></span></div>`;
 
     // Monitor tab — reserved-display protection and intentional normal-monitor behavior
     const monHtml = `
       <p class="sectitle">Reserved Display</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="sReserved" ${s.reservedDisplay ? 'checked' : ''}> Prevent normal application windows from remaining on the Quake display</label></div>
-      <p class="hint">Windows only. Windows dragged or relocated onto the Quake are returned to another display. If your other displays disconnect, their positions are held and restored when a display returns. Open Quake, Windows shell surfaces, and secure desktop screens are left alone.</p>
+      <details class="hint"><summary>Windows only. Windows dragged or relocated onto the Quake are returned to another display.</summary> If your other displays disconnect, their positions are held and restored when a display returns. Open Quake, Windows shell surfaces, and secure desktop screens are left alone.</details>
       <p class="hint">Protection is suspended in Monitor Mode and resumes when Monitor Mode exits. This does not change the panel's USB keepalive.</p>
 
       <p class="sectitle" style="margin-top:22px">Monitor mode</p>
-      <p class="hint">Use the device as a normal monitor: it shows your Windows desktop and touch acts as the mouse. Enter it from the tray menu or a “System → monitor” tile; exit from the tray. These set what the knob does while in monitor mode.</p>
+      <details class="hint"><summary>Use the device as a normal monitor: it shows your Windows desktop and touch acts as the mouse.</summary> Enter it from the tray menu or a “System → monitor” tile; exit from the tray. These set what the knob does while in monitor mode.</details>
       <div class="row"><label>Knob turn</label>
         <select id="sMonTurn" style="width:230px">
           <option value="scroll">Scroll</option>
@@ -3605,7 +3605,7 @@
       <div class="row"><label>Unprocessed Recordings</label>
         <input id="meFolder" value="${esc(me.folder)}" placeholder="Documents\\OpenQuake Meetings\\unprocessed" style="flex:1">
         <button id="meFolderBrowse" type="button">Browse…</button></div>
-      <p class="hint">Where new recordings land — one stereo WAV per meeting (your mic = left, everyone else = right), named by date and time. Leave blank to use Documents\\OpenQuake Meetings\\unprocessed.</p>
+      <details class="hint"><summary>Where new recordings land — one stereo WAV per meeting (your mic = left, everyone else = right), named by date and time.</summary> Leave blank to use Documents\\OpenQuake Meetings\\unprocessed.</details>
 
       <div class="row" style="margin-top:12px"><label>Processed Recordings</label>
         <input id="meProcessed" value="${esc(me.processedFolder)}" placeholder="Documents\\OpenQuake Meetings\\processed" style="flex:1">
@@ -3621,7 +3621,7 @@
       <p class="sectitle" style="margin-top:22px">Transcription Server</p>
       <div class="row"><label>URL</label>
         <input id="meTransUrl" value="${esc(me.transcribeUrl || 'http://127.0.0.1:10301/transcribe')}" style="flex:1"></div>
-      <p class="hint">The tts-sst or meeting-diarizer endpoint that turns recordings into speaker-labeled transcripts. Edit the host/port to match your server; the panel checks its /health before sending. Remember to Save.</p>
+      <details class="hint"><summary>The tts-sst or meeting-diarizer endpoint that turns recordings into speaker-labeled transcripts.</summary> Edit the host/port to match your server; the panel checks its /health before sending. Remember to Save.</details>
       <div class="row" style="margin-top:12px"><label>Analysis AI</label>
         <select id="meAnalysisAi" style="flex:1">
           <option value="claude" ${['codex', 'copilot', 'owui'].includes(me.analysisAi) ? '' : 'selected'}>Claude</option>
@@ -3629,14 +3629,14 @@
           <option value="copilot" ${me.analysisAi === 'copilot' ? 'selected' : ''}>GitHub Copilot</option>
           <option value="owui" ${me.analysisAi === 'owui' ? 'selected' : ''}>Open WebUI</option>
         </select></div>
-      <p class="hint">What turns a transcript into meeting notes on the Analysis screen. The CLIs use their own login — no API key needed. Open WebUI runs against the connection on the Auth tab (URL, API key, and default model set there).</p>
+      <details class="hint"><summary>What turns a transcript into meeting notes on the Analysis screen.</summary> The CLIs use their own login — no API key needed. Open WebUI runs against the connection on the Auth tab (URL, API key, and default model set there).</details>
       <div class="row" style="margin-top:12px"><label>Analysis prompt</label>
         <button id="meEditPrompt" type="button">Edit prompt file</button></div>
       <p class="hint">The instructions the AI follows when analyzing a transcript (meeting-analysis-prompt.md, opens in your default editor). Changes apply to the next analysis.</p>
 
       <p class="sectitle" style="margin-top:22px">Auto-record</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meAuto" ${me.autoRecord ? 'checked' : ''}> Start recording automatically when a call begins</label></div>
-      <p class="hint">Detects when an app below has an active call (its microphone goes live) and starts recording — even if the panel is on another app. It never triggers on Claude voice or other microphone use.</p>
+      <details class="hint"><summary>Detects when an app below has an active call (its microphone goes live) and starts recording — even if the panel is on another app.</summary> It never triggers on Claude voice or other microphone use.</details>
       <div class="row"><label>Call apps</label>
         <input id="meApps" value="${esc(me.recordApps)}" style="flex:1"></div>
       <p class="hint">Comma-separated Windows process names that count as a call, e.g. Zoom.exe, Teams.exe, ms-teams.exe.</p>
@@ -3646,18 +3646,18 @@
 
       <p class="sectitle" style="margin-top:22px">Capture</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meEcho" ${me.echoGate ? 'checked' : ''}> Echo-gate your microphone</label></div>
-      <p class="hint">Mutes your mic in the recording while the speakers are loud (and you're not on headphones), to stop the far end bleeding back in. Off = faithful capture of everything you say, even when others are talking.</p>
+      <details class="hint"><summary>Mutes your mic in the recording while the speakers are loud (and you're not on headphones), to stop the far end bleeding back in.</summary> Off = faithful capture of everything you say, even when others are talking.</details>
 
       <div class="row" style="margin-top:16px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meHighlight" ${me.highlightEnabled ? 'checked' : ''}> Enable Meeting Highlights</label></div>
-      <p class="hint">Adds a Highlight column to the meeting panel: tap to start flagging a moment, tap again to end it. The flagged spans are saved with the recording and handed to the analysis AI, which calls them out in a <b>Highlights</b> section of the meeting notes.</p>
+      <details class="hint"><summary>Adds a Highlight column to the meeting panel: tap to start flagging a moment, tap again to end it.</summary> The flagged spans are saved with the recording and handed to the analysis AI, which calls them out in a <b>Highlights</b> section of the meeting notes.</details>
 
       <div class="row" style="margin-top:16px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meLargeRec" ${me.largeRecordButton ? 'checked' : ''}> Large record button</label></div>
-      <p class="hint">Adds a big Record button to the meeting panel, beside the Hang&nbsp;Up button, for one-tap start/stop. The small Record indicator in the top-right corner is unchanged.</p>
+      <details class="hint"><summary>Adds a big Record button to the meeting panel, beside the Hang&nbsp;Up button, for one-tap start/stop.</summary> The small Record indicator in the top-right corner is unchanged.</details>
 
       <details class="advsec" style="margin-top:22px">
       <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Meeting Slide Capture</summary>
       <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSlide" ${me.slideCaptureEnabled ? 'checked' : ''}> Enable Meeting Slide Capture</label></div>
-      <p class="hint">Watches a window you pick (e.g. the Teams meeting) and saves a screenshot each time its content settles on a new slide — skipping live video, which never settles. Adds a slide-capture column to the meeting panel. Slides are saved beside the recording in a <b>&lt;recording&gt;-screenshots\\</b> folder that travels and renames with it.</p>
+      <details class="hint"><summary>Watches a window you pick (e.g. the Teams meeting) and saves a screenshot each time its content settles on a new slide — skipping live video, which never settles.</summary> Adds a slide-capture column to the meeting panel. Slides are saved beside the recording in a <b>&lt;recording&gt;-screenshots\\</b> folder that travels and renames with it.</details>
       <div class="slidecfg">
         <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSlideAuto" ${me.slideAutoStartOnSelect ? 'checked' : ''}> Automatically start capture when a window is selected</label></div>
         <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSlideNotify" ${me.slideNotifications ? 'checked' : ''}> Show a notification when a slide is captured</label></div>
@@ -3681,7 +3681,7 @@
       <details class="advsec" style="margin-top:22px">
       <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Advanced Settings</summary>
       <div class="row" style="margin-top:10px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meOutlook" ${me.outlookEnabled ? 'checked' : ''}> Pull meeting information from my calendar</label></div>
-      <p class="hint">When a recording starts, saves the matching appointment (subject, attendees, organizer, body…) as <b>&lt;recording&gt;.json</b> beside the WAV. The file travels through transcription, where its attendee list improves speaker identification. Ad-hoc calls with nothing scheduled save nothing.</p>
+      <details class="hint"><summary>When a recording starts, saves the matching appointment (subject, attendees, organizer, body…) as <b>&lt;recording&gt;.json</b> beside the WAV.</summary> The file travels through transcription, where its attendee list improves speaker identification. Ad-hoc calls with nothing scheduled save nothing.</details>
       <div class="row"><label>Calendar source</label>
         <select id="meInfoSource" style="flex:1"><option value="classic" ${me.meetingInfoSource === 'microsoft365' ? '' : 'selected'}>Classic Outlook (this PC)</option><option value="microsoft365" ${me.meetingInfoSource === 'microsoft365' ? 'selected' : ''}>Microsoft 365 (Graph)</option></select>
         <button id="meOutCheck" type="button">Check Connection</button></div>
@@ -3698,18 +3698,18 @@
         <input id="meOutSkip" value="${esc(me.outlookSkipPrefixes)}" style="flex:1"></div>
       <p class="hint">Comma-separated subject prefixes to ignore (e.g. Canceled:, Focus time, Lunch) — keeps calendar entries that aren't real meetings out of the lookup.</p>
       <div class="row" style="margin-top:12px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSepRec" ${me.separateRecurring ? 'checked' : ''}> Separate recurring meetings</label></div>
-      <p class="hint">When a recurring meeting (per its calendar info) is analyzed, its files move from the date folder to <b>YYYY\\&lt;Meeting-Name&gt;\\</b>. Un-analyzed meetings stay in the date folders, so they're easy to find.</p>
+      <details class="hint"><summary>When a recurring meeting (per its calendar info) is analyzed, its files move from the date folder to <b>YYYY\\&lt;Meeting-Name&gt;\\</b>.</summary> Un-analyzed meetings stay in the date folders, so they're easy to find.</details>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meAppendName" ${me.appendMeetingName ? 'checked' : ''} ${me.outlookEnabled ? '' : 'disabled'}> Append meeting name to filename</label></div>
-      <p class="hint">Renames a finished recording from &lt;timestamp&gt;.wav to <b>&lt;timestamp&gt;-&lt;Meeting Name&gt;.wav</b> when the calendar matched a meeting; every later file (transcript, analysis…) inherits the name. Requires meeting information above.</p>
+      <details class="hint"><summary>Renames a finished recording from &lt;timestamp&gt;.wav to <b>&lt;timestamp&gt;-&lt;Meeting Name&gt;.wav</b> when the calendar matched a meeting; every later file (transcript, analysis…) inherits the name.</summary> Requires meeting information above.</details>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meSepTx" ${me.separateTranscript ? 'checked' : ''}> Separate Clean Transcript</label></div>
       <p class="hint">Leaves the full transcript out of the analysis .md and saves it as <b>&lt;name&gt;-clean_transcript.txt</b> instead.</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meTaskList" ${me.taskListEnabled ? 'checked' : ''}> Create task-lists for post-analysis processing</label></div>
-      <p class="hint">After each analysis batch finishes, writes a dated checklist pointing at the new <b>-analysis.md</b> files (plus meeting metadata when available) — the hand-off for pulling your action items onto a board. One file per batch, named like <b>2026-08-17_10-42-13.md</b>.</p>
+      <details class="hint"><summary>After each analysis batch finishes, writes a dated checklist pointing at the new <b>-analysis.md</b> files (plus meeting metadata when available) — the hand-off for pulling your action items onto a board.</summary> One file per batch, named like <b>2026-08-17_10-42-13.md</b>.</details>
       <div class="row"><label>Task-list folder</label>
         <input id="meTaskFolder" value="${esc(me.taskListFolder)}" placeholder="blank = task-list under Processed Recordings" style="flex:1">
         <button id="meTaskFolderBrowse" type="button">Browse…</button></div>
       <div class="row" style="margin-top:12px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meJoplin" ${me.joplinEnabled ? 'checked' : ''}> Create Joplin notes for analyses</label></div>
-      <p class="hint">After each analysis, creates a note in Joplin via the Web Clipper API of Joplin Desktop (Tools › Options › Web Clipper): title = recording name, body = the analysis, tagged <b>meeting notes</b> + the year + title keywords. Only tags that already exist in Joplin are applied — none are created. Joplin Desktop must be running when the analysis finishes.</p>
+      <details class="hint"><summary>After each analysis, creates a note in Joplin via the Web Clipper API of Joplin Desktop (Tools › Options › Web Clipper): title = recording name, body = the analysis, tagged <b>meeting notes</b> + the year + title keywords.</summary> Only tags that already exist in Joplin are applied — none are created. Joplin Desktop must be running when the analysis finishes.</details>
       <div class="row"><label>Joplin API URL</label>
         <input id="meJoplinUrl" value="${esc(me.joplinUrl)}" placeholder="e.g. http://192.168.1.50:41184" style="flex:1"></div>
       <div class="row"><label>API token</label>${secretInput(me.joplinToken || '', 'id="meJoplinToken" placeholder="Joplin › Tools › Options › Web Clipper"', 'flex:1')}</div>
@@ -3720,12 +3720,12 @@
       <div class="row" style="margin-top:12px"><label>Speaker threshold</label>
         <input type="number" id="meThreshold" min="0" max="1" step="0.05" value="${esc(me.transcribeThreshold)}" style="width:120px">
         <span class="hint" style="margin:0 0 0 8px">blank = server default</span></div>
-      <p class="hint">Speaker-identification cosine cutoff (e.g. 0.70) sent with each transcription. Attendees from the calendar meeting info are sent automatically — the diarizer penalizes enrolled speakers who aren't on the list, cutting false matches.</p>
+      <details class="hint"><summary>Speaker-identification cosine cutoff (e.g. 0.70) sent with each transcription.</summary> Attendees from the calendar meeting info are sent automatically — the diarizer penalizes enrolled speakers who aren't on the list, cutting false matches.</details>
       <div class="row" style="margin-top:12px"><label>My name</label>
         <input id="meMyName" value="${esc(me.myName)}" placeholder="e.g. T.J. Schmitz" style="flex:1"></div>
-      <p class="hint">Your enrolled speaker name. When set, it's sent as <b>me_name</b> and the transcription server labels your isolated-mic channel's voice with certainty (channel-guided ID) — no threshold wobble for you. Blank = off. Note: in hybrid meetings, people in the room with you also land on your mic channel and still go through normal identification.</p>
+      <details class="hint"><summary>Your enrolled speaker name.</summary> When set, it's sent as <b>me_name</b> and the transcription server labels your isolated-mic channel's voice with certainty (channel-guided ID) — no threshold wobble for you. Blank = off. Note: in hybrid meetings, people in the room with you also land on your mic channel and still go through normal identification.</details>
       <div class="row" style="margin-top:12px"><label class="iconopt" style="width:auto"><input type="checkbox" id="meHooks" ${me.transcribeHooksEnabled ? 'checked' : ''}> Run commands before/after transcription</label></div>
-      <p class="hint">Start and stop the transcription server around each batch — e.g. a diarizer container that holds GPU memory while loaded. <b>Before</b> runs once when the queue starts; open-quake then waits (up to 5 min) for the server's /health before uploading. <b>After</b> runs once when the queue finishes. Full cmd.exe syntax, multi-line OK — or just call a .bat.</p>
+      <details class="hint"><summary>Start and stop the transcription server around each batch — e.g. a diarizer container that holds GPU memory while loaded.</summary> <b>Before</b> runs once when the queue starts; open-quake then waits (up to 5 min) for the server's /health before uploading. <b>After</b> runs once when the queue finishes. Full cmd.exe syntax, multi-line OK — or just call a .bat.</details>
       <div class="row"><label>Before</label>
         <textarea id="meHookPre" rows="2" style="flex:1; font-family:inherit" placeholder='e.g. ssh root@192.168.1.25 "docker start meeting-diarizer"'>${esc(me.preTranscribeCmd)}</textarea></div>
       <div class="row" style="margin-top:8px"><label>After</label>
@@ -3741,7 +3741,7 @@
           <option value="light">Light</option>
           <option value="dark">Dark</option>
         </select></div>
-      <p class="hint">Light/dark for the panel, the clocks, and the apps — and passed to web dashboards like a browser's light/dark. Each page can override this in its own <b>Advanced</b> section.</p>
+      <details class="hint"><summary>Light/dark for the panel, the clocks, and the apps — and passed to web dashboards like a browser's light/dark.</summary> Each page can override this in its own <b>Advanced</b> section.</details>
       <p class="sectitle" style="margin-top:22px">Accent color</p>
       <div class="row"><label>Accent</label>
         <input type="color" id="sAccent" value="${esc(th.accent)}" style="width:54px;height:30px;padding:2px">
@@ -3749,7 +3749,7 @@
       <div class="row"><label style="width:auto">Presets</label>
         <span id="sPresets" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></span>
         <button id="sPresetSave" style="margin-left:10px">＋ Save current</button></div>
-      <p class="hint">Drives the clock digits/hands, the tile-tap highlight, the music play button, and the knob LED ring. Click a preset to apply; <i>Save current</i> stores it (up to 6); right-click a preset to remove it. Changes apply when you Save.</p>`;
+      <details class="hint"><summary>Drives the clock digits/hands, the tile-tap highlight, the music play button, and the knob LED ring.</summary> Click a preset to apply; <i>Save current</i> stores it (up to 6); right-click a preset to remove it. Changes apply when you Save.</details>`;
 
     // Apps tab — show/hide which apps appear in the App picker (doesn't touch pages already using an app)
     const appRow = (a, checked) => `<div class="row">
@@ -3775,7 +3775,7 @@
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="sHaUse" ${ha.useHa ? 'checked' : ''}> Use Home Assistant</label>
         <button id="sHaRefresh" type="button" style="margin-left:12px" ${ha.useHa ? '' : 'disabled'}>Refresh Configuration</button>
         <span id="sHaStatus" class="hint" style="margin:0 0 0 10px"></span></div>
-      <p class="hint">When on, open-quake caches your HA dashboards, areas, devices, entities, floors, and labels at startup. The Home Assistant Dashboard app and (later) entity-aware features depend on this cache.</p>
+      <details class="hint"><summary>When on, open-quake caches your HA dashboards, areas, devices, entities, floors, and labels at startup.</summary> The Home Assistant Dashboard app and (later) entity-aware features depend on this cache.</details>
       <div class="row"><label>URL</label>
         <input type="text" id="sHaUrl" value="${esc(ha.url || '')}" placeholder="http://homeassistant.local:8123" style="flex:1"></div>
       <div class="row"><label>Long-Lived Access Token</label>
@@ -3790,7 +3790,7 @@
         <input type="text" id="sOwModel" value="${esc(ow.model || '')}" placeholder="e.g. llama3.2" style="flex:1">
         <button id="sOwTest" type="button" style="margin-left:8px">Test connection</button></div>
       <p class="hint" id="sOwStatus" style="min-height:16px;margin:2px 0 0"></p>
-      <p class="hint">One connection shared by the meeting <b>Analysis AI</b> (Open WebUI option on the Meeting tab) and the <b>Open WebUI Voice</b> panel app. The key is stored encrypted at rest. In Open WebUI: avatar (bottom-left) → Settings → Account → API Keys — an admin may need to enable API keys first.</p>
+      <details class="hint"><summary>One connection shared by the meeting <b>Analysis AI</b> (Open WebUI option on the Meeting tab) and the <b>Open WebUI Voice</b> panel app.</summary> The key is stored encrypted at rest. In Open WebUI: avatar (bottom-left) → Settings → Account → API Keys — an admin may need to enable API keys first.</details>
 
       <p class="sectitle" style="margin-top:22px">OBS Studio</p>
       <div class="row"><label>Enable</label>
@@ -3804,10 +3804,10 @@
       <div class="row"><label>Reconnect</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sObsAuto" style="width:auto;flex:none"> automatically if OBS restarts</label></div>
       <p class="hint" id="sObsStatus" style="min-height:16px;margin:2px 0 0"></p>
-      <p class="hint">In OBS: <b>Tools → WebSocket Server Settings</b> → enable the server, then <b>Show Connect Info</b> for the port and password. The password is stored encrypted at rest and never leaves the main process.</p>
+      <details class="hint"><summary>In OBS: <b>Tools → WebSocket Server Settings</b> → enable the server, then <b>Show Connect Info</b> for the port and password.</summary> The password is stored encrypted at rest and never leaves the main process.</details>
 
       <p class="sectitle" style="margin-top:22px">OAuth 2.0</p>
-      <p class="hint">Connect services once for built-in integrations. OAuth tokens stay in the main process, are encrypted at rest, and are refreshed before expiry; drop-in apps cannot request them.</p>
+      <details class="hint"><summary>Connect services once for built-in integrations.</summary> OAuth tokens stay in the main process, are encrypted at rest, and are refreshed before expiry; drop-in apps cannot request them.</details>
       <div id="sOauthList"><p class="hint">Loading OAuth providers...</p></div>`;
 
     // Drop-In Apps tab — manage user-installed app folders (import/export/delete) + storage location
@@ -3829,12 +3829,12 @@
         <input id="ttsTtsHost" value="${esc(voice.ttsHost)}" placeholder="127.0.0.1" style="flex:1">
         <input id="ttsTtsPort" value="${esc(voice.ttsPort)}" placeholder="10200" style="width:90px;margin-left:8px"></div>
 
-      <p class="hint">The default STT (Whisper) and TTS (Piper) servers for every voice app and meeting dictation. Each service has its own host + port, so they can run on different machines. Enter your server's IP, or run <a href="#" id="ttsHelperLink">tts-stt-windows</a> on any Windows box to provide both and set the host to <code>127.0.0.1</code>. A page can override these in its <b>Advanced settings</b>. Remember to Save.</p>`;
+      <details class="hint"><summary>The default STT (Whisper) and TTS (Piper) servers for every voice app and meeting dictation.</summary> Each service has its own host + port, so they can run on different machines. Enter your server's IP, or run <a href="#" id="ttsHelperLink">tts-stt-windows</a> on any Windows box to provide both and set the host to <code>127.0.0.1</code>. A page can override these in its <b>Advanced settings</b>. Remember to Save.</details>`;
 
     // AI Profiles (Smart Profiles): the global library the AI Voice app's Profile picker offers.
     const apHtml = `
       <p class="sectitle">AI Profiles</p>
-      <p class="hint">Named instructions for the <b>AI Voice</b> app — pick one on the panel (the Profile button) and the AI behaves accordingly: translate, summarize, write, and so on. The instruction is sent to the AI as its role for the conversation. An empty instruction (General Chat) means plain, unmodified chat. Every AI Voice page remembers its own current profile. Remember to Save.</p>
+      <details class="hint"><summary>Named instructions for the <b>AI Voice</b> app — pick one on the panel (the Profile button) and the AI behaves accordingly: translate, summarize, write, and so on.</summary> The instruction is sent to the AI as its role for the conversation. An empty instruction (General Chat) means plain, unmodified chat. Every AI Voice page remembers its own current profile. Remember to Save.</details>
       <div id="sAiProfileRows">${aiProfileRowsHtml((config.settings || {}).aiProfiles)}</div>
       <button id="sAiProfileAdd" type="button" style="margin-top:10px">+ Add profile</button>`;
 
@@ -3842,7 +3842,7 @@
     // second list under AI Profiles -- that tab is already full.
     const rtHtml = `
       <p class="sectitle">Routines</p>
-      <p class="hint">A routine is a saved request plus which <b>AI Chat</b> page — and, for the agent backends, which <b>folder</b> — runs it. Put one on a tile (tile type <b>AI Routine</b>) and tapping it switches the panel to that page and sends the request, with the agent's normal tools and approvals. You can also save one straight from the panel: the <b>+ Routine</b> button beside Send on any AI Chat page keeps whatever you just typed or asked for. Remember to Save.</p>
+      <details class="hint"><summary>A routine is a saved request plus which <b>AI Chat</b> page — and, for the agent backends, which <b>folder</b> — runs it.</summary> Put one on a tile (tile type <b>AI Routine</b>) and tapping it switches the panel to that page and sends the request, with the agent's normal tools and approvals. You can also save one straight from the panel: the <b>+ Routine</b> button beside Send on any AI Chat page keeps whatever you just typed or asked for. Remember to Save.</details>
       <div id="sRoutineRows">${routineEditorHtml()}</div>`;
     el.innerHTML = `
       <p class="sectitle">Settings</p>
