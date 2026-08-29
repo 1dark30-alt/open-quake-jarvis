@@ -18,7 +18,6 @@
   let armed = false, idleT = null, lastHit = -1, volT = null;
   let selOpen = false, selIdx = 0, selAutoClose = null;
   let knobSel = -1;   // knob "select button" mode: index of the highlighted tile (-1 = none)
-  let pendingRotFlash = false;   // a knob click just toggled rotation -> flash the new state when it comes back
   let webMode = false, curUrl = '', webReady = false, webDown = false, lastWeb = { x: 0, y: 0 }, webIdle = null;
   let pendingMicToggle = false;   // a translation-toggle hotkey fired while the page was still loading; run on dom-ready
   let haToken = '', haInject = false, webExternalLinks = false, webAttached = false, pendingWebUrl = null;
@@ -219,7 +218,7 @@
   panelApi.onReloadDashboard(() => { if (webMode) { try { web.reload(); } catch (e) {} } });
   panelApi.onRotation(r => {
     rotEnabled = !!r.enabled; rotRunning = !!r.running; if (selOpen) renderWheel();
-    if (pendingRotFlash) { pendingRotFlash = false; flashVol(rotRunning ? '⟳ Rotation on' : '⛔ Rotation off'); }
+    if (r.flash) flashVol(rotRunning ? '⟳ Rotation on' : '⛔ Rotation off');   // knob/tray/hotkey user toggle
   });
 
   // ---- first-run intro overlay (one-time "double-click the knob" hint) ----
@@ -495,8 +494,8 @@
     if (a === 'home') return panelApi.gotoHome();
     if (a === 'rotation_start') return panelApi.startRotation();
     if (a === 'rotation_stop') return panelApi.stopRotation();
-    // 'rotation' (default toggle) — flash the new state on the rotation update
-    pendingRotFlash = true; panelApi.toggleRotation();
+    // 'rotation' (default toggle) — main flashes the new state on the rotation update
+    panelApi.toggleRotation();
   }
   // ---- knob "scroll pages" / "select button" / "enter" ----
   function cyclePage(dir) {

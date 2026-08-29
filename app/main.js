@@ -2988,11 +2988,11 @@ function scheduleRotation() {
   if (!rotateRunning || rotationSuspended || saverActive) return;
   rotTimer = setTimeout(() => { rotateTick(); scheduleRotation(); }, rotationCfg().interval * 1000);
 }
-function pushRotationState() {
-  if (panelWin && !panelWin.isDestroyed()) panelWin.webContents.send('rotation', { enabled: rotationCfg().enabled, running: rotateRunning });
+function pushRotationState(flash) {
+  if (panelWin && !panelWin.isDestroyed()) panelWin.webContents.send('rotation', { enabled: rotationCfg().enabled, running: rotateRunning, flash: !!flash });
 }
-function setRotation(on) { rotateRunning = !!on; scheduleRotation(); refreshTray(); pushRotationState(); }
-function toggleRotation() { setRotation(!rotateRunning); }
+function setRotation(on, flash) { rotateRunning = !!on; scheduleRotation(); refreshTray(); pushRotationState(flash); }
+function toggleRotation() { setRotation(!rotateRunning, true); }   // knob/tray/hotkey user toggle -> flash the new state on the panel
 // Re-evaluate after a settings change: a fresh off->on starts it, off stops it, on->on keeps the runtime state
 // (so a manual pause survives an unrelated save). interval/page changes are picked up by the (re)schedule.
 function applyRotationSettings(wasEnabled) {
