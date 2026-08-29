@@ -42,6 +42,18 @@
      wrapping put Panes on a second line where it read as missing. Settings tabbar still wraps. */
   .grids .tabbar { flex-wrap: nowrap; gap: 2px; }
   .grids .tabbar .tab { padding: 8px 8px; min-width: 0; }
+  /* Settings: vertical grouped nav + content column; sections separated by rules */
+  .setwrap { display: flex; gap: 22px; align-items: flex-start; }
+  .setnav { width: 170px; flex: none; position: sticky; top: 8px; display: flex; flex-direction: column; gap: 2px; }
+  .setnav .setgroup { margin: 16px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #6f8298; }
+  .setnav .setgroup:first-child { margin-top: 0; }
+  .setnav .setitem { background: transparent; border: none; border-radius: 7px; text-align: left; padding: 7px 10px; color: #8aa0b6; font-size: 13px; }
+  .setnav .setitem:hover { background: #182230; color: #dbe5f0; }
+  .setnav .setitem.on { background: #16314f; color: #fff; }
+  .setnav .setback { margin-top: 20px; }
+  .setbody { flex: 1; min-width: 0; }
+  .setbody .sectitle { margin: 28px 0 10px; padding-top: 18px; border-top: 1px solid #1e2733; }
+  .setbody .sectitle:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
   input, select { background: #0e141c; color: #dbe5f0; border: 1px solid #2a3a4e; border-radius: 6px; padding: 7px 9px; font-size: 14px; width: 100%; }
   .row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
   .row label { width: 110px; color: #91a4ba; font-size: 14px; flex: none; }

@@ -3465,7 +3465,7 @@
       <div class="row"><button id="sRunSetup">Re-run first-time setup…</button></div>
       <details class="hint"><summary><b>Software</b> mode runs in an ordinary desktop window and needs no special hardware — ideal for the meeting workflow on any PC.</summary> <b>Panel</b> and <b>Monitor</b> use the QUAKE display. A mode change applies as soon as you click <b>Save</b> — no restart.</details>
 
-      <p class="sectitle" style="margin-top:22px">Software window</p>
+      <p class="sectitle">Software window</p>
       <div class="row"><label style="width:auto">Show</label>
         <select id="sSwDisplay" style="width:230px">
           <option value="pages">Pages — one page at a time</option>
@@ -3473,7 +3473,7 @@
         </select></div>
       <details class="hint"><summary>Software mode only. A <b>pane</b> (created on the sidebar's Panes tab) stacks several of your pages vertically — the window grows to fit them, so a big screen shows them all at once.</summary> In Panes view the window's ☰ button switches between your panes, just like it switches pages. With no usable pane the window falls back to normal Pages. Applies on <b>Save</b>.</details>
 
-      <p class="sectitle" style="margin-top:22px">On launch</p>
+      <p class="sectitle">On launch</p>
       <div class="row"><label style="width:auto">Editor window</label>
         <select id="sLaunch" style="width:230px">
           <option value="editor">Open the editor window</option>
@@ -3482,7 +3482,7 @@
         </select></div>
       <details class="hint"><summary>Controls the PC-side editor window on launch.</summary> In Panel/Monitor mode the device panel always activates too; Tray-only hides the editor — reopen it from the tray icon.</details>
 
-      <p class="sectitle" style="margin-top:22px">Screen rotation</p>
+      <p class="sectitle">Screen rotation</p>
       <div class="row"><label>Auto-rotate</label>
         <input type="checkbox" id="sRot" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">cycle the panel through pages automatically</span></div>
       <div class="row"><label>Every</label>
@@ -3505,19 +3505,19 @@
         <button id="sPagePrevKeyClear" style="margin-left:8px">Clear</button></div>
       <details class="hint"><summary>Global hotkeys that step the panel <b>forward</b> / <b>back</b> through your visible pages — in the order they're listed here, wrapping around the ends.</summary> Hidden pages are skipped. These work anytime, independent of rotation.</details>
 
-      <p class="sectitle" style="margin-top:22px">Icons</p>
+      <p class="sectitle">Icons</p>
       <div class="row"><label>Work offline</label>
         <input type="checkbox" id="sOfflineIcons" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">never fetch icons from the internet — use cached icons and emoji only</span></div>
       <details class="hint"><summary>Home Assistant tiles pull their glyphs from a public icon CDN (jsDelivr) the first time each one is shown, then cache them for good.</summary> Turn this on for locked-down machines: the panel makes <b>zero</b> outbound icon requests and falls back to the emoji glyph for anything not already cached. Seed the cache first by opening the tiles once on a normal network.</details>
 
-      <p class="sectitle" style="margin-top:22px">Desktop focus</p>
+      <p class="sectitle">Desktop focus</p>
       <div class="row"><label>Auto-follow</label>
         <input type="checkbox" id="sFocus" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">switch the panel to a page when its mapped app becomes focused on the PC</span></div>
       <div class="row"><label>While focused</label>
         <label class="iconopt" style="width:auto"><input type="checkbox" id="sFocusPauseRot" ${focusFollow.enabled ? '' : 'disabled'}> Pause auto-rotation</label></div>
       <details class="hint"><summary>Map apps to a page under that page's Advanced settings → “Focus trigger app(s)”.</summary> Detection polls in the background and only switches once the newly-focused app has held focus for a couple seconds, so quick alt-tabbing won't cause flicker — and manually navigating the panel away is never overridden; it only re-triggers on the next focus change. With <b>Pause auto-rotation</b> on, rotation holds off the moment a mapped app takes focus and picks back up the moment it loses focus.</details>
 
-      <p class="sectitle" style="margin-top:22px">Dashboards</p>
+      <p class="sectitle">Dashboards</p>
       <div class="row"><label>Reload hotkey</label>
         <input id="sDashReloadKey" readonly placeholder="click, then press keys" value="${esc(dashReload.hotkey || '')}" style="width:200px">
         <button id="sDashReloadKeyClear" style="margin-left:8px">Clear</button></div>
@@ -3562,16 +3562,16 @@
       <details class="hint"><summary>Changes apply to the ring instantly.</summary> <b>Save to device</b> writes them to the device's own memory so they survive a power-cycle. (Effect “All Off” turns the ring off. Animated effects use the color/speed; solid effects ignore speed.)</details>
       <div class="row" style="margin-top:6px"><button id="sSaveLed">Save to device</button><span id="sSaveLedMsg" class="hint" style="margin:0 0 0 10px"></span></div>
 
-      <p class="sectitle" style="margin-top:22px">Microphone</p>
+      <p class="sectitle">Microphone</p>
       <div class="row"><label>At launch</label>
         <input type="checkbox" id="sMic" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">enable the device mic when open-quake starts</span></div>
       <details class="hint"><summary>The mic LED and the mic audio are one hardware switch — the light is on whenever the mic is enabled, off when it isn't.</summary> Toggle it any time from the tray menu or a “System → mic” tile.</details>
 
-      <p class="sectitle" style="margin-top:22px">Display</p>
+      <p class="sectitle">Display</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="sKeepAwake" ${s.keepDisplayAwake ? 'checked' : ''}> Keep the display awake while running (disables the screensaver) — Panel mode only</label></div>
       <details class="hint"><summary>Panel mode only. Keeps the screen from sleeping and stops the Windows screensaver so the QUAKE panel stays lit.</summary> <b>Off by default</b> (and always off in Software/Monitor mode) so your normal screensaver works. Windows has no per-display option, so when on it suppresses the screensaver on all displays.</details>
 
-      <p class="sectitle" style="margin-top:22px">Touchscreen</p>
+      <p class="sectitle">Touchscreen</p>
       <details class="hint"><summary>If touches land on the wrong monitor, click <b>Set up touchscreen</b>.</summary> open-quake launches Windows' built-in touch-identify wizard (the one Microsoft buried behind the broken-in-24H2 Tablet PC Settings UI) — accept the UAC prompt, then <b>press Enter on your keyboard</b> to skip past your other monitors as the prompt cycles through them, and <b>tap the panel with your finger</b> only when the prompt appears on the panel. That writes a persistent binding under <code>HKLM\\…\\Wisp\\Pen\\Digimon</code> that survives reboot, sleep, and primary-display swaps.</details>
       <details class="hint"><summary><b>Clear all calibrations</b> wipes any old <code>tabcal</code> coordinate calibration.</summary> You don't normally need it — only run it if your taps land on the right display but are visibly off-target.</details>
       <div class="row" style="gap:8px"><button id="sTouchSetup">Set up touchscreen</button><button id="sTouchClear">Clear all calibrations</button><span id="sTouchMsg" class="hint" style="margin:0 0 0 10px"></span></div>`;
@@ -3583,7 +3583,7 @@
       <details class="hint"><summary>Windows only. Windows dragged or relocated onto the Quake are returned to another display.</summary> If your other displays disconnect, their positions are held and restored when a display returns. Open Quake, Windows shell surfaces, and secure desktop screens are left alone.</details>
       <p class="hint">Protection is suspended in Monitor Mode and resumes when Monitor Mode exits. This does not change the panel's USB keepalive.</p>
 
-      <p class="sectitle" style="margin-top:22px">Monitor mode</p>
+      <p class="sectitle">Monitor mode</p>
       <details class="hint"><summary>Use the device as a normal monitor: it shows your Windows desktop and touch acts as the mouse.</summary> Enter it from the tray menu or a “System → monitor” tile; exit from the tray. These set what the knob does while in monitor mode.</details>
       <div class="row"><label>Knob turn</label>
         <select id="sMonTurn" style="width:230px">
@@ -3618,7 +3618,7 @@
         <select id="meMic" style="flex:1"><option value="">System default</option></select></div>
       <p class="hint">This must be the same mic you use with Teams</p>
 
-      <p class="sectitle" style="margin-top:22px">Transcription Server</p>
+      <p class="sectitle">Transcription Server</p>
       <div class="row"><label>URL</label>
         <input id="meTransUrl" value="${esc(me.transcribeUrl || 'http://127.0.0.1:10301/transcribe')}" style="flex:1"></div>
       <details class="hint"><summary>The tts-sst or meeting-diarizer endpoint that turns recordings into speaker-labeled transcripts.</summary> Edit the host/port to match your server; the panel checks its /health before sending. Remember to Save.</details>
@@ -3634,7 +3634,7 @@
         <button id="meEditPrompt" type="button">Edit prompt file</button></div>
       <p class="hint">The instructions the AI follows when analyzing a transcript (meeting-analysis-prompt.md, opens in your default editor). Changes apply to the next analysis.</p>
 
-      <p class="sectitle" style="margin-top:22px">Auto-record</p>
+      <p class="sectitle">Auto-record</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meAuto" ${me.autoRecord ? 'checked' : ''}> Start recording automatically when a call begins</label></div>
       <details class="hint"><summary>Detects when an app below has an active call (its microphone goes live) and starts recording — even if the panel is on another app.</summary> It never triggers on Claude voice or other microphone use.</details>
       <div class="row"><label>Call apps</label>
@@ -3644,7 +3644,7 @@
         <input type="number" id="meSilence" min="0" step="1" value="${Number(me.silenceStopMin) || 0}" style="width:90px"> <span class="hint" style="margin:0 0 0 8px">minutes (0 = never)</span></div>
       <p class="hint">Automatically stop a recording after this many minutes with no audio on either channel.</p>
 
-      <p class="sectitle" style="margin-top:22px">Capture</p>
+      <p class="sectitle">Capture</p>
       <div class="row"><label class="iconopt" style="width:auto"><input type="checkbox" id="meEcho" ${me.echoGate ? 'checked' : ''}> Echo-gate your microphone</label></div>
       <details class="hint"><summary>Mutes your mic in the recording while the speakers are loud (and you're not on headphones), to stop the far end bleeding back in.</summary> Off = faithful capture of everything you say, even when others are talking.</details>
 
@@ -3742,7 +3742,7 @@
           <option value="dark">Dark</option>
         </select></div>
       <details class="hint"><summary>Light/dark for the panel, the clocks, and the apps — and passed to web dashboards like a browser's light/dark.</summary> Each page can override this in its own <b>Advanced</b> section.</details>
-      <p class="sectitle" style="margin-top:22px">Accent color</p>
+      <p class="sectitle">Accent color</p>
       <div class="row"><label>Accent</label>
         <input type="color" id="sAccent" value="${esc(th.accent)}" style="width:54px;height:30px;padding:2px">
         <span id="sAccentVal" class="hint" style="margin:0 0 0 10px">${esc(th.accent)}</span></div>
@@ -3782,7 +3782,7 @@
         <input type="password" id="sHaToken" value="${esc(ha.token || '')}" placeholder="paste your long-lived access token" style="flex:1"></div>
       <p class="hint">The token is stored encrypted at rest (same secret store as your dashboard tokens). It only leaves the main process for features that need it.</p>
 
-      <p class="sectitle" style="margin-top:22px">Open WebUI</p>
+      <p class="sectitle">Open WebUI</p>
       <div class="row"><label>URL</label>
         <input type="text" id="sOwUrl" value="${esc(ow.url || '')}" placeholder="http://192.168.1.25:3000" style="flex:1"></div>
       <div class="row"><label>API key</label>${secretInput(ow.apiKey || '', 'id="sOwKey" placeholder="paste an Open WebUI API key"', 'flex:1')}</div>
@@ -3792,7 +3792,7 @@
       <p class="hint" id="sOwStatus" style="min-height:16px;margin:2px 0 0"></p>
       <details class="hint"><summary>One connection shared by the meeting <b>Analysis AI</b> (Open WebUI option on the Meeting tab) and the <b>Open WebUI Voice</b> panel app.</summary> The key is stored encrypted at rest. In Open WebUI: avatar (bottom-left) → Settings → Account → API Keys — an admin may need to enable API keys first.</details>
 
-      <p class="sectitle" style="margin-top:22px">OBS Studio</p>
+      <p class="sectitle">OBS Studio</p>
       <div class="row"><label>Enable</label>
         <input type="checkbox" id="sObsEnabled" style="width:auto;flex:none"><span class="hint" style="margin:0 0 0 8px">connect to OBS for the OBS switcher app and OBS tiles</span></div>
       <div class="row"><label>Host</label>
@@ -3806,7 +3806,7 @@
       <p class="hint" id="sObsStatus" style="min-height:16px;margin:2px 0 0"></p>
       <details class="hint"><summary>In OBS: <b>Tools → WebSocket Server Settings</b> → enable the server, then <b>Show Connect Info</b> for the port and password.</summary> The password is stored encrypted at rest and never leaves the main process.</details>
 
-      <p class="sectitle" style="margin-top:22px">OAuth 2.0</p>
+      <p class="sectitle">OAuth 2.0</p>
       <details class="hint"><summary>Connect services once for built-in integrations.</summary> OAuth tokens stay in the main process, are encrypted at rest, and are refreshed before expiry; drop-in apps cannot request them.</details>
       <div id="sOauthList"><p class="hint">Loading OAuth providers...</p></div>`;
 
@@ -3824,7 +3824,7 @@
         <input id="ttsSttHost" value="${esc(voice.sttHost)}" placeholder="127.0.0.1" style="flex:1">
         <input id="ttsSttPort" value="${esc(voice.sttPort)}" placeholder="10300" style="width:90px;margin-left:8px"></div>
 
-      <p class="sectitle" style="margin-top:22px">Text-to-speech (Piper / TTS)</p>
+      <p class="sectitle">Text-to-speech (Piper / TTS)</p>
       <div class="row"><label>TTS host / port</label>
         <input id="ttsTtsHost" value="${esc(voice.ttsHost)}" placeholder="127.0.0.1" style="flex:1">
         <input id="ttsTtsPort" value="${esc(voice.ttsPort)}" placeholder="10200" style="width:90px;margin-left:8px"></div>
@@ -3844,37 +3844,30 @@
       <p class="sectitle">Routines</p>
       <details class="hint"><summary>A routine is a saved request plus which <b>AI Chat</b> page — and, for the agent backends, which <b>folder</b> — runs it.</summary> Put one on a tile (tile type <b>AI Routine</b>) and tapping it switches the panel to that page and sends the request, with the agent's normal tools and approvals. You can also save one straight from the panel: the <b>+ Routine</b> button beside Send on any AI Chat page keeps whatever you just typed or asked for. Remember to Save.</details>
       <div id="sRoutineRows">${routineEditorHtml()}</div>`;
+    // Two-level settings nav: grouped vertical category list instead of a wrapping tab strip.
+    const NAV = [
+      ['General', [['software', 'Software'], ['theme', 'Theme']]],
+      ['Device', [['hardware', 'Hardware'], ['monitor', 'Monitor']]],
+      ['Apps', [['apps', 'Apps'], ['dropin', 'Drop-In Apps']]],
+      ['Integrations', [['auth', 'Auth'], ['ttsstt', 'TTS/STT']]],
+      ['Automation', [['aiprofiles', 'AI Profiles'], ['routines', 'Routines'], ['meeting', 'Meeting']]],
+    ];
     el.innerHTML = `
       <p class="sectitle">Settings</p>
-      <div class="tabbar">
-        <button id="tabSw" class="tab${tab === 'software' ? ' on' : ''}">Software</button>
-        <button id="tabHw" class="tab${tab === 'hardware' ? ' on' : ''}">Hardware</button>
-        <button id="tabTh" class="tab${tab === 'theme' ? ' on' : ''}">Theme</button>
-        <button id="tabApps" class="tab${tab === 'apps' ? ' on' : ''}">Apps</button>
-        <button id="tabDi" class="tab${tab === 'dropin' ? ' on' : ''}">Drop-In Apps</button>
-        <button id="tabAuth" class="tab${tab === 'auth' ? ' on' : ''}">Auth</button>
-        <button id="tabAp" class="tab${tab === 'aiprofiles' ? ' on' : ''}">AI Profiles</button>
-        <button id="tabRt" class="tab${tab === 'routines' ? ' on' : ''}">Routines</button>
-        <button id="tabMe" class="tab${tab === 'meeting' ? ' on' : ''}">Meeting</button>
-        <button id="tabTts" class="tab${tab === 'ttsstt' ? ' on' : ''}">TTS/STT</button>
-        <button id="tabMon" class="tab${tab === 'monitor' ? ' on' : ''}">Monitor</button>
-      </div>
-      ${tab === 'software' ? swHtml : tab === 'hardware' ? hwHtml : tab === 'theme' ? thHtml : tab === 'apps' ? appsHtml : tab === 'dropin' ? diHtml : tab === 'auth' ? authHtml : tab === 'aiprofiles' ? apHtml : tab === 'routines' ? rtHtml : tab === 'meeting' ? meHtml : tab === 'ttsstt' ? ttsHtml : monHtml}
-      <div class="row" style="margin-top:22px"><button id="sBack">← Back to pages</button></div>`;
+      <div class="setwrap">
+        <nav class="setnav">
+          ${NAV.map(([grp, items]) => `<p class="setgroup">${grp}</p>`
+            + items.map(([id, lb]) => `<button class="setitem${tab === id ? ' on' : ''}" data-tab="${id}">${lb}</button>`).join('')).join('')}
+          <button id="sBack" class="setback">← Back to pages</button>
+        </nav>
+        <div class="setbody">
+          ${tab === 'software' ? swHtml : tab === 'hardware' ? hwHtml : tab === 'theme' ? thHtml : tab === 'apps' ? appsHtml : tab === 'dropin' ? diHtml : tab === 'auth' ? authHtml : tab === 'aiprofiles' ? apHtml : tab === 'routines' ? rtHtml : tab === 'meeting' ? meHtml : tab === 'ttsstt' ? ttsHtml : monHtml}
+        </div>
+      </div>`;
 
-    document.getElementById('tabSw').onclick = () => { settingsTab = 'software'; renderSettings(); };
-    document.getElementById('tabHw').onclick = () => { settingsTab = 'hardware'; renderSettings(); };
-    document.getElementById('tabTh').onclick = () => { settingsTab = 'theme'; renderSettings(); };
-    document.getElementById('tabApps').onclick = () => { settingsTab = 'apps'; renderSettings(); };
-    document.getElementById('tabDi').onclick = () => { settingsTab = 'dropin'; renderSettings(); };
-    document.getElementById('tabAuth').onclick = () => { settingsTab = 'auth'; renderSettings(); };
-    document.getElementById('tabAp').onclick = () => { settingsTab = 'aiprofiles'; renderSettings(); };
+    el.querySelectorAll('.setitem').forEach(b => b.onclick = () => { settingsTab = b.dataset.tab; renderSettings(); });
     wireAiProfileRows();   // no-op unless the AI Profiles tab is showing
-    document.getElementById('tabRt').onclick = () => { settingsTab = 'routines'; renderSettings(); };
     wireRoutineRows();     // no-op unless the Routines tab is showing
-    document.getElementById('tabMe').onclick = () => { settingsTab = 'meeting'; renderSettings(); };
-    document.getElementById('tabTts').onclick = () => { settingsTab = 'ttsstt'; renderSettings(); };
-    document.getElementById('tabMon').onclick = () => { settingsTab = 'monitor'; renderSettings(); };
     document.getElementById('sBack').onclick = () => { view = 'pages'; render(); };
     const setS = (k, v) => { if (!config.settings) config.settings = {}; config.settings[k] = v; markDirty(); };
 
