@@ -220,8 +220,9 @@
         "label": "Zoom tab: use Zoom's default key mappings",
         "type": "bool",
         "default": true,
-        "help": "Zoom ships with these combos already bound (Alt+A mute, Alt+V video, Ctrl+Shift+A/D phone accept/decline, Alt+Q leave) — if you haven't changed Zoom's own Keyboard Shortcuts, leave this on and there's nothing to configure. Turn it off only if you've remapped these in Zoom yourself.",
-        "section": "Zoom"
+        "help": "Alt+A mute, Alt+V video, Ctrl+Shift+A/D phone accept/decline, Alt+Q leave. If you haven't changed Zoom's own Keyboard Shortcuts there's nothing to configure; turn it off only if you've remapped these in Zoom yourself.",
+        "section": "Zoom",
+        "helpSummary": "Zoom ships with these combos already bound; leave this on unless you've remapped them."
       },
       {
         "key": "zoomMute",

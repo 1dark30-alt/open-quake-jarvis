@@ -1110,7 +1110,11 @@
 
   // ---- save model (no live edit) ----
   function setState(text, cls) { const el = document.getElementById('state'); el.textContent = text; el.className = 'state' + (cls ? ' ' + cls : ''); }
-  function markDirty() { dirty = true; setState('● Unsaved changes', 'dirty'); document.getElementById('saveBtn').disabled = false; }
+  function markDirty() {
+    dirty = true; setState('● Unsaved changes', 'dirty'); document.getElementById('saveBtn').disabled = false;
+    // Any app-page edit re-points the live preview (debounced; only reloads when the URL changed).
+    try { const g = curGrid(); if (g && g.kind === 'app') updateAppPreview(g); } catch (e) {}
+  }
   // Native confirm()/alert() leave the window's input state broken in Electron — text fields and
   // <select> popups stop responding because the dialog takes focus and the window never registers
   // getting it back (electron#31917 / #41603). Route EVERY dialog through these; main blurs and
@@ -2269,6 +2273,7 @@
       </select><button id="refreshApps" type="button" title="Reload app manifests">Reload app list</button></div>
       ${def && def.oauth ? '<div id="appOAuth"></div>' : ''}
       ${optsBlock}
+      <div id="appPreviewHost"></div>
       ${pageBehaviorHtml(g, canGrid && !isMusic)}
       <div class="row" style="margin-top:10px"><button id="gFocus">Show on device</button></div>
       ${def ? '' : '<p class="hint">Pick an app, then set its options below.</p>'}
@@ -2587,6 +2592,7 @@
       renderAppOpts(g, def);
     }
     wireRotRow(g); wireShortcutRow(g); wireAdvRow(g); wireGridSizeRow(g);
+    if (def) appendAppPreview(document.getElementById('appPreviewHost'), g);
     enforceMusicCap(g);
   }
   // OAuth belongs to the installed app, so its lifecycle controls sit with that app's page
@@ -2719,7 +2725,10 @@
       else if (o.type === 'secret') field = secretInput(v, attrs);
       else if (o.type === 'folder') field = `<span class="folderopt" style="display:flex;gap:6px;flex:1"><input ${attrs} value="${esc(v)}" placeholder="${esc(o.placeholder || 'No folder chosen')}" style="flex:1"><button type="button" class="folderbrowse" data-for="${esc(o.key)}">Browse…</button></span>`;
       else field = `<input ${attrs} value="${esc(v)}"${o.maxLength ? ` maxlength="${Number(o.maxLength)}"` : ''}>`;
-      const help = o.help ? `<p class="hint" style="margin:-2px 0 10px 78px">${esc(o.help)}</p>` : '';
+      // helpSummary + help -> one visible sentence with the detail behind More…; help alone stays a plain hint
+      const help = o.helpSummary
+        ? `<details class="hint" style="margin:-2px 0 10px 78px"><summary>${esc(o.helpSummary)}</summary> ${esc(o.help || '')}</details>`
+        : o.help ? `<p class="hint" style="margin:-2px 0 10px 78px">${esc(o.help)}</p>` : '';
       let heading = '';
       if (o.section && o.section !== lastSection) { heading = `<p class="sectitle" style="margin-top:16px">${esc(o.section)}</p>`; lastSection = o.section; }
       // bool without inline text: keep the checkbox and its label together in one clickable row
@@ -2783,44 +2792,35 @@
       const inp = Array.prototype.find.call(el.querySelectorAll('input'), i => i.dataset.key === btn.dataset.for);
       if (inp) { inp.value = p; inp.dispatchEvent(new Event('change', { bubbles: true })); }
     });
-    if (def.id === 'clock') appendClockPreview(el, g);
-    if (def.id === 'tzclock') appendTzPreview(el, g);
     if (def.id === 'discord') appendDiscordSetup(el);
     if (def.id === 'github') appendGitHubSetup(el);
     if (def.id === 'deck-host') appendDeckProfiles(el);
     if (def.id === 'dev-services') appendDevServices(el);
     enforceMusicCap(g);
   }
-  // Compact live previews for the clock pages: re-built on every renderAppOpts pass, so they track
-  // option changes (which re-render via the .aopt onchange handler).
-  function appendClockPreview(el, g) {
-    const secs = !!(g.options || {}).seconds, date = !!(g.options || {}).date, weather = !!(g.options || {}).weather;
-    const d = document.createElement('div');
-    d.innerHTML = `<p class="sectitle" style="margin-top:16px">Preview</p>
-      <div class="thprev" style="background:#0a111a;border-color:#233246;flex-direction:column;align-items:center;gap:8px;max-width:300px">
-        <div style="display:flex;gap:6px;align-items:center">
-          <span class="clkdigit">12</span><span class="clkdigit">34</span>${secs ? '<span class="clkdigit" style="font-size:18px;padding:8px 6px">56</span>' : ''}
-        </div>
-        ${date ? '<div class="hint" style="margin:0">Friday \u00b7 Aug 29</div>' : ''}
-        ${weather ? '<div class="hint" style="margin:0">72\u00b0 \u2600\ufe0f Portland</div>' : ''}
-      </div>`;
-    el.appendChild(d);
+  // Live page preview: the REAL panel page (same URL the panel loads, built by main's appPageUrl \u2014
+  // options, theme accent, weather and all) in a scaled iframe. Never a hand-drawn imitation: an
+  // approximate mock reads as a different UI and is worse than no preview.
+  function appendAppPreview(host, g) {
+    if (!host) return;
+    host.innerHTML = `<p class="sectitle" style="margin-top:16px">Preview</p>
+      <div class="apprev"><iframe class="apprevFrame" title="Live page preview" scrolling="no" tabindex="-1"></iframe></div>
+      <p class="hint" style="margin:4px 0 0">Live \u2014 exactly what the panel shows with the options above.</p>`;
+    updateAppPreview(g);
   }
-  function appendTzPreview(el, g) {
-    const o = g.options || {};
-    const analog = o.display === 'analog';
-    let n = 4, labels = ['PST', 'MST', 'CST', 'EST'];
-    if (o.mode === 'cities') {
-      labels = [1, 2, 3, 4, 5, 6].map(i => o['c' + i]).filter(Boolean).map((c, i) => (o['l' + (i + 1)] || String(c).split('/').pop() || '').slice(0, 8));
-      n = labels.length || 1; if (!labels.length) labels = ['(pick cities)'];
-    }
-    const cell = lb => analog
-      ? `<div style="text-align:center"><div style="width:44px;height:44px;border-radius:50%;border:2px solid #4ea3ff;position:relative;margin:0 auto"><div style="position:absolute;left:50%;top:50%;width:2px;height:16px;background:#dbe5f0;transform:translate(-50%,-100%) rotate(40deg);transform-origin:bottom"></div></div><div class="hint" style="margin:4px 0 0">${lb}</div></div>`
-      : `<div style="text-align:center"><span class="clkdigit" style="font-size:16px;padding:6px 8px">12:34</span><div class="hint" style="margin:4px 0 0">${lb}</div></div>`;
-    const d = document.createElement('div');
-    d.innerHTML = `<p class="sectitle" style="margin-top:16px">Preview</p>
-      <div class="thprev" style="background:#0a111a;border-color:#233246;gap:14px;flex-wrap:wrap">${labels.map(cell).join('')}</div>`;
-    el.appendChild(d);
+  // (Re)point the preview iframe at the current in-editor options. Called on append and from the
+  // generic option-change handler, so text edits (e.g. weather city) refresh without a re-render.
+  let appPreviewTimer = null;
+  function updateAppPreview(g) {
+    const frame = document.querySelector('.apprevFrame'); if (!frame) return;
+    clearTimeout(appPreviewTimer);
+    appPreviewTimer = setTimeout(async () => {
+      try {
+        const url = await configApi.appPreviewUrl({ app: g.app, options: g.options || {}, gridOn: !!g.gridOn, appearance: g.appearance, accent: g.accent });
+        const f = document.querySelector('.apprevFrame');           // re-query: a re-render may have replaced it
+        if (f && f.src !== url) f.src = url;
+      } catch (e) {}
+    }, 400);
   }
   // Stream Deck Host page: manage profiles from the editor (keyboard for names; the panel only
   // offers quick select/remove). Talks to the app's server through the generic appApiCall bridge.

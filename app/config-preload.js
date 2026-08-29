@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('openQuakeConfig', {
   clearTouchCalibration() { return ipcRenderer.invoke('clearTouchCalibration'); },
   getLighting() { return ipcRenderer.invoke('getLighting'); },
   getMonitorState() { return ipcRenderer.invoke('getMonitorState'); },
+  appPreviewUrl(page) { return ipcRenderer.invoke('appPreviewUrl', page); },
   enterMonitorMode() { return ipcRenderer.invoke('enterMonitorModeFromEditor'); },
   setLighting(lighting) { ipcRenderer.send('setLighting', lighting); },
   saveLightingToDevice() { return ipcRenderer.invoke('saveLightingToDevice'); },

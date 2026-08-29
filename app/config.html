@@ -155,8 +155,9 @@
   /* sortable table headers (Drop-in apps) */
   .diTbl th .diThSort { background: transparent; border: none; padding: 0; color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
   .diTbl th .diThSort:hover { color: #cfe0f2; }
-  /* mini flip-clock digit for the clock previews */
-  .clkdigit { display: inline-block; background: #141d29; border: 1px solid #233246; border-radius: 6px; padding: 10px 10px; font: 700 26px Consolas, monospace; color: #dbe5f0; }
+  /* live page preview: the real 1920x480 panel page scaled into a 640x160 box */
+  .apprev { width: 640px; max-width: 100%; aspect-ratio: 4 / 1; border: 1px solid #233246; border-radius: 10px; overflow: hidden; background: #0a111a; position: relative; }
+  .apprev .apprevFrame { width: 1920px; height: 480px; border: 0; transform: scale(0.3333); transform-origin: top left; pointer-events: none; position: absolute; top: 0; left: 0; }
   /* Apps page rows: emoji chip + clamped description */
   .approw .appic { display: inline-flex; width: 22px; justify-content: center; flex: none; }
   .approw .approwdesc { margin-left: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

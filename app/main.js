@@ -4026,6 +4026,14 @@ app.whenReady().then(async () => {
   // then live-previews edits as the user drags. Both are gated to the config window (isFrom) like every
   // other device-control channel. (These were dropped by mistake in the b2ae172 security rewrite, which
   // kept the preload channels + renderer callers but lost the main-process handlers.)
+  // Editor page preview: the SAME URL the panel would load for this page (options + theme params),
+  // built from the editor's in-progress page object so unsaved option edits preview correctly.
+  ipcMain.handle('appPreviewUrl', (e, page) => {
+    if (!isFrom(e, configWin)) return 'about:blank';
+    if (!page || typeof page !== 'object' || typeof page.app !== 'string') return 'about:blank';
+    try { return appPageUrl({ app: page.app, options: page.options || {}, gridOn: !!page.gridOn, appearance: page.appearance, accent: page.accent }); }
+    catch (err) { return 'about:blank'; }
+  });
   // Monitor-mode state + enter action for the editor's Monitor settings page. Enter-only: exiting
   // stays tray-only, since in monitor mode the editor may be on a display the user can't see.
   ipcMain.handle('getMonitorState', (e) => {

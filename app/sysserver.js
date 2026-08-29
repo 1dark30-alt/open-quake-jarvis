@@ -55,7 +55,10 @@ const LOCAL_APP_CSP = [
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
-  "frame-ancestors 'none'",
+  // file: lets the (file://-origin) editor window embed served pages as live page previews;
+  // remote origins still can't frame them — only local files, which already run outside the browser
+  // sandbox anyway. Everything else about the policy is unchanged.
+  "frame-ancestors file:",
 ].join('; ');
 
 // Static page assets served verbatim. Page scripts were moved out-of-line so the pages can run under a
