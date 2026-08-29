@@ -155,9 +155,20 @@
   /* sortable table headers (Drop-in apps) */
   .diTbl th .diThSort { background: transparent; border: none; padding: 0; color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
   .diTbl th .diThSort:hover { color: #cfe0f2; }
-  /* live page preview: the real 1920x480 panel page scaled into a 640x160 box */
+  /* live page preview: the real 1920x480 panel page scaled into a 640x160 box; the native button
+     strip is composited on the stage with the panel's own geometry and tile styling (index.html) */
   .apprev { width: 640px; max-width: 100%; aspect-ratio: 4 / 1; border: 1px solid #233246; border-radius: 10px; overflow: hidden; background: #0a111a; position: relative; }
-  .apprev .apprevFrame { width: 1920px; height: 480px; border: 0; transform: scale(0.3333); transform-origin: top left; pointer-events: none; position: absolute; top: 0; left: 0; }
+  .apprev .apprevStage { position: absolute; top: 0; left: 0; width: 1920px; height: 480px; transform: scale(0.3333); transform-origin: top left;
+    background: radial-gradient(140% 200% at 0% 0%, #0e1b2e 0%, #05080d 70%); }
+  .apprev .apprevFrame { position: absolute; top: 0; left: 0; width: 1920px; height: 480px; border: 0; pointer-events: none; }
+  .apprev .apprevStrip { position: absolute; top: 0; height: 480px; display: grid; gap: 10px; padding: 12px; box-sizing: border-box;
+    background: radial-gradient(140% 200% at 0% 0%, #0e1b2e 0%, #05080d 70%); }
+  .apprev .ptile { display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 18px;
+    background: linear-gradient(160deg, #18293d, #0c141f); border: 1px solid #243a55; color: #cfe0f2; }
+  .apprev .ptile.empty { background: #0a111a; border: 1px dashed #1b2838; }
+  .apprev .ptile .em, .apprev .ptile .ic { font-size: 60px; line-height: 1; }
+  .apprev .ptile img { width: 64px; height: 64px; object-fit: contain; }
+  .apprev .ptile .lb { font-size: 20px; margin-top: 8px; color: #9fb3c8; }
   /* Apps page rows: emoji chip + clamped description */
   .approw .appic { display: inline-flex; width: 22px; justify-content: center; flex: none; }
   .approw .approwdesc { margin-left: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

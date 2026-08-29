@@ -2725,16 +2725,20 @@
       else if (o.type === 'secret') field = secretInput(v, attrs);
       else if (o.type === 'folder') field = `<span class="folderopt" style="display:flex;gap:6px;flex:1"><input ${attrs} value="${esc(v)}" placeholder="${esc(o.placeholder || 'No folder chosen')}" style="flex:1"><button type="button" class="folderbrowse" data-for="${esc(o.key)}">Browse…</button></span>`;
       else field = `<input ${attrs} value="${esc(v)}"${o.maxLength ? ` maxlength="${Number(o.maxLength)}"` : ''}>`;
-      // helpSummary + help -> one visible sentence with the detail behind More…; help alone stays a plain hint
-      const help = o.helpSummary
-        ? `<details class="hint" style="margin:-2px 0 10px 78px"><summary>${esc(o.helpSummary)}</summary> ${esc(o.help || '')}</details>`
-        : o.help ? `<p class="hint" style="margin:-2px 0 10px 78px">${esc(o.help)}</p>` : '';
+      // help display: helpCollapsed hides ALL help behind a bare More… beside the control;
+      // helpSummary shows one sentence with the rest behind More…; help alone stays a plain hint.
+      const inlineMore = o.helpCollapsed && o.help
+        ? `<details class="hint" style="margin:0 0 0 8px"><summary></summary> ${esc(o.help)}</details>` : '';
+      const help = o.helpCollapsed ? ''
+        : o.helpSummary
+          ? `<details class="hint" style="margin:-2px 0 10px 78px"><summary>${esc(o.helpSummary)}</summary> ${esc(o.help || '')}</details>`
+          : o.help ? `<p class="hint" style="margin:-2px 0 10px 78px">${esc(o.help)}</p>` : '';
       let heading = '';
       if (o.section && o.section !== lastSection) { heading = `<p class="sectitle" style="margin-top:16px">${esc(o.section)}</p>`; lastSection = o.section; }
       // bool without inline text: keep the checkbox and its label together in one clickable row
       const rowHtml = (o.type === 'bool' && !o.inline)
-        ? `<div class="row"><label class="iconopt" style="width:auto">${field} ${esc(o.label)}</label></div>`
-        : `<div class="row"><label>${esc(o.label)}</label>${field}</div>`;
+        ? `<div class="row"><label class="iconopt" style="width:auto">${field} ${esc(o.label)}</label>${inlineMore}</div>`
+        : `<div class="row"><label>${esc(o.label)}</label>${field}${inlineMore}</div>`;
       return heading + rowHtml + help;
     }).join('');
   }
@@ -2801,12 +2805,45 @@
   // Live page preview: the REAL panel page (same URL the panel loads, built by main's appPageUrl \u2014
   // options, theme accent, weather and all) in a scaled iframe. Never a hand-drawn imitation: an
   // approximate mock reads as a different UI and is worse than no preview.
+  // Pages whose content is an external site the editor can't authenticate into (the panel injects
+  // credentials webview-side) \u2014 a blank preview is worse than none, so they get none.
+  const PREVIEW_EXCLUDE = new Set(['ha-dashboard']);
   function appendAppPreview(host, g) {
     if (!host) return;
+    if (PREVIEW_EXCLUDE.has(g.app)) { host.innerHTML = ''; return; }
     host.innerHTML = `<p class="sectitle" style="margin-top:16px">Preview</p>
-      <div class="apprev"><iframe class="apprevFrame" title="Live page preview" scrolling="no" tabindex="-1"></iframe></div>
+      <div class="apprev"><div class="apprevStage">
+        <iframe class="apprevFrame" title="Live page preview" scrolling="no" tabindex="-1"></iframe>
+        <div class="apprevStrip" style="display:none"></div>
+      </div></div>
       <p class="hint" style="margin:4px 0 0">Live \u2014 exactly what the panel shows with the options above.</p>`;
     updateAppPreview(g);
+  }
+  // Native button strip composited into the preview with the panel's own geometry (index.js
+  // buildStrip: stripW = min(1100, cols\u00b7(480/rows)), left/right per gridAlign) and tile styling.
+  function layoutAppPreviewStrip(g) {
+    const frame = document.querySelector('.apprevFrame'), strip = document.querySelector('.apprevStrip');
+    if (!frame || !strip) return;
+    if (!g.gridOn || !(g.tiles || []).length) {
+      strip.style.display = 'none';
+      frame.style.left = '0'; frame.style.width = '1920px';
+      return;
+    }
+    const cols = g.cols || 2, rows = g.rows || 2;
+    const stripW = Math.min(1100, Math.round(cols * (480 / rows)));
+    const left = g.gridAlign === 'left';
+    frame.style.left = (left ? stripW : 0) + 'px'; frame.style.width = (1920 - stripW) + 'px';
+    strip.style.display = 'grid';
+    strip.style.left = (left ? 0 : 1920 - stripW) + 'px'; strip.style.width = stripW + 'px';
+    strip.style.gridTemplateColumns = `repeat(${cols},1fr)`;
+    strip.style.gridTemplateRows = `repeat(${rows},1fr)`;
+    strip.innerHTML = (g.tiles || []).map((t, i) => {
+      if (t && t.cover != null) return '';
+      const w = (t && t.w) || 1, h = (t && t.h) || 1;
+      const empty = !t || !t.type;
+      const pos = `grid-column:${(i % cols) + 1} / span ${w}; grid-row:${Math.floor(i / cols) + 1} / span ${h}`;
+      return `<div class="ptile${empty ? ' empty' : ''}" style="${pos}">${empty ? '' : iconHtml(t, 'strip') + `<div class="lb">${esc(t.label || '')}</div>`}</div>`;
+    }).join('');
   }
   // (Re)point the preview iframe at the current in-editor options. Called on append and from the
   // generic option-change handler, so text edits (e.g. weather city) refresh without a re-render.
@@ -2819,6 +2856,7 @@
         const url = await configApi.appPreviewUrl({ app: g.app, options: g.options || {}, gridOn: !!g.gridOn, appearance: g.appearance, accent: g.accent });
         const f = document.querySelector('.apprevFrame');           // re-query: a re-render may have replaced it
         if (f && f.src !== url) f.src = url;
+        layoutAppPreviewStrip(g);
       } catch (e) {}
     }, 400);
   }
