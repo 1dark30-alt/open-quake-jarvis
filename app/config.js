@@ -2620,7 +2620,8 @@
     const regularSettings = settingDef ? settingDef.options.filter(o => !o.advanced) : [];
     const advancedSettings = settingDef ? settingDef.options.filter(o => o.advanced) : [];
     const settingsHtml = settingDef ? `<p class="sectitle" data-app-settings="${esc(def.id)}">${esc(settingDef.title || def.name + ' settings')}</p>${renderOptions(regularSettings, appSettings, 'aset')}${advancedSettings.length ? `<details class="advsec" style="margin-top:12px"><summary>Advanced / developer overrides</summary>${renderOptions(advancedSettings, appSettings, 'aset')}</details>` : ''}` : '';
-    el.innerHTML = pageHtml + settingsHtml;
+    const descriptionHtml = def.description ? '<p class="hint" style="margin:4px 0 12px;line-height:1.45">' + esc(def.description) + '</p>' : '';
+    el.innerHTML = descriptionHtml + pageHtml + settingsHtml;
     el.querySelectorAll('.aopt').forEach(inp => inp.onchange = e => {
       const o = (def.options || []).find(x => x.key === e.target.dataset.key);
       g.options[e.target.dataset.key] = (o && o.type === 'bool') ? e.target.checked : e.target.value;
@@ -2656,6 +2657,7 @@
     if (def.id === 'discord') appendDiscordSetup(el);
     if (def.id === 'github') appendGitHubSetup(el);
     if (def.id === 'deck-host') appendDeckProfiles(el);
+    if (def.id === 'dev-services') appendDevServices(el);
     enforceMusicCap(g);
   }
   // Stream Deck Host page: manage profiles from the editor (keyboard for names; the panel only
@@ -2693,6 +2695,129 @@
         draw();
       };
     };
+    draw();
+  }
+  // Dev Services keeps its service list in app-owned storage so the desktop editor and panel
+  // edit the same data. The generic app API retains the main-process trust boundary.
+  async function appendDevServices(el) {
+    const box = document.createElement('div');
+    box.className = 'advsec';
+    box.style.cssText = 'margin-top:12px;padding:10px;border:1px solid #213145;border-radius:8px';
+    box.innerHTML = '<p class="hint" style="margin:0">Loading configured services…</p>';
+    el.appendChild(box);
+    let state;
+    let openIndex = 0;
+
+    const newId = () => 'service-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
+    const urlFor = service => {
+      const protocol = service.protocol === 'https' ? 'https' : 'http';
+      const host = String(service.host || 'localhost').trim() || 'localhost';
+      const port = Number(service.port) || 3000;
+      const suffix = String(service.path || '').trim().replace(/^\/+/, '');
+      return protocol + '://' + host + ':' + port + '/' + suffix;
+    };
+    const capture = () => {
+      if (!state) return;
+      box.querySelectorAll('.dsField').forEach(input => {
+        const index = Number(input.dataset.index);
+        const service = state.services[index];
+        if (!service) return;
+        service[input.dataset.key] = input.dataset.key === 'port' ? Number(input.value) : input.value;
+      });
+      const refresh = box.querySelector('#dsRefresh');
+      if (refresh) state.refreshSeconds = Number(refresh.value);
+    };
+    const message = (value, bad) => {
+      const target = box.querySelector('#dsMsg');
+      if (!target) return;
+      target.textContent = value || '';
+      target.style.color = bad ? '#c98' : '';
+    };
+    const draw = () => {
+      box.innerHTML = '<div class="row" style="gap:8px;align-items:center">'
+        + '<label style="width:auto;font-weight:bold">Configured services</label>'
+        + '<span class="hint" style="margin:0">This same ordered list appears on the panel; changes are picked up on its next refresh.</span>'
+        + '</div>'
+        + '<div class="row"><label>Refresh</label><select id="dsRefresh">'
+        + [10, 15, 30, 60].map(seconds => '<option value="' + seconds + '"' + (state.refreshSeconds === seconds ? ' selected' : '') + '>' + seconds + ' seconds</option>').join('')
+        + '</select></div>'
+        + state.services.map((service, index) => '<details class="advsec dsService" data-index="' + index + '"' + (index === openIndex ? ' open' : '') + ' style="margin-top:8px">'
+          + '<summary>' + esc(service.name || 'Service ' + (index + 1)) + ' · ' + esc(urlFor(service)) + '</summary>'
+          + '<div class="row"><label>Name</label><input class="dsField" data-index="' + index + '" data-key="name" value="' + esc(service.name) + '" maxlength="80"></div>'
+          + '<div class="row"><label>Protocol</label><select class="dsField" data-index="' + index + '" data-key="protocol"><option value="http"' + (service.protocol === 'https' ? '' : ' selected') + '>HTTP</option><option value="https"' + (service.protocol === 'https' ? ' selected' : '') + '>HTTPS</option></select></div>'
+          + '<div class="row"><label>Host</label><input class="dsField" data-index="' + index + '" data-key="host" value="' + esc(service.host) + '" maxlength="253" placeholder="localhost"></div>'
+          + '<div class="row"><label>Port</label><input class="dsField" data-index="' + index + '" data-key="port" type="number" min="1" max="65535" value="' + esc(String(service.port)) + '"></div>'
+          + '<div class="row"><label>Path</label><input class="dsField" data-index="' + index + '" data-key="path" value="' + esc(service.path) + '" maxlength="1024" placeholder="Optional, for example api/health"></div>'
+          + '<div class="row"><label>Expected process</label><input class="dsField" data-index="' + index + '" data-key="expectedProcess" value="' + esc(service.expectedProcess) + '" maxlength="260" placeholder="Optional, for example node"></div>'
+          + '<p class="hint" style="margin:-2px 0 10px 78px">When ownership can be identified, a different process is shown as an unexpected occupant and cannot be stopped.</p>'
+          + '<div class="row"><label>Project folder</label><span class="folderopt" style="display:flex;gap:6px;flex:1"><input class="dsField" data-index="' + index + '" data-key="projectFolder" value="' + esc(service.projectFolder) + '" maxlength="2048" placeholder="Optional folder"><button type="button" class="dsBrowse" data-index="' + index + '">Browse…</button></span></div>'
+          + '<div class="row" style="gap:8px"><button type="button" class="dsMove" data-index="' + index + '" data-direction="-1"' + (index === 0 ? ' disabled' : '') + '>Move up</button><button type="button" class="dsMove" data-index="' + index + '" data-direction="1"' + (index === state.services.length - 1 ? ' disabled' : '') + '>Move down</button><button type="button" class="dsRemove danger" data-index="' + index + '" style="margin-left:auto">Remove</button></div>'
+          + '</details>').join('')
+        + '<div class="row" style="gap:8px;margin-top:10px"><button type="button" id="dsAdd"' + (state.services.length >= 12 ? ' disabled' : '') + '>Add service</button><button type="button" id="dsSave">Save services</button><span id="dsMsg" class="hint" style="margin:0"></span></div>';
+
+      box.querySelectorAll('.dsService').forEach(details => details.ontoggle = () => {
+        if (details.open) openIndex = Number(details.dataset.index);
+      });
+      box.querySelectorAll('.dsBrowse').forEach(button => button.onclick = async () => {
+        const folder = await configApi.pickFolder();
+        if (!folder) return;
+        const input = box.querySelector('.dsField[data-index="' + button.dataset.index + '"][data-key="projectFolder"]');
+        if (input) input.value = folder;
+      });
+      box.querySelectorAll('.dsMove').forEach(button => button.onclick = () => {
+        capture();
+        const from = Number(button.dataset.index);
+        const to = from + Number(button.dataset.direction);
+        const moved = state.services.splice(from, 1)[0];
+        state.services.splice(to, 0, moved);
+        openIndex = to;
+        draw();
+      });
+      box.querySelectorAll('.dsRemove').forEach(button => button.onclick = () => {
+        capture();
+        const index = Number(button.dataset.index);
+        const service = state.services[index];
+        if (!ask('Remove ' + (service.name || 'this service') + '?')) return;
+        state.services.splice(index, 1);
+        openIndex = Math.max(0, Math.min(index, state.services.length - 1));
+        draw();
+      });
+      box.querySelector('#dsAdd').onclick = () => {
+        capture();
+        if (state.services.length >= 12) return;
+        state.services.push({ id: newId(), name: 'Service ' + (state.services.length + 1), port: 3000, protocol: 'http', host: 'localhost', path: '', expectedProcess: '', projectFolder: '' });
+        openIndex = state.services.length - 1;
+        draw();
+      };
+      box.querySelector('#dsSave').onclick = async event => {
+        capture();
+        event.currentTarget.disabled = true;
+        message('Saving…');
+        let result;
+        try { result = await configApi.appApiCall('dev-services', 'save-settings', { settings: state }); }
+        catch (error) { result = { ok: false, error: error.message || String(error) }; }
+        if (result && result.ok) {
+          state = result.settings;
+          message('Saved.');
+        } else {
+          message('Save failed: ' + ((result && result.error) || 'Unknown error'), true);
+        }
+        event.currentTarget.disabled = false;
+      };
+    };
+
+    let result;
+    try { result = await configApi.appApiCall('dev-services', 'settings', {}); }
+    catch (error) { result = { ok: false, error: error.message || String(error) }; }
+    if (!result || !result.ok) {
+      const error = (result && result.error) || 'Unknown error';
+      const stale = String(error).toLowerCase() === 'unknown action';
+      box.innerHTML = stale
+        ? '<p class="hint">This installed Dev Services version does not support desktop editing. Update or reinstall Dev Services 1.0.1 or later in <b>Settings → Drop-In Apps</b>.</p>'
+        : '<p class="hint">Dev Services settings unavailable: ' + esc(error) + '</p>';
+      return;
+    }
+    state = result.settings;
     draw();
   }
   // Discord keeps application configuration and account authorization together in its app settings.

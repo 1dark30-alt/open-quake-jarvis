@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dev Services</title>
+  <link rel="stylesheet" href="style.css?v=1.0.1">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Dev Services</h1>
+        <span class="summary" id="summary">Checking local services…</span>
+      </div>
+      <div class="updated" id="updated" aria-live="polite"></div>
+      <div class="top-actions">
+        <button class="icon-button" id="refresh" type="button" aria-label="Refresh services" title="Refresh services">↻</button>
+        <button class="settings-button" id="settings" type="button">SETTINGS</button>
+      </div>
+    </header>
+
+    <section class="service-viewport" id="viewport" aria-label="Configured services">
+      <div class="service-track" id="track"></div>
+      <div class="empty" id="empty" hidden>
+        <div>
+          <h2>No services configured</h2>
+          <p>Add the local ports you want to keep within reach.</p>
+        </div>
+        <button type="button" id="empty-settings">ADD SERVICES</button>
+      </div>
+    </section>
+
+    <footer class="pager">
+      <button class="page-button" id="previous" type="button" aria-label="Previous four services">‹</button>
+      <div class="page-status" id="page-status"></div>
+      <div class="dots" id="dots" aria-hidden="true"></div>
+      <button class="page-button" id="next" type="button" aria-label="Next four services">›</button>
+    </footer>
+  </main>
+
+  <section class="overlay settings-overlay" id="settings-overlay" hidden aria-label="Dev Services settings">
+    <div class="settings-shell">
+      <header>
+        <div>
+          <h2>Service settings</h2>
+          <p>Up to 12 services · four cards per page</p>
+        </div>
+        <label class="refresh-field">Refresh
+          <select id="refresh-seconds">
+            <option value="10">10 seconds</option>
+            <option value="15">15 seconds</option>
+            <option value="30">30 seconds</option>
+            <option value="60">60 seconds</option>
+          </select>
+        </label>
+      </header>
+      <div class="settings-body">
+        <aside>
+          <div class="service-list" id="service-list"></div>
+          <button class="add-button" id="add-service" type="button">＋ ADD SERVICE</button>
+        </aside>
+        <form class="service-form" id="service-form" autocomplete="off">
+          <div class="form-empty" id="form-empty">Select a service, or add a new one.</div>
+          <div class="form-fields" id="form-fields" hidden>
+            <label class="wide">Display name<input data-field="name" maxlength="80" required></label>
+            <label>Protocol<select data-field="protocol"><option value="http">HTTP</option><option value="https">HTTPS</option></select></label>
+            <label>Port<input data-field="port" type="number" min="1" max="65535" inputmode="numeric" required></label>
+            <label class="wide">Hostname<input data-field="host" maxlength="253" placeholder="localhost" required></label>
+            <label class="wide">Path <span>(optional)</span><input data-field="path" maxlength="1024" placeholder="/dashboard"></label>
+            <label>Expected process <span>(optional)</span><input data-field="expectedProcess" maxlength="260" placeholder="node.exe"></label>
+            <label>Project folder <span>(optional)</span><input data-field="projectFolder" maxlength="2048" placeholder="Absolute folder path"></label>
+            <div class="form-actions wide">
+              <button id="move-up" type="button">↑ MOVE</button>
+              <button id="move-down" type="button">↓ MOVE</button>
+              <button class="danger-quiet" id="remove-service" type="button">REMOVE</button>
+            </div>
+          </div>
+        </form>
+      </div>
+      <footer>
+        <span id="settings-note"></span>
+        <button id="cancel-settings" type="button">CANCEL</button>
+        <button class="primary" id="save-settings" type="button">SAVE</button>
+      </footer>
+    </div>
+  </section>
+
+  <section class="overlay confirm-overlay" id="confirm-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="confirm-title">
+    <div class="confirm-card">
+      <div class="warning-mark">!</div>
+      <div>
+        <h2 id="confirm-title">Stop this process?</h2>
+        <p id="confirm-message"></p>
+        <small>The port owner is checked again immediately before termination.</small>
+      </div>
+      <button id="cancel-stop" type="button">CANCEL</button>
+      <button class="danger" id="confirm-stop" type="button">STOP PROCESS</button>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" hidden role="status"></div>
+
+  <script src="service-core.js?v=1.0.0"></script>
+  <script src="polling.js?v=1.0.0"></script>
+  <script src="app.js?v=1.0.0"></script>
+</body>
+</html>
