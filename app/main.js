@@ -44,7 +44,6 @@ const { providers: oauthProviders, providerFor: oauthProviderFor, registerAppPro
 const { GitHubService, GITHUB_ACCESS_SCOPES, normalizeClientId: normalizeGitHubClientId, normalizeSettings: normalizeGitHubSettings, parseRepository: parseGitHubRepository, validRef: validGitHubRef } = require('./githubService');
 const { configForRenderer } = require('./oauthConfigBoundary');
 const nowplaying = require('./nowplaying');   // same singleton sysserver polls — read its snapshot to target transport
-const haschedule = require('./haschedule');   // HA Schedule dev app — fed HA creds from .env, polled while shown
 const haClient = require('./haClient');       // Global HA cache (registries + dashboards); per-entity states fetched lazily
 const touchSetup = require('./touchSetup');   // Bind a touchscreen to its physical display via tabcal.exe (Windows)
 const meetingControl = require('./meetingControl');   // Zoom/Teams call-control keystrokes (Meeting app page)
@@ -88,7 +87,6 @@ const { normalizeObsSettings, obsWsUrl } = require('./obsSettings');
 const appRepo = require('./appRepo');                            // pure helpers for repo install/update
 const { knobDefaultFor, parseCustomRing } = require('./knobRouting');   // generic drop-in knob capability
 const claudeVoiceApprovals = require('./claudevoice-approvals'); // required directly ONLY for the boot-time leftover-hook sweep below
-const HA_SCHEDULE_APPS = ['haschedule', 'agenda', 'events'];   // dev apps backed by the shared HA /haschedule-data snapshot
 
 const USER_DIR = app.getPath('userData');
 const CONFIG_PATH = path.join(USER_DIR, 'config.json');                  // writable — works inside a packaged app too
@@ -631,7 +629,7 @@ function scanAppDir(baseDir, apps, ids, servedApps) {
     });
     apps.push(def);
     ids.add(id);
-    if (def.served) servedApps[id] = { root: appDir, proxy: manifest.proxy || null, server: serverEntry ? path.join(appDir, serverEntry) : null };
+    if (def.served) servedApps[id] = { root: appDir, proxy: manifest.proxy || null, server: serverEntry ? path.join(appDir, serverEntry) : null, autoStart: !!manifest.serverAutoStart };
   });
 }
 function appCatalog() {
@@ -742,8 +740,10 @@ async function importDropInApp(zipPath, forceId, confirmExec, replaceId) {
     ensureDropInDir();
     try { fs.renameSync(appRoot, destDir); } catch (e) { copyDirSync(appRoot, destDir); }
     // Updated/installed files must actually run: drop the cached server module (its _shutdown is
-    // called) so the next /app-api call loads the fresh server.js instead of the pre-update one.
+    // called) so the next /app-api call loads the fresh server.js instead of the pre-update one,
+    // then re-sync the folder map so serverAutoStart apps arm their fresh module immediately.
     try { if (sysserver) sysserver.invalidateAppServer(finalId); } catch (e) {}
+    try { if (sysserver && sysserver.setAppFolders) sysserver.setAppFolders(discoveredServedApps()); } catch (e) {}
     return { ok: true, id: finalId, name: manifest.name || finalId };
   } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
   finally { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {} }
@@ -762,7 +762,11 @@ function deleteDropInApp(id) {
   const base = path.resolve(dropInDir());
   if (!path.resolve(dir).startsWith(base + path.sep)) return { ok: false, error: 'only user-installed drop-in apps can be deleted here' };
   try { if (sysserver) sysserver.invalidateAppServer(id); } catch (e) {}   // shut down its server module (sockets/children)
-  try { fs.rmSync(path.resolve(dir), { recursive: true, force: true }); setAppSource(id, null); return { ok: true }; }
+  try {
+    fs.rmSync(path.resolve(dir), { recursive: true, force: true }); setAppSource(id, null);
+    try { if (sysserver && sysserver.setAppFolders) sysserver.setAppFolders(discoveredServedApps()); } catch (e) {}
+    return { ok: true };
+  }
   catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 }
 
@@ -1136,21 +1140,6 @@ function syncPollers(g) {
   const pages = monitorMode ? [] : (Array.isArray(g) ? g : g ? [g] : []);   // monitor mode -> panel hidden -> idle everything
   const apps = pages.filter(p => p && p.kind === 'app').map(p => p.app);
   try { sysserver.setActivePage(apps.filter(a => a === 'music' || a === 'office' || a === 'github')); } catch (e) {}
-  // HA-backed dev apps (HA Schedule / Agenda / Events): poll HA only while one is shown, at the page's
-  // chosen interval (default 10 min). They share one snapshot, so any of them drives the same poll.
-  try {
-    const ha = pages.find(p => p && p.kind === 'app' && HA_SCHEDULE_APPS.includes(p.app));
-    if (ha) haschedule.start((parseInt((ha.options || {}).interval, 10) || 600) * 1000);
-    else haschedule.stop();
-  } catch (e) {}
-}
-// Resolve HA creds for the dev apps (HA Schedule / Agenda / Events) from Settings → Auth.
-// Idempotent — safe to call on every settings save. Empty url/token leaves the poller idle and
-// the dev apps render their "missing HA URL / token" placeholder.
-function configureHaSchedule() {
-  const ha = (config.settings && config.settings.haAuth) || {};
-  haschedule.configure({ url: ha.url || '', token: ha.token || '' });
-  return ha.url || '';
 }
 
 function oauthProviderPayload() {
@@ -3378,8 +3367,7 @@ app.whenReady().then(async () => {
     });
     if (serverPort && serverPort !== preferredPort) { try { fs.writeFileSync(portFile, String(serverPort)); } catch (e) {} }
     ensureSystemViewPage(serverPort); ensureMusicPage(); ensureDropInDir();
-    const haUrl = configureHaSchedule();
-    console.log('SystemView + Music on http://127.0.0.1:' + serverPort + (haUrl ? ' · HA Schedule -> ' + haUrl : ''));
+    console.log('SystemView + Music on http://127.0.0.1:' + serverPort);
 
     // Highlights ride the recorder's state edges (reset on start, auto-close + flush on stop), so
     // build them first — the recorder's onState below hands every change straight over.
@@ -3906,7 +3894,6 @@ app.whenReady().then(async () => {
     pushToPanel(); applyKnobSettings(); refreshTray(); applyRotationSettings(wasRot); applyFocusFollowSettings(); applyShortcuts(); applyTheme();
     reservedDisplay.setEnabled(reservedDisplayEnabled(appSettings()));   // stays off in software mode
     applyDisplayBlocker();                                               // keep-display-awake: only Panel mode + when enabled
-    configureHaSchedule();                                          // pick up any haAuth edits without a restart
     const discordSettings = normalizeDiscordSettings((config.settings || {}).discord);
     discordAppHost.updateSettings(discordSettings);
     discordService.setAutoReconnect(discordSettings.autoReconnect);

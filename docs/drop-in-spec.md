@@ -82,12 +82,12 @@ uses all of them at once. See `apps/apps.json` or any `community-apps/` folder f
 | `served` | bool | no | `false` = static `file://`; `true` = served over loopback HTTP. Default `false`. |
 | `options` | array | no | User-set option descriptors (§2.5). Default `[]`. |
 | `server` | string | served only | Relative path to a host-side Node module (§5.1). Triggers the exec-code warning on import. |
+| `serverAutoStart` | bool | served only | When `true`, the host loads the `server` module at startup (and again after the app is installed or updated) instead of on the first `/app-api` call — for apps whose server runs background work such as schedules. Default `false`: request/response-only servers SHOULD stay lazy. |
 | `oauth` | object | served only | App-scoped OAuth provider definition (§5.5). |
 | `proxy` | object | served only | Outbound-fetch allow-list for the app's page (§5.2). |
 | `knob` | bool | served only | `true` = the panel knob defaults to "App controlled" on this app's pages, delivering knob events to the page's `window.oqKnob` (§5.4). Default `false`. |
 | `grid` | object | served only | OPTIONAL embedded editable tile grid carried by the app: `{ cols, rows, defaults }` (column/row count + default tile contents). MAY be ignored by a host that doesn't support in-app grids. |
 | `hideGridInEditor` | bool | no | When `true`, the editor hides this app's embedded-grid controls (the app manages its own layout). Default `false`. |
-| `dev` | bool | no | Marks the app as developer-only; a conforming host MAY hide it from the normal app picker behind a "show developer apps" toggle. Purely a discoverability hint — carries no security meaning. |
 
 A host MUST ignore unknown manifest keys (forward compatibility).
 
@@ -203,7 +203,9 @@ containment. Unknown app id or escaping path → `404`/`403`.
 ### 5.1 Server module (`server`)
 
 `server` names a Node module inside the app folder that the host `require`s on first use (only
-if the resolved path is inside the app root). It MUST export:
+if the resolved path is inside the app root) — or at startup when the manifest sets
+`serverAutoStart: true`, so module-level timers/schedules arm without waiting for a page
+visit. A load error MUST be logged and skipped, never break host startup. It MUST export:
 
 ```js
 exports.handle = async function (action, context) {

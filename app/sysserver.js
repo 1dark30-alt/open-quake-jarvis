@@ -9,7 +9,6 @@
  * Routes:
  *   GET /            -> SystemView page        GET /metrics      -> system metrics JSON
  *   GET /music       -> Music app page         GET /nowplaying   -> SMTC now-playing JSON
- *   GET /agenda /events -> the Agenda/Events dev apps (list + embedded grid; reuse /haschedule-data)
  *   GET /keyshortcuts -> Keyboard Shortcuts app page   GET /shortcuts -> system/page/custom shortcuts JSON
  *   GET /grid-tiles  -> the active app page's embedded grid (resolved icons) — Music/Agenda/Events
  *   GET /api/github/* -> capability-gated GitHub OAuth/status/actions operations (tokens stay in main)
@@ -23,7 +22,6 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const nowplaying = require('./nowplaying');
-const haschedule = require('./haschedule');   // HA Schedule dev app (main.js drives its poll start/stop)
 const lyrics = require('./lyrics');           // Music lyrics (LRCLIB), fetched on demand for the now-playing track
 
 const FALLBACK = '<!doctype html><meta charset="utf-8">'
@@ -78,9 +76,6 @@ const STATIC_FILES = {
   '/githubPanelState.js': 'application/javascript; charset=utf-8',
   '/github.js': 'application/javascript; charset=utf-8',
   '/github.css': 'text/css; charset=utf-8',
-  '/haschedule-ui.js': 'application/javascript; charset=utf-8',
-  '/schedule.css': 'text/css; charset=utf-8',
-  '/schedule-app.js': 'application/javascript; charset=utf-8',
   '/keyshortcutsview.js': 'application/javascript; charset=utf-8',
   '/claudevoiceview.js': 'application/javascript; charset=utf-8',
   '/livetranslateview.js': 'application/javascript; charset=utf-8',
@@ -108,7 +103,7 @@ let onLucidCleanup = null, onLucidRewrite = null, onLucidReview = null, onLucidS
 const lucidSubscribers = new Set();   // open SSE responses for the LucidType page (pushed by main via lucidBroadcast)
 let diagnosticsHtml = FALLBACK;
 let obsviewHtml = FALLBACK;
-let musicHtml = FALLBACK, chatHtml = FALLBACK, githubHtml = FALLBACK, hascheduleHtml = FALLBACK, agendaHtml = FALLBACK, eventsHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK, slideHtml = FALLBACK, lucidtypeHtml = FALLBACK, lucidtypeDictateHtml = FALLBACK;
+let musicHtml = FALLBACK, chatHtml = FALLBACK, githubHtml = FALLBACK, meetingHtml = FALLBACK, keyshortcutsHtml = FALLBACK, recorderHtml = FALLBACK, slideHtml = FALLBACK, lucidtypeHtml = FALLBACK, lucidtypeDictateHtml = FALLBACK;
 // Claude Code voice app wiring (all optional, supplied via start(opts) -- see main.js).
 // Voice-panel app registry: appId (also the URL path prefix) -> { handlers, voiceToken, htmlFile,
 // htmlContent }. `handlers` is a voicepanel-host.js handlers object; every voice app shares the
@@ -163,6 +158,13 @@ function setAppFolders(folders) {
   Object.keys(appServers).forEach(id => { if (!folders || !folders[id]) delete appServers[id]; });
   Object.entries(folders || {}).forEach(([id, value]) => {
     appFolders[id] = typeof value === 'string' ? { root: value, proxy: null } : Object.assign({}, value || {});
+  });
+  // Apps that opt in with "serverAutoStart": true get their server module loaded NOW instead of on
+  // the first /app-api call, so background work (schedules, timers) arms right at host startup and
+  // re-arms after installs/updates (the invalidate + re-sync path). appServer() try/catches, so a
+  // broken app logs and is skipped — it can never break startup.
+  Object.entries(appFolders).forEach(([id, rec]) => {
+    if (rec && rec.server && rec.autoStart && !appServers[id]) appServer(id);
   });
 }
 // Drop a drop-in app's cached server module so the NEXT /app-api call loads the current file --
@@ -631,9 +633,6 @@ async function handler(req, res) {
   if (url === '/slidecapture') return html(res, slideHtml);  // hidden slide-capture window
   if (url === '/chat') return html(res, chatHtml);
   if (url === '/github') return html(res, githubHtml);
-  if (url === '/haschedule') return html(res, hascheduleHtml);
-  if (url === '/agenda') return html(res, agendaHtml);
-  if (url === '/events') return html(res, eventsHtml);
   if (url === '/keyshortcuts') return html(res, keyshortcutsHtml);
   if (url === '/discord') {
     let body = FALLBACK; try { body = fs.readFileSync(path.join(__dirname, 'discordview.html'), 'utf8'); } catch (e) {}
@@ -693,7 +692,6 @@ async function handler(req, res) {
   if (url === '/metrics') return json(res, { retired: true });   // graceful null for any stale SystemView client
   if (url === '/nowplaying') return json(res, nowplaying.getSnapshot());
   if (url === '/lyrics') { try { await lyrics.ensure(nowplaying.getSnapshot()); } catch (e) {} return json(res, lyrics.getSnapshot()); }   // synced lyrics for the current track
-  if (url === '/haschedule-data') return json(res, haschedule.getSnapshot());
   if (voiceApp) {
     const h = voiceApp.handlers;
     if (voicePath === '/turn' && req.method === 'POST') {
@@ -1106,9 +1104,6 @@ function start(opts) {
     try { slideHtml = fs.readFileSync(path.join(__dirname, 'slidecapture.html'), 'utf8'); } catch (e) {}
     try { chatHtml = fs.readFileSync(path.join(__dirname, 'chatview.html'), 'utf8'); } catch (e) {}
     try { githubHtml = fs.readFileSync(path.join(__dirname, 'github.html'), 'utf8'); } catch (e) {}
-    try { hascheduleHtml = fs.readFileSync(path.join(__dirname, 'haschedule.html'), 'utf8'); } catch (e) {}
-    try { agendaHtml = fs.readFileSync(path.join(__dirname, 'agenda.html'), 'utf8'); } catch (e) {}
-    try { eventsHtml = fs.readFileSync(path.join(__dirname, 'events.html'), 'utf8'); } catch (e) {}
     try { keyshortcutsHtml = fs.readFileSync(path.join(__dirname, 'keyshortcutsview.html'), 'utf8'); } catch (e) {}
     Object.values(voiceApps).forEach(v => {
       if (v.htmlFile) { try { v.htmlContent = fs.readFileSync(path.join(__dirname, v.htmlFile), 'utf8'); } catch (e) {} }

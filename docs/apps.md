@@ -164,6 +164,9 @@ Served drop-in apps can also declare host-side helpers:
 
 - `server` loads a local Node module from the app folder. It should export
   `handle(action, context)`. The page calls it with `/app-api/<action>`.
+- `"serverAutoStart": true` loads the server module at host startup (and after
+  install/update) instead of on the first `/app-api` call — use it when the module runs
+  background work like schedules. Leave it off for plain request/response servers.
 - `context.options` contains the active app options, including options marked
   `"serverOnly": true` and secret options.
 - `"serverOnly": true` keeps an option out of the page URL while still making it
