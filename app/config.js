@@ -3982,31 +3982,36 @@
       <div id="thPreview"></div>
       <p class="hint">The preview is live; the panel itself changes when you <b>Save &amp; apply</b>.</p>`;
 
-    // Apps tab — show/hide which apps appear in the App picker (doesn't touch pages already using an app)
-    const appRow = (a, checked) => `<div class="row approw" data-name="${esc(String(a.name || '').toLowerCase())}">
-        <label class="iconopt" style="width:auto; gap:9px; min-width:0"><input type="checkbox" class="appShow" data-id="${esc(a.id)}" data-dev="${a.dev ? 1 : 0}" ${checked ? 'checked' : ''}>${a.icon ? ` <span class="appic">${esc(a.icon)}</span>` : ''} ${esc(a.name)}${a.description ? `<span class="note approwdesc">${esc(a.description)}</span>` : ''}</label>
+    // Apps tab — one compact app-management surface: toolbar, bounded two-column row list with
+    // right-aligned Shown/Hidden switches. Hiding only changes what the App picker offers.
+    const appRow = (a, on) => `<div class="arow" data-name="${esc(String(a.name || '').toLowerCase())}">
+        <span class="abadge" aria-hidden="true">${esc(a.icon || String(a.name || a.id).trim().charAt(0).toUpperCase())}</span>
+        <span class="ameta"><span class="amname" title="${esc(a.name)}">${esc(a.name)}</span>${a.description ? `<span class="amdesc" title="${esc(a.description)}">${esc(a.description)}</span>` : ''}</span>
+        <label class="aswitch"><input type="checkbox" class="appShow" data-id="${esc(a.id)}" data-dev="${a.dev ? 1 : 0}" ${on ? 'checked' : ''} aria-label="Show ${esc(a.name)} in the App picker"><span class="swtrack"></span><span class="swstate">${on ? 'Shown' : 'Hidden'}</span></label>
       </div>`;
     const regularApps = appDefs.filter(a => !a.dev), devApps = appDefs.filter(a => a.dev);
     const builtinApps = regularApps.filter(a => !a._folder), dropinApps = regularApps.filter(a => a._folder);
     const appsHtml = `
-      <div class="row" style="gap:10px">
-        <input id="appFilter" type="search" placeholder="Filter apps…" style="max-width:260px">
-        <span id="appCount" class="hint" style="margin:0"></span>
-        <span style="flex:1"></span>
-        <button id="appShowAll">Show all</button>
-        <button id="appHideAll">Hide all</button>
-      </div>
-      <p class="hint">Untick an app to hide it from the <b>App</b> dropdown when building a page. This only changes what's offered — pages already using a hidden app keep working.</p>
-      <p class="sectitle">Built-in</p>
-      ${builtinApps.length ? builtinApps.map(a => appRow(a, !appHidden(a.id))).join('') : '<p class="hint">No apps found.</p>'}
-      <p class="hint">Drop-in apps are managed on the <b>Drop-in apps</b> page.</p>
-      ${devApps.length ? `
-      <details style="margin-top:22px"${devEnabled() ? ' open' : ''}>
-        <summary style="cursor:pointer;color:#9fb3c8;font-size:13px;user-select:none">Developer apps</summary>
-        <label class="iconopt" style="width:auto; gap:9px; margin:10px 0 0"><input type="checkbox" id="devMaster" ${devEnabled() ? 'checked' : ''}> show developer apps in the picker</label>
-        <p class="hint">Specified in apps.json.</p>
-        ${devEnabled() ? devApps.map(a => appRow(a, devShown(a.id))).join('') : ''}
-      </details>` : ''}`;
+      <div class="amgr">
+        <p class="amnote">Hiding an app removes it from the App picker. Existing pages keep working.</p>
+        <div class="ambar">
+          <input id="appFilter" type="search" placeholder="Search apps…">
+          <span id="appCount" class="amcount"></span>
+        </div>
+        <div class="amhead"><span class="amlabel">Built-in apps</span>
+          <span class="ambulk"><button id="appShowAll">Show all</button><button id="appHideAll">Hide all</button></span></div>
+        <div class="alist">
+          ${builtinApps.length ? builtinApps.map(a => appRow(a, !appHidden(a.id))).join('') : '<p class="amempty" style="display:block">No apps found.</p>'}
+          <p class="amempty" id="amNoMatch">No apps match your search.</p>
+        </div>
+        <p class="amlink">Looking for installed apps? <a id="amGoDropin" href="#" role="button">Manage drop-in apps →</a></p>
+        ${devApps.length ? `
+        <details class="amdev"${devEnabled() ? ' open' : ''}>
+          <summary>Developer apps</summary>
+          <label class="iconopt" style="width:auto; gap:9px; margin:10px 0 0"><input type="checkbox" id="devMaster" ${devEnabled() ? 'checked' : ''}> show developer apps in the picker</label>
+          ${devEnabled() ? `<div class="alist">${devApps.map(a => appRow(a, devShown(a.id))).join('')}</div>` : ''}
+        </details>` : ''}
+      </div>`;
 
     // Auth tab — credentials shared across the app (Home Assistant, Open WebUI). Token and API key
     // are stored encrypted at rest via secretStore (same path as settings.spotify.refreshToken).
@@ -4111,7 +4116,7 @@
       theme: ['Theme', 'Light/dark appearance and the accent color.'],
       hardware: ['Hardware', 'Knob ring, knob controls, microphone, display, and touchscreen.'],
       monitor: ['Monitor', 'Reserved-display protection and Monitor-mode knob behavior.'],
-      apps: ['Apps', 'Choose which apps the page builder offers.'],
+      apps: ['Apps', 'Choose which apps appear in the page builder.'],
       dropin: ['Drop-in apps', 'Install, update, and manage self-contained app folders.'],
       auth: ['Auth', 'Connections and credentials shared across the app.'],
       ttsstt: ['TTS/STT', 'The default speech-to-text and text-to-speech servers.'],
@@ -4144,18 +4149,25 @@
     const setS = (k, v) => { if (!config.settings) config.settings = {}; config.settings[k] = v; markDirty(); };
 
     if (tab === 'apps') {
-      // visible/hidden summary + filter + bulk show/hide (regular apps only; dev apps have their own master)
+      // shown/hidden summary + search + bulk show/hide (built-in apps only; dev apps have their own master)
       const updateAppCount = () => {
         const boxes = [...el.querySelectorAll('.appShow')].filter(c => c.dataset.dev !== '1');
         const hidden = boxes.filter(c => !c.checked).length;
         const cnt = document.getElementById('appCount');
-        if (cnt) cnt.textContent = (boxes.length - hidden) + ' visible · ' + hidden + ' hidden';
+        if (cnt) cnt.textContent = (boxes.length - hidden) + ' shown · ' + hidden + ' hidden';
       };
       updateAppCount();
       const appFilterEl = document.getElementById('appFilter');
       if (appFilterEl) appFilterEl.oninput = e => {
         const q = e.target.value.trim().toLowerCase();
-        el.querySelectorAll('.approw').forEach(r => { r.style.display = !q || (r.dataset.name || '').includes(q) ? '' : 'none'; });
+        let visible = 0;
+        el.querySelectorAll('.arow').forEach(r => {
+          const show = !q || (r.dataset.name || '').includes(q);
+          r.style.display = show ? '' : 'none';
+          if (show) visible++;
+        });
+        const empty = document.getElementById('amNoMatch');
+        if (empty) empty.style.display = visible ? '' : 'block';
       };
       const showAllBtn = document.getElementById('appShowAll');
       if (showAllBtn) showAllBtn.onclick = () => {
@@ -4163,9 +4175,9 @@
         config.settings.hiddenApps = [];
         markDirty(); renderSettings();
       };
+      // no confirmation: the change is reversible and stays pending until Save & apply
       const hideAllBtn = document.getElementById('appHideAll');
       if (hideAllBtn) hideAllBtn.onclick = () => {
-        if (!ask('Hide every app from the page builder? Pages already using them keep working.')) return;
         if (!config.settings) config.settings = {};
         config.settings.hiddenApps = appDefs.filter(a => !a.dev && !a._folder).map(a => a.id);
         markDirty(); renderSettings();
@@ -4182,9 +4194,19 @@
           if (!e.target.checked) hidden.push(id);
           config.settings.hiddenApps = hidden;
         }
+        const state = e.target.closest('.aswitch');
+        const lb = state && state.querySelector('.swstate');
+        if (lb) lb.textContent = e.target.checked ? 'Shown' : 'Hidden';
         markDirty();
         updateAppCount();
       });
+      const goDropin = document.getElementById('amGoDropin');
+      if (goDropin) goDropin.onclick = e => {
+        e.preventDefault();
+        settingsTab = 'dropin';
+        renderSettings();
+        const sc = document.querySelector('.col.editor'); if (sc) sc.scrollTop = 0;
+      };
       const dm = document.getElementById('devMaster');   // master: just reveals the developer-app list in this tab
       if (dm) dm.onchange = e => { if (!config.settings) config.settings = {}; config.settings.devApps = e.target.checked; markDirty(); renderSettings(); };
     }

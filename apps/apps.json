@@ -2,6 +2,7 @@
   {
     "id": "discord",
     "name": "Discord",
+    "description": "Voice status and controls",
     "file": "discordview.html",
     "served": true,
     "options": [],
@@ -92,6 +93,7 @@
   {
     "id": "obs",
     "name": "OBS Switcher",
+    "description": "Streaming scene controls",
     "file": "obsview.html",
     "served": true,
     "options": [
@@ -116,6 +118,7 @@
   {
     "id": "clock",
     "name": "Flip Clock",
+    "description": "Flip clock and weather",
     "file": "clock.html",
     "options": [
       {
@@ -194,6 +197,7 @@
   {
     "id": "meeting",
     "name": "Meeting",
+    "description": "Teams and Zoom call controls",
     "file": "meetingview.html",
     "served": true,
     "options": [
@@ -289,6 +293,7 @@
   {
     "id": "diagnostics",
     "name": "Device Diagnostics",
+    "description": "Device self-test",
     "file": "diagnosticsview.html",
     "served": true,
     "options": []
@@ -296,6 +301,7 @@
   {
     "id": "music",
     "name": "Music",
+    "description": "Now playing and transport",
     "file": "musicview.html",
     "served": true,
     "options": [
@@ -316,6 +322,7 @@
   {
     "id": "chat",
     "name": "Open WebUI",
+    "description": "AI chat via Open WebUI",
     "file": "chatview.html",
     "served": true,
     "options": [
@@ -343,6 +350,7 @@
   {
     "id": "github",
     "name": "GitHub",
+    "description": "Repositories and Actions",
     "file": "github.html",
     "served": true,
     "knob": true,
@@ -351,6 +359,7 @@
   {
     "id": "ha-dashboard",
     "name": "Home Assistant Dashboard",
+    "description": "Home Assistant dashboards",
     "options": [
       {
         "key": "dashboard",
@@ -385,6 +394,7 @@
   {
     "id": "tzclock",
     "name": "World Clock",
+    "description": "World time",
     "file": "tzclock.html",
     "options": [
       {
@@ -3339,6 +3349,7 @@
   {
     "id": "tzconvert",
     "name": "Time Zone Converter",
+    "description": "Time zone converter",
     "file": "tzconvert.html",
     "options": [
       {
@@ -6233,6 +6244,7 @@
   {
     "id": "haschedule",
     "name": "HA Schedule",
+    "description": "Agenda and events from HA",
     "file": "haschedule.html",
     "served": true,
     "dev": true,
@@ -6271,6 +6283,7 @@
   {
     "id": "agenda",
     "name": "Agenda",
+    "description": "Agenda list from HA",
     "file": "agenda.html",
     "served": true,
     "dev": true,
@@ -6313,6 +6326,7 @@
   {
     "id": "events",
     "name": "Events",
+    "description": "Events list from HA",
     "file": "events.html",
     "served": true,
     "dev": true,
@@ -6355,6 +6369,7 @@
   {
     "id": "keyshortcuts",
     "name": "Keyboard Shortcuts",
+    "description": "Keyboard shortcut launcher",
     "file": "keyshortcutsview.html",
     "served": true,
     "options": []
@@ -6362,6 +6377,7 @@
   {
     "id": "ai-voice",
     "name": "AI Voice",
+    "description": "Voice and text AI assistant",
     "file": "claudevoiceview.html",
     "served": true,
     "options": [
@@ -6476,6 +6492,7 @@
   {
     "id": "lucidtype",
     "name": "LucidType",
+    "description": "Dictation with AI cleanup",
     "file": "lucidtypeview.html",
     "served": true,
     "options": []
@@ -6483,6 +6500,7 @@
   {
     "id": "livetranslate",
     "name": "Live Translate",
+    "description": "Live speech translation",
     "file": "livetranslateview.html",
     "served": true,
     "options": [
@@ -6579,6 +6597,7 @@
   {
     "id": "screensaver",
     "name": "Screensaver",
+    "description": "Idle scenes and media",
     "file": "screensaverview.html",
     "served": true,
     "options": [
