@@ -1232,12 +1232,22 @@
 
   // ---- left grid list ----
   let pageDragFrom = -1, pageFilter = '';
+  // Page-type filter (the pulldown under the search box). Session-local view state, not saved.
+  const pageKindFilter = { grid: true, appBuiltin: true, appDropin: true, web: true };
+  function pageKindOf(g) {
+    if (g.kind === 'web') return 'web';
+    if (g.kind !== 'app') return 'grid';
+    const def = appDefs.find(a => a.id === g.app);
+    return def && def._folder ? 'appDropin' : 'appBuiltin';
+  }
   function renderGrids() {
     const el = document.getElementById('gridlist'); el.innerHTML = '';
     const q = pageFilter.trim().toLowerCase();
     let shown = 0;
+    const kindFiltered = Object.values(pageKindFilter).some(v => !v);
     config.grids.forEach((g, i) => {
       if (q && !String(g.name || '').toLowerCase().includes(q)) return;
+      if (!pageKindFilter[pageKindOf(g)]) return;
       shown++;
       const d = document.createElement('div');
       d.className = 'gridrow' + (i === gi ? ' active' : '');
@@ -1280,7 +1290,11 @@
       d.ondragend = () => d.classList.remove('dragover');
       el.appendChild(d);
     });
-    if (q && !shown) el.innerHTML = '<p class="hint">No pages match “' + esc(pageFilter.trim()) + '”.</p>';
+    if (!shown && (q || kindFiltered)) {
+      el.innerHTML = '<p class="hint">' + (q ? 'No pages match “' + esc(pageFilter.trim()) + '”.' : 'No pages match the selected types.') + '</p>';
+    }
+    const kb = document.getElementById('pageKindsBtn');
+    if (kb) kb.classList.toggle('filtered', kindFiltered);
   }
   // Reorder pages by drag — keeps the same page selected (by id) and persists on save. Order drives the
   // knob page-selector and the auto-rotation cycle; the live panel page is unaffected (tracked by id).
@@ -3364,6 +3378,7 @@
     const groupsTab = leftTab === 'groups', panesTab = leftTab === 'panes';
     const pagesTab = !groupsTab && !panesTab;
     const pf = document.getElementById('pageFilter'); if (pf) pf.style.display = pagesTab ? '' : 'none';
+    const pk = document.querySelector('.kindwrap'); if (pk) pk.style.display = pagesTab ? '' : 'none';
     const elGL = document.getElementById('gridlist'); if (elGL) elGL.style.display = pagesTab ? '' : 'none';
     const elGRP = document.getElementById('grouplist'); if (elGRP) elGRP.style.display = groupsTab ? '' : 'none';
     const elPN = document.getElementById('panelist'); if (elPN) elPN.style.display = panesTab ? '' : 'none';
@@ -5170,6 +5185,13 @@
   document.getElementById('addDash').onclick = () => { addPageMenu.classList.remove('open'); addPage('web'); };
   document.getElementById('addApp').onclick = () => { addPageMenu.classList.remove('open'); addPage('app'); };
   document.getElementById('pageFilter').oninput = e => { pageFilter = e.target.value; renderGrids(); };
+  // Page-type filter pulldown: same open/close behavior as the Add-page menu.
+  const pageKindsMenu = document.getElementById('pageKindsMenu');
+  const pageKindsBtn = document.getElementById('pageKindsBtn');
+  pageKindsBtn.onclick = e => { e.stopPropagation(); const open = pageKindsMenu.classList.toggle('open'); pageKindsBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); };
+  document.addEventListener('click', e => { if (!e.target.closest('.kindwrap')) { pageKindsMenu.classList.remove('open'); pageKindsBtn.setAttribute('aria-expanded', 'false'); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { pageKindsMenu.classList.remove('open'); pageKindsBtn.setAttribute('aria-expanded', 'false'); } });
+  pageKindsMenu.querySelectorAll('input[data-kind]').forEach(c => c.onchange = e => { pageKindFilter[e.target.dataset.kind] = e.target.checked; renderGrids(); });
   document.getElementById('addGroup').onclick = () => addGroup();
   document.getElementById('addPane').onclick = () => addPane();
   document.getElementById('lTabPages').onclick = () => { leftTab = 'pages'; render(); };

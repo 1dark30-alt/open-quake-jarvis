@@ -17,6 +17,15 @@
   .grids { width: 240px; flex: none; display: flex; flex-direction: column; overflow: hidden; background: #0d1219; }
   .grids .pagelists { flex: 1 1 auto; min-height: 0; overflow: auto; margin-top: 8px; }
   #pageFilter { background: #0a111a; font-size: 13px; padding: 6px 9px; }
+  /* page-type filter: pulldown of type checkboxes under the search box */
+  .kindwrap { position: relative; margin-top: 6px; }
+  .kindwrap #pageKindsBtn { font-size: 12px; padding: 4px 9px; color: #9fb3c8; }
+  .kindwrap #pageKindsBtn.filtered { color: #4ea3ff; border-color: #2b6fb0; }
+  .kindwrap .caret { font-size: 10px; }
+  .kindwrap .diMenu { left: 0; right: auto; top: 30px; min-width: 160px; }
+  .kfopt { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 5px; font-size: 13px; color: #cfe0f2; cursor: pointer; }
+  .kfopt:hover { background: #243246; }
+  .kfopt input { width: auto; }
   .addwrap { position: relative; }
   .addwrap .diMenu { left: 0; right: auto; top: auto; bottom: 38px; min-width: 180px; }
   .colsplit { flex: none; width: 6px; cursor: col-resize; background: #1e2733; position: relative; }
@@ -366,7 +375,16 @@
         <button id="lTabGroups" class="tab">Groups</button>
         <button id="lTabPanes" class="tab">Panes</button>
       </div>
-      <input id="pageFilter" type="search" placeholder="Filter pages…">
+      <input id="pageFilter" type="search" placeholder="Search pages…">
+      <div class="kindwrap">
+        <button id="pageKindsBtn" aria-haspopup="true" aria-expanded="false">Filter <span class="caret">▾</span></button>
+        <div id="pageKindsMenu" class="diMenu">
+          <label class="kfopt"><input type="checkbox" data-kind="grid" checked> Grids</label>
+          <label class="kfopt"><input type="checkbox" data-kind="appBuiltin" checked> Built-in apps</label>
+          <label class="kfopt"><input type="checkbox" data-kind="appDropin" checked> Drop-in apps</label>
+          <label class="kfopt"><input type="checkbox" data-kind="web" checked> Dashboards</label>
+        </div>
+      </div>
       <div class="pagelists">
         <div id="gridlist"></div>
         <div id="grouplist" style="display:none"></div>
