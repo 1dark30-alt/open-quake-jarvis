@@ -2782,7 +2782,20 @@
     const regularSettings = settingDef ? settingDef.options.filter(o => !o.advanced) : [];
     const advancedSettings = settingDef ? settingDef.options.filter(o => o.advanced) : [];
     const settingsHtml = settingDef ? `<p class="sectitle" data-app-settings="${esc(def.id)}">${esc(settingDef.title || def.name + ' settings')}</p>${renderOptions(regularSettings, appSettings, 'aset')}${advancedSettings.length ? `<details class="advsec" style="margin-top:12px"><summary>Advanced / developer overrides</summary>${renderOptions(advancedSettings, appSettings, 'aset')}</details>` : ''}` : '';
-    const descriptionHtml = def.description ? '<p class="hint" style="margin:4px 0 12px;line-height:1.45">' + esc(def.description) + '</p>' : '';
+    // Long manifest descriptions (a full feature paragraph reads fine in the install list but
+    // walls off the app page): show only the first sentence, with a native <details> "more…"
+    // revealing the rest — no event wiring, survives the innerHTML assignment below.
+    const descriptionHtml = def.description ? (() => {
+      const full = String(def.description);
+      const m = /^[^.!?]*[.!?]/.exec(full);
+      const first = (m ? m[0] : full).trim();
+      const rest = full.slice(m ? m[0].length : full.length).trim();
+      if (!rest) return '<p class="hint" style="margin:4px 0 12px;line-height:1.45">' + esc(first) + '</p>';
+      return '<details style="margin:4px 0 12px">' +
+        '<summary class="hint" style="cursor:pointer;list-style:none;line-height:1.45">' + esc(first) +
+          ' <span style="opacity:.8;text-decoration:underline">more…</span></summary>' +
+        '<p class="hint" style="margin:6px 0 0;line-height:1.45">' + esc(rest) + '</p></details>';
+    })() : '';
     el.innerHTML = descriptionHtml + pageHtml + settingsHtml;
     el.querySelectorAll('.aopt').forEach(inp => inp.onchange = e => {
       const o = (def.options || []).find(x => x.key === e.target.dataset.key);
