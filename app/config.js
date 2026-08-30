@@ -3379,7 +3379,9 @@
     // Sidebar: which list is visible + which + buttons row + which tab is highlighted.
     const groupsTab = leftTab === 'groups', panesTab = leftTab === 'panes';
     const pagesTab = !groupsTab && !panesTab;
-    const pf = document.getElementById('pageFilter'); if (pf) pf.style.display = pagesTab ? '' : 'none';
+    // Search applies to whichever list is showing; the type Filter pulldown is pages-only.
+    const pf = document.getElementById('pageFilter');
+    if (pf) pf.placeholder = groupsTab ? 'Search groups…' : panesTab ? 'Search panes…' : 'Search pages…';
     const pk = document.querySelector('.kindwrap'); if (pk) pk.style.display = pagesTab ? '' : 'none';
     const elGL = document.getElementById('gridlist'); if (elGL) elGL.style.display = pagesTab ? '' : 'none';
     const elGRP = document.getElementById('grouplist'); if (elGRP) elGRP.style.display = groupsTab ? '' : 'none';
@@ -3427,7 +3429,11 @@
     el.innerHTML = '';
     const list = config.groups || [];
     if (!list.length) { el.innerHTML = '<p class="hint" style="margin:6px 4px">No groups yet. Use + Group to create one.</p>'; return; }
+    const q = pageFilter.trim().toLowerCase();
+    let shown = 0;
     list.forEach((g, i) => {
+      if (q && !String(g.name || '').toLowerCase().includes(q)) return;
+      shown++;
       const d = document.createElement('div');
       d.className = 'gridrow' + (view === 'groups' && i === groupIndex ? ' active' : '');
       const left = document.createElement('span'); left.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden';
@@ -3436,6 +3442,7 @@
       d.onclick = () => { view = 'groups'; groupIndex = i; ti = -1; selEnd = -1; render(); };
       el.appendChild(d);
     });
+    if (q && !shown) el.innerHTML = '<p class="hint">No groups match “' + esc(pageFilter.trim()) + '”.</p>';
   }
   function renderGroupMeta() {
     const g = curGroup(); const el = document.getElementById('gridmeta');
@@ -3525,7 +3532,11 @@
     el.innerHTML = '';
     const list = config.panes || [];
     if (!list.length) { el.innerHTML = '<p class="hint" style="margin:6px 4px">No panes yet. Use + Pane to create one.</p>'; return; }
+    const q = pageFilter.trim().toLowerCase();
+    let shown = 0;
     list.forEach((p, i) => {
+      if (q && !String(p.name || '').toLowerCase().includes(q)) return;
+      shown++;
       const d = document.createElement('div');
       d.className = 'gridrow' + (view === 'panes' && i === paneIndex ? ' active' : '');
       const left = document.createElement('span'); left.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden';
@@ -3535,6 +3546,7 @@
       d.onclick = () => { view = 'panes'; paneIndex = i; ti = -1; selEnd = -1; render(); };
       el.appendChild(d);
     });
+    if (q && !shown) el.innerHTML = '<p class="hint">No panes match “' + esc(pageFilter.trim()) + '”.</p>';
   }
   function addPane() {
     if (!Array.isArray(config.panes)) config.panes = [];
@@ -5186,7 +5198,7 @@
   document.getElementById('addGrid').onclick = () => { addPageMenu.classList.remove('open'); addPage('grid'); };
   document.getElementById('addDash').onclick = () => { addPageMenu.classList.remove('open'); addPage('web'); };
   document.getElementById('addApp').onclick = () => { addPageMenu.classList.remove('open'); addPage('app'); };
-  document.getElementById('pageFilter').oninput = e => { pageFilter = e.target.value; renderGrids(); };
+  document.getElementById('pageFilter').oninput = e => { pageFilter = e.target.value; renderGrids(); renderGroups(); renderPanes(); };
   // Page-type filter pulldown: same open/close behavior as the Add-page menu.
   const pageKindsMenu = document.getElementById('pageKindsMenu');
   const pageKindsBtn = document.getElementById('pageKindsBtn');
