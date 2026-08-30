@@ -2871,6 +2871,24 @@
       }
     }, 400);
   }
+  // Auto-size the management embed to its content: embedded apps post
+  // {type:'oq-embed-height', height} on load and on every content resize, killing both the
+  // dead area under a short list and the double scrollbar on a long one. e.source pins the
+  // message to OUR iframe — every served app shares the loopback origin, so the origin alone
+  // proves nothing. The value drives one clamped CSS property and nothing else; apps that
+  // predate the contract never post and keep the CSS fallback height. Above the clamp the
+  // frame scrolls internally again, which is why scrolling stays enabled.
+  window.addEventListener('message', e => {
+    const d = e.data;
+    if (!d || d.type !== 'oq-embed-height') return;
+    const frame = document.querySelector('.appmanageFrame');
+    if (!frame || e.source !== frame.contentWindow) return;
+    const box = frame.closest('.appmanage');
+    const raw = Number(d.height);
+    if (!box || !isFinite(raw) || raw <= 0) return;
+    box.style.height = Math.max(220, Math.min(1600, Math.ceil(raw))) + 'px';
+    box.style.minHeight = '0';
+  });
   function appendAppPreview(host, g) {
     if (!host) return;
     if (PREVIEW_EXCLUDE.has(g.app)) { host.innerHTML = ''; return; }
