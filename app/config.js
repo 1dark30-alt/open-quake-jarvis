@@ -1336,7 +1336,11 @@
   }
   function renderTiles() {
     const g = curGrid(); const el = document.getElementById('tilegrid');
-    if (!g) { el.innerHTML = ''; return; }
+    if (!el) return;
+    // Callers fire this after global refreshes (e.g. Auth-tab HA refresh) regardless of what page is
+    // selected; a page without a tile grid (plain dashboard, app without an embedded grid) must be a
+    // no-op, not a crash in ensureTiles on g.tiles.length.
+    if (!g || !Array.isArray(g.tiles) || !(+g.cols > 0) || !(+g.rows > 0)) { el.innerHTML = ''; return; }
     ensureTiles(g);
     const cw = el.clientWidth || el.parentElement && el.parentElement.clientWidth || 600;
     const cell = Math.max(48, Math.min(150, Math.floor((cw - (g.cols - 1) * 6) / g.cols)));   // SQUARE cells, so the editor preview matches the panel's square tiles (capped so big grids don't overflow)
