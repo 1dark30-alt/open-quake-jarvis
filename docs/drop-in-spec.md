@@ -88,6 +88,7 @@ uses all of them at once. See `apps/apps.json` or any `community-apps/` folder f
 | `knob` | bool | served only | `true` = the panel knob defaults to "App controlled" on this app's pages, delivering knob events to the page's `window.oqKnob` (§5.4). Default `false`. |
 | `grid` | object | served only | OPTIONAL embedded editable tile grid carried by the app: `{ cols, rows, defaults }` (column/row count + default tile contents). MAY be ignored by a host that doesn't support in-app grids. |
 | `hideGridInEditor` | bool | no | When `true`, the editor hides this app's embedded-grid controls (the app manages its own layout). Default `false`. |
+| `hostCapabilities` | array | served only | Host-mediated capabilities the app requests (§5.6). Recognized values: `"pick-folder"`. Unknown values MUST be ignored (forward compatibility). Default `[]`. |
 
 A host MUST ignore unknown manifest keys (forward compatibility).
 
@@ -323,6 +324,45 @@ Disconnect controls inside the settings for every app page whose installed manif
 `oauth`. Those controls use the same `app:<app-id>` binding; app OAuth providers do not appear in
 the global OAuth settings list. An app may additionally expose the lifecycle in its panel UI
 through its server module, as long as tokens remain inside the host process.
+
+### 5.6 Host-mediated folder picker (`hostCapabilities: ["pick-folder"]`)
+
+A served app that declares `"hostCapabilities": ["pick-folder"]` may ask the user to choose a
+directory. The page calls the reserved `/app-host/` namespace (never routed through the app's
+own server module, so `/app-api/*` actions cannot intercept it):
+
+```js
+const r = await fetch('/app-host/pick-folder', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ defaultPath: currentValue }),   // optional; absolute Windows/UNC only
+}).then(res => res.json());
+```
+
+Responses:
+
+- `200` `{ "ok": true, "path": "D:\\Selected\\Folder" }` — the directory the user selected
+- `200` `{ "ok": false, "canceled": true }` — the user dismissed the dialog (normal)
+- `409` `{ "ok": false, "code": "busy", "error": "A folder picker is already open" }`
+- `503` `{ "ok": false, "code": "unavailable", "error": "Folder picker unavailable" }`
+- `400` malformed body · `403` missing capability / unregistered app · `405` non-POST
+
+Guarantees a conforming implementation MUST keep:
+
+- Served drop-ins only, same-origin gated, requester resolved via the `Referer` app id — an
+  app without the exact `pick-folder` capability gets `403`.
+- POST only; paths never appear in URLs, query strings, or host logs.
+- The host constructs the dialog itself: directory selection only, fixed host-generated title;
+  the app supplies nothing but an optional `defaultPath` (string, ≤ 4096 chars). Relative
+  input is ignored — never resolved against the host's working directory.
+- The page receives ONLY the directory the user explicitly selected. The host does not read,
+  enumerate, create, or validate it, and the app gains no filesystem, Electron, or IPC access.
+- One picker dialog globally at a time (`busy` otherwise), with a short per-app cooldown after
+  the dialog closes.
+
+This capability is an OPTIONAL host extension — it is not part of the §8 cross-fork
+compatibility contract; apps SHOULD degrade gracefully (e.g. fall back to a typed path field)
+when `/app-host/pick-folder` answers `404`/`503`.
 
 ---
 

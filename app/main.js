@@ -569,6 +569,25 @@ function handleDashboardPermissionRequest(wc, permission, cb, details) {
 }
 
 const SAFE_APP_ID = /^[a-z0-9][a-z0-9_-]*$/;
+// Host capabilities a served drop-in may request via app.json "hostCapabilities". Anything not
+// listed here is silently ignored at discovery (forward compatibility, and apps can never smuggle
+// arbitrary strings into sysserver).
+const KNOWN_HOST_CAPABILITIES = new Set(['pick-folder']);
+// Host-mediated folder picker for /app-host/pick-folder. The dialog is host-constructed end to end:
+// directory-selection only, fixed title, and the app influences nothing but an optional absolute
+// defaultPath. Returns only what the user explicitly selected; no path is logged.
+async function pickDropInFolder({ appId, defaultPath }) {
+  const rec = discoveredServedApps()[appId];
+  if (!rec || !Array.isArray(rec.hostCapabilities) || !rec.hostCapabilities.includes('pick-folder')) {
+    return { ok: false, code: 'forbidden', error: 'app has not declared the pick-folder capability' };
+  }
+  const def = loadApps().find(a => a.id === appId);
+  const options = { title: 'Choose a folder for ' + ((def && def.name) || appId), properties: ['openDirectory'] };
+  if (typeof defaultPath === 'string' && defaultPath.length <= 4096 && /^([A-Za-z]:[\\/]|\\\\)/.test(defaultPath)) options.defaultPath = defaultPath;
+  const r = await dialog.showOpenDialog(options);   // unparented: an HTTP request has no trustworthy owning window
+  if (r.canceled || !Array.isArray(r.filePaths) || !r.filePaths.length) return { ok: false, canceled: true };
+  return { ok: true, path: r.filePaths[0] };
+}
 const appManifestWarnings = new Set();
 function warnAppManifest(key, message) {
   if (appManifestWarnings.has(key)) return;
@@ -629,7 +648,15 @@ function scanAppDir(baseDir, apps, ids, servedApps) {
     });
     apps.push(def);
     ids.add(id);
-    if (def.served) servedApps[id] = { root: appDir, proxy: manifest.proxy || null, server: serverEntry ? path.join(appDir, serverEntry) : null, autoStart: !!manifest.serverAutoStart };
+    if (def.served) {
+      servedApps[id] = {
+        root: appDir, proxy: manifest.proxy || null,
+        server: serverEntry ? path.join(appDir, serverEntry) : null, autoStart: !!manifest.serverAutoStart,
+        // sanitized: only recognized capability names reach sysserver; unknown values are ignored
+        hostCapabilities: Array.isArray(manifest.hostCapabilities)
+          ? manifest.hostCapabilities.filter(c => KNOWN_HOST_CAPABILITIES.has(c)) : [],
+      };
+    }
   });
 }
 function appCatalog() {
@@ -3319,7 +3346,7 @@ app.whenReady().then(async () => {
     try { const n = parseInt(fs.readFileSync(portFile, 'utf8'), 10); if (n >= 1024 && n <= 65535) preferredPort = n; } catch (e) {}
     syncAppOAuthProviders();                                  // register drop-in apps' declared OAuth providers
     serverPort = await sysserver.start({
-      preferredPort, oauth: dropInOAuth, appHost: dropInHost,
+      preferredPort, oauth: dropInOAuth, appHost: dropInHost, onPickAppFolder: pickDropInFolder,
       onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig,
       githubApp: githubService,
       onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(),

@@ -116,7 +116,15 @@ const discordSubscribers = new Set();
 let obsApp = null;                      // OBS control service (main.js provides it via start opts)
 const obsSubscribers = new Set();       // open SSE responses for the served /obs switcher page
 const staticAssets = {};   // request path -> { body, type }; populated at start()
-let appFolders = {};        // drop-in served app id -> { root, proxy }; supplied by main.js
+let appFolders = {};        // drop-in served app id -> { root, proxy, hostCapabilities }; supplied by main.js
+// /app-host/pick-folder: host-mediated folder picker for opted-in drop-ins. One native dialog
+// globally at a time + a short per-app cooldown after it closes (blunts reopen loops).
+let onPickAppFolder = null;
+let pickerBusy = false;
+let pickerCooldownUntil = {};   // appId -> currentTime() timestamp until which new requests are 'busy'
+const PICKER_COOLDOWN_MS = 1500;
+const PICKER_MAX_BODY = 8 * 1024;
+const PICKER_MAX_DEFAULT_PATH = 4096;
 let appOAuth = null;        // drop-in OAuth capability (main.js) -> scoped per app in serveAppApi
 let appHost = null;         // trusted host operations available only to installed server.js modules
 const appServers = {};      // app id -> required server module
@@ -430,6 +438,50 @@ function appServer(appId) {
     return null;
   }
 }
+// POST /app-host/pick-folder — host-mediated folder picker for served drop-ins that declare the
+// 'pick-folder' capability in app.json. Reserved /app-host/ namespace: never routed through the
+// app's own server module, so /app-api/* actions cannot intercept or shadow it. The page receives
+// ONLY the directory the user explicitly selected; neither defaultPath nor the selection is logged.
+function pickerJson(res, status, obj) {
+  res.writeHead(status, headers('application/json; charset=utf-8'));
+  res.end(JSON.stringify(obj));
+}
+async function serveAppHostPickFolder(req, res) {
+  if (req.method !== 'POST') return pickerJson(res, 405, { ok: false, code: 'method', error: 'POST required' });
+  const appId = requestingAppId(req);
+  const rec = appId ? appFolders[appId] : null;
+  const caps = rec && Array.isArray(rec.hostCapabilities) ? rec.hostCapabilities : [];
+  if (!rec || !caps.includes('pick-folder')) return pickerJson(res, 403, { ok: false, code: 'forbidden', error: 'app has not declared the pick-folder capability' });
+  if (typeof onPickAppFolder !== 'function') return pickerJson(res, 503, { ok: false, code: 'unavailable', error: 'Folder picker unavailable' });
+  let body;
+  try { body = await readJsonBody(req, PICKER_MAX_BODY); } catch (e) { return pickerJson(res, 400, { ok: false, code: 'bad-request', error: 'malformed JSON body' }); }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return pickerJson(res, 400, { ok: false, code: 'bad-request', error: 'JSON object body required' });
+  let defaultPath;
+  if (body.defaultPath != null) {
+    if (typeof body.defaultPath !== 'string' || body.defaultPath.length > PICKER_MAX_DEFAULT_PATH) {
+      return pickerJson(res, 400, { ok: false, code: 'bad-request', error: 'defaultPath must be a string of at most ' + PICKER_MAX_DEFAULT_PATH + ' characters' });
+    }
+    // Only absolute Windows drive or UNC paths are forwarded; relative input is ignored so it can
+    // never be resolved against the host's working directory.
+    if (/^([A-Za-z]:[\\/]|\\\\)/.test(body.defaultPath)) defaultPath = body.defaultPath;
+  }
+  if (pickerBusy || (pickerCooldownUntil[appId] || 0) > currentTime()) {
+    return pickerJson(res, 409, { ok: false, code: 'busy', error: 'A folder picker is already open' });
+  }
+  pickerBusy = true;
+  try {
+    const result = await onPickAppFolder({ appId, defaultPath });
+    if (result && result.ok === true && typeof result.path === 'string') return pickerJson(res, 200, { ok: true, path: result.path });
+    if (result && result.canceled) return pickerJson(res, 200, { ok: false, canceled: true });
+    return pickerJson(res, 503, { ok: false, code: 'unavailable', error: 'Folder picker unavailable' });
+  } catch (e) {
+    // Fixed message — a thrown error could carry path fragments, and none of that reaches the page.
+    return pickerJson(res, 503, { ok: false, code: 'unavailable', error: 'Folder picker unavailable' });
+  } finally {
+    pickerBusy = false;
+    pickerCooldownUntil[appId] = currentTime() + PICKER_COOLDOWN_MS;
+  }
+}
 async function serveAppApi(req, res, full, url) {
   const appId = requestingAppId(req);
   const action = url.slice('/app-api/'.length);
@@ -620,6 +672,7 @@ async function handler(req, res) {
     || (req.method === 'POST' && url === '/api/obs/action')
     || (req.method === 'POST' && url.indexOf('/api/github/') === 0)
     || (req.method === 'POST' && url.indexOf('/app-api/') === 0)   // drop-in app APIs: POST carries a body (e.g. captured audio) the query string can't
+    || (req.method === 'POST' && url === '/app-host/pick-folder')  // host-mediated folder picker (POST so paths never appear in URLs)
     || (req.method === 'POST' && (url === '/lucidtype-edit' || url === '/lucidtype-review/apply' || url === '/lucidtype-review/refine'));   // LucidType edit-sync + review apply/refine (same-origin gated below)
   if (req.method !== 'GET' && !isAllowedPost) { res.writeHead(405); res.end(); return; }
   if (url === '/' || url === '/index.html') return html(res, RETIRED_HTML);   // retired SystemView page
@@ -688,6 +741,7 @@ async function handler(req, res) {
   }
   if (url.indexOf('/api/github/') === 0) return serveGitHubApi(req, res, full, url);
   if (url === '/app-proxy') return serveAppProxy(req, res, full);
+  if (url === '/app-host/pick-folder') return serveAppHostPickFolder(req, res);
   if (url.indexOf('/app-api/') === 0) return serveAppApi(req, res, full, url);
   if (url === '/metrics') return json(res, { retired: true });   // graceful null for any stale SystemView client
   if (url === '/nowplaying') return json(res, nowplaying.getSnapshot());
@@ -1037,6 +1091,7 @@ async function handler(req, res) {
 function start(opts) {
   opts = opts || {};
   onMedia = opts.onMedia || null;
+  onPickAppFolder = typeof opts.onPickAppFolder === 'function' ? opts.onPickAppFolder : null;
   onLaunch = opts.onLaunch || null;
   getGridTiles = opts.getGridTiles || null;
   getAppConfig = opts.getAppConfig || null;
@@ -1157,6 +1212,9 @@ function stop() {
   appOAuth = null;
   appHost = null;
   githubApp = null;
+  onPickAppFolder = null;
+  pickerBusy = false;
+  pickerCooldownUntil = {};
   currentTime = Date.now;
   githubCapabilityTtlMs = DEFAULT_GITHUB_CAPABILITY_TTL_MS;
 }

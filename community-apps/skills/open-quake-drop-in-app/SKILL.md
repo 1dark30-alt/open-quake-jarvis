@@ -115,6 +115,18 @@ Current proxy contract:
 - Use `GET /app-proxy/config` to read active app options, including server-only options.
 - Use `GET /app-proxy?url=<encoded-url>` to fetch an allowed upstream URL.
 
+Folder picker (host-mediated, opt-in — never add an app-specific host route for this):
+
+- Declare `"hostCapabilities": ["pick-folder"]` in `app.json` (served apps only; do NOT add it
+  to templates by default — only when the app genuinely needs a directory from the user).
+- `POST /app-host/pick-folder` with a JSON body `{ "defaultPath": "<absolute path, optional>" }`
+  opens a host-owned directory-only dialog and resolves to `{ok:true,path}` on selection,
+  `{ok:false,canceled:true}` on cancel, `409 {code:'busy'}` while one is already open, and
+  `503 {code:'unavailable'}` when the host can't show one — degrade to a typed path field.
+- The page gets only the user's explicit selection; relative defaults are ignored, paths never
+  go in URLs or logs, and the app gains no dialog/filesystem authority. See
+  `docs/drop-in-spec.md` §5.6.
+
 For app-local server code, declare `"server": "server.js"` and export `handle(action, context)`.
 
 ```js
