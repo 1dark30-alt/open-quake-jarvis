@@ -1004,6 +1004,12 @@ async function openAppServerExternal(value) {
 }
 const dropInHost = Object.freeze({
   openExternal: openAppServerExternal,
+  // Shared Home Assistant credentials (Settings → Auth) for drop-in server modules, so HA apps
+  // don't ask the user to re-enter the URL/token per app. Server modules only — never the page.
+  getHaAuth: () => {
+    const ha = (config.settings && config.settings.haAuth) || {};
+    return { url: ha.url || '', token: ha.token || '', useHa: !!ha.useHa };
+  },
   launchApp: value => actionRunner.launchApp(value, actionDeps),
   focusTeams: () => meetingControl.focusTeamsWindow(),
   focusApp: names => meetingControl.focusProcessWindow(names),

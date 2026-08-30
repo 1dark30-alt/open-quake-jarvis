@@ -171,6 +171,9 @@ Served drop-in apps can also declare host-side helpers:
 - `/app-proxy?url=...` is available only to the requesting app page and only for
   URLs allowed by the app manifest. `{ "option": "host" }` allows requests to the
   configured host origin, including LAN devices.
+- `context.host.getHaAuth()` returns the shared Home Assistant credentials from
+  Settings → Auth (`{ url, token, useHa }`), so an HA app doesn't ask the user to
+  re-enter them. Server modules only — never hand the token to your page.
 
 See `docs/app-template/` for a minimal starting point.
 
