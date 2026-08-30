@@ -144,6 +144,22 @@ The active app can call `GET /app-api/<action>`. Keep integration-specific serve
 
 Avoid adding routes named for a single integration, such as `/api/qnap/...`, unless the user asks for a built-in one-off integration.
 
+### Interactive editor management surface
+
+A served app that manages app-owned state MAY expose its own desktop management UI without
+adding app-specific code to the host editor:
+
+```json
+"editor": { "entry": "index.html", "label": "Manage jobs" }
+```
+
+The editor entry MUST be a contained relative path and is loaded with `_surface=editor`, theme
+parameters, and non-secret app options. Reusing the panel entry is encouraged when it can switch
+to a responsive desktop layout. The iframe has scripts, forms, and its app origin, but no preload,
+Node, raw IPC, or parent-editor access. Persist app-owned changes through `/app-api/*`; those
+changes take effect immediately and are outside the host editor's **Save & apply** transaction.
+Use `/app-host/*` only for generic host capabilities explicitly declared by the app.
+
 ### OAuth (per-app)
 
 A served app can integrate with one OAuth 2.0 + PKCE provider. Declare it in `app.json`. A shipped public client may put its non-secret `clientId` in the OAuth block; otherwise the user supplies client credentials via app options:

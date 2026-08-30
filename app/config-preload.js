@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('openQuakeConfig', {
   getLighting() { return ipcRenderer.invoke('getLighting'); },
   getMonitorState() { return ipcRenderer.invoke('getMonitorState'); },
   appPreviewUrl(page) { return ipcRenderer.invoke('appPreviewUrl', page); },
+  appEditorUrl(page) { return ipcRenderer.invoke('appEditorUrl', page); },
   enterMonitorMode() { return ipcRenderer.invoke('enterMonitorModeFromEditor'); },
   setLighting(lighting) { ipcRenderer.send('setLighting', lighting); },
   saveLightingToDevice() { return ipcRenderer.invoke('saveLightingToDevice'); },

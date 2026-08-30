@@ -85,6 +85,7 @@ const {
 const { ObsService } = require('./obsService');                 // OBS Studio control (shared service)
 const { normalizeObsSettings, obsWsUrl } = require('./obsSettings');
 const appRepo = require('./appRepo');                            // pure helpers for repo install/update
+const { safeAppEntry, appEntryUrlPath, safeEditorDeclaration } = require('./dropInPaths'); // contained drop-in manifest paths + editor declaration
 const { knobDefaultFor, parseCustomRing } = require('./knobRouting');   // generic drop-in knob capability
 const claudeVoiceApprovals = require('./claudevoice-approvals'); // required directly ONLY for the boot-time leftover-hook sweep below
 
@@ -594,13 +595,6 @@ function warnAppManifest(key, message) {
   appManifestWarnings.add(key);
   console.log(message);
 }
-function safeAppEntry(value) {
-  if (typeof value !== 'string' || !value.trim()) return null;
-  const rel = value.trim().replace(/\\/g, '/');
-  if (rel.includes('..') || rel.startsWith('/') || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(rel) || path.isAbsolute(rel)) return null;
-  return rel;
-}
-function appEntryUrlPath(entry) { return String(entry || '').split('/').map(encodeURIComponent).join('/'); }
 function readLegacyApps() {
   try {
     const apps = JSON.parse(fs.readFileSync(path.join(APPS_DIR, 'apps.json'), 'utf8'));
@@ -641,8 +635,11 @@ function scanAppDir(baseDir, apps, ids, servedApps) {
     if (!entry) { warnAppManifest('entry:' + appDir, 'skipping app folder with invalid entry: ' + id); return; }
     if (ids.has(id)) { warnAppManifest('dup:' + id, 'skipping duplicate app id: ' + id); return; }
     const serverEntry = safeAppEntry(manifest.server);
+    const editor = safeEditorDeclaration(manifest);
+    if (manifest.editor && !editor) warnAppManifest('editor:' + appDir, 'ignoring invalid editor entry for app: ' + id);
     const def = Object.assign({}, manifest, {
       id, name: manifest.name || id, file: entry, entry, server: serverEntry || undefined,
+      editor: editor || undefined,
       served: !!manifest.served, options: Array.isArray(manifest.options) ? manifest.options : [],
       _folder: true, _dir: appDir,
     });
@@ -1078,6 +1075,20 @@ function appPageUrl(page) {
   const gridHint = page.gridOn ? '_grid=1' : '';   // lets the page (e.g. a clock) make room for the native button strip
   const hash = [appOptionQuery(def, opts, o => o.type !== 'secret' && !o.serverOnly), themeParams(page), gridHint].filter(Boolean).join('&');
   return pathToFileURL(file).href + (hash ? '#' + hash : '');
+}
+// Optional interactive management page owned by a served drop-in. It stays on that app's
+// loopback origin, so its existing /app-api and /app-host calls retain the same Referer and
+// same-origin gates as the panel page; only the contained entry and editor surface hint differ.
+function appEditorUrl(page) {
+  const def = loadApps().find(a => a.id === page.app);
+  if (!(def && def._folder && def.served && def.editor && def.editor.entry)) return 'about:blank';
+  const opts = page.options || {};
+  const qs = [
+    appOptionQuery(def, opts, o => o.type !== 'secret' && !o.serverOnly),
+    themeParams(page),
+    '_surface=editor',
+  ].filter(Boolean).join('&');
+  return 'http://127.0.0.1:' + serverPort + '/apps/' + encodeURIComponent(def.id) + '/' + appEntryUrlPath(def.editor.entry) + '?' + qs;
 }
 function activeServedAppConfig(appId) {
   const g = visibleGrids().find(p => p && p.kind === 'app' && p.app === appId);
@@ -4052,6 +4063,14 @@ app.whenReady().then(async () => {
     if (!isFrom(e, configWin)) return 'about:blank';
     if (!page || typeof page !== 'object' || typeof page.app !== 'string') return 'about:blank';
     try { return appPageUrl({ app: page.app, options: page.options || {}, gridOn: !!page.gridOn, appearance: page.appearance, accent: page.accent }); }
+    catch (err) { return 'about:blank'; }
+  });
+  // Interactive drop-in management surface. Unlike the inert scaled preview, this only exists
+  // for a sanitized served-app `editor` declaration and never exposes IPC/Node to the iframe.
+  ipcMain.handle('appEditorUrl', (e, page) => {
+    if (!isFrom(e, configWin)) return 'about:blank';
+    if (!page || typeof page !== 'object' || typeof page.app !== 'string') return 'about:blank';
+    try { return appEditorUrl({ app: page.app, options: page.options || {}, appearance: page.appearance, accent: page.accent }); }
     catch (err) { return 'about:blank'; }
   });
   // Monitor-mode state + enter action for the editor's Monitor settings page. Enter-only: exiting

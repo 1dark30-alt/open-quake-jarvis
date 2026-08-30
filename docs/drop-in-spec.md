@@ -80,6 +80,7 @@ uses all of them at once. See `apps/apps.json` or any `community-apps/` folder f
 | `name` | string | no | Display name. Defaults to `id`. |
 | `entry` (alias `file`) | string | **yes** | Relative path to the entry document. MUST pass the safe-path rule (§2.4). |
 | `served` | bool | no | `false` = static `file://`; `true` = served over loopback HTTP. Default `false`. |
+| `editor` | object | served only | Optional interactive editor management surface: `{ "entry": "index.html", "label": "Manage app" }` (§4.4). Its entry MUST pass the same safe-path rule as `entry`. |
 | `options` | array | no | User-set option descriptors (§2.5). Default `[]`. |
 | `server` | string | served only | Relative path to a host-side Node module (§5.1). Triggers the exec-code warning on import. |
 | `serverAutoStart` | bool | served only | When `true`, the host loads the `server` module at startup (and again after the app is installed or updated) instead of on the first `/app-api` call — for apps whose server runs background work such as schedules. Default `false`: request/response-only servers SHOULD stay lazy. |
@@ -196,6 +197,27 @@ hard-coded port. Use served mode when the app needs same-origin `fetch`, a secur
 
 `GET /apps/<app-id>/<relative-path>` serves files from the app root, subject to §2.4
 containment. Unknown app id or escaping path → `404`/`403`.
+
+### 4.4 Interactive editor management surface (`editor`)
+
+A served drop-in MAY own its desktop management UI instead of requiring app-specific editor
+code. Declare a contained entry and a short section label:
+
+```json
+"editor": { "entry": "index.html", "label": "Manage sync jobs" }
+```
+
+The editor embeds that page as an interactive sandboxed iframe on the app page editor. It loads
+from the app's normal loopback origin with the page's non-secret options, theme parameters, and
+`_surface=editor`. The app may use that hint to switch from its fixed panel layout to a responsive
+desktop layout. Because the page remains under `/apps/<id>/…`, relative `/app-api/*`, `/app-host/*`,
+and `/app-proxy` requests retain the existing same-origin and per-app Referer gates.
+
+The iframe receives scripts, forms, and same-origin access, but no preload, Node, raw IPC, or
+parent-editor access. App-owned changes SHOULD persist through the app's server API and take effect
+immediately; they are not part of the editor's global **Save & apply** transaction. The editor MUST
+say so beside the surface. Hosts that do not implement this optional extension ignore `editor` and
+continue to show the ordinary panel preview.
 
 ---
 

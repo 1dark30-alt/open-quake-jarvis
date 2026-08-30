@@ -1113,7 +1113,7 @@
   function markDirty() {
     dirty = true; setState('● Unsaved changes', 'dirty'); document.getElementById('saveBtn').disabled = false;
     // Any app-page edit re-points the live preview (debounced; only reloads when the URL changed).
-    try { const g = curGrid(); if (g && g.kind === 'app') updateAppPreview(g); } catch (e) {}
+    try { const g = curGrid(); if (g && g.kind === 'app') updateAppSurface(g); } catch (e) {}
   }
   // Native confirm()/alert() leave the window's input state broken in Electron — text fields and
   // <select> popups stop responding because the dialog takes focus and the window never registers
@@ -2608,7 +2608,11 @@
       renderAppOpts(g, def);
     }
     wireRotRow(g); wireShortcutRow(g); wireAdvRow(g); wireGridSizeRow(g);
-    if (def) appendAppPreview(document.getElementById('appPreviewHost'), g);
+    if (def) {
+      const host = document.getElementById('appPreviewHost');
+      if (def.editor) appendAppEditorSurface(host, g, def);
+      else appendAppPreview(host, g);
+    }
     enforceMusicCap(g);
   }
   // OAuth belongs to the installed app, so its lifecycle controls sit with that app's page
@@ -2824,6 +2828,36 @@
   // Pages whose content is an external site the editor can't authenticate into (the panel injects
   // credentials webview-side) \u2014 a blank preview is worse than none, so they get none.
   const PREVIEW_EXCLUDE = new Set(['ha-dashboard']);
+  function appendAppEditorSurface(host, g, def) {
+    if (!host) return;
+    const label = (def.editor && def.editor.label) || 'Manage app';
+    host.innerHTML = `<p class="sectitle" style="margin-top:16px">${esc(label)}</p>
+      <div class="appmanage">
+        <iframe class="appmanageFrame" title="${esc(label)}" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
+      </div>
+      <p class="hint" style="margin:4px 0 0">Interactive app management — changes save immediately and appear on the panel without Save &amp; apply.</p>`;
+    updateAppEditorSurface(g);
+  }
+  function updateAppSurface(g) {
+    if (document.querySelector('.appmanageFrame')) updateAppEditorSurface(g);
+    else updateAppPreview(g);
+  }
+  let appEditorTimer = null;
+  async function updateAppEditorSurface(g) {
+    const frame = document.querySelector('.appmanageFrame');
+    if (!frame) return;
+    clearTimeout(appEditorTimer);
+    appEditorTimer = setTimeout(async () => {
+      try {
+        const url = await configApi.appEditorUrl({ app: g.app, options: g.options || {}, appearance: g.appearance, accent: g.accent });
+        const current = document.querySelector('.appmanageFrame');
+        if (current && current.src !== url) current.src = url;
+      } catch (e) {
+        const host = document.getElementById('appPreviewHost');
+        if (host) host.innerHTML = '<p class="hint warn">This app\'s management surface could not be loaded.</p>';
+      }
+    }, 400);
+  }
   function appendAppPreview(host, g) {
     if (!host) return;
     if (PREVIEW_EXCLUDE.has(g.app)) { host.innerHTML = ''; return; }

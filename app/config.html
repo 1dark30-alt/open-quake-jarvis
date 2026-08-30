@@ -180,6 +180,11 @@
   .apprev .ptile .em, .apprev .ptile .ic { font-size: 60px; line-height: 1; }
   .apprev .ptile img { width: 64px; height: 64px; object-fit: contain; }
   .apprev .ptile .lb { font-size: 20px; margin-top: 8px; color: #9fb3c8; }
+  /* interactive management surface for served drop-ins that declare manifest.editor.
+     The iframe remains a sandboxed loopback page: no preload, Node, or raw IPC exposure. */
+  .appmanage { width: 100%; max-width: 1100px; height: min(680px, calc(100vh - 220px)); min-height: 500px;
+    border: 1px solid #233246; border-radius: 10px; overflow: hidden; background: #0a111a; }
+  .appmanageFrame { display: block; width: 100%; height: 100%; border: 0; background: #0a111a; }
   /* Apps page: one bounded app-management surface — toolbar, list header, two-column row list */
   .amgr { max-width: 900px; }
   .amgr .amnote { color: #8aa0b6; font-size: 13px; margin: -8px 0 16px; }
