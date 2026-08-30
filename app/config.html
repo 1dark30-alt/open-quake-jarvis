@@ -19,7 +19,9 @@
   #pageFilter { background: #0a111a; font-size: 13px; padding: 6px 9px; }
   /* page-type filter: pulldown of type checkboxes under the search box */
   .kindwrap { position: relative; margin-top: 6px; }
-  .kindwrap #pageKindsBtn { font-size: 12px; padding: 4px 9px; color: #9fb3c8; }
+  .kindwrap { display: flex; gap: 6px; }
+  .kindwrap #pageKindsBtn, .kindwrap #pageFilterReset { font-size: 12px; padding: 4px 9px; color: #9fb3c8; }
+  .kindwrap #pageFilterReset:disabled { opacity: .45; }
   .kindwrap #pageKindsBtn.filtered { color: #4ea3ff; border-color: #2b6fb0; }
   .kindwrap .caret { font-size: 10px; }
   .kindwrap .diMenu { left: 0; right: auto; top: 30px; min-width: 160px; }
@@ -378,6 +380,7 @@
       <input id="pageFilter" type="search" placeholder="Search pages…">
       <div class="kindwrap">
         <button id="pageKindsBtn" aria-haspopup="true" aria-expanded="false">Filter <span class="caret">▾</span></button>
+        <button id="pageFilterReset" title="Clear the search and show all page types" disabled>Reset</button>
         <div id="pageKindsMenu" class="diMenu">
           <label class="kfopt"><input type="checkbox" data-kind="grid" checked> Grids</label>
           <label class="kfopt"><input type="checkbox" data-kind="appBuiltin" checked> Built-in apps</label>

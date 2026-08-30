@@ -1295,6 +1295,8 @@
     }
     const kb = document.getElementById('pageKindsBtn');
     if (kb) kb.classList.toggle('filtered', kindFiltered);
+    const rb = document.getElementById('pageFilterReset');
+    if (rb) rb.disabled = !q && !kindFiltered;   // nothing to reset
   }
   // Reorder pages by drag — keeps the same page selected (by id) and persists on save. Order drives the
   // knob page-selector and the auto-rotation cycle; the live panel page is unaffected (tracked by id).
@@ -5192,6 +5194,12 @@
   document.addEventListener('click', e => { if (!e.target.closest('.kindwrap')) { pageKindsMenu.classList.remove('open'); pageKindsBtn.setAttribute('aria-expanded', 'false'); } });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { pageKindsMenu.classList.remove('open'); pageKindsBtn.setAttribute('aria-expanded', 'false'); } });
   pageKindsMenu.querySelectorAll('input[data-kind]').forEach(c => c.onchange = e => { pageKindFilter[e.target.dataset.kind] = e.target.checked; renderGrids(); });
+  document.getElementById('pageFilterReset').onclick = () => {
+    pageFilter = ''; document.getElementById('pageFilter').value = '';
+    Object.keys(pageKindFilter).forEach(k => { pageKindFilter[k] = true; });
+    pageKindsMenu.querySelectorAll('input[data-kind]').forEach(c => { c.checked = true; });
+    renderGrids();
+  };
   document.getElementById('addGroup').onclick = () => addGroup();
   document.getElementById('addPane').onclick = () => addPane();
   document.getElementById('lTabPages').onclick = () => { leftTab = 'pages'; render(); };
