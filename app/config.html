@@ -212,9 +212,6 @@
   .amlink { margin: 14px 0 0; font-size: 13px; color: #8aa0b6; }
   .amlink a { color: #4ea3ff; cursor: pointer; text-decoration: none; }
   .amlink a:hover, .amlink a:focus-visible { text-decoration: underline; }
-  .amdev { margin-top: 22px; }
-  .amdev summary { cursor: pointer; color: #9fb3c8; font-size: 13px; user-select: none; }
-  .amdev .alist { margin-top: 10px; }
   /* Theme live preview + preset chips */
   .thprev { display: flex; gap: 16px; align-items: center; border: 1px solid #233246; border-radius: 10px; padding: 16px; max-width: 460px; }
   .thprev .thtile { width: 64px; height: 64px; border-radius: 12px; border: 1px solid; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
@@ -339,7 +336,8 @@
   .diPill.on { background: #16314f; border-color: #2b6fb0; color: #fff; }
   .diPill .n { color: #6f8298; font-size: 11px; } .diPill.on .n { color: #bcd4ee; }
   .diCatRow { display: flex; align-items: flex-start; gap: 12px; padding: 11px 4px; border-bottom: 1px solid #141c27; }
-  .diCatRow .body { flex: 1; }
+  .diCatRow .body { flex: 1; min-width: 0; }   /* min-width:0 lets the description ellipsize instead of shoving the Install button off-screen */
+  .diCatRow > button { flex: none; }
   .diCatNm { font-weight: 600; color: #dbe5f0; font-size: 13.5px; }
   .diCatNm .v { color: #6f8298; font-weight: 400; font-size: 12px; margin-left: 6px; }
   .diCatDs { color: #6f8298; font-size: 12px; margin-top: 3px; line-height: 1.45; }

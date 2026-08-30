@@ -1178,16 +1178,12 @@
     const al = document.getElementById('gAlign'); if (al) al.onchange = e => { g.gridAlign = e.target.value === 'left' ? 'left' : 'right'; markDirty(); };
     const sz = document.getElementById('gSize'); if (sz) sz.onchange = e => { clearAllMerges(g); g.cols = Math.max(1, Math.min(3, +e.target.value || 3)); g.rows = 2; ensureTiles(g); ti = -1; selEnd = -1; render(); markDirty(); };
   }
-  // App-picker visibility (Settings -> Apps). Regular apps default SHOWN (listed in hiddenApps when off);
-  // developer apps (apps.json "dev": true) default HIDDEN (listed in shownDevApps when ticked) so releases hide them.
-  // devEnabled() is just a UI toggle that reveals the developer list in the editor — it doesn't affect the picker.
+  // App-picker visibility (Settings -> Apps). Apps default SHOWN (listed in hiddenApps when off).
   function appHidden(id) { return (((config.settings || {}).hiddenApps) || []).includes(id); }
-  function devShown(id) { return (((config.settings || {}).shownDevApps) || []).includes(id); }
-  function devEnabled() { return !!((config.settings || {}).devApps); }
   function appVisible(a) {
     if (!a) return false;
     if (a.id === 'ha-dashboard' && !((config.settings || {}).haAuth || {}).useHa) return false;   // hidden until Use HA is on
-    return a.dev ? devShown(a.id) : !appHidden(a.id);
+    return !appHidden(a.id);
   }
   async function refreshApps() {
     try { appDefs = await configApi.getApps(); } catch (e) { appDefs = []; }
@@ -4020,10 +4016,9 @@
     const appRow = (a, on) => `<div class="arow" data-name="${esc(String(a.name || '').toLowerCase())}">
         <span class="abadge" aria-hidden="true">${esc(a.icon || String(a.name || a.id).trim().charAt(0).toUpperCase())}</span>
         <span class="ameta"><span class="amname" title="${esc(a.name)}">${esc(a.name)}</span>${a.description ? `<span class="amdesc" title="${esc(a.description)}">${esc(a.description)}</span>` : ''}</span>
-        <label class="aswitch"><input type="checkbox" class="appShow" data-id="${esc(a.id)}" data-dev="${a.dev ? 1 : 0}" ${on ? 'checked' : ''} aria-label="Show ${esc(a.name)} in the App picker"><span class="swtrack"></span><span class="swstate">${on ? 'Shown' : 'Hidden'}</span></label>
+        <label class="aswitch"><input type="checkbox" class="appShow" data-id="${esc(a.id)}" ${on ? 'checked' : ''} aria-label="Show ${esc(a.name)} in the App picker"><span class="swtrack"></span><span class="swstate">${on ? 'Shown' : 'Hidden'}</span></label>
       </div>`;
-    const regularApps = appDefs.filter(a => !a.dev), devApps = appDefs.filter(a => a.dev);
-    const builtinApps = regularApps.filter(a => !a._folder), dropinApps = regularApps.filter(a => a._folder);
+    const builtinApps = appDefs.filter(a => !a._folder);
     const appsHtml = `
       <div class="amgr">
         <p class="amnote">Hiding an app removes it from the App picker. Existing pages keep working.</p>
@@ -4038,12 +4033,6 @@
           <p class="amempty" id="amNoMatch">No apps match your search.</p>
         </div>
         <p class="amlink">Looking for installed apps? <a id="amGoDropin" href="#" role="button">Manage drop-in apps →</a></p>
-        ${devApps.length ? `
-        <details class="amdev"${devEnabled() ? ' open' : ''}>
-          <summary>Developer apps</summary>
-          <label class="iconopt" style="width:auto; gap:9px; margin:10px 0 0"><input type="checkbox" id="devMaster" ${devEnabled() ? 'checked' : ''}> show developer apps in the picker</label>
-          ${devEnabled() ? `<div class="alist">${devApps.map(a => appRow(a, devShown(a.id))).join('')}</div>` : ''}
-        </details>` : ''}
       </div>`;
 
     // Auth tab — credentials shared across the app (Home Assistant, Open WebUI). Token and API key
@@ -4182,9 +4171,9 @@
     const setS = (k, v) => { if (!config.settings) config.settings = {}; config.settings[k] = v; markDirty(); };
 
     if (tab === 'apps') {
-      // shown/hidden summary + search + bulk show/hide (built-in apps only; dev apps have their own master)
+      // shown/hidden summary + search + bulk show/hide
       const updateAppCount = () => {
-        const boxes = [...el.querySelectorAll('.appShow')].filter(c => c.dataset.dev !== '1');
+        const boxes = [...el.querySelectorAll('.appShow')];
         const hidden = boxes.filter(c => !c.checked).length;
         const cnt = document.getElementById('appCount');
         if (cnt) cnt.textContent = (boxes.length - hidden) + ' shown · ' + hidden + ' hidden';
@@ -4212,21 +4201,15 @@
       const hideAllBtn = document.getElementById('appHideAll');
       if (hideAllBtn) hideAllBtn.onclick = () => {
         if (!config.settings) config.settings = {};
-        config.settings.hiddenApps = appDefs.filter(a => !a.dev && !a._folder).map(a => a.id);
+        config.settings.hiddenApps = appDefs.filter(a => !a._folder).map(a => a.id);
         markDirty(); renderSettings();
       };
       el.querySelectorAll('.appShow').forEach(c => c.onchange = e => {
-        const id = e.target.dataset.id, isDev = e.target.dataset.dev === '1';
+        const id = e.target.dataset.id;
         if (!config.settings) config.settings = {};
-        if (isDev) {   // developer app: tracked when SHOWN (default hidden)
-          const shown = (config.settings.shownDevApps || []).filter(x => x !== id);
-          if (e.target.checked) shown.push(id);
-          config.settings.shownDevApps = shown;
-        } else {       // regular app: tracked when HIDDEN (default shown)
-          const hidden = (config.settings.hiddenApps || []).filter(x => x !== id);
-          if (!e.target.checked) hidden.push(id);
-          config.settings.hiddenApps = hidden;
-        }
+        const hidden = (config.settings.hiddenApps || []).filter(x => x !== id);   // tracked when HIDDEN (default shown)
+        if (!e.target.checked) hidden.push(id);
+        config.settings.hiddenApps = hidden;
         const state = e.target.closest('.aswitch');
         const lb = state && state.querySelector('.swstate');
         if (lb) lb.textContent = e.target.checked ? 'Shown' : 'Hidden';
@@ -4240,8 +4223,6 @@
         renderSettings();
         const sc = document.querySelector('.col.editor'); if (sc) sc.scrollTop = 0;
       };
-      const dm = document.getElementById('devMaster');   // master: just reveals the developer-app list in this tab
-      if (dm) dm.onchange = e => { if (!config.settings) config.settings = {}; config.settings.devApps = e.target.checked; markDirty(); renderSettings(); };
     }
 
     if (tab === 'dropin') {
@@ -4548,7 +4529,7 @@
             : `<button class="primary diRepoInst" data-id="${esc(a.id)}" data-i="${idx}">Install</button>`;
           const letter = esc((a.name || a.id || '?').trim().charAt(0).toUpperCase());
           const meta = 'v' + esc(a.version) + ' · ' + esc(nameOf(idx));
-          return `<div class="diCatRow"><div class="diTile">${letter}</div><div class="body"><div class="diCatNm">${esc(a.name)}</div>${a.description ? `<div class="diCatDs">${esc(a.description)}</div>` : ''}<div class="diCatMeta">${meta}</div></div>${btn}</div>`;
+          return `<div class="diCatRow"><div class="diTile">${letter}</div><div class="body"><div class="diCatNm">${esc(a.name)}</div>${a.description ? `<div class="diCatDs" title="${esc(a.description)}">${esc(a.description)}</div>` : ''}<div class="diCatMeta">${meta}</div></div>${btn}</div>`;
         }).join('');
         host.querySelectorAll('.diRepoInst').forEach(b => b.onclick = e => doInstall(e.currentTarget.dataset.id, false, repos[+e.currentTarget.dataset.i]));
         host.querySelectorAll('.diRepoUpd').forEach(b => b.onclick = e => doUpdate(e.currentTarget.dataset.id));
