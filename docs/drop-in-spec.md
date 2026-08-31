@@ -343,7 +343,12 @@ them to `connect`; fixed public clients SHOULD declare `clientId` in the manifes
 
 The reference editor also shows account status, Connect/Reconnect, declared permissions, and
 Disconnect controls inside the settings for every app page whose installed manifest declares
-`oauth`. Those controls use the same `app:<app-id>` binding; app OAuth providers do not appear in
+`oauth`. A healthy connected account collapses to a one-line summary with a **Manage**
+expander; first connect, errors, and expired tokens render the full controls so recovery is
+never hidden. An app that ships its own complete connect/disconnect UI MAY set
+`"oauth": { …, "selfManaged": true }` to suppress the editor's account panel entirely —
+provider registration and `context.oauth` are unchanged, and the app then owns first-connect
+and recovery (including disconnect) itself. Those controls use the same `app:<app-id>` binding; app OAuth providers do not appear in
 the global OAuth settings list. An app may additionally expose the lifecycle in its panel UI
 through its server module, as long as tokens remain inside the host process.
 

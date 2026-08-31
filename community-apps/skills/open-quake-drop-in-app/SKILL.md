@@ -174,7 +174,7 @@ A served app can integrate with one OAuth 2.0 + PKCE provider. Declare it in `ap
 ]
 ```
 
-The provider registers as `app:<your-app-id>`; the redirect URI is always `http://localhost:5173/oauth/callback` (register that with the provider). `handle()` receives `context.oauth`, already scoped to your app — you cannot reach another app's or a built-in provider:
+The provider registers as `app:<your-app-id>`; the redirect URI is always `http://localhost:5173/oauth/callback` (register that with the provider). The editor renders an account panel for the app (one collapsed line when healthy, full controls otherwise); if your app ships its OWN complete connect/disconnect UI, add `"selfManaged": true` to the `oauth` block to suppress the editor panel — your app then owns first-connect AND recovery, including disconnect. `handle()` receives `context.oauth`, already scoped to your app — you cannot reach another app's or a built-in provider:
 
 ```js
 async function handle(action, context) {

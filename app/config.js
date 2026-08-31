@@ -2620,12 +2620,16 @@
   // every call to app:<id>; tokens and provider credentials never cross this renderer boundary.
   async function appendDropInOAuthSetup(el, def) {
     if (!el || !def || !def.oauth) return;
+    // "selfManaged": the app renders its own connect/disconnect UI, so the editor draws no
+    // account chrome at all. Provider registration and the app's ctx.oauth bridge are unchanged.
+    if (def.oauth.selfManaged) return;
     const box = document.createElement('div');
     box.className = 'advsec';
     box.style.cssText = 'margin-top:12px;padding:10px;border:1px solid #213145;border-radius:8px';
     el.appendChild(box);
     let notice = '';
     let noticeBad = false;
+    let expanded = false;   // healthy Connected state collapses to one line until the user clicks Manage
 
     const expiry = value => {
       if (!value) return '';
@@ -2644,6 +2648,18 @@
       const configured = !!(status && status.ok && status.configured);
       const state = connected ? 'Connected' + expiry(status.expiresAt) : configured ? 'Ready to connect' : 'Not configured';
       const scopes = Array.isArray(def.oauth.scopes) ? def.oauth.scopes.join(' ') : '';
+      // Healthy connected account with nothing to report: one summary line. First connect,
+      // errors, and expired tokens keep the full card so recovery is never hidden.
+      const healthy = connected && !notice && !(status && status.ok === false) && !/expired/.test(state);
+      if (healthy && !expanded) {
+        box.innerHTML = `<div class="row" style="gap:8px;align-items:center;margin:0">
+            <label style="width:auto;font-weight:bold">${esc(def.oauth.name || def.name || 'App')} account</label>
+            <span class="hint" style="margin:0">${esc(state)}</span>
+            <button id="appOauthManage" style="margin-left:auto">Manage</button>
+          </div>`;
+        box.querySelector('#appOauthManage').onclick = () => { expanded = true; draw(); };
+        return status;
+      }
       box.innerHTML = `<div class="row" style="gap:8px;align-items:center">
           <label style="width:auto;font-weight:bold">${esc(def.oauth.name || def.name || 'App')} account</label>
           <span class="hint" style="margin:0">${esc(state)}</span>
