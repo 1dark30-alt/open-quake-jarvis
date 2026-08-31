@@ -4368,12 +4368,51 @@
       if (!window.__diMenuClose) { document.addEventListener('click', closeDiMenus); window.__diMenuClose = true; }
 
       // ---- actions ----
+      // Per-APP executable-code trust: once approved with "don't ask again", installs/updates/
+      // reinstalls of THAT app skip the exec-code prompt. New apps always prompt, whatever their
+      // repo. Saved immediately (like the install itself) rather than waiting for Save & apply.
+      const appTrusted = id => (((config.settings || {}).trustedApps) || []).includes(id);
+      const setAppTrusted = (id, on) => {
+        if (!config.settings) config.settings = {};
+        const t = (config.settings.trustedApps || []).filter(x => x !== id);
+        if (on) t.push(id);
+        config.settings.trustedApps = t;
+        markDirty(); doSave();
+      };
+      // Three-way exec-code prompt (in-editor dialog — native confirm can only offer two answers,
+      // and leaves the editor with the focus-loss bug). Resolves 'once' | 'always' | 'no'.
+      const execPrompt = (message, verb) => new Promise(resolve => {
+        const ov = document.createElement('div');
+        ov.className = 'diTrustOv';
+        ov.innerHTML = `<div class="diTrustBox" role="dialog" aria-modal="true"><p style="margin:0 0 4px">${esc(message)}</p>
+          <div class="row" style="gap:8px;justify-content:flex-end;margin:16px 0 0;flex-wrap:wrap">
+            <button id="dtCancel">Cancel</button>
+            <button id="dtOnce">${esc(verb)}</button>
+            <button id="dtAlways" class="primary">${esc(verb)} and don't ask again for this app</button>
+          </div></div>`;
+        document.body.appendChild(ov);
+        const onKey = e => { if (e.key === 'Escape') fin('no'); };
+        const fin = v => { document.removeEventListener('keydown', onKey); ov.remove(); resolve(v); };
+        document.addEventListener('keydown', onKey);
+        ov.onclick = e => { if (e.target === ov) fin('no'); };
+        ov.querySelector('#dtCancel').onclick = () => fin('no');
+        ov.querySelector('#dtOnce').onclick = () => fin('once');
+        const always = ov.querySelector('#dtAlways');
+        always.onclick = () => fin('always');
+        always.focus();
+      });
       const doInstall = async (id, confirmExec, repoUrl) => {
         const repo = (repoUrl || '').trim() || repos[0];
+        if (!confirmExec && appTrusted(id)) confirmExec = true;
         diMsg('Installing "' + id + '"…');
         const r = await configApi.installRepoApp(id, confirmExec, repo);
         if (r && r.ok) { appDefs = await configApi.getApps(); const added = maybeAddAppPage(r.id, r.name); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); diMsg('Installed "' + r.name + '" from ' + (nameForSource(repo) || 'the repository') + (added ? ' — added a page' : '') + '.'); }
-        else if (r && r.warnExec && !confirmExec) { if (ask('This app contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC with full access. Only install it if you trust the repository.\n\nInstall anyway?')) doInstall(id, true, repo); else diMsg(''); }
+        else if (r && r.warnExec && !confirmExec) {
+          const c = await execPrompt('This app contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC with full access. Only install it if you trust the source.', 'Install');
+          if (c === 'no') return diMsg('');
+          if (c === 'always') setAppTrusted(id, true);
+          doInstall(id, true, repo);
+        }
         else if (r && r.conflict) diMsg('"' + id + '" is already installed — use Update instead.', true);
         else diMsg('Install failed: ' + ((r && r.error) || 'unknown error'), true);
       };
@@ -4384,20 +4423,34 @@
           if (!c || !c.ok) return diMsg('Update check failed: ' + ((c && c.error) || ''), true);
           if (!c.updateAvailable) { diStatus[id] = { state: 'ok' }; renderPane(); return diMsg('"' + id + '" is up to date (v' + c.installedVersion + ').'); }
           if (!ask('Update "' + id + '" from v' + c.installedVersion + ' to v' + c.remoteVersion + '?')) return diMsg('');
+          if (appTrusted(id)) confirmExec = true;
         }
         diMsg('Updating "' + id + '"…');
         const r = await configApi.updateDropInApp(id, confirmExec);
         if (r && r.ok && r.updated) { diStatus[id] = { state: 'ok' }; appDefs = await configApi.getApps(); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); diMsg('Updated "' + (r.name || id) + '" to v' + r.version); }
         else if (r && r.ok && r.upToDate) { diStatus[id] = { state: 'ok' }; renderPane(); diMsg('"' + id + '" is up to date.'); }
-        else if (r && r.warnExec && !confirmExec) { if (ask('This update contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC. Update anyway?')) doUpdate(id, true); else diMsg(''); }
+        else if (r && r.warnExec && !confirmExec) {
+          const c = await execPrompt('This update contains executable code' + (r.server ? ' (a server module)' : ' (programs/scripts)') + ' that runs on your PC.', 'Update');
+          if (c === 'no') return diMsg('');
+          if (c === 'always') setAppTrusted(id, true);
+          doUpdate(id, true);
+        }
         else diMsg('Update failed: ' + ((r && r.error) || 'unknown error'), true);
       };
       const doReinstall = async (id, confirmExec) => {
-        if (!confirmExec) { if (!ask('Reinstall "' + id + '"? This re-downloads and overwrites its files.')) return diMsg(''); }
+        if (!confirmExec) {
+          if (!ask('Reinstall "' + id + '"? This re-downloads and overwrites its files.')) return diMsg('');
+          if (appTrusted(id)) confirmExec = true;
+        }
         diMsg('Reinstalling "' + id + '"…');
         const r = await configApi.reinstallDropInApp(id, confirmExec);
         if (r && r.ok && r.reinstalled) { delete diStatus[id]; appDefs = await configApi.getApps(); diCatalog = null; await refreshInstalled(); renderSubtabs(); renderPane(); diMsg('Reinstalled "' + (r.name || id) + '" (v' + r.version + ').'); }
-        else if (r && r.warnExec && !confirmExec) { if (ask('This app contains executable code that runs on your PC. Reinstall anyway?')) doReinstall(id, true); else diMsg(''); }
+        else if (r && r.warnExec && !confirmExec) {
+          const c = await execPrompt('This app contains executable code that runs on your PC.', 'Reinstall');
+          if (c === 'no') return diMsg('');
+          if (c === 'always') setAppTrusted(id, true);
+          doReinstall(id, true);
+        }
         else diMsg('Reinstall failed: ' + ((r && r.error) || 'unknown error'), true);
       };
       const doExport = async id => { const r = await configApi.exportDropInApp(id); diMsg(r && r.ok ? 'Exported to ' + r.path : (r && r.canceled ? '' : 'Export failed: ' + ((r && r.error) || '')), !(r && r.ok)); };
@@ -4540,8 +4593,9 @@
             const idx = repoIndexOf(a.source);
             const src = a.source ? `<span class="diSrcName${isPriv(idx) ? ' priv' : ''}" title="R${idx >= 0 ? idx : '?'}">${esc(nameOf(idx))}</span>` : '';
             const canReinstall = a.source && a.managed;
+            const trusted = appTrusted(a.id);
             return `<tr>
-              <td><div class="diAppName">${esc(a.name)}</div><div class="diAppMeta">${esc(metaOf(a))}</div></td>
+              <td><div class="diAppName">${esc(a.name)}${trusted ? ' <span class="stbadge" title="Executable code from this app installs and updates without asking">trusted</span>' : ''}</div><div class="diAppMeta">${esc(metaOf(a))}</div></td>
               <td class="diVer">${a.version ? 'v' + esc(a.version) : ''}</td>
               <td>${src}</td>
               <td>${installedStatusHtml(a)}</td>
@@ -4549,6 +4603,7 @@
                 <div class="diMenu">
                   <button class="diExport" data-id="${esc(a.id)}">Export…</button>
                   ${canReinstall ? `<button class="diReinstall" data-id="${esc(a.id)}">Reinstall</button>` : ''}
+                  ${trusted ? `<button class="diUntrust" data-id="${esc(a.id)}">Ask again about executable code</button>` : ''}
                   <div class="diMSep"></div>
                   <button class="diDel${a.managed ? ' del' : ''}" data-id="${esc(a.id)}" ${a.managed ? '' : 'disabled'}>Delete</button>
                 </div>
@@ -4564,6 +4619,7 @@
         host.querySelectorAll('.diUp').forEach(b => b.onclick = e => doUpdate(e.currentTarget.dataset.id));
         host.querySelectorAll('.diExport').forEach(b => b.onclick = e => { closeDiMenus(); doExport(e.currentTarget.dataset.id); });
         host.querySelectorAll('.diReinstall').forEach(b => b.onclick = e => { closeDiMenus(); doReinstall(e.currentTarget.dataset.id); });
+        host.querySelectorAll('.diUntrust').forEach(b => b.onclick = e => { closeDiMenus(); setAppTrusted(e.currentTarget.dataset.id, false); renderInstalledList(); diMsg('"' + e.currentTarget.dataset.id + '" will ask again before installing executable code.'); });
         host.querySelectorAll('.diDel').forEach(b => b.onclick = e => { closeDiMenus(); doDelete(e.currentTarget.dataset.id); });
       };
 

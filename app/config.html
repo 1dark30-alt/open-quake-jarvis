@@ -45,8 +45,8 @@
   .gridrow:hover .griphandle { opacity: 1; color: #dbe5f0; }
   /* page-type chip: one icon system for Grid / Dashboard / App rows */
   .gridrow .ptype { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 5px; font-size: 11px; font-weight: 700; color: #9fc2ea; background: #1a2740; border: 1px solid #2b3f5e; flex: none; }
-  /* labeled state badge (hidden, etc.) */
-  .gridrow .stbadge { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: #8aa0b6; background: #182230; border: 1px solid #2a3a4e; border-radius: 4px; padding: 1px 5px; flex: none; }
+  /* labeled state badge (hidden pages, trusted apps, etc.) */
+  .stbadge { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: #8aa0b6; background: #182230; border: 1px solid #2a3a4e; border-radius: 4px; padding: 1px 5px; flex: none; }
   button { background: #1c2735; color: #dbe5f0; border: 1px solid #2a3a4e; border-radius: 7px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
   button:hover { background: #243246; }
   button.primary { background: #1e6fd0; border-color: #2b8bff; }
@@ -313,6 +313,10 @@
   .diMenu.open { display: block; }
   .diMenu button { display: block; width: 100%; text-align: left; background: transparent; border: none; padding: 7px 10px; border-radius: 5px; font-size: 13px; }
   .diMenu button:hover { background: #243246; }
+  /* executable-code trust prompt: in-editor modal (3 answers; native confirm only offers 2) */
+  .diTrustOv { position: fixed; inset: 0; z-index: 200; background: rgba(4,8,14,.6); display: flex; align-items: center; justify-content: center; }
+  .diTrustBox { background: #141d29; border: 1px solid #2a3a4e; border-radius: 10px; padding: 18px; max-width: 520px; margin: 20px;
+    box-shadow: 0 12px 36px rgba(0,0,0,.55); font-size: 14px; color: #dbe5f0; line-height: 1.5; }
   .diMenu button:disabled { color: #5b6b7e; cursor: default; }
   .diMenu button.del { color: #e88; }
   .diMSep { height: 1px; background: #1e2733; margin: 3px 2px; }
