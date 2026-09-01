@@ -23,6 +23,13 @@ For how to install or submit an app — and a safety note — see the docs:
   every job with a green/red result dot, last run, sizes, versions, and next run;
   live progress while a backup runs; failed jobs surface their error inline; one tap
   opens the Duplicati web UI on the PC. Read-only.
+- **[file-bridge](file-bridge)** — scheduled file replicator that brings **local folders,
+  Google Drive, and subscription sites** into local folders. Change-only copying
+  (time/size/content), mirror deletions with Recycle Bin + safety guards, safe replace,
+  dated-backup tokens, live filter groups, per-run Pause/Resume, and a full progress +
+  results view. Google Drive jobs read through the **Drive API** (sees everything shared
+  with you) with optional Office export and Drive-for-Desktop-matched naming. Read-only
+  on the source; the Drive sign-in is the app's own (read-only scope).
 - **[dev-services](dev-services)** — compact local developer-services panel with four
   touch-friendly cards per page, live port status, safe URL/folder actions, expected-process
   mismatch warnings, and guarded process stopping on supported platforms.
