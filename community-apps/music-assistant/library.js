@@ -255,11 +255,16 @@
     await shelf('Favorite albums', async () => cachedRequest('music/albums/library_items', { favorite: true, limit: 12 }));
     await shelf('Favorite playlists', async () => cachedRequest('music/playlists/library_items', { favorite: true, limit: 12 }));
     try {
+      // MA aggregates every provider's recommendation rows here (Plex "Top Picks
+      // for You" / "Mixes For You", library rows, …), interleaved and without items.
+      // enabled_by_default:false rows are the noisy ones MA hides until opted in.
       const rows = await cachedRequest('music/recommendations', {});
-      for (const row of (rows || []).slice(0, 3)) {
+      const shown = (rows || []).filter(r => r && r.enabled_by_default !== false).slice(0, 8);
+      for (const row of shown) {
         await shelf(row.name || 'For you', async () => {
           if (Array.isArray(row.items) && row.items.length) return row.items;
-          return cachedRequest('music/recommendations/items', { recommendation_id: row.item_id });
+          // items endpoint keys on the owning provider + row id, not a bare id
+          return cachedRequest('music/recommendations/items', { provider: row.provider, item_id: row.item_id });
         });
       }
     } catch (e) {}

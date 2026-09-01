@@ -177,8 +177,9 @@
           return TRACKS.slice(0, args.limit || 10).map((t, i) => mediaTrack(i));
         case 'music/recommendations':
           return [
-            { item_id: 'rec1', name: 'Top Picks', items: [] },
-            { item_id: 'rec2', name: 'New Albums', items: [] },
+            { item_id: 'rec1', name: 'Top Picks for You', provider: 'library', enabled_by_default: true, items: [] },
+            { item_id: 'rec2', name: 'Mixes For You', provider: 'plex', enabled_by_default: true, items: [] },
+            { item_id: 'rec3', name: 'New Albums', provider: 'library', enabled_by_default: true, items: [] },
           ];
         case 'music/recommendations/items':
           return ALBUMS.slice(0, 8).map((a, i) => ({ media_type: 'album', item_id: 'al' + i, provider: 'library', uri: 'library://album/' + i, name: a[0], artists: [{ name: a[1] }], metadata: {} }));
