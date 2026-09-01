@@ -190,13 +190,18 @@
 
     const cover = $('#cover');
     const art = item ? imageFor(item, 512) : '';
-    const img = cover.querySelector('img');
-    if (art) {
-      if (!img) { cover.innerHTML = '<img alt="">'; }
-      const el = cover.querySelector('img');
-      if (el.getAttribute('src') !== art) el.src = art;
-    } else if (img || !cover.querySelector('.ph')) {
-      cover.innerHTML = '<span class="ph">♪</span>';
+    if (!item) {
+      if (!cover.querySelector('.ph')) cover.innerHTML = '<span class="ph">♪</span>';
+      cover.dataset.key = '';
+    } else {
+      // Monogram behind the art so a missing/broken cover (radio!) degrades
+      // to a placeholder instead of a broken image; keyed so ticks don't thrash.
+      const key = itemTitle(item) + '|' + art;
+      if (cover.dataset.key !== key) {
+        cover.dataset.key = key;
+        cover.innerHTML = monoHtml(itemTitle(item)) + (art ? '<img alt="" data-art src="' + esc(art) + '">' : '');
+        wireArt(cover);
+      }
     }
 
     $('#track-title').textContent = item ? itemTitle(item) : (idle ? 'Nothing playing' : ' ');
@@ -227,7 +232,10 @@
       $('#track-title').textContent = snap.title || ' ';
       $('#track-artist').textContent = snap.artist || '';
       $('#track-album').textContent = snap.album || '';
-      if (snap.art) $('#cover').innerHTML = '<img alt="" src="' + esc(snap.art) + '">';
+      const cover = $('#cover');
+      cover.innerHTML = monoHtml(snap.title) + (snap.art ? '<img alt="" data-art src="' + esc(snap.art) + '">' : '');
+      cover.dataset.key = '';
+      wireArt(cover);
     } catch (e) {}
   }
 
