@@ -430,6 +430,20 @@ body.idle .idle-strip { display: flex; }
 }
 .list-note { padding: 14px 0; font-size: 16px; color: var(--muted); text-align: center; }
 
+/* monogram placeholder shown behind artwork (missing or failed to load) */
+.cimg, .lrow .lthumb, .qthumb, .idle-tile { position: relative; }
+.mono {
+  position: absolute; inset: 0; z-index: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 800; letter-spacing: 0.5px; line-height: 1;
+}
+.cimg img, .lrow .lthumb img, .qthumb img, .idle-tile img { position: absolute; inset: 0; z-index: 1; }
+.cimg .mono { font-size: 60px; }
+.shelf .cimg .mono { font-size: 44px; }
+.lrow .lthumb .mono { font-size: 18px; }
+.qthumb .mono { font-size: 20px; }
+.idle-tile .mono { font-size: 22px; }
+
 /* shelves (home tab) */
 .shelves { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 .shelves::-webkit-scrollbar { display: none; }

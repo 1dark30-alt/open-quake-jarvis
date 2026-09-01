@@ -54,6 +54,36 @@
   function fmt(sec) { return MAClient.formatDuration(sec); }
   function imageFor(item, size) { return MOCK ? '' : MAClient.imageUrl(HOST, item, size); }
 
+  // ── artwork placeholder (monogram) ──────────────────────
+  // Radio stations (and some library items) have missing or dead logo URLs;
+  // MA's own apps show a generated placeholder rather than a broken image, so
+  // we render a monogram behind every artwork and hide the <img> if it fails.
+  function artHue(str) {
+    let h = 0; const s = String(str || '');
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return h % 360;
+  }
+  function initials(str) {
+    const words = String(str || '').replace(/[^\p{L}\p{N} ]+/gu, ' ').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return '♪';
+    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  function monoHtml(name) {
+    const h = artHue(name);
+    return '<span class="mono" style="background:linear-gradient(135deg,hsl(' + h + ' 42% 30%),hsl(' + ((h + 40) % 360) + ' 46% 22%))">' + esc(initials(name)) + '</span>';
+  }
+  // CSP forbids inline onerror, so wire failure handlers after inserting markup:
+  // a failed (or already-failed, from cache) art image is hidden, revealing the
+  // monogram painted behind it.
+  function wireArt(root) {
+    (root || document).querySelectorAll('img[data-art]').forEach(img => {
+      const hide = () => { img.style.display = 'none'; };
+      img.addEventListener('error', hide);
+      if (img.complete && img.naturalWidth === 0) hide();
+    });
+  }
+
   function itemTitle(qi) {
     if (!qi) return '';
     const mi = qi.media_item || qi;
@@ -210,11 +240,12 @@
     strip.innerHTML = items.map((it, i) => {
       const art = imageFor(it, 80);
       return '<button class="idle-tile" type="button" data-idle="' + i + '" aria-label="Play ' + esc(itemTitle(it)) + '">' +
-        (art ? '<img alt="" src="' + esc(art) + '">' : '♪') + '</button>';
+        monoHtml(itemTitle(it)) + (art ? '<img alt="" data-art src="' + esc(art) + '">' : '') + '</button>';
     }).join('') + '<span class="idle-hint">Recently played — tap to play</span>';
     strip.querySelectorAll('[data-idle]').forEach(btn => {
       btn.addEventListener('click', () => playMedia(items[Number(btn.dataset.idle)], 'play'));
     });
+    wireArt(strip);
   }
 
   // ── progress tick (bypasses the render path) ─────────────
@@ -282,13 +313,14 @@
       const cls = i === currentIndex ? ' now' : (currentIndex >= 0 && i < currentIndex ? ' played' : '');
       const art = imageFor(it, 80);
       return '<div class="qrow' + cls + '" data-qi="' + esc(it.queue_item_id) + '" data-i="' + i + '">' +
-        '<span class="qthumb">' + (art ? '<img alt="" src="' + esc(art) + '">' : '♪') + '</span>' +
+        '<span class="qthumb">' + monoHtml(itemTitle(it)) + (art ? '<img alt="" data-art src="' + esc(art) + '">' : '') + '</span>' +
         '<span class="qtxt"><span class="qtitle">' + esc(itemTitle(it)) + '</span>' +
         '<span class="qartist">' + esc(itemArtist(it)) + '</span></span>' +
         '<span class="qdur">' + (itemDuration(it) ? fmt(itemDuration(it)) : '') + '</span>' +
         '<span class="qhandle" aria-hidden="true">≡</span></div>';
     }).join('') + (queue && queue.items > items.length
       ? '<div class="list-note">Showing first ' + items.length + ' of ' + queue.items + '</div>' : '');
+    wireArt(list);
 
     if (currentIndex >= 0 && Date.now() - S.lastQueueTouch > 5000) {
       const row = list.children[currentIndex];
@@ -901,7 +933,7 @@
   // ── startup ──────────────────────────────────────────────
   window.MApp = {
     S, cmd, playMedia, openCtx, mediaActions, toast, imageFor, esc, fmt,
-    itemTitle, itemArtist, itemDuration,
+    itemTitle, itemArtist, itemDuration, monoHtml, wireArt,
     request: (command, args) => S.client.request(command, args),
     playerName: MAClient.playerName,
   };

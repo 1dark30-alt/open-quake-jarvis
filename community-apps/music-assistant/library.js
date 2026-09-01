@@ -71,7 +71,7 @@
     const A = app();
     const art = A.imageFor(it, 256);
     return '<button class="cell" type="button" data-item="' + i + '">' +
-      '<span class="cimg">' + (art ? '<img alt="" loading="lazy" src="' + A.esc(art) + '">' : '♪') + '</span>' +
+      '<span class="cimg">' + A.monoHtml(it.name) + (art ? '<img alt="" data-art loading="lazy" src="' + A.esc(art) + '">' : '') + '</span>' +
       '<span class="cname">' + A.esc(it.name || '') + '</span>' +
       '<span class="csub">' + A.esc(A.itemArtist(it)) + '</span></button>';
   }
@@ -81,7 +81,7 @@
     const art = A.imageFor(it, 80);
     const dur = A.itemDuration(it);
     return '<button class="lrow" type="button" data-item="' + i + '">' +
-      (badge ? '<span class="badge">' + A.esc(badge) + '</span>' : '<span class="lthumb">' + (art ? '<img alt="" loading="lazy" src="' + A.esc(art) + '">' : '♪') + '</span>') +
+      (badge ? '<span class="badge">' + A.esc(badge) + '</span>' : '<span class="lthumb">' + A.monoHtml(it.name) + (art ? '<img alt="" data-art loading="lazy" src="' + A.esc(art) + '">' : '') + '</span>') +
       '<span class="lname">' + A.esc(it.name || '') + '</span>' +
       '<span class="lsub">' + A.esc(A.itemArtist(it)) + '</span>' +
       '<span class="ldur">' + (dur ? A.fmt(dur) : '') + '</span></button>';
@@ -99,6 +99,7 @@
       });
     });
     attachItemLongPress(root, items);
+    A.wireArt(root);
   }
 
   function attachItemLongPress(root, items) {
@@ -282,7 +283,7 @@
     const kind = KIND[it.media_type] != null ? KIND[it.media_type] : '';
     const sub = A.itemArtist(it);
     return '<button class="th-card' + (large ? ' th-lead' : '') + '" type="button" data-item="' + idx + '">' +
-      '<span class="th-bg">' + (art ? '<img alt="" loading="lazy" src="' + A.esc(art) + '">' : '') + '</span>' +
+      '<span class="th-bg">' + (art ? '<img alt="" data-art loading="lazy" src="' + A.esc(art) + '">' : '') + '</span>' +
       '<span class="th-scrim"></span>' +
       '<span class="th-content">' +
         '<span class="th-tag">' + SPARKLE + '<span>' + A.esc(entry.tag) + '</span></span>' +
@@ -321,6 +322,7 @@
     const grid = root.querySelector('#th-hero');
     if (grid) {
       attachHDrag(grid);
+      A.wireArt(grid);
       grid.addEventListener('click', ev => {
         const btn = ev.target.closest('[data-item]');
         if (!btn) return;
@@ -355,6 +357,7 @@
     if (rb && grid) rb.addEventListener('click', () => {
       L.heroEntries = buildHeroEntries(true);
       grid.innerHTML = heroGridInner(L.heroEntries);
+      A.wireArt(grid);
       grid.scrollLeft = 0;
     });
   }
