@@ -25,6 +25,112 @@ if (process.platform === 'win32') {
 }
 
 const { app, BrowserWindow, WebContentsView, Tray, Menu, nativeImage, screen, powerSaveBlocker, powerMonitor, ipcMain, shell, dialog, session, net, safeStorage, clipboard, globalShortcut, nativeTheme, Notification } = require('electron');
+
+// Last-resort process backstops. Installed here, before any module below can open a connection or
+// schedule async work, so a stray rejection/throw during boot (fire-and-forget chains like the HA
+// warmup, OAuth scheduling, or a connector's HID enumeration path) can never hit Electron's silent
+// default. This is a safety net, NOT a substitute for local handling; the paths that can throw
+// should still guard themselves (see the connector enumeration guards + per-subsystem boot catches).
+//
+// Policy differs by class, deliberately:
+//  - unhandledRejection: log + one generic signal, KEEP RUNNING. A stray rejection rarely corrupts
+//    process state, and a tray/panel app should degrade rather than die on an isolated async fault.
+//  - uncaughtException: an ESCAPED synchronous throw can leave Node invariants undefined, so we do
+//    NOT keep running — log the detail, show one generic signal, then quit cleanly with a hard
+//    process.exit fallback if the clean quit hangs.
+// The visible signal is intentionally GENERIC (the class name only): the raw error can carry file
+// paths or secret payloads and be unreadably long in a modal, so sanitized technical detail (name +
+// code + bounded stack frames, no message/reason) goes to the log alone.
+const shownFaultKinds = new Set();   // one visible signal per fault CLASS, not per occurrence (fault storms stay quiet)
+let faultShuttingDown = false;
+// Sanitized fault detail for the log. Deliberately EXCLUDES the raw message/reason: an error message
+// or a rejection value can carry a token-bearing URL or a payload fragment, and the repo rule is that
+// secrets never reach the log. We keep the error NAME + CODE (both validated to a safe charset) and a
+// bounded set of stack FRAMES (the `at …` lines, which are file:line — the message line is dropped).
+// A non-Error reason is logged by TYPE only, never by value.
+function safeToken(s, fallback) {
+  return typeof s === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(s) ? s : fallback;
+}
+function faultDetail(err) {
+  if (err instanceof Error) {
+    const name = safeToken(err.name, 'Error');
+    const code = err.code != null ? ' code=' + safeToken(String(err.code), 'n/a') : '';
+    const frames = String(err.stack || '').split('\n').filter(l => /^\s*at\s/.test(l)).slice(0, 5).join(' | ');
+    return name + code + (frames ? ' [' + frames + ']' : '');
+  }
+  return 'non-error reason (' + typeof err + ')';
+}
+function reportProcessFault(kind, err, fatal) {
+  console.log((fatal ? '[fatal] ' : '[process-error] ') + kind + ': ' + faultDetail(err));   // sanitized — no raw message/reason
+  if (!shownFaultKinds.has(kind)) {
+    shownFaultKinds.add(kind);
+    const tail = fatal ? '\n\nThe app will now close.' : '\n\nThe app is still running; some features may be degraded.';
+    try { dialog.showErrorBox('open-quake', 'An unexpected background error occurred (' + kind + '). Details are in the log.' + tail); } catch (e) {}
+  }
+  if (fatal) faultShutdown();
+}
+function faultShutdown() {
+  if (faultShuttingDown) return;
+  faultShuttingDown = true;
+  try { app.quit(); } catch (e) {}
+  const t = setTimeout(() => { try { process.exit(1); } catch (e) {} }, 3000);   // hard fallback if a clean quit hangs
+  if (t.unref) t.unref();                                                        // don't let the fallback timer itself keep us alive
+}
+process.on('uncaughtException', err => reportProcessFault('uncaughtException', err, true));
+process.on('unhandledRejection', reason => reportProcessFault('unhandledRejection', reason, false));
+
+// Degradation signals from the local server (sysserver.start's onDiagnostic hook). All NON-FATAL and
+// kept NON-MODAL so a burst can't stack dialogs — #6's modal is reserved for true process faults.
+// A port change (#9) means served-app pages get a new same-origin, so their per-origin localStorage
+// (drop-in saves, high scores, settings) from the old port appears missing under the new origin —
+// the data isn't deleted, and since the new port is persisted the old origin can stay inaccessible on
+// later launches too — that's worth ONE tray notice. Route/server errors
+// (#8) are logged and rate-limited only. The payload is already sanitized by sysserver (route
+// pathname + validated error name; no query/body/secrets), so it is safe to log verbatim here.
+let sawPortFallbackNotice = false;
+let diagLogWindowAt = 0, diagLogCount = 0;
+function onSysserverDiagnostic(ev) {
+  if (!ev || typeof ev !== 'object') return;
+  if (ev.type === 'port-fallback') {
+    console.log('[sysserver] preferred port ' + ev.preferredPort + ' unavailable (' + ev.reason + '); using an ephemeral port');
+    if (!sawPortFallbackNotice) {
+      sawPortFallbackNotice = true;
+      try { if (Notification.isSupported()) new Notification({ title: 'open-quake', body: 'The panel server changed ports; saved app data (drop-in saves, high scores, settings) may appear missing because the local app origin changed. The data was not deleted.', silent: true }).show(); } catch (e) {}
+    }
+    return;
+  }
+  const now = Date.now();                                          // rate-limit: at most 10 log lines / 10s so a failing route can't flood
+  if (now - diagLogWindowAt > 10000) { diagLogWindowAt = now; diagLogCount = 0; }
+  if (diagLogCount++ >= 10) return;
+  if (ev.type === 'request-error') console.log('[sysserver] request failed: ' + ev.method + ' ' + ev.route + ' (' + ev.errorType + ')');
+  else if (ev.type === 'server-error') console.log('[sysserver] server error: ' + ev.errorType);
+}
+
+// #5 per-subsystem boot isolation. Each optional server-dependent subsystem starts inside its own
+// guard so a failure degrades ONLY that feature instead of skipping every subsystem after it. A
+// failed stage is logged with SANITIZED detail (faultDetail — no raw message/secret) and collected;
+// one non-modal notice at the end of boot names the degraded features. The individual stage refs are
+// nulled on failure so the existing cross-stage null-checks (recorder<-highlights, slide<-recorder)
+// keep holding.
+const bootFailures = [];
+function reportBootFailure(stage, err) {
+  bootFailures.push(stage);
+  console.log('[boot] ' + stage + ' failed to start: ' + faultDetail(err));
+}
+// Best-effort teardown of a subsystem that threw AFTER partial construction (e.g. ensureWindow /
+// startMicMonitor / applySlideHotkeys failed once the object existed). Calls whichever teardown the
+// object exposes — recorder + slide have a real dispose() that closes their hidden window; lucid only
+// has stop() (halts capture but can't destroy its window), so this reduces, not always eliminates, a
+// half-armed leak. All guarded because we're already on a failure path.
+function disposeStage(obj) {
+  if (!obj) return;
+  try {
+    if (typeof obj.dispose === 'function') obj.dispose();
+    else if (typeof obj.destroy === 'function') obj.destroy();
+    else if (typeof obj.stop === 'function') obj.stop();
+  } catch (e) {}
+}
+
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -3347,6 +3453,14 @@ app.whenReady().then(async () => {
   createTray();
   // SystemView: live local metrics server on 127.0.0.1 (OS-assigned port) + ensure the dashboard page.
   // Lazy-required so a metrics/load failure can never crash the rest of the app.
+  //
+  // #5: this block boots the local server + every server-dependent subsystem. A single silent catch
+  // used to swallow it all, so a failure in ANY stage looked identical to total failure with no user
+  // signal. Now: the server bring-up is the outer prerequisite (its failure names the stage + raises
+  // a visible notice), and each optional server-dependent subsystem below runs inside its OWN guard
+  // (reportBootFailure + disposeStage + null the ref), so one failing degrades only that feature
+  // instead of skipping the rest — with one aggregated non-modal notice naming any that failed.
+  let bootStage = 'the local panel server';
   try {
     sysserver = require('./sysserver');
     // Remember the local server's port across restarts so served-app pages keep the same origin --
@@ -3357,7 +3471,7 @@ app.whenReady().then(async () => {
     try { const n = parseInt(fs.readFileSync(portFile, 'utf8'), 10); if (n >= 1024 && n <= 65535) preferredPort = n; } catch (e) {}
     syncAppOAuthProviders();                                  // register drop-in apps' declared OAuth providers
     serverPort = await sysserver.start({
-      preferredPort, oauth: dropInOAuth, appHost: dropInHost, onPickAppFolder: pickDropInFolder,
+      preferredPort, onDiagnostic: onSysserverDiagnostic, oauth: dropInOAuth, appHost: dropInHost, onPickAppFolder: pickDropInFolder,
       onMedia: mediaKey, onLaunch: onAppLaunch, getGridTiles: getActiveAppTiles, getAppConfig: activeServedAppConfig,
       githubApp: githubService,
       onOpenExternal: openExternalUrl, onMeetingAction: onMeetingActionRequest, appFolders: discoveredServedApps(),
@@ -3409,126 +3523,139 @@ app.whenReady().then(async () => {
 
     // Highlights ride the recorder's state edges (reset on start, auto-close + flush on stop), so
     // build them first — the recorder's onState below hands every change straight over.
-    meetingHighlights = createMeetingHighlights({
-      resolveFolders: resolveMeetingFolders,
-      resolveSettings: meetingSettings,
-      log: msg => console.log('[meeting] ' + msg),
-    });
+    bootStage = 'meeting highlights';
+    try {
+      meetingHighlights = createMeetingHighlights({
+        resolveFolders: resolveMeetingFolders,
+        resolveSettings: meetingSettings,
+        log: msg => console.log('[meeting] ' + msg),
+      });
+    } catch (e) { reportBootFailure('meeting highlights', e); disposeStage(meetingHighlights); meetingHighlights = null; }
 
     // Meeting recorder: hidden capture window on its OWN session partition (persist:recorder) with
     // the loopback handler registered ONLY there (never the shared dashboards session). Created once
     // the server is up so it can load the served /recorder page from a trusted local origin.
-    meetingRecorder = createMeetingRecorder({
-      recorderUrl: () => 'http://127.0.0.1:' + serverPort + '/recorder',
-      preloadPath: path.join(__dirname, 'recorder-preload.js'),
-      setupRecorderSession: (sess) => {
-        sess.setPermissionRequestHandler(handleDashboardPermissionRequest);   // grants getUserMedia mic for our local page
-        enableLoopbackAudioCapture(sess, { onError: err => console.log('[meeting] loopback handler error:', err && err.message) });
-      },
-      resolveSettings: () => {
-        const m = meetingSettings();
-        return { meetingFolder: m.folder, micDevice: m.micDevice, echoGate: !!m.echoGate, silenceStopMin: m.silenceStopMin, autoRecord: !!m.autoRecord };
-      },
-      defaultFolder: defaultMeetingFolder,
-      onState: (() => {   // fires on every state change; fetch calendar info on the idle->recording edge
-        let wasRecording = false;
-        return st => {
-          if (st.recording && !wasRecording && st.file) { try { writeOutlookMeetingInfo(st.file); } catch (e) {} }
-          if (!st.recording && wasRecording && slideCapture) { try { slideCapture.onRecordingStopped(); } catch (e) {} }
-          // Runs on both edges: arms the span list against this recording, and on the stopping
-          // edge auto-closes + writes the sidecar. Synchronous, so it lands before the stream-close
-          // callback renames that sidecar in appendMeetingNameToRecording.
-          if (meetingHighlights) { try { meetingHighlights.onRecordingState(st); } catch (e) {} }
-          wasRecording = !!st.recording;
-        };
-      })(),
-      onRecordingComplete: name => {
-        try {
-          completedRecordings.add(name);   // header is patched — renames are safe from here on
-          if (completedRecordings.size > 50) completedRecordings.delete(completedRecordings.values().next().value);
-          appendMeetingNameToRecording(name);
-        } catch (e) {}
-      },
-      log: msg => console.log('[meeting] ' + msg),
-    });
-    meetingRecorder.ensureWindow();   // arm the hidden window so a call can start recording instantly
-    startMicMonitor();
+    bootStage = 'the meeting recorder';
+    try {
+      meetingRecorder = createMeetingRecorder({
+        recorderUrl: () => 'http://127.0.0.1:' + serverPort + '/recorder',
+        preloadPath: path.join(__dirname, 'recorder-preload.js'),
+        setupRecorderSession: (sess) => {
+          sess.setPermissionRequestHandler(handleDashboardPermissionRequest);   // grants getUserMedia mic for our local page
+          enableLoopbackAudioCapture(sess, { onError: err => console.log('[meeting] loopback handler error:', err && err.message) });
+        },
+        resolveSettings: () => {
+          const m = meetingSettings();
+          return { meetingFolder: m.folder, micDevice: m.micDevice, echoGate: !!m.echoGate, silenceStopMin: m.silenceStopMin, autoRecord: !!m.autoRecord };
+        },
+        defaultFolder: defaultMeetingFolder,
+        onState: (() => {   // fires on every state change; fetch calendar info on the idle->recording edge
+          let wasRecording = false;
+          return st => {
+            if (st.recording && !wasRecording && st.file) { try { writeOutlookMeetingInfo(st.file); } catch (e) {} }
+            if (!st.recording && wasRecording && slideCapture) { try { slideCapture.onRecordingStopped(); } catch (e) {} }
+            // Runs on both edges: arms the span list against this recording, and on the stopping
+            // edge auto-closes + writes the sidecar. Synchronous, so it lands before the stream-close
+            // callback renames that sidecar in appendMeetingNameToRecording.
+            if (meetingHighlights) { try { meetingHighlights.onRecordingState(st); } catch (e) {} }
+            wasRecording = !!st.recording;
+          };
+        })(),
+        onRecordingComplete: name => {
+          try {
+            completedRecordings.add(name);   // header is patched — renames are safe from here on
+            if (completedRecordings.size > 50) completedRecordings.delete(completedRecordings.values().next().value);
+            appendMeetingNameToRecording(name);
+          } catch (e) {}
+        },
+        log: msg => console.log('[meeting] ' + msg),
+      });
+      meetingRecorder.ensureWindow();   // arm the hidden window so a call can start recording instantly
+      startMicMonitor();
+    } catch (e) { reportBootFailure('the meeting recorder', e); try { stopMicMonitor(); } catch (er) {} disposeStage(meetingRecorder); meetingRecorder = null; }
 
     // Slide capture: a second hidden window that screen-captures a user-picked window and files
     // settled slides beside the active recording. All optional — guarded like the recorder so a
     // failure can never affect call control or recording.
-    slideCapture = createSlideCapture({
-      resolveSettings: () => meetingSettings(),
-      resolveActiveRecording: () => {   // where slides file: the live recording's folder + basename
-        const st = meetingRecorder && meetingRecorder.getState();
-        if (!st || !st.recording || !st.file) return null;
-        const folder = (meetingSettings().folder && String(meetingSettings().folder).trim()) || defaultMeetingFolder();
-        return { folder, base: st.file.replace(/\.wav$/i, '') };
-      },
-      listApps: () => desktopFocus.listAllWindows(),   // EnumWindows via the helper: every window {processName, title, hwnd, minimized}
+    bootStage = 'slide capture';
+    try {
+      slideCapture = createSlideCapture({
+        resolveSettings: () => meetingSettings(),
+        resolveActiveRecording: () => {   // where slides file: the live recording's folder + basename
+          const st = meetingRecorder && meetingRecorder.getState();
+          if (!st || !st.recording || !st.file) return null;
+          const folder = (meetingSettings().folder && String(meetingSettings().folder).trim()) || defaultMeetingFolder();
+          return { folder, base: st.file.replace(/\.wav$/i, '') };
+        },
+        listApps: () => desktopFocus.listAllWindows(),   // EnumWindows via the helper: every window {processName, title, hwnd, minimized}
 
-      createWindow: () => {
-        const sess = session.fromPartition('persist:slidecapture');
-        // getDisplayMedia in the hidden page routes here; hand it the window the user picked.
-        // The id is fabricated from the HWND ("window:<hwnd>:0") — Electron accepts a plain
-        // {id, name} here (verified live), which also covers windows getSources would omit
-        // (it excludes minimized ones).
-        sess.setDisplayMediaRequestHandler((request, callback) => {
-          const id = slideCapture && slideCapture.currentSourceId();
-          if (!id) { callback({}); return; }
-          callback({ video: { id, name: 'slide-capture-target' }, audio: false });
-        }, { useSystemPicker: false });
-        const w = new BrowserWindow({
-          show: false, width: 320, height: 200, skipTaskbar: true,
-          webPreferences: {
-            nodeIntegration: false, contextIsolation: true, backgroundThrottling: false,
-            preload: path.join(__dirname, 'slidecapture-preload.js'), session: sess,
-          },
-        });
-        try { w.loadURL('http://127.0.0.1:' + serverPort + '/slidecapture'); } catch (e) { console.log('[slide] loadURL error: ' + e.message); }
-        return w;
-      },
-      notify: (title, body) => { try { if (Notification.isSupported()) new Notification({ title, body, silent: true }).show(); } catch (e) {} },
-      onState: () => {},   // the meeting panel polls /meeting-state (~1s), so no push is needed
-      log: msg => console.log('[slide] ' + msg),
-    });
-    applySlideHotkeys();
+        createWindow: () => {
+          const sess = session.fromPartition('persist:slidecapture');
+          // getDisplayMedia in the hidden page routes here; hand it the window the user picked.
+          // The id is fabricated from the HWND ("window:<hwnd>:0") — Electron accepts a plain
+          // {id, name} here (verified live), which also covers windows getSources would omit
+          // (it excludes minimized ones).
+          sess.setDisplayMediaRequestHandler((request, callback) => {
+            const id = slideCapture && slideCapture.currentSourceId();
+            if (!id) { callback({}); return; }
+            callback({ video: { id, name: 'slide-capture-target' }, audio: false });
+          }, { useSystemPicker: false });
+          const w = new BrowserWindow({
+            show: false, width: 320, height: 200, skipTaskbar: true,
+            webPreferences: {
+              nodeIntegration: false, contextIsolation: true, backgroundThrottling: false,
+              preload: path.join(__dirname, 'slidecapture-preload.js'), session: sess,
+            },
+          });
+          try { w.loadURL('http://127.0.0.1:' + serverPort + '/slidecapture'); } catch (e) { console.log('[slide] loadURL error: ' + e.message); }
+          return w;
+        },
+        notify: (title, body) => { try { if (Notification.isSupported()) new Notification({ title, body, silent: true }).show(); } catch (e) {} },
+        onState: () => {},   // the meeting panel polls /meeting-state (~1s), so no push is needed
+        log: msg => console.log('[slide] ' + msg),
+      });
+      applySlideHotkeys();
+    } catch (e) { reportBootFailure('slide capture', e); disposeStage(slideCapture); slideCapture = null; }
 
     // LucidType dictation: a hidden capture window on its own session (persist:lucidtype) with a mic
     // grant, running the shared VAD; each utterance is transcribed via Wyoming and appended to the
     // running transcript the /lucidtype page shows and Apply pastes. Independent of the meeting recorder.
-    lucidDictation = createLucidDictation({
-      createWindow: () => {
-        const sess = session.fromPartition('persist:lucidtype');
-        sess.setPermissionRequestHandler(handleDashboardPermissionRequest);   // grants getUserMedia mic for our local page
-        const w = new BrowserWindow({
-          show: false, width: 320, height: 200, skipTaskbar: true,
-          webPreferences: {
-            nodeIntegration: false, contextIsolation: true, backgroundThrottling: false,
-            preload: path.join(__dirname, 'lucidtype-dictate-preload.js'), session: sess,
-          },
-        });
-        try { w.loadURL('http://127.0.0.1:' + serverPort + '/lucidtype-dictate'); } catch (e) { console.log('[lucidtype] loadURL error: ' + e.message); }
-        return w;
-      },
-      resolveSettings: () => { const s = lucidtypeSettings(); return { micDevice: s.micDevice, silenceMs: s.silenceMs, notifyBeep: !!s.notifyBeep, startMode: s.startMode, rewriteMode: s.rewriteMode }; },
-      resolveEndpoints: () => lucidtypeVoiceEndpoints(),
-      transcribe: async ({ host, port, audio }) => {
-        const t = await lucidWyoming.transcribe({ host, port, audio, rate: 16000, width: 2, channels: 1, log: m => console.log('[lucidtype] ' + m) });
-        return voiceConfig.isSttNoisePhrase(t) ? '' : t;
-      },
-      transform: lucidRunTransform,                                    // cleanup/rewrite AI (Phase 2)
-      readClipboard: () => { try { return clipboard.readText(); } catch (e) { return ''; } },
-      onState: onLucidState,
-      log: msg => console.log('[lucidtype] ' + msg),
-    });
-    lucidDictation.ensureWindow();   // arm the hidden window so a hotkey can start dictation instantly
-    ipcMain.on('lucid-pcm', (e, bytes) => { try { if (lucidDictation && bytes) lucidDictation.onUtterance(Buffer.from(bytes)); } catch (er) {} });
-    ipcMain.on('lucid-log', (e, msg) => console.log('[lucidtype] ' + msg));
+    bootStage = 'dictation';
+    try {
+      lucidDictation = createLucidDictation({
+        createWindow: () => {
+          const sess = session.fromPartition('persist:lucidtype');
+          sess.setPermissionRequestHandler(handleDashboardPermissionRequest);   // grants getUserMedia mic for our local page
+          const w = new BrowserWindow({
+            show: false, width: 320, height: 200, skipTaskbar: true,
+            webPreferences: {
+              nodeIntegration: false, contextIsolation: true, backgroundThrottling: false,
+              preload: path.join(__dirname, 'lucidtype-dictate-preload.js'), session: sess,
+            },
+          });
+          try { w.loadURL('http://127.0.0.1:' + serverPort + '/lucidtype-dictate'); } catch (e) { console.log('[lucidtype] loadURL error: ' + e.message); }
+          return w;
+        },
+        resolveSettings: () => { const s = lucidtypeSettings(); return { micDevice: s.micDevice, silenceMs: s.silenceMs, notifyBeep: !!s.notifyBeep, startMode: s.startMode, rewriteMode: s.rewriteMode }; },
+        resolveEndpoints: () => lucidtypeVoiceEndpoints(),
+        transcribe: async ({ host, port, audio }) => {
+          const t = await lucidWyoming.transcribe({ host, port, audio, rate: 16000, width: 2, channels: 1, log: m => console.log('[lucidtype] ' + m) });
+          return voiceConfig.isSttNoisePhrase(t) ? '' : t;
+        },
+        transform: lucidRunTransform,                                    // cleanup/rewrite AI (Phase 2)
+        readClipboard: () => { try { return clipboard.readText(); } catch (e) { return ''; } },
+        onState: onLucidState,
+        log: msg => console.log('[lucidtype] ' + msg),
+      });
+      lucidDictation.ensureWindow();   // arm the hidden window so a hotkey can start dictation instantly
+      ipcMain.on('lucid-pcm', (e, bytes) => { try { if (lucidDictation && bytes) lucidDictation.onUtterance(Buffer.from(bytes)); } catch (er) {} });
+      ipcMain.on('lucid-log', (e, msg) => console.log('[lucidtype] ' + msg));
+    } catch (e) { reportBootFailure('dictation', e); disposeStage(lucidDictation); lucidDictation = null; }
 
     // Transcription pipeline: library (list/delete), diarizer upload queue, and CLI analysis.
     // Lazy-required + individually try/caught like the recorder so a failure here can never take
     // down call control or recording.
+    bootStage = 'transcription';
     migrateLegacyMeetingWavs();
     try {
       meetingLibrary = require('./meetingLibrary').createMeetingLibrary({
@@ -3567,8 +3694,30 @@ app.whenReady().then(async () => {
         },
         log: msg => console.log('[meeting] ' + msg),
       });
-    } catch (e) { console.log('[meeting] transcription services failed to start:', e.message); }
-  } catch (e) { console.log('local panel services failed to start:', e.message); }
+    } catch (e) { reportBootFailure('transcription', e); meetingLibrary = null; meetingTranscriber = null; meetingAnalyzer = null; }
+  } catch (e) {
+    // Name the stage that failed (not a generic 'local panel services') and make it VISIBLE — a
+    // silent catch here made a partial boot failure indistinguishable from a working launch.
+    console.log('[boot] ' + bootStage + ' failed to start: ' + faultDetail(e));   // sanitized — no raw message/secret
+    try {
+      if (Notification.isSupported()) new Notification({
+        title: 'open-quake',
+        body: 'Startup problem: ' + bootStage + ' did not start, so features that depend on it are unavailable this session. Details are in the log.',
+        silent: true,
+      }).show();
+    } catch (er) {}
+  }
+  // One aggregated, non-modal notice for any OPTIONAL subsystem that failed its own guard (#5). The
+  // server + its dependents still came up; only the named features are degraded.
+  if (bootFailures.length) {
+    try {
+      if (Notification.isSupported()) new Notification({
+        title: 'open-quake',
+        body: 'Some panel features did not start (' + bootFailures.join(', ') + '); the rest are running normally. Details are in the log.',
+        silent: true,
+      }).show();
+    } catch (er) {}
+  }
   sweepIconCache();   // clean up orphaned URL-icon cache files left by prior sessions
   // Same idea for the approval hook: a crash (or a force-kill) skips before-quit's removal and strands
   // our entry in the user's global settings.json, where it would tax every Claude Code session on the
