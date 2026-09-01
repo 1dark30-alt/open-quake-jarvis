@@ -232,6 +232,133 @@
     wireAbc(items, i => { list.scrollTop = i * 64; });
   }
 
+  // ── Top Picks for You (mirrors MA frontend HomeWidgetRows "Model B") ──────
+  // A balanced round-robin interleave across every shown recommendation row:
+  // one item per row per pass, tagged with its row name, deduped by uri, capped
+  // at HERO_COUNT; recently-played fills any shortfall. Rendered as one large
+  // lead card + the remaining picks in columns of two (a horizontal scroller).
+  const HERO_COUNT = 9;
+  const KIND = {
+    track: 'Track', album: 'Album', artist: 'Artist', playlist: 'Playlist',
+    radio: 'Radio', audiobook: 'Audiobook', podcast: 'Podcast', folder: '',
+  };
+  const SPARKLE = '<svg class="th-spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7z"></path></svg>';
+  const REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path><path d="M3 21v-5h5"></path></svg>';
+
+  function shuffled(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+
+  function itemKey(it) { return (it && (it.uri || (it.media_type + '/' + it.provider + '/' + it.item_id))) || ''; }
+
+  function buildHeroEntries(randomize) {
+    const rows = (L.heroRows || [])
+      .map(r => ({ tag: r.tag, items: randomize ? shuffled(r.items) : r.items }))
+      .filter(r => r.items.length);
+    const sources = randomize ? shuffled(rows) : rows;
+    const seen = new Set();
+    const out = [];
+    const push = (item, tag) => {
+      if (!item) return;
+      const k = itemKey(item);
+      if (seen.has(k) || out.length >= HERO_COUNT) return;
+      seen.add(k);
+      out.push({ item, tag });
+    };
+    const maxLen = sources.reduce((m, r) => Math.max(m, r.items.length), 0);
+    for (let i = 0; i < maxLen && out.length < HERO_COUNT; i++) {
+      for (const r of sources) push(r.items[i], r.tag);
+    }
+    for (const item of (L.heroRecent || [])) push(item, 'Recently played');
+    return out;
+  }
+
+  function heroCardHtml(entry, idx, large) {
+    const A = app();
+    const it = entry.item;
+    const art = A.imageFor(it, large ? 640 : 320);
+    const kind = KIND[it.media_type] != null ? KIND[it.media_type] : '';
+    const sub = A.itemArtist(it);
+    return '<button class="th-card' + (large ? ' th-lead' : '') + '" type="button" data-item="' + idx + '">' +
+      '<span class="th-bg">' + (art ? '<img alt="" loading="lazy" src="' + A.esc(art) + '">' : '') + '</span>' +
+      '<span class="th-scrim"></span>' +
+      '<span class="th-content">' +
+        '<span class="th-tag">' + SPARKLE + '<span>' + A.esc(entry.tag) + '</span></span>' +
+        '<span class="th-body">' +
+          (kind ? '<span class="th-kind">' + A.esc(kind) + '</span>' : '') +
+          '<span class="th-title">' + A.esc(it.name || '') + '</span>' +
+          (sub ? '<span class="th-sub">' + A.esc(sub) + '</span>' : '') +
+        '</span>' +
+      '</span></button>';
+  }
+
+  function heroGridInner(entries) {
+    if (!entries.length) return '';
+    let html = heroCardHtml(entries[0], 0, true);
+    const rest = entries.slice(1);
+    for (let i = 0; i < rest.length; i += 2) {
+      html += '<div class="th-col">' +
+        rest.slice(i, i + 2).map((e, j) => heroCardHtml(e, i + 1 + j, false)).join('') +
+        '</div>';
+    }
+    return html;
+  }
+
+  function buildHeroHtml() {
+    L.heroEntries = buildHeroEntries(false);
+    if (!L.heroEntries.length) return '';
+    return '<div class="th-head"><div class="th-headline">Top Picks for You</div>' +
+      '<button class="th-refresh" id="th-refresh" type="button" aria-label="Refresh">' + REFRESH + '</button></div>' +
+      '<div class="th-hero" id="th-hero">' + heroGridInner(L.heroEntries) + '</div>';
+  }
+
+  // Delegated wiring on the container so a refresh (innerHTML swap) keeps working:
+  // handlers read L.heroEntries live by index rather than closing over a snapshot.
+  function wireHero(root) {
+    const A = app();
+    const grid = root.querySelector('#th-hero');
+    if (grid) {
+      attachHDrag(grid);
+      grid.addEventListener('click', ev => {
+        const btn = ev.target.closest('[data-item]');
+        if (!btn) return;
+        const e = L.heroEntries[Number(btn.dataset.item)];
+        if (!e) return;
+        A.playMedia(e.item, 'play');
+        close();
+      });
+      let timer = null, start = null, target = null;
+      grid.addEventListener('pointerdown', ev => {
+        target = ev.target.closest('[data-item]');
+        if (!target) return;
+        start = { x: ev.clientX, y: ev.clientY };
+        timer = setTimeout(() => {
+          timer = null;
+          const e = L.heroEntries[Number(target.dataset.item)];
+          if (!e) return;
+          const extra = [];
+          if (['artist', 'album', 'playlist'].includes(e.item.media_type)) {
+            extra.push({ label: 'Show tracks', fn: () => openDetail(e.item) });
+          }
+          A.openCtx(start.x, start.y, e.item.name || '', A.mediaActions(e.item, extra));
+        }, 450);
+      });
+      grid.addEventListener('pointermove', ev => {
+        if (timer && start && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 10) { clearTimeout(timer); timer = null; }
+      });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
+        grid.addEventListener(ev, () => { clearTimeout(timer); timer = null; }));
+    }
+    const rb = root.querySelector('#th-refresh');
+    if (rb && grid) rb.addEventListener('click', () => {
+      L.heroEntries = buildHeroEntries(true);
+      grid.innerHTML = heroGridInner(L.heroEntries);
+      grid.scrollLeft = 0;
+    });
+  }
+
   async function renderHomeTab() {
     setHead('Home', '');
     setBody('<div class="shelves" id="shelves"><div class="list-note">Loading…</div></div>');
@@ -239,40 +366,50 @@
     const parts = [];
     const wire = [];
 
-    async function shelf(label, loader) {
-      try {
-        const items = await loader();
-        if (Array.isArray(items) && items.length) {
-          const base = wire.length ? wire[wire.length - 1].base + wire[wire.length - 1].items.length : 0;
-          parts.push('<div class="shelf-label">' + A.esc(label) + '</div><div class="shelf" data-shelf="' + wire.length + '">' +
-            items.map((it, i) => cellHtml(it, i)).join('') + '</div>');
-          wire.push({ items, base });
-        }
-      } catch (e) {}
+    function shelfPart(label, items) {
+      if (!Array.isArray(items) || !items.length) return;
+      parts.push('<div class="shelf-label">' + A.esc(label) + '</div><div class="shelf" data-shelf="' + wire.length + '">' +
+        items.map((it, i) => cellHtml(it, i)).join('') + '</div>');
+      wire.push({ items });
     }
 
-    await shelf('Recently played', () => cachedRequest('music/recently_played_items', { limit: 12 }));
-    await shelf('Favorite albums', async () => cachedRequest('music/albums/library_items', { favorite: true, limit: 12 }));
-    await shelf('Favorite playlists', async () => cachedRequest('music/playlists/library_items', { favorite: true, limit: 12 }));
+    // Recommendation rows feed both the Top Picks hero and their own shelves.
+    // Fetch each row's items once (keyed on provider + item_id, as the API wants).
+    let recRows = [];
     try {
-      // MA aggregates every provider's recommendation rows here (Plex "Top Picks
-      // for You" / "Mixes For You", library rows, …), interleaved and without items.
-      // enabled_by_default:false rows are the noisy ones MA hides until opted in.
       const rows = await cachedRequest('music/recommendations', {});
-      const shown = (rows || []).filter(r => r && r.enabled_by_default !== false).slice(0, 8);
-      for (const row of shown) {
-        await shelf(row.name || 'For you', async () => {
-          if (Array.isArray(row.items) && row.items.length) return row.items;
-          // items endpoint keys on the owning provider + row id, not a bare id
-          return cachedRequest('music/recommendations/items', { provider: row.provider, item_id: row.item_id });
-        });
-      }
+      // enabled_by_default:false rows are the noisy ones MA hides until opted in.
+      recRows = (rows || []).filter(r => r && r.enabled_by_default !== false).slice(0, 8);
+      await Promise.all(recRows.map(async row => {
+        if (Array.isArray(row.items) && row.items.length) return;
+        try { row.items = await cachedRequest('music/recommendations/items', { provider: row.provider, item_id: row.item_id }); }
+        catch (e) { row.items = []; }
+      }));
     } catch (e) {}
 
+    let recent = [];
+    try { recent = await cachedRequest('music/recently_played_items', { limit: 12 }); } catch (e) {}
+    if (!Array.isArray(recent)) recent = [];
+
+    // Hero draws from the shown recommendation rows, recently-played as filler.
+    L.heroRows = recRows
+      .filter(r => Array.isArray(r.items) && r.items.length)
+      .map(r => ({ tag: r.name || 'For you', items: r.items }));
+    L.heroRecent = recent;
+    const heroHtml = buildHeroHtml();
+
+    // Shelves below the hero, in MA's order: recently played, favorites, then rows.
+    shelfPart('Recently played', recent);
+    try { shelfPart('Favorite albums', await cachedRequest('music/albums/library_items', { favorite: true, limit: 12 })); } catch (e) {}
+    try { shelfPart('Favorite playlists', await cachedRequest('music/playlists/library_items', { favorite: true, limit: 12 })); } catch (e) {}
+    for (const row of recRows) shelfPart(row.name || 'For you', row.items);
+
     if (L.tab !== 'home' || L.detail) return;
-    setBody('<div class="shelves" id="shelves">' + (parts.join('') || '<div class="list-note">Nothing to show yet — play something!</div>') + '</div>');
+    const inner = heroHtml + parts.join('');
+    setBody('<div class="shelves" id="shelves">' + (inner || '<div class="list-note">Nothing to show yet — play something!</div>') + '</div>');
     const shelves = $('#shelves');
     TouchDragScroll.attach(shelves);
+    wireHero(shelves);
     shelves.querySelectorAll('[data-shelf]').forEach(el => {
       const w = wire[Number(el.dataset.shelf)];
       attachHDrag(el);

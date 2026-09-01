@@ -181,8 +181,15 @@
             { item_id: 'rec2', name: 'Mixes For You', provider: 'plex', enabled_by_default: true, items: [] },
             { item_id: 'rec3', name: 'New Albums', provider: 'library', enabled_by_default: true, items: [] },
           ];
-        case 'music/recommendations/items':
-          return ALBUMS.slice(0, 8).map((a, i) => ({ media_type: 'album', item_id: 'al' + i, provider: 'library', uri: 'library://album/' + i, name: a[0], artists: [{ name: a[1] }], metadata: {} }));
+        case 'music/recommendations/items': {
+          // distinct content per row so the Top Picks interleave shows variety
+          const id = args && args.item_id;
+          if (id === 'rec2') {
+            return ARTISTS.slice(0, 8).map((a, i) => ({ media_type: 'artist', item_id: 'ma' + i, provider: 'plex', uri: 'plex://artist/' + i, name: a, metadata: {} }));
+          }
+          const off = id === 'rec3' ? 8 : 0;
+          return ALBUMS.slice(off, off + 8).map((a, i) => ({ media_type: 'album', item_id: 'al' + (off + i), provider: 'library', uri: 'library://album/' + (off + i), name: a[0], artists: [{ name: a[1] }], metadata: {} }));
+        }
         case 'music/favorites/add_item': case 'music/favorites/remove_item': return null;
         default: {
           const m = /^music\/(artists|albums|tracks|playlists|radios)\/library_items$/.exec(command);
