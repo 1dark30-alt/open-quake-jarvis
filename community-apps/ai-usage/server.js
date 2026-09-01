@@ -357,7 +357,7 @@ async function refreshClaudeToken(file, creds) {
   fs.writeFileSync(file, JSON.stringify(creds, null, 2));  // preserve all other keys
   return o.accessToken;
 }
-function pctOf(x) { if (x == null) return null; const n = Number(x); if (!isFinite(n)) return null; return n <= 1 ? n * 100 : n; }
+function pctOf(x) { if (x == null) return null; const n = Number(x); if (!isFinite(n)) return null; return Math.max(0, Math.min(100, n)); }
 function toEpoch(v) { if (v == null) return null; if (typeof v === 'number') return v > 1e12 ? Math.floor(v / 1000) : v; const d = Date.parse(v); return isNaN(d) ? null : Math.floor(d / 1000); }
 function parseClaudeUsage(j, plan) {
   const fh = j.five_hour || {}, sd = j.seven_day || {};
