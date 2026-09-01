@@ -91,7 +91,8 @@ const STATIC_FILES = {
   '/obsview.css': 'text/css; charset=utf-8',
 };
 
-let server = null, onMedia = null, onLaunch = null, getGridTiles = null, getAppConfig = null, onOpenExternal = null, onMeetingAction = null, getShortcuts = null;
+let server = null, startPromise = null, onDiagnostic = null;
+let onMedia = null, onLaunch = null, getGridTiles = null, getAppConfig = null, onOpenExternal = null, onMeetingAction = null, getShortcuts = null;
 let githubApp = null;
 let getMeetingState = null, onMeetingRecord = null;   // meeting recorder: panel poller + start/stop/setMic remote
 let onMeetingLibrary = null, resolveMeetingAudio = null;   // recordings library + transcription/analysis remotes
@@ -142,6 +143,30 @@ function githubJson(res, obj, nextCapability) {
   if (nextCapability) h['X-Open-Quake-Capability'] = nextCapability;
   res.writeHead(200, h);
   res.end(JSON.stringify(obj));
+}
+
+function reportDiagnostic(event) {
+  const clean = Object.freeze(Object.assign({}, event));
+  if (typeof onDiagnostic === 'function') {
+    try { onDiagnostic(clean); return; } catch (e) {}
+  }
+  if (clean.type === 'request-error') {
+    console.log('[sysserver] request failed: ' + clean.method + ' ' + clean.route + ' (' + clean.errorType + ')');
+  } else if (clean.type === 'port-fallback') {
+    console.log('[sysserver] preferred port ' + clean.preferredPort + ' unavailable (' + clean.reason + '); using an ephemeral port');
+  } else if (clean.type === 'server-error') {
+    console.log('[sysserver] server error: ' + clean.errorType);
+  }
+}
+
+function requestRoute(rawUrl) {
+  try { return new URL(String(rawUrl || '/'), 'http://127.0.0.1').pathname; }
+  catch (e) { return '/'; }
+}
+
+function safeErrorType(error) {
+  const name = error && typeof error.name === 'string' ? error.name : 'Error';
+  return /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(name) ? name : 'Error';
 }
 
 function newGitHubCapability() {
@@ -1090,6 +1115,14 @@ async function handler(req, res) {
 // it becomes the now-playing provider and replaces the win32 SMTC poll (see nowplaying.setProvider).
 function start(opts) {
   opts = opts || {};
+  if (startPromise) return startPromise;
+  if (server) {
+    const address = server.address();
+    if (address && address.port) return Promise.resolve(address.port);
+    try { server.close(); } catch (e) {}
+    server = null;
+  }
+  onDiagnostic = typeof opts.onDiagnostic === 'function' ? opts.onDiagnostic : null;
   onMedia = opts.onMedia || null;
   onPickAppFolder = typeof opts.onPickAppFolder === 'function' ? opts.onPickAppFolder : null;
   onLaunch = opts.onLaunch || null;
@@ -1147,8 +1180,24 @@ function start(opts) {
   });
   setAppFolders(opts.appFolders);
   nowplaying.setProvider(opts.getNowPlaying || null);
-  return new Promise((resolve, reject) => {
-    if (server) return resolve(server.address().port);
+  const createServer = typeof opts.createServer === 'function' ? opts.createServer : http.createServer;
+  const requestListener = (req, res) => {
+    handler(req, res).catch(error => {
+      reportDiagnostic({
+        type: 'request-error',
+        method: String(req.method || 'GET').toUpperCase(),
+        route: requestRoute(req.url),
+        errorType: safeErrorType(error),
+      });
+      try { res.writeHead(500); res.end(); } catch (e) {}
+    });
+  };
+  let candidate;
+  try { candidate = createServer(requestListener); }
+  catch (error) { stop(); return Promise.reject(error); }
+  server = candidate;
+  let pending;
+  pending = new Promise((resolve, reject) => {
     try { musicHtml = fs.readFileSync(path.join(__dirname, 'musicview.html'), 'utf8'); } catch (e) {}
     try { meetingHtml = fs.readFileSync(path.join(__dirname, 'meetingview.html'), 'utf8'); } catch (e) {}
     try { diagnosticsHtml = fs.readFileSync(path.join(__dirname, 'diagnosticsview.html'), 'utf8'); } catch (e) {}
@@ -1168,23 +1217,46 @@ function start(opts) {
     }
     // NB: the pollers are NOT started here. They're gated by which panel page is shown — main.js
     // calls setActivePage() on every page switch so each poller runs only while its page is on screen.
-    server = http.createServer((req, res) => { handler(req, res).catch(() => { try { res.writeHead(500); res.end(); } catch (e) {} }); });
     // Reuse a stable port across restarts when we can. The panel's served pages are same-origin
     // http://127.0.0.1:<port>/, and per-origin localStorage -- drop-in app saves, high scores,
     // settings -- is lost when that port changes each launch. Try the caller's remembered port and
     // fall back to an OS-assigned one only if it's taken; main.js persists whatever port we end up on.
     let settled = false;
     let triedEphemeral = !(Number.isInteger(opts.preferredPort) && opts.preferredPort >= 1024 && opts.preferredPort <= 65535);
-    const onListening = () => { if (settled) return; settled = true; resolve(server.address().port); };
-    const onError = (e) => {
+    const clearPending = () => queueMicrotask(() => { if (startPromise === pending) startPromise = null; });
+    const onListening = () => {
       if (settled) return;
-      if (!triedEphemeral && e && e.code === 'EADDRINUSE') { triedEphemeral = true; server.listen(0, '127.0.0.1'); return; }
-      settled = true; reject(e);
+      settled = true;
+      clearPending();
+      resolve(candidate.address().port);
     };
-    server.on('listening', onListening);
-    server.on('error', onError);
-    server.listen(triedEphemeral ? 0 : opts.preferredPort, '127.0.0.1');
+    const onError = (e) => {
+      if (settled) {
+        reportDiagnostic({ type: 'server-error', errorType: safeErrorType(e) });
+        return;
+      }
+      if (!triedEphemeral && e && e.code === 'EADDRINUSE') {
+        triedEphemeral = true;
+        reportDiagnostic({ type: 'port-fallback', preferredPort: opts.preferredPort, reason: 'EADDRINUSE' });
+        try { candidate.listen(0, '127.0.0.1'); } catch (error) { onError(error); }
+        return;
+      }
+      settled = true;
+      candidate.removeListener('listening', onListening);
+      candidate.removeListener('error', onError);
+      try { candidate.close(); } catch (error) {}
+      if (server === candidate) server = null;
+      clearPending();
+      stop();
+      reject(e);
+    };
+    candidate.on('listening', onListening);
+    candidate.on('error', onError);
+    try { candidate.listen(triedEphemeral ? 0 : opts.preferredPort, '127.0.0.1'); }
+    catch (error) { onError(error); }
   });
+  startPromise = pending;
+  return pending;
 }
 
 // Run only the pollers the visible page(s) need; stop the others. Called by main.js whenever the
@@ -1200,15 +1272,55 @@ function setActivePage(which) {
 
 function stop() {
   nowplaying.stop();
-  if (server) { try { server.close(); } catch (e) {} server = null; }
-  clearGitHubCapability();
   for (const res of discordSubscribers) { try { res.end(); } catch (e) {} }
   discordSubscribers.clear();
+  for (const res of obsSubscribers) { try { res.end(); } catch (e) {} }
+  obsSubscribers.clear();
+  for (const res of lucidSubscribers) { try { res.end(); } catch (e) {} }
+  lucidSubscribers.clear();
+  const closingServer = server;
+  server = null;
+  startPromise = null;
+  if (closingServer) {
+    try { closingServer.close(); } catch (e) {}
+    try { if (typeof closingServer.closeAllConnections === 'function') closingServer.closeAllConnections(); } catch (e) {}
+  }
+  clearGitHubCapability();
   if (discordApp) {
     discordApp.removeListener('update', discordBroadcast);
-    discordApp.stop();
+    try { discordApp.stop(); } catch (e) {}
     discordApp = null;
   }
+  if (obsApp) { try { obsApp.removeListener('update', obsBroadcast); } catch (e) {} }
+  obsApp = null;
+  Object.keys(appServers).forEach(invalidateAppServer);
+  appFolders = {};
+  voiceApps = {};
+  ttsTexts.clear();
+  nowplaying.setProvider(null);
+  onMedia = null;
+  onLaunch = null;
+  getGridTiles = null;
+  getAppConfig = null;
+  onOpenExternal = null;
+  onMeetingAction = null;
+  getShortcuts = null;
+  getMeetingState = null;
+  onMeetingRecord = null;
+  onMeetingLibrary = null;
+  resolveMeetingAudio = null;
+  onSlide = null;
+  onHighlight = null;
+  getDeviceDiagnostics = null;
+  getLucidState = null;
+  onLucidDictation = null;
+  onLucidApply = null;
+  onLucidEdit = null;
+  onLucidSetMic = null;
+  onLucidCleanup = null;
+  onLucidRewrite = null;
+  onLucidReview = null;
+  onLucidSetMode = null;
   appOAuth = null;
   appHost = null;
   githubApp = null;
@@ -1217,6 +1329,7 @@ function stop() {
   pickerCooldownUntil = {};
   currentTime = Date.now;
   githubCapabilityTtlMs = DEFAULT_GITHUB_CAPABILITY_TTL_MS;
+  onDiagnostic = null;
 }
 
 // Push a LucidType state payload to every open /lucidtype-events subscriber (called by main on each

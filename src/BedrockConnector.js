@@ -123,7 +123,13 @@ class BedrockConnector extends EventEmitter {
 
   _open() {
     if (this.ctrl) return;
-    const info = this._find();
+    let info;
+    try {
+      info = this._find();
+    } catch (e) {
+      this.emit('error', e);
+      return;
+    }
     if (!info) return;
     try {
       const d = new this.HID.HID(info.path);
