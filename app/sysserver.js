@@ -1264,7 +1264,6 @@ function start(opts) {
 // (a software-mode pane shows several pages at once). start()/stop() are idempotent.
 function setActivePage(which) {
   const set = new Set(Array.isArray(which) ? which : which ? [which] : []);
-  if (!set.has('office')) clearOfficeCapability();
   if (!set.has('github')) clearGitHubCapability();
   if (set.has('music')) nowplaying.start();
   else nowplaying.stop();
