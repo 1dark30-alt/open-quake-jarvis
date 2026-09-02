@@ -1,0 +1,221 @@
+'use strict';
+
+// Agent Room Monitor — host-side action bridge.
+//
+// The panel page never supplies an upstream URL or path. It calls a small set of
+// named actions; this module maps each to an EXACT Agent Room API route + method,
+// validates the room code, and talks only to the configured origin. That keeps the
+// browser side incapable of driving arbitrary server-side requests (SSRF-safe).
+//
+// Server policy (v1.1): the default target is the hosted Docker instance over https
+// (the agent lane, arh-api), authenticated with a bearer token held in the panel's
+// credential store — the `token` option, type "secret". The token is only ever read
+// here, on the host side; it is never sent to the page. Plain http is still accepted,
+// but only for a loopback host (a local dev server on this machine).
+//
+// Actions:
+//   list            GET  /api/rooms?status=open        -> { ok, rooms }
+//   hydrate ?room=  GET  /api/rooms/:code              -> { ok, room }
+//   poll ?room=&after=  GET /api/rooms/:code/messages?after=N&wait=0
+//                                                       -> { ok, messages, latest_message_id, participants, status }
+//   send ?room= (POST {content}) POST /api/rooms/:code/viewer/messages {content}
+//                                                       -> { ok, message, participants }
+//   close ?room= (POST {summary}) POST /api/rooms/:code/close {name, summary}
+//                                                       -> { ok, room, already_closed? }
+//   history         GET  /api/rooms?status=closed      -> { ok, rooms } (newest 30)
+
+const REQUEST_TIMEOUT_MS = 8000;
+const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+// Hosted rooms use 128-bit codes (24 chars after "AM-"); local ones use 4. Accept both.
+const ROOM_CODE_RE = /^AM-[A-Z0-9]{2,32}$/;
+const DEFAULT_HOST = 'https://arh-api.schmitzplex.com';
+const MAX_MESSAGE_CHARS = 20000; // mirrors Agent Room's server-side cap
+const MAX_SUMMARY_CHARS = 10000; // mirrors Agent Room's close cap
+const DEFAULT_CLOSE_SUMMARY = 'Closed from panel';
+
+function optionString(options, key) {
+  const value = options && options[key];
+  return value == null ? '' : String(value).trim();
+}
+
+function isLoopback(hostname) {
+  return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]';
+}
+
+// Resolve the upstream origin from the user's host option: https for any host, http only for
+// loopback, no credentials in the URL, and NO path/query/fragment (rejected, not silently dropped).
+function baseOrigin(options) {
+  const raw = optionString(options, 'host') || DEFAULT_HOST;
+  let url;
+  try { url = new URL(raw); } catch (error) { throw new Error('invalid Server URL'); }
+  if (url.username || url.password) throw new Error('Server URL must not contain credentials');
+  if ((url.pathname && url.pathname !== '/') || url.search || url.hash) {
+    throw new Error('Server URL must be an origin only (no path, query, or fragment)');
+  }
+  if (url.protocol === 'https:') return url.origin;
+  if (url.protocol === 'http:' && isLoopback(url.hostname)) return url.origin;
+  if (url.protocol === 'http:') throw new Error('plain http is only allowed for a loopback host; use https for a remote server');
+  throw new Error('Server URL must use https (or http for loopback)');
+}
+
+// Bearer token from the `token` secret option. Required for any non-loopback origin.
+function authHeaders(options, base) {
+  const token = optionString(options, 'token');
+  if (token.startsWith('oqenc:')) throw new Error('bearer token could not be decrypted by the panel');
+  if (!token) {
+    if (isLoopback(new URL(base).hostname)) return {};
+    throw new Error('bearer token is not set (app options → Bearer token)');
+  }
+  return { Authorization: 'Bearer ' + token };
+}
+
+function roomCode(query, options) {
+  const raw = String((query && query.room) || optionString(options, 'room') || '').trim().toUpperCase();
+  if (!raw) throw new Error('no room selected');
+  if (!ROOM_CODE_RE.test(raw)) throw new Error('invalid room code');
+  return raw;
+}
+
+function safeError(error) {
+  return String((error && error.message) || error || 'request failed').slice(0, 400);
+}
+
+async function rawFetch(url, headers, init) {
+  const merged = Object.assign({}, headers || {}, (init && init.headers) || {});
+  let response;
+  try {
+    response = await fetch(url, Object.assign({
+      redirect: 'error',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    }, init || {}, { headers: merged }));
+  } catch (error) {
+    if (error && (error.name === 'TimeoutError' || error.name === 'AbortError')) throw new Error('room server timed out');
+    throw new Error('room server unreachable');
+  }
+  const declaredLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) throw new Error('response too large');
+  const text = await response.text();
+  if (text.length > MAX_RESPONSE_BYTES) throw new Error('response too large');
+  let json = null;
+  try { json = text ? JSON.parse(text) : {}; } catch (error) { json = null; }
+  return { status: response.status, json };
+}
+
+function apiError(status, json) {
+  if (status === 401 || status === 403) {
+    const denied = new Error('unauthorized: check the bearer token');
+    denied.status = status;
+    return denied;
+  }
+  const msg = json && json.error ? String(json.error) : ('room server returned ' + status);
+  const error = new Error(msg);
+  error.status = status;
+  return error;
+}
+
+async function listRooms(base, headers) {
+  const { status, json } = await rawFetch(base + '/api/rooms?status=open', headers);
+  // The server answers 404 when the list endpoint is disabled (AGENT_ROOM_ENABLE_ROOM_LIST unset).
+  if (status === 404) throw new Error('room list is disabled on the server (set AGENT_ROOM_ENABLE_ROOM_LIST=1)');
+  if (status !== 200 || !json) throw apiError(status, json);
+  return { ok: true, rooms: Array.isArray(json.rooms) ? json.rooms : [] };
+}
+
+// Newest closed rooms for the panel's History picker. The server sorts by updated_at, newest first.
+const HISTORY_LIMIT = 30;
+async function listHistory(base, headers) {
+  const { status, json } = await rawFetch(base + '/api/rooms?status=closed', headers);
+  if (status === 404) throw new Error('room list is disabled on the server (set AGENT_ROOM_ENABLE_ROOM_LIST=1)');
+  if (status !== 200 || !json) throw apiError(status, json);
+  const rooms = (Array.isArray(json.rooms) ? json.rooms : []).slice(0, HISTORY_LIMIT).map((room) => ({
+    code: room.code,
+    title: room.title,
+    status: room.status,
+    updated_at: room.updated_at,
+    latest_message_id: Number(room.latest_message_id) || 0,
+  }));
+  return { ok: true, rooms };
+}
+
+async function hydrate(base, headers, code) {
+  const { status, json } = await rawFetch(base + '/api/rooms/' + code, headers);
+  if (status === 404) throw new Error('room ' + code + ' not found');
+  if (status !== 200 || !json) throw apiError(status, json);
+  return { ok: true, room: json };
+}
+
+async function poll(base, headers, code, after) {
+  const cursor = Math.max(0, parseInt(after, 10) || 0);
+  const { status, json } = await rawFetch(base + '/api/rooms/' + code + '/messages?after=' + cursor + '&wait=0', headers);
+  if (status === 404) throw new Error('room ' + code + ' not found');
+  if (status !== 200 || !json) throw apiError(status, json);
+  return {
+    ok: true,
+    messages: Array.isArray(json.messages) ? json.messages : [],
+    latest_message_id: Number(json.latest_message_id) || cursor,
+    participants: Array.isArray(json.participants) ? json.participants : [],
+    status: String(json.status || 'open'),
+    addressed_only: Boolean(json.addressed_only),
+  };
+}
+
+function bodyJson(context) {
+  const raw = context && context.body;
+  if (!raw) return {};
+  try { return JSON.parse(raw.toString('utf8')); } catch (error) { return {}; }
+}
+
+async function send(base, headers, code, context) {
+  const content = String(bodyJson(context).content || '').trim();
+  if (!content) throw new Error('message is empty');
+  if (content.length > MAX_MESSAGE_CHARS) throw new Error('message exceeds ' + MAX_MESSAGE_CHARS + ' characters');
+  const { status, json } = await rawFetch(base + '/api/rooms/' + code + '/viewer/messages', headers, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+  if (status === 409) throw new Error('room is closed');
+  if (status !== 201 || !json) throw apiError(status, json);
+  return { ok: true, message: json.message, participants: Array.isArray(json.participants) ? json.participants : [] };
+}
+
+// Close a room on behalf of the human viewer. The server records the closer by name, so the
+// room's viewer name is used; the summary is posted to the transcript as a `summary` message.
+// The server's close is idempotent (always 200); an already-closed room is reported as such.
+async function closeRoom(base, headers, code, context) {
+  const summary = String(bodyJson(context).summary || '').trim().slice(0, MAX_SUMMARY_CHARS) || DEFAULT_CLOSE_SUMMARY;
+  const current = await hydrate(base, headers, code);
+  if (current.room && current.room.status === 'closed') return { ok: true, room: current.room, already_closed: true };
+  const name = String((current.room && current.room.viewer_name) || 'Panel').trim().slice(0, 80) || 'Panel';
+  const { status, json } = await rawFetch(base + '/api/rooms/' + code + '/close', headers, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, summary }),
+  });
+  if (status === 404) throw new Error('room ' + code + ' not found');
+  if (status !== 200 || !json) throw apiError(status, json);
+  return { ok: true, room: json };
+}
+
+// The addressed-only mode is shown as a read-only badge (from poll), not mutated here — so there
+// is no `mode` action (avoids a dead, unvalidated write path).
+
+async function handle(action, context) {
+  const options = (context && context.options) || {};
+  const query = (context && context.query) || {};
+  try {
+    const base = baseOrigin(options);
+    const headers = authHeaders(options, base);
+    if (action === 'list') return await listRooms(base, headers);
+    if (action === 'history') return await listHistory(base, headers);
+    if (action === 'hydrate') return await hydrate(base, headers, roomCode(query, options));
+    if (action === 'poll') return await poll(base, headers, roomCode(query, options), query.after);
+    if (action === 'send') return await send(base, headers, roomCode(query, options), context);
+    if (action === 'close') return await closeRoom(base, headers, roomCode(query, options), context);
+    return { ok: false, error: 'unknown action' };
+  } catch (error) {
+    return { ok: false, error: safeError(error) };
+  }
+}
+
+module.exports = { handle };

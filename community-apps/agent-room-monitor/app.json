@@ -1,0 +1,36 @@
+{
+  "id": "agent-room-monitor",
+  "name": "Agent Room Monitor",
+  "version": "1.1.5",
+  "description": "Watch, join, and close Agent Room meetings from the panel: lists the open rooms on the hosted Agent Room server, streams the live transcript, lets you type as the room's human viewer, closes a room with a summary, and browses closed rooms' transcripts under History.",
+  "entry": "index.html",
+  "served": true,
+  "server": "server.js",
+  "hideGridInEditor": true,
+  "knob": true,
+  "options": [
+    {
+      "key": "host",
+      "label": "Room server URL",
+      "type": "text",
+      "default": "https://arh-api.schmitzplex.com",
+      "serverOnly": true,
+      "help": "Origin only (no path). Defaults to the hosted Docker instance on the agent lane, which needs the bearer token below. Plain http is accepted only for a loopback address such as http://127.0.0.1:7331 (a local dev server)."
+    },
+    {
+      "key": "token",
+      "label": "Bearer token",
+      "type": "secret",
+      "default": "",
+      "serverOnly": true,
+      "help": "This panel's own token from the arh-api bearer allowlist (one line per client in NPM Plus http-top.conf). Stored encrypted by the panel and used only by this app's server bridge; never sent to the page. Required unless the server URL is loopback."
+    },
+    {
+      "key": "room",
+      "label": "Pinned room code (optional)",
+      "type": "text",
+      "default": "",
+      "help": "Leave blank to auto-discover open rooms (one open room attaches automatically; several show a picker, and the rail always lists them). Set a code to always open that room."
+    }
+  ]
+}
