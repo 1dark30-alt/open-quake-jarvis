@@ -25,7 +25,7 @@ const els = {
   transcript: $('transcript'), messages: $('messages'), newPill: $('newPill'), newPillCount: $('newPillCount'),
   composer: $('composer'), viewerName: $('viewerName'), input: $('input'), sendBtn: $('sendBtn'), sendError: $('sendError'),
   overlay: $('overlay'), overlayKicker: $('overlayKicker'), overlayTitle: $('overlayTitle'),
-  overlayBody: $('overlayBody'), overlayCount: $('overlayCount'), overlayList: $('overlayList'), overlayRetry: $('overlayRetry'), overlayBack: $('overlayBack'),
+  overlayBody: $('overlayBody'), overlayCount: $('overlayCount'), overlayList: $('overlayList'), overlayRetry: $('overlayRetry'), overlayHistory: $('overlayHistory'), overlayBack: $('overlayBack'),
   closeDlg: $('closeDlg'), closeDlgTitle: $('closeDlgTitle'), closeDlgBody: $('closeDlgBody'),
   closeSummary: $('closeSummary'), closeCancel: $('closeCancel'), closeConfirm: $('closeConfirm'), closeError: $('closeError'),
 };
@@ -128,7 +128,9 @@ function showOverlay(title, body, opts = {}) {
   els.overlayTitle.textContent = title;
   els.overlayBody.textContent = body || '';
   els.overlayRetry.hidden = !opts.retry;
-  els.overlayBack.hidden = !opts.back;   // only offered when a room is attached to return to
+  els.overlayBack.hidden = !opts.back;   // offered when there is somewhere to go back to
+  els.overlayHistory.hidden = !opts.history;   // rail action on the waiting screen
+  state.overlayOnBack = opts.onBack || null;   // Back returns here; default hides the overlay
   els.overlayList.hidden = !opts.list;
   els.overlayList.textContent = '';
   els.overlayList.scrollTop = 0;
@@ -160,7 +162,7 @@ function showOverlay(title, body, opts = {}) {
     els.overlayCount.hidden = true;
   }
   // Interactive overlays (picker / retry / back) are modal dialogs; passive ones (loading / waiting) are status.
-  const interactive = Boolean(opts.list || opts.retry || opts.back);
+  const interactive = Boolean(opts.list || opts.retry || opts.back || opts.history);
   els.overlay.setAttribute('role', interactive ? 'dialog' : 'status');
   if (interactive) els.overlay.setAttribute('aria-modal', 'true'); else els.overlay.removeAttribute('aria-modal');
   els.overlay.setAttribute('aria-live', interactive ? 'off' : 'polite');
@@ -170,8 +172,8 @@ function showOverlay(title, body, opts = {}) {
   const order = overlayButtons();
   let start = 0;
   if (!rooms.length) {
-    const back = order.indexOf(els.overlayBack), retry = order.indexOf(els.overlayRetry);
-    start = back >= 0 ? back : (retry >= 0 ? retry : 0);
+    const hist = order.indexOf(els.overlayHistory), back = order.indexOf(els.overlayBack), retry = order.indexOf(els.overlayRetry);
+    start = hist >= 0 ? hist : (back >= 0 ? back : (retry >= 0 ? retry : 0));
   }
   if (order.length) selectOverlay(start);
   else { try { els.overlay.focus(); } catch (e) {} }
@@ -184,6 +186,7 @@ function overlayButtons() {
   if (els.overlay.hidden) return [];
   const btns = Array.from(els.overlayList.querySelectorAll('button'));
   if (!els.overlayRetry.hidden) btns.push(els.overlayRetry);
+  if (!els.overlayHistory.hidden) btns.push(els.overlayHistory);
   if (!els.overlayBack.hidden) btns.push(els.overlayBack);
   return btns;
 }
@@ -511,31 +514,22 @@ async function init() {
   showOverlay('Choose a room', 'Several rooms are open. Pick one to monitor.', { list: open });
 }
 
-// No open room: instead of a dead screen, the workspace shows the closed rooms (History) so there is
-// always something to read, while the same tick keeps watching for a room to open and attaches to it.
-// The grid is only re-rendered when the closed-room set actually changes, so a finger mid-drag or the
-// knob selection is never yanked by the refresh.
+// No open room: the waiting screen is just the message plus a History rail button. The tick keeps
+// watching for a room and attaches automatically, except while the History picker is up, so browsing
+// is never yanked away; Back to the waiting screen lets the next tick attach.
+function showWaitingScreen() {
+  showOverlay('Waiting for a room', 'No open Agent Room meetings yet. This attaches automatically when one starts.', { history: true });
+}
 function waitForRoom() {
   stopLoops();
-  state.waitingSig = null;
-  const showWaiting = async () => {
-    const res = await callApi('history', {});
-    const rooms = res.ok ? (res.rooms || []) : [];
-    const sig = rooms.map((r) => r.code + ':' + r.latest_message_id).join('|');
-    if (sig === state.waitingSig && !els.overlay.hidden) return;
-    state.waitingSig = sig;
-    const body = 'No open Agent Room meetings yet. This attaches automatically when one starts.'
-      + (rooms.length ? ' Meanwhile, tap a closed room to read it.' : '');
-    showOverlay('Waiting for a room', body, { list: rooms, kind: 'history', kicker: 'Agent Room Monitor' });
-  };
-  showWaiting();
+  showWaitingScreen();
   const tick = async () => {
     const open = await refreshRooms();
-    if (open) {
+    const browsing = !els.overlay.hidden && els.overlay.dataset.kind === 'history';
+    if (open && !browsing) {
       if (open.length === 1) { attach(open[0].code); return; }
       if (open.length > 1) { showOverlay('Choose a room', 'Several rooms are open. Pick one to monitor.', { list: open }); return; }
     }
-    await showWaiting();
     state.discoverTimer = setTimeout(tick, DISCOVER_MS / 2);
   };
   state.discoverTimer = setTimeout(tick, DISCOVER_MS / 2);
@@ -644,14 +638,19 @@ tap(els.roomsBtn, async () => {
   if (res.ok) renderRoomList(open);
   showOverlay('Rooms', open.length ? 'Tap a room to monitor it.' : 'No open rooms right now.', { list: open, back: Boolean(state.code) });
 });
-tap(els.historyBtn, async () => {
+// History picker. From an attached room, Back hides the overlay; from the waiting screen, Back
+// returns to the waiting screen (onBack).
+async function openHistory(opts = {}) {
   const res = await callApi('history', {});
   const rooms = res.ok ? (res.rooms || []) : [];
   const body = !res.ok ? 'Could not load history: ' + (res.error || 'unknown')
     : (rooms.length ? 'Newest first. Tap a room to read its transcript.' : 'No closed rooms yet.');
-  showOverlay('History', body, { list: rooms, kind: 'history', back: Boolean(state.code) });
-});
-tap(els.overlayBack, hideOverlay);
+  showOverlay('History', body, { list: rooms, kind: 'history', back: Boolean(state.code) || Boolean(opts.onBack), onBack: opts.onBack });
+}
+tap(els.historyBtn, () => openHistory());
+tap(els.overlayHistory, () => openHistory({ onBack: showWaitingScreen }));
+tap(els.overlayBack, () => { const back = state.overlayOnBack; if (back) back(); else hideOverlay(); });
+
 tap(els.overlayRetry, () => { hideOverlay(); (state.retryContext || init)(); });
 tap(els.closeCancel, hideCloseDialog);
 tap(els.closeConfirm, confirmClose);

@@ -340,3 +340,5 @@ button:focus-visible, textarea:focus-visible, .transcript:focus-visible {
   border: 1px solid var(--line); border-radius: 999px;
   padding: 2px 10px; text-transform: uppercase; letter-spacing: 0.06em;
 }
+/* Rail action placed in flow under the copy (waiting screen History), not pinned to the bottom */
+.rail-inline { margin-top: var(--space-2); }
