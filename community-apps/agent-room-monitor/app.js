@@ -123,7 +123,7 @@ function setInertBackground(on) { for (const el of bgRegions) { if (el) el.inert
 function showOverlay(title, body, opts = {}) {
   if (els.overlay.hidden) state.prevFocus = document.activeElement;   // capture only on hidden -> shown
   els.overlay.dataset.kind = opts.kind || '';
-  els.overlayKicker.textContent = opts.kind === 'history' ? 'History' : 'Agent Room Monitor';
+  els.overlayKicker.textContent = opts.kicker || (opts.kind === 'history' ? 'History' : 'Agent Room Monitor');
   els.overlayList.setAttribute('aria-label', opts.kind === 'history' ? 'Closed room history' : 'Open rooms');
   els.overlayTitle.textContent = title;
   els.overlayBody.textContent = body || '';
@@ -511,15 +511,31 @@ async function init() {
   showOverlay('Choose a room', 'Several rooms are open. Pick one to monitor.', { list: open });
 }
 
+// No open room: instead of a dead screen, the workspace shows the closed rooms (History) so there is
+// always something to read, while the same tick keeps watching for a room to open and attaches to it.
+// The grid is only re-rendered when the closed-room set actually changes, so a finger mid-drag or the
+// knob selection is never yanked by the refresh.
 function waitForRoom() {
-  showOverlay('Waiting for a room', 'No open Agent Room meetings yet. This will attach automatically when one starts.');
   stopLoops();
+  state.waitingSig = null;
+  const showWaiting = async () => {
+    const res = await callApi('history', {});
+    const rooms = res.ok ? (res.rooms || []) : [];
+    const sig = rooms.map((r) => r.code + ':' + r.latest_message_id).join('|');
+    if (sig === state.waitingSig && !els.overlay.hidden) return;
+    state.waitingSig = sig;
+    const body = 'No open Agent Room meetings yet. This attaches automatically when one starts.'
+      + (rooms.length ? ' Meanwhile, tap a closed room to read it.' : '');
+    showOverlay('Waiting for a room', body, { list: rooms, kind: 'history', kicker: 'Agent Room Monitor' });
+  };
+  showWaiting();
   const tick = async () => {
     const open = await refreshRooms();
     if (open) {
       if (open.length === 1) { attach(open[0].code); return; }
       if (open.length > 1) { showOverlay('Choose a room', 'Several rooms are open. Pick one to monitor.', { list: open }); return; }
     }
+    await showWaiting();
     state.discoverTimer = setTimeout(tick, DISCOVER_MS / 2);
   };
   state.discoverTimer = setTimeout(tick, DISCOVER_MS / 2);

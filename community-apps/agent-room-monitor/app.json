@@ -1,7 +1,7 @@
 {
   "id": "agent-room-monitor",
   "name": "Agent Room Monitor",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "Watch, join, and close Agent Room meetings from the panel: lists the open rooms on the hosted Agent Room server, streams the live transcript, lets you type as the room's human viewer, closes a room with a summary, and browses closed rooms' transcripts under History.",
   "entry": "index.html",
   "served": true,
