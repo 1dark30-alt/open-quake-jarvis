@@ -33,3 +33,12 @@ app/native/*.exe
 
 # dev-app secrets
 .env
+
+# Mark 55 runtime state and local installation
+community-apps/jarvis/Mark-LV/.venv/
+**/__pycache__/
+*.pyc
+community-apps/jarvis/Mark-LV/config/*.json
+community-apps/jarvis/Mark-LV/config/certs/
+community-apps/jarvis/Mark-LV/memory/*.json
+community-apps/jarvis/Mark-LV/uploads/

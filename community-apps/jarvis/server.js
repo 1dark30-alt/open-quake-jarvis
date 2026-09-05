@@ -1,130 +1,56 @@
-const { execFile } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const net = require('net');
-
-let starting = false;
-
-// Check if port 8000 is listening
-function checkPort(port) {
-  return new Promise((resolve) => {
-    const socket = net.connect({ port, host: '127.0.0.1', timeout: 300 }, () => {
-      socket.destroy();
-      resolve(true);
+const http = require('http');
+let child, starting;
+function healthy() {
+  return new Promise(resolve => {
+    const req = http.get('http://127.0.0.1:8000/api/health', res => {
+      let body = '';
+      res.on('data', chunk => { body += chunk; });
+      res.on('end', () => { try { resolve(JSON.parse(body).version === '55'); } catch { resolve(false); } });
     });
-    socket.on('error', () => {
-      resolve(false);
-    });
+    req.setTimeout(1000, () => req.destroy());
+    req.on('error', () => resolve(false));
   });
 }
-
-async function handle(action, ctx) {
-  if (action === 'start') {
-    const isRunning = await checkPort(8000);
-    if (isRunning) {
-      return { ok: true, msg: 'Already running' };
+async function start(options) {
+  if (await healthy()) return { ok: true, msg: 'Mark 55 is running' };
+  const dir = path.join(__dirname, 'Mark-LV');
+  const python = path.join(dir, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+  if (!fs.existsSync(python)) return { ok: false, error: 'Run install_mark55.py with Python 3.11 or newer first.' };
+  try {
+    const file = path.join(dir, 'config', 'api_keys.json');
+    const config = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+    for (const key of ['gemini_api_key', 'pin']) {
+      const value = options[key];
+      if (typeof value === 'string' && value.trim() && !value.startsWith('oqenc:v1:'))
+        config[key === 'pin' ? 'quake_pin' : key] = value.trim();
     }
-    
-    if (starting) {
-      return { ok: true, msg: 'Start in progress...' };
-    }
-    
-    starting = true;
-    const appDir = __dirname;
-    const vbsPath = path.join(appDir, 'start_jarvis.vbs');
-    const backendDir = path.join(appDir, 'Mark-XLVI');
-    const exePath = path.join(backendDir, 'jarvis_backend.exe');
-    
-    if (!fs.existsSync(exePath)) {
-      starting = false;
-      return { ok: false, error: 'jarvis_backend.exe not found. Re-import the drop-in app.' };
-    }
-    
-    if (!fs.existsSync(vbsPath)) {
-      starting = false;
-      return { ok: false, error: 'start_jarvis.vbs not found' };
-    }
-    
-    // Write options to api_keys.json
-    const configPath = path.join(backendDir, 'config', 'api_keys.json');
+    if (!config.gemini_api_key) return { ok: false, error: 'Set your Gemini API key in JARVIS options.' };
+    if (!config.quake_pin) config.quake_pin = 'QUAKE';
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(config, null, 2));
+  } catch (err) { return { ok: false, error: `Cannot save configuration: ${err.message}` }; }
+  if (!child) {
+    const log = fs.openSync(path.join(dir, 'startup.log'), 'a');
     try {
-      const parentDir = path.dirname(configPath);
-      if (!fs.existsSync(parentDir)) {
-        fs.mkdirSync(parentDir, { recursive: true });
-      }
-      
-      let configData = {};
-      if (fs.existsSync(configPath)) {
-        try {
-          configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        } catch (e) {}
-      }
-      
-      // Update with values from open-quake options
-      if (ctx.options.gemini_api_key !== undefined && !ctx.options.gemini_api_key.startsWith('oqenc:v1:')) {
-        configData.gemini_api_key = ctx.options.gemini_api_key;
-      }
-      if (ctx.options.llm_provider !== undefined) {
-        configData.llm_provider = ctx.options.llm_provider;
-      }
-      if (ctx.options.llm_url !== undefined) {
-        configData.llm_url = ctx.options.llm_url;
-      }
-      if (ctx.options.llm_model !== undefined) {
-        configData.llm_model = ctx.options.llm_model;
-      }
-      if (ctx.options.os_system !== undefined) {
-        configData.os_system = ctx.options.os_system;
-      }
-      
-      // Fallback defaults for missing keys
-      if (configData.gemini_api_key === undefined) configData.gemini_api_key = '';
-      if (configData.llm_provider === undefined) configData.llm_provider = 'gemini-live';
-      if (configData.llm_url === undefined) configData.llm_url = '';
-      if (configData.llm_model === undefined) configData.llm_model = '';
-      if (configData.os_system === undefined) configData.os_system = 'windows';
-      
-      fs.writeFileSync(configPath, JSON.stringify(configData, null, 2), 'utf8');
-      console.log('[JARVIS server.js] Synchronized engine settings to api_keys.json');
-    } catch (e) {
-      console.error('[JARVIS server.js] Failed to write api_keys.json:', e);
-    }
-    
-    starting = true;
-    setTimeout(() => {
-      starting = false;
-    }, 10000);
-
-    // Spawn hidden backend directly if binary exists to bypass wscript.exe security policies
-    if (fs.existsSync(exePath)) {
-      execFile(exePath, [], { cwd: backendDir, windowsHide: true }, (err, stdout, stderr) => {
-        starting = false;
-        if (err) {
-          console.error('[JARVIS server.js] Direct spawn failed:', err);
-          try {
-            fs.writeFileSync(path.join(backendDir, 'spawn_error.txt'), `Error: ${err.message}\nStdout: ${stdout}\nStderr: ${stderr}`, 'utf8');
-          } catch(e) {}
-        }
-      });
-    } else {
-      // Fallback: spawn via VBScript if developer running from source
-      execFile('wscript.exe', [vbsPath], { windowsHide: true }, (err, stdout, stderr) => {
-        starting = false;
-        if (err) {
-          console.error('[JARVIS server.js] VBS spawn failed:', err);
-        }
-      });
-    }
-    
-    return { ok: true, msg: 'Spawning JARVIS backend' };
+      child = spawn(python, ['quake_main.py'], { cwd: dir, windowsHide: true, stdio: ['ignore', log, log] });
+      child.on('error', () => { child = null; });
+      child.on('exit', () => { child = null; });
+    } finally { fs.closeSync(log); }
   }
-  
-  if (action === 'status') {
-    const isRunning = await checkPort(8000);
-    return { ok: true, running: isRunning };
+  for (let i = 0; i < 60; i++) {
+    if (await healthy()) return { ok: true, msg: 'Mark 55 ready' };
+    if (!child) return { ok: false, error: 'Mark 55 exited. See Mark-LV/startup.log.' };
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
-  
-  return { ok: false, error: 'unknown action' };
+  return { ok: false, error: 'Startup timed out. Check Mark-LV/startup.log and the desktop window, then retry.' };
 }
-
+async function handle(action, ctx = {}) {
+  if (action === 'status') return { ok: true, running: await healthy() };
+  if (action !== 'start') return { ok: false, error: 'unknown action' };
+  if (!starting) starting = start(ctx.options || {}).finally(() => { starting = null; });
+  return starting;
+}
 module.exports = { handle };

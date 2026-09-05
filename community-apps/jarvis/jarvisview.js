@@ -428,10 +428,15 @@
   // ── Initialize ──
 
   async function startSetup() {
-    try {
-      fetch('/app-api/start');
-    } catch (e) {}
     await loadConfig();
+    try {
+      const local = new URL(config.endpoint);
+      if (['127.0.0.1', 'localhost'].includes(local.hostname)) {
+        const response = await fetch('/app-api/start');
+        const result = await response.json();
+        if (!result.ok) { showPairing(result.error || 'Cannot start Mark 55.'); return; }
+      }
+    } catch (e) { showPairing('Cannot start Mark 55: ' + e.message); return; }
     const ok = await authenticate();
     if (ok) {
       connectWebSocket();
