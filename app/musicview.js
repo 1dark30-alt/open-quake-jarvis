@@ -10,6 +10,12 @@
       document.body.classList.toggle('show-lyrics', q.get('lyrics') === '1');   // Show lyrics toggle
     } catch (e) {}
   })();
+  // #status (the "Playing"/source-app line) lives in the HTML as the lyrics panel's caption -- it's
+  // attribution context for what you're reading, not core now-playing identity. Without lyrics on
+  // there's nothing for it to caption, so relocate it into .mid, right after the metadata block.
+  if (!document.body.classList.contains('show-lyrics')) {
+    $('progress').insertAdjacentElement('afterend', $('status'));
+  }
   // Tight layout when the webview is narrow (e.g. a 2×3 button strip is on) — pull padding/sizes in.
   function applyTight(){ document.body.classList.toggle('tight', window.innerWidth < 1350); }
   applyTight(); window.addEventListener('resize', applyTight);
@@ -34,26 +40,79 @@
     if (url){ if (img.getAttribute('src') !== url) img.src = url; img.style.display = 'block'; }   // covers the 🎵 placeholder
     else { img.removeAttribute('src'); img.style.display = 'none'; }                                // no art -> show the 🎵 placeholder
   }
+
+  // Idle state shows the last REAL playback info (title/artist/album/art actually reported), never
+  // fabricated data (no "available speakers" / "Bluetooth status" -- this app has no data source for
+  // that). If nothing has ever played this session, it falls through to a plain, space-saving
+  // "Nothing playing".
+  var lastGood = null;
   function renderNP(s){
-    if (!s || !s.title){
-      $('mTitle').textContent = 'Nothing playing'; $('mArtist').textContent = '—';
-      $('mStatus').textContent = '—'; $('mApp').textContent = ''; setPlayIcon(ICON.play); setArt(null); return;
+    var playing = !!(s && s.title);
+    document.body.classList.toggle('idle', !playing);
+    if (playing) lastGood = { title: s.title, artist: s.artist || '', album: s.album || '', art: s.art || null };
+
+    if (playing) {
+      $('mTitle').textContent = s.title;
+      $('mArtist').textContent = s.artist || '';
+      $('mAlbum').textContent = s.album || '';
+      $('status').classList.remove('hide');
+      $('mStatus').textContent = s.status || '—';
+      $('mStatus').classList.remove('last');
+      setPlayIcon((s.status === 'Playing') ? ICON.pause : ICON.play);
+      var app = (s.app || '').replace(/\._crx_.*/, '').replace(/!.*/, '').replace(/\.exe$/i, '');
+      $('mApp').textContent = app ? ('· ' + app) : '';
+      setArt(s.art);
+    } else if (lastGood) {
+      $('mTitle').textContent = lastGood.title;
+      $('mArtist').textContent = lastGood.artist;
+      $('mAlbum').textContent = lastGood.album;
+      $('status').classList.remove('hide');
+      $('mStatus').textContent = 'Last played';
+      $('mStatus').classList.add('last');
+      $('mApp').textContent = '';
+      setPlayIcon(ICON.play);
+      setArt(lastGood.art);
+    } else {
+      $('mTitle').textContent = 'Nothing playing';
+      $('mArtist').textContent = '';
+      $('mAlbum').textContent = '';
+      $('status').classList.add('hide');
+      setPlayIcon(ICON.play);
+      setArt(null);
     }
-    $('mTitle').textContent = s.title;
-    $('mArtist').textContent = s.artist || '—';
-    $('mStatus').textContent = s.status || '—';
-    setPlayIcon((s.status === 'Playing') ? ICON.pause : ICON.play);
-    var app = (s.app || '').replace(/\._crx_.*/, '').replace(/!.*/, '').replace(/\.exe$/i, '');
-    $('mApp').textContent = app ? ('· ' + app) : '';
-    setArt(s.art);
   }
 
-  var np = { pos: 0, ts: 0, status: '' };   // last known playback position + when it was captured (same clock as us)
+  function fmtTime(sec){
+    sec = Math.max(0, Math.floor(sec || 0));
+    var m = Math.floor(sec / 60), r = sec % 60;
+    return m + ':' + (r < 10 ? '0' : '') + r;
+  }
+  // Position/duration come from SMTC's timeline (already in the /nowplaying payload). Interpolated
+  // between polls the same way lyric sync already does, so the bar advances smoothly rather than
+  // jumping once every 1.5s.
+  function progressTick(){
+    var host = $('progress');
+    if (!np.dur || np.dur <= 0) {
+      host.classList.add('idle');
+      $('pFill').style.width = '0%'; $('pElapsed').textContent = '0:00'; $('pTotal').textContent = '0:00';
+      return;
+    }
+    host.classList.remove('idle');
+    var est = np.pos + (np.status === 'Playing' ? (Date.now() - np.ts) / 1000 : 0);
+    est = Math.min(est, np.dur);
+    $('pFill').style.width = Math.min(100, (est / np.dur) * 100) + '%';
+    $('pElapsed').textContent = fmtTime(est);
+    $('pTotal').textContent = fmtTime(np.dur);
+  }
+  setInterval(progressTick, 250);
+
+  var np = { pos: 0, dur: 0, ts: 0, status: '' };   // last known playback position + when it was captured (same clock as us)
   function pollNP(){
     fetch('/nowplaying', { cache: 'no-store' }).then(function(r){ return r.json(); })
       .then(function(s){
         $('recon').classList.remove('show');
-        if (s) { np.pos = s.position || 0; np.ts = s.ts || Date.now(); np.status = s.status || ''; }
+        if (s) { np.pos = s.position || 0; np.dur = s.duration || 0; np.ts = s.ts || Date.now(); np.status = s.status || ''; }
+        else { np.dur = 0; }
         renderNP(s);
       })
       .catch(function(){ $('recon').classList.add('show'); });

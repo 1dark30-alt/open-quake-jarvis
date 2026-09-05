@@ -1,0 +1,17 @@
+'use strict';
+
+function configForRenderer(config) {
+  const clone = JSON.parse(JSON.stringify(config || {}));
+  if (clone.settings && clone.settings.discord) delete clone.settings.discord.clientSecret;
+  const oauth = clone.settings && clone.settings.oauth;
+  if (!oauth || typeof oauth !== 'object') return clone;
+  oauth.tokens = {};
+  const providers = oauth.providers && typeof oauth.providers === 'object' ? oauth.providers : {};
+  Object.entries(providers).forEach(([provider, settings]) => {
+    if (!settings || typeof settings !== 'object') return;
+    delete settings.clientSecret;
+  });
+  return clone;
+}
+
+module.exports = { configForRenderer };

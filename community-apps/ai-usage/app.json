@@ -1,0 +1,75 @@
+{
+  "id": "ai-usage",
+  "name": "AI Usage",
+  "version": "1.0.6",
+  "description": "At-a-glance usage monitor for Claude (Claude Code & Cowork), ChatGPT/Codex, and GitHub Copilot. Reads local Claude/Codex session logs and the GitHub billing API.",
+  "entry": "index.html",
+  "served": true,
+  "server": "server.js",
+  "knob": true,
+  "options": [
+    {
+      "key": "githubUser",
+      "label": "GitHub username",
+      "type": "text",
+      "default": "",
+      "help": "Your GitHub login — enables the Copilot panel. Leave blank to hide it."
+    },
+    {
+      "key": "githubToken",
+      "label": "GitHub token",
+      "type": "secret",
+      "default": "",
+      "serverOnly": true,
+      "help": "A fine-grained personal access token with 'Plan' (read-only) permission on your account. Used only server-side to read your Copilot premium-request usage; never sent to the page. Create one at github.com/settings/personal-access-tokens."
+    },
+    {
+      "key": "copilotIncluded",
+      "label": "Copilot monthly quota",
+      "type": "select",
+      "default": "300",
+      "choices": [["300", "Pro / Business — 300"], ["1500", "Pro+ — 1500"], ["1000", "Enterprise — 1000"], ["0", "Unknown / hide gauge"]],
+      "help": "Included premium requests per month for your Copilot plan — sets the gauge denominator."
+    },
+    {
+      "key": "claudeLimits",
+      "label": "Show Claude 5-hour & weekly limits",
+      "type": "bool",
+      "default": true,
+      "serverOnly": true,
+      "help": "Reads your live Claude usage via your local Claude sign-in (~/.claude/.credentials.json, backed up before any token refresh) and polls api.anthropic.com at most every 5 min. Account-wide — matches on every machine. Turn off to show only local token stats."
+    },
+    {
+      "key": "claudePath",
+      "label": "Claude data folder",
+      "type": "text",
+      "default": "",
+      "serverOnly": true,
+      "help": "Advanced — override the Claude Code data dir. Blank = ~/.claude."
+    },
+    {
+      "key": "codexLimits",
+      "label": "Show ChatGPT 5-hour & weekly limits (live)",
+      "type": "bool",
+      "default": true,
+      "serverOnly": true,
+      "help": "Reads your live ChatGPT/Codex usage via your local Codex sign-in (~/.codex/auth.json, read-only) from chatgpt.com every 2 min. Account-wide — matches on every machine. Turn off to use only the last local log snapshot."
+    },
+    {
+      "key": "codexPath",
+      "label": "Codex data folder",
+      "type": "text",
+      "default": "",
+      "serverOnly": true,
+      "help": "Advanced — override the Codex CLI data dir. Blank = ~/.codex."
+    },
+    {
+      "key": "refreshSeconds",
+      "label": "Refresh interval",
+      "type": "select",
+      "default": "30",
+      "choices": [["15", "15 seconds"], ["30", "30 seconds"], ["60", "60 seconds"], ["120", "2 minutes"]],
+      "help": "How often the panels re-scan the logs and re-poll GitHub."
+    }
+  ]
+}

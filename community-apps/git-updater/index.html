@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>git-updater</title>
+<style>
+  /* git-updater panel app — full-screen VIEW navigation, no modals.
+     Three stable regions per secondary view: 64px header / scrolling content / 72px footer.
+     Spacing scale 8/16/24/32. Accent reserved for primary actions + selected state. */
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel-2: #1c2128; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --faint: #6e7681;
+    --accent: #e3a13c; --accent-ink: #1a1206;
+    --green: #3fb950; --blue: #58a6ff; --red: #f85149;
+    --mono: 'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace;
+    --sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; padding: 0; color: var(--text); font-family: var(--sans);
+         font-size: 15px; line-height: 1.45; background: var(--bg); overflow: hidden; }
+
+  /* Dark scrollbars everywhere — the bright native bar is banned. */
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 6px; border: 3px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: #444c56; }
+
+  /* ── View switching: one .view active at a time, opaque, edge to edge ── */
+  .view { display: none; height: 100%; flex-direction: column; background: var(--bg); }
+  .view.active { display: flex; animation: slidein .18s ease; }
+  @keyframes slidein { from { transform: translateX(28px); opacity: .5; } to { transform: none; opacity: 1; } }
+
+  button { font: 600 15px var(--sans); cursor: pointer; border-radius: 8px; padding: 0 20px;
+           min-height: 48px; border: 1px solid var(--border); background: #21262d; color: var(--text);
+           transition: background .15s, border-color .15s, opacity .15s; white-space: nowrap; }
+  button:hover:not(:disabled) { background: #2a313a; border-color: #444c56; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  input[type=text] { font: 400 18px var(--mono); padding: 0 16px; min-height: 48px; border-radius: 8px;
+                     color: var(--text); background: var(--panel); border: 1px solid var(--border); }
+  input[type=text]::placeholder { color: var(--faint); }
+  input[type=text]:focus { outline: none; border-color: var(--accent); }
+  input[type=checkbox] { width: 24px; height: 24px; accent-color: var(--accent); flex: none; cursor: pointer; }
+
+  /* ══ MAIN VIEW ══ */
+  .page-header { flex: none; display: flex; align-items: center; min-height: 64px; gap: 16px;
+                 padding: 0 32px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .page-header h1, .page-header p { margin: 0; }
+  .logo { width: 32px; height: 32px; flex: none; display: grid; place-items: center;
+          border-radius: 8px; background: var(--accent); color: var(--accent-ink); }
+  .brand-title { font-family: var(--mono); font-weight: 600; font-size: 24px; white-space: nowrap; }
+  .brand-title .g { color: var(--accent); }
+  .brand-subtitle { color: var(--muted); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #msg { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 15px; }
+  #msg.ok { color: var(--green); } #msg.bad { color: var(--red); } #msg.info { color: var(--muted); }
+  .app-count { margin-left: auto; color: var(--muted); font-size: 16px; font-weight: 600; white-space: nowrap; }
+  @media (max-width: 1100px) { .brand-subtitle { display: none; } }
+
+  /* The list region is the ONLY scroller on the main view. */
+  .list-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 32px 24px; }
+  .app-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; align-items: start; }
+  @media (max-width: 1279px) { .app-columns { grid-template-columns: 1fr; } }
+  /* Each half is its own bordered table — unmistakably two panels, not one run-on grid. */
+  .colgroup { min-width: 0; border: 1px solid var(--border); border-radius: 10px;
+              background: var(--panel); padding: 0 20px 4px; }
+  .colgroup:empty { display: none; }
+  .colgroup .app-row:last-child { border-bottom: 0; }
+
+  .app-table-header,
+  .app-row {
+    display: grid;
+    grid-template-columns:
+      minmax(160px, 1fr) /* app */
+      96px               /* type */
+      110px              /* current */
+      110px              /* available */
+      170px              /* status */
+      156px;             /* action + menu */
+    column-gap: 16px;
+    align-items: center;
+  }
+  .app-table-header > *, .app-row > * { min-width: 0; }
+  .app-table-header > span { font: 600 13px var(--mono); letter-spacing: .07em; text-transform: uppercase;
+                             color: var(--muted); padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .app-row { min-height: 56px; border-bottom: 1px solid var(--border); }
+  .app-name, .ver, .st { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app-name { font: 600 18px/24px var(--mono); color: var(--text); }
+  .badge { display: inline-block; font: 600 13px var(--sans); padding: 3px 10px; border-radius: 999px;
+           color: var(--muted); background: transparent; border: 1px solid var(--border); }
+  .ver { font: 500 15px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+  .ver.avail { color: var(--text); font-weight: 600; }
+  .ver.none { font-family: var(--sans); color: var(--faint); }
+  .st { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+  .st .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .st .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+  .c-muted { color: var(--muted); font-weight: 400; }
+  .c-ok { color: var(--green); } .c-ok .dot { background: var(--green); }
+  .c-up { color: var(--blue); } .c-up .dot { background: var(--blue); }
+  .c-bad { color: var(--red); } .c-bad .dot { background: var(--red); }
+  .c-work { color: var(--text); } .c-work .dot { animation: pulse 1s infinite; background: var(--accent); }
+  @keyframes pulse { 0%,100% { opacity: .3 } 50% { opacity: 1 } }
+  .act { display: flex; justify-content: flex-end; align-items: center; gap: 8px; white-space: nowrap; }
+  .app-row button { min-height: 48px; font-size: 15px; padding: 0 18px; }
+  .kebab { min-width: 48px; padding: 0; font-size: 20px; color: var(--muted); }
+
+  /* Per-row overflow menu (Edit / Force reinstall / Close & update / …) */
+  #rowMenu { position: fixed; z-index: 60; min-width: 300px; background: var(--panel-2);
+             border: 1px solid var(--border); border-radius: 12px; padding: 8px;
+             box-shadow: 0 16px 40px -8px #000; display: none; }
+  #rowMenu.show { display: block; }
+  #rowMenu button { display: flex; width: 100%; align-items: center; text-align: left;
+                    background: transparent; border: 0; border-radius: 8px; padding: 0 16px;
+                    min-height: 48px; font-weight: 500; font-size: 17px; color: var(--text); }
+  #rowMenu button:hover { background: #2a313a; }
+  #rowMenu button.danger { color: var(--red); }
+  #rowMenu .sep { height: 1px; background: var(--border); margin: 6px 8px; }
+  #rowMenu .mnote { padding: 8px 16px 4px; color: var(--muted); font-size: 15px; }
+  .empty { color: var(--muted); padding: 24px 8px; font-size: 17px; display: none; }
+
+  /* ══ SECONDARY VIEWS: 64px header / content / 72px footer ══ */
+  .vhead { flex: none; height: 64px; display: flex; align-items: center; gap: 16px;
+           padding: 0 32px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .vhead h2 { margin: 0; font: 600 24px var(--sans); white-space: nowrap; }
+  .vstat { color: var(--muted); font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .back { font-size: 16px; }
+  .vbody { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px;
+           padding: 24px 32px; overflow: hidden; }
+  .vfoot { flex: none; height: 72px; display: flex; align-items: center; gap: 16px;
+           padding: 0 32px; border-top: 1px solid var(--border); background: var(--panel); }
+  .vfoot .grow { flex: 1; }
+  .vfoot button { min-width: 140px; font-size: 16px; }
+
+  .frow { flex: none; display: flex; gap: 16px; align-items: stretch; }
+  .frow input[type=text] { flex: 1; min-width: 0; }
+  .seg { display: inline-flex; padding: 4px; gap: 4px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+  .seg button { min-height: 40px; border: 1px solid transparent; background: transparent; color: var(--muted); border-radius: 7px; font-size: 16px; }
+  .seg button.active { background: #21262d; color: var(--text); border-color: #444c56; }
+  .chk { flex: none; display: inline-flex; align-items: center; gap: 12px; font-size: 17px; color: var(--text); cursor: pointer; }
+  .fhelp { flex: none; color: var(--muted); font-size: 15px; margin: 0; }
+  .fhelp code { font-family: var(--mono); color: var(--text); }
+  .ferr { flex: none; color: var(--red); font-size: 16px; font-weight: 600; min-height: 1.3em; margin: 0; }
+
+  /* Scan view: filter lives in the header; the results list gets ALL the vertical space. */
+  .vhead .hfilter { margin-left: auto; flex: 0 1 420px; min-height: 44px; font-size: 16px; }
+  .scanlist { flex: 1 1 auto; min-height: 0; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
+  .scanrow { display: flex; align-items: center; gap: 16px; min-height: 56px; padding: 4px 20px;
+             border-bottom: 1px solid var(--border); font-size: 18px; cursor: pointer; user-select: none; }
+  .scanrow:last-child { border-bottom: 0; }
+  .scanrow:hover:not(.tracked) { background: #1c2128; }
+  .scanrow.sel { background: color-mix(in srgb, var(--accent) 10%, transparent);
+                 box-shadow: inset 3px 0 0 var(--accent); }
+  .scanrow .nm2 { font: 600 18px var(--sans); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .scanrow .det { color: var(--muted); font-size: 15px; white-space: nowrap; }
+  .scanrow .repo { color: var(--muted); font: 500 15px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .scanrow .v { margin-left: auto; color: var(--text); font: 500 16px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .scanrow.tracked { cursor: default; }
+  .scanrow.tracked .nm2, .scanrow.tracked .v { color: var(--muted); }
+  .scanhint { padding: 24px; color: var(--muted); font-size: 17px; }
+</style>
+</head>
+<body>
+
+<!-- ══ Main view ══ -->
+<div id="viewMain" class="view active">
+  <header class="page-header">
+    <span class="logo" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 12 5 5 5-5"/><path d="M5 21h14"/></svg></span>
+    <h1 class="brand-title"><span class="g">git</span>-updater</h1>
+    <p class="brand-subtitle">Keeps your apps current straight from their GitHub releases.</p>
+    <span id="msg"></span>
+    <span class="app-count" id="count"></span>
+    <button id="addApp">Add app</button>
+    <button id="scanPc">Scan this PC</button>
+    <button id="openSettings">Settings</button>
+    <button id="checkAll">Check all</button>
+    <button id="updateAll" class="primary">Update all</button>
+  </header>
+  <div class="list-scroll">
+    <div class="app-columns">
+      <div class="colgroup" id="colL"></div>
+      <div class="colgroup" id="colR"></div>
+    </div>
+    <div class="empty" id="empty">No apps tracked yet — use Add app or Scan this PC above.</div>
+  </div>
+</div>
+
+<!-- ══ Add an app ══ -->
+<div id="viewAdd" class="view">
+  <div class="vhead">
+    <button class="back" id="addBack">‹ Back</button>
+    <h2 id="addTitle">Add an app</h2>
+    <span class="vstat" id="addStat"></span>
+  </div>
+  <div class="vbody">
+    <div class="frow">
+      <input type="text" id="mRepo" placeholder="github.com/owner/repo  or  owner/repo" aria-label="GitHub repository">
+      <span class="seg" id="mType"><button data-t="portable" class="active">Portable</button><button data-t="installer">Installer</button></span>
+    </div>
+    <label class="chk"><input type="checkbox" id="mBeta"> Include pre-release versions</label>
+    <p class="fhelp">Paste a GitHub releases URL like <code>https://github.com/ShareX/ShareX/releases</code>, a repository URL, or just <code>owner/repo</code>. The right Windows download is selected automatically.</p>
+    <p class="ferr" id="addErr"></p>
+  </div>
+  <div class="vfoot">
+    <span class="grow"></span>
+    <button id="addCancel">Cancel</button>
+    <button id="mAdd" class="primary" disabled>Add app</button>
+  </div>
+</div>
+
+<!-- ══ Scan this PC ══ -->
+<div id="viewScan" class="view">
+  <div class="vhead">
+    <button class="back" id="scanBack">‹ Back</button>
+    <h2>Scan this PC</h2>
+    <span class="vstat" id="scanStat"></span>
+    <input type="text" class="hfilter" id="scanFilter" placeholder="Filter results…" aria-label="Filter results">
+  </div>
+  <div class="vbody">
+    <div class="scanlist" id="scanList"></div>
+  </div>
+  <div class="vfoot">
+    <button id="mAll">Select all</button>
+    <span class="grow"></span>
+    <button id="scanCancel">Cancel</button>
+    <button id="mAddSel" class="primary" disabled>Add selected</button>
+  </div>
+</div>
+
+<!-- ══ Settings ══ -->
+<div id="viewSettings" class="view">
+  <div class="vhead">
+    <button class="back" id="setBack">‹ Back</button>
+    <h2>Settings</h2>
+    <span class="vstat"></span>
+  </div>
+  <div class="vbody">
+    <div class="frow">
+      <input type="text" id="mRoot" placeholder="C:\Users\you\portable-apps" aria-label="Portable apps folder">
+    </div>
+    <p class="fhelp">Portable apps unzip into <code>&lt;folder&gt;\&lt;repo&gt;</code>. Config, state, and logs are shared with the standalone git-updater on this PC.</p>
+    <p class="ferr" id="setErr"></p>
+  </div>
+  <div class="vfoot">
+    <span class="grow"></span>
+    <button id="setCancel">Cancel</button>
+    <button id="mSave" class="primary">Save</button>
+  </div>
+</div>
+
+<div id="rowMenu"></div>
+<script src="app.js"></script>
+</body>
+</html>

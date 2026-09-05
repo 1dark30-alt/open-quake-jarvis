@@ -1,0 +1,196 @@
+{
+  "apps": [
+    {
+      "id": "arr-dash",
+      "name": "*arr Dashboard",
+      "description": "At-a-glance dashboard for Sonarr, Radarr, Lidarr, SABnzbd, Youtarr, and LidaTube — downloads, health, disk space, and upcoming releases.",
+      "version": "1.0.5",
+      "zip": "arr-dash.zip",
+      "server": true
+    },
+    {
+      "id": "agent-room-monitor",
+      "name": "Agent Room Monitor",
+      "description": "Watch, join, and close Agent Room meetings from the panel: lists the open rooms on the hosted Agent Room server, streams the live transcript, lets you type as the room's human viewer, closes a room with a summary, and browses closed rooms' transcripts under History.",
+      "version": "1.1.7",
+      "zip": "agent-room-monitor.zip",
+      "server": true
+    },
+    {
+      "id": "ai-usage",
+      "name": "AI Usage",
+      "description": "At-a-glance usage monitor for Claude (Claude Code & Cowork), ChatGPT/Codex, and GitHub Copilot. Reads local Claude/Codex session logs and the GitHub billing API.",
+      "version": "1.0.6",
+      "zip": "ai-usage.zip",
+      "server": true
+    },
+    {
+      "id": "azure-devops",
+      "name": "Azure DevOps",
+      "description": "Project-focused Azure DevOps repositories, pipelines, pull requests, and work items.",
+      "version": "1.0.2",
+      "zip": "azure-devops.zip",
+      "server": true
+    },
+    {
+      "id": "azure",
+      "name": "Azure Operations",
+      "description": "Touch-first Azure operations dashboard with subscription health, resources, deployments, alerts, costs, and contextual controls.",
+      "version": "1.0.0",
+      "zip": "azure.zip",
+      "server": true
+    },
+    {
+      "id": "dev-services",
+      "name": "Dev Services",
+      "description": "Configure up to 12 local HTTP/HTTPS services and see four at a glance, including listening state, port owner, expected-process mismatches, URL and folder shortcuts, and guarded process stopping on supported platforms.",
+      "version": "1.0.1",
+      "zip": "dev-services.zip",
+      "server": true
+    },
+    {
+      "id": "duplicati-dash",
+      "name": "Duplicati Dashboard",
+      "description": "Backup status board for a Duplicati server — every job with a green/red result dot, live progress while running, and one tap to open the web UI on the PC.",
+      "version": "1.0.2",
+      "zip": "duplicati-dash.zip",
+      "server": true
+    },
+    {
+      "id": "file-bridge",
+      "name": "FileBridge",
+      "description": "Bring files together from folders, Google Drive, and subscription sites into local folders, on a schedule. Folder jobs: change detection by modification time, size, or content hash (optionally source-newer only); mirror deletions with Recycle Bin, a test-source safety guard, and skip-pattern protection; date tokens like <yyyy-mm-dd> in paths for dated backups; follow Drive/.lnk shortcuts to copy their targets; safe replace (a failed copy restores the old file); manual, cron, or sliding repeat-every schedules with weekday exclusions; lifetime per-job and grand-total statistics; a configurable activity log (choose which per-file events are recorded) with a separate warnings tier so a copied file whose timestamp or read-only attribute couldn't be set is flagged without failing the run; reusable named filter groups with #/[list]/*.* wildcards; and a full uncapped dry-run preview with live file-by-file progress; pause and resume a running job (finish the current file, or stop mid-file) and see why each file copied. Google Drive jobs: paste a folder link and read it through the Drive API (sees everything shared with you, unlike the local mount), optionally exporting Google Docs/Sheets/Slides to Office files as they copy. Web-drop jobs: paste a site's listing URL and supply your own per-site rule file (matched by hostname) — sign in once in a real window and a seen-ledger fetches only what's new, on the same schedules. Jobs live in %APPDATA%\\open-quake\\file-bridge\\jobs.json — copy that file to move your jobs to another machine.",
+      "version": "1.7.3",
+      "zip": "file-bridge.zip",
+      "server": true
+    },
+    {
+      "id": "frigate-cams",
+      "name": "Frigate Cameras",
+      "description": "Live camera wall for a local Frigate NVR — auto-discovers every camera, with Grid, Spotlight, and Cycle views.",
+      "version": "1.0.5",
+      "zip": "frigate-cams.zip",
+      "server": false
+    },
+    {
+      "id": "git-updater",
+      "name": "git-updater",
+      "description": "Panel front-end for git-updater: check and update your tracked Windows apps (portable & installed) straight from their GitHub releases. Shares its app list with the standalone git-updater — manage the list there, run updates from here.",
+      "version": "1.0.0",
+      "zip": "git-updater.zip",
+      "server": true
+    },
+    {
+      "id": "if-player",
+      "name": "Interactive Fiction",
+      "description": "Play Inform / Z-machine & Glulx text adventures with TTS narration and voice commands.",
+      "version": "1.1.1",
+      "zip": "if-player.zip",
+      "server": true
+    },
+    {
+      "id": "jarvis",
+      "name": "JARVIS Mark 55",
+      "description": "Mark 55 assistant with ChatGPT via Codex and local Scottish speech.",
+      "version": "1.1.0",
+      "zip": "jarvis.zip",
+      "server": true
+    },
+    {
+      "id": "kitten-cannon",
+      "name": "Kitten Cannon",
+      "description": "Launch the kitten for distance — a touch remake of the classic, with online high scores.",
+      "version": "1.0.0",
+      "zip": "kitten-cannon.zip",
+      "server": false
+    },
+    {
+      "id": "office",
+      "name": "Microsoft 365",
+      "description": "Microsoft 365 calendar, presence, app launcher, and configurable desktop shortcuts.",
+      "version": "1.0.0",
+      "zip": "office.zip",
+      "server": true
+    },
+    {
+      "id": "music-assistant",
+      "name": "Music Assistant",
+      "description": "Full Music Assistant controller: now playing, queue, players and grouping, library browse and search.",
+      "version": "1.0.5",
+      "zip": "music-assistant.zip",
+      "server": false
+    },
+    {
+      "id": "news-spotlight",
+      "name": "News Spotlight",
+      "description": "Full-screen rotating RSS news reader with Ken Burns motion and breaking-news mode.",
+      "version": "1.0.0",
+      "zip": "news-spotlight.zip",
+      "server": true
+    },
+    {
+      "id": "photo-strip",
+      "name": "Photo Strip",
+      "description": "Ambient local-folder photo frame with full-width single-photo and panoramic strip layouts.",
+      "version": "1.0.3",
+      "zip": "photo-strip.zip",
+      "server": true
+    },
+    {
+      "id": "pihole-dash",
+      "name": "Pi-hole Dashboard",
+      "description": "Multi-server Pi-hole dashboard — per-server tabs with live stats, 24-hour query chart, top lists, and blocking controls.",
+      "version": "1.0.2",
+      "zip": "pihole-dash.zip",
+      "server": true
+    },
+    {
+      "id": "quake-bird",
+      "name": "Quake Bird",
+      "description": "A flappy-style arcade game with optional shared high scores.",
+      "version": "1.0.0",
+      "zip": "quake-bird.zip",
+      "server": false
+    },
+    {
+      "id": "spotify-volume",
+      "name": "Spotify Volume",
+      "description": "Per-app Windows volume control for the knob (Spotify by default, configurable to any process).",
+      "version": "1.0.0",
+      "zip": "spotify-volume.zip",
+      "server": true
+    },
+    {
+      "id": "deck-host",
+      "name": "Stream Deck Host",
+      "description": "Run Elgato Stream Deck plugins and profiles on the panel — real *.sdPlugin packages, plus .streamDeckProfile imports with working Hotkey/Text/Open keys.",
+      "version": "1.4.0",
+      "zip": "deck-host.zip",
+      "server": true
+    },
+    {
+      "id": "tailscale-monitor",
+      "name": "Tailscale Monitor",
+      "description": "See your tailnet at a glance — every machine with address, OS, exit-node role, and live online status. Reads the local Tailscale daemon (tailscale status) — no API key or login needed.",
+      "version": "0.6.0",
+      "zip": "tailscale-monitor.zip",
+      "server": true
+    },
+    {
+      "id": "unraid-mgmt",
+      "name": "Unraid Manager",
+      "description": "Monitor and manage several Unraid servers — Docker control (start/stop/restart/update) built for 60+ containers, plus array, disks, parity, UPS, VMs, and notifications. Needs Unraid 7.2+ (built-in GraphQL API).",
+      "version": "1.0.13",
+      "zip": "unraid-mgmt.zip",
+      "server": true
+    },
+    {
+      "id": "vlc-remote",
+      "name": "VLC Desktop Remote",
+      "description": "Control a local or network VLC player with transport, seek, volume, status, and playlist controls.",
+      "version": "1.0.6",
+      "zip": "vlc-remote.zip",
+      "server": true
+    }
+  ]
+}

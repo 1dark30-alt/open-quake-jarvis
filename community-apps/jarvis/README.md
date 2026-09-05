@@ -4,6 +4,8 @@ The Open Quake launcher now defaults to **Codex signed in with ChatGPT**, with a
 
 ## Install and use
 
+This fork includes Open Quake 0.8.4 (upstream main at `8f62ce1203bcb515d076fbc536fe34dcdca3d1e8`). The Jarvis drop-in is version 1.1.0 and retains the Mark 55 backend and voice settings. Import the updated ZIP when upgrading an existing installed copy.
+
 1. Install Codex and sign in with ChatGPT. The launcher finds `codex` on PATH or the Windows Codex app's bundled executable. You can set `JARVIS_CODEX_EXE` to its absolute executable path.
 2. Import `community-apps/jarvis.zip` into Open Quake (or use this app folder).
 3. In the installed app folder, run `python install_mark55.py` with Python 3.11 or newer. It installs an isolated environment, Chromium, the Scottish voice and offline speech-recognition model. Internet is needed for this initial download; subsequent speech processing is local. Re-run after moving the app, since virtual environments are not portable.

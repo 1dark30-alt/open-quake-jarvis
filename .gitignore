@@ -6,7 +6,7 @@ dist/
 out/
 build/
 
-# user runtime config (seeded from app/config.default.json on first run â€” keeps personal setups out of git)
+# user runtime config (seeded from app/config.default.json on first run; keeps personal setups out of git)
 app/config.json
 
 # local Azure Trusted Signing assets (3rd-party dlib + machine-specific metadata; re-fetched per machine)
@@ -45,3 +45,15 @@ community-apps/jarvis/Mark-LV/uploads/
 
 community-apps/jarvis/Mark-LV/models/
 community-apps/jarvis/Mark-LV/voice-preview*.wav
+.ua/
+app/native/open_quake_dpapi.node
+open-quake-next/
+# personal analysis prompt (bundled meeting-analysis-prompt.md stays stock)
+/my-meeting-analysis-prompt.md
+
+# transient project-state doc (regenerated locally, not part of the repo)
+docs/current-state.md
+
+# IF player runtime saves (created by server.js save-store at runtime; never source)
+community-apps/if-player/saves/
+X/

@@ -1,6 +1,9 @@
 {
   "id": "jarvis",
   "name": "JARVIS Mark 55",
+  "version": "1.1.0",
+  "description": "Mark 55 assistant with ChatGPT via Codex and local Scottish speech.",
+  "knob": true,
   "entry": "jarvisview.html",
   "served": true,
   "server": "server.js",

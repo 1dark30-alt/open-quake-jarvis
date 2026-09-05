@@ -1,0 +1,399 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Meeting</title>
+<style>
+  * { box-sizing:border-box; }
+  :root {
+    --bg:#05080d; --fg:#e8eef6; --muted:#c2d1e0; --dim:#8194a8; --surf:#16232f; --surf2:#0e1822;
+    --tile-bd:#2a3b4e; --accent:#7CFFB2; --danger:#ff5a5a; --accept:#3ddc84;
+    --danger-tint:rgba(255,90,90,.16);
+  }
+  body.light { --bg:#e6ecf3; --fg:#12202c; --muted:#37485a; --dim:#5b6b7a; --surf:#ffffff; --surf2:#dde5ee;
+    --tile-bd:#c3cfdb; --accept:#1fae5f; --danger:#e23b3b; --danger-tint:rgba(226,59,59,.12); }
+  html, body { margin:0; width:100%; height:100%; }
+  /* one typeface everywhere, including form controls */
+  html, body, button, input, select, textarea { font-family:"Segoe UI", system-ui, sans-serif; }
+  body { background:var(--bg); color:var(--fg); overflow:hidden; user-select:none; touch-action:manipulation; }
+  button { border:none; background:none; color:inherit; cursor:pointer; }
+  .ic svg { width:100%; height:100%; fill:currentColor; display:block; }
+
+  /* accent focus for keyboard + knob; press feedback ~120ms */
+  :focus-visible { outline:none; }
+  .foc:focus-visible, .foc.kfocus { box-shadow:0 0 0 4px var(--accent); }
+  .press { transition:transform .12s ease, filter .12s ease, box-shadow .12s ease, background .12s ease; }
+  .press:active { transform:scale(.96); filter:brightness(1.12); }
+
+  #wrap { display:flex; flex-direction:column; width:100vw; height:100vh; padding:22px; gap:16px; }
+
+  /* ---- header ---- */
+  #topbar { flex:0 0 auto; display:flex; align-items:center; gap:20px; min-height:52px; }
+  #segctl { display:flex; background:var(--surf); border-radius:12px; padding:5px; gap:4px; }
+  .seg { height:48px; padding:0 32px; border-radius:9px; background:transparent; color:var(--muted);
+    font-size:20px; font-weight:700; }
+  .seg.active { background:var(--accent); color:var(--accent-fg,#04121f); }
+  #status { font-size:16px; color:var(--dim); font-weight:600; }
+  #spacer { flex:1; }
+  #recHost { display:flex; }
+  #recToggle { display:flex; align-items:center; gap:12px; height:48px; padding:0 22px; border-radius:11px;
+    background:var(--surf); color:var(--fg); font-size:18px; font-weight:700; }
+  .topBtn { height:48px; padding:0 22px; border-radius:11px; background:var(--surf); color:var(--fg);
+    font-size:18px; font-weight:700; }
+  /* Column toggles: same chip as .topBtn, accent-filled while their column is open. Each is hidden
+     until its feature is enabled in Settings -> Meetings (Control has no switch — it's always there). */
+  .colBtn.on { background:var(--accent); color:var(--accent-fg,#04121f); }
+  #btnSlidePanel, #btnHlPanel { display:none; }
+  body.slides #btnSlidePanel { display:block; }
+  body.hlon #btnHlPanel { display:block; }
+  #recToggle .dot { width:14px; height:14px; border-radius:50%; background:var(--danger); }
+  #pill { display:flex; align-items:center; gap:16px; height:48px; padding:0 10px 0 20px; border-radius:11px; background:var(--danger-tint); }
+  #pill .dot { width:14px; height:14px; border-radius:50%; background:var(--danger); animation:pulse 1.4s infinite; }
+  #pill .txt { font-size:18px; font-weight:700; }
+  #pill .t { font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:.5px; }
+  #pill .stop { display:flex; align-items:center; gap:9px; height:38px; padding:0 18px; border-radius:8px; background:var(--danger); color:#1a0505; font-size:16px; font-weight:800; position:relative; }
+  #pill .stop .sq { width:14px; height:14px; border-radius:3px; background:#1a0505; }
+  /* invisible hit-area expansion: visible pill Stop is 38px tall, touches land on a ≥48px zone */
+  #pill .stop::after { content:''; position:absolute; left:-6px; right:-6px; top:-8px; bottom:-8px; }
+
+  /* ---- body: control deck + utility rail ---- */
+  #body { flex:1; display:flex; gap:16px; min-height:0; position:relative; }
+  #deck { flex:1; background:var(--surf2); border-radius:18px; display:flex; align-items:center; justify-content:center; }
+  .cluster { display:flex; flex-direction:column; gap:20px; }
+  .clabel { font-size:13px; font-weight:800; letter-spacing:1.5px; color:var(--dim); padding-left:6px; }
+  .crow { display:flex; gap:34px; }
+  .sep { width:1px; height:186px; background:var(--tile-bd); opacity:.55; margin:0 48px; }
+  .ctl { display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .ctl .btn { width:112px; height:112px; border-radius:50%; background:var(--surf); display:flex; align-items:center; justify-content:center; color:var(--fg); }
+  .ctl .btn .ic { width:42px; height:42px; }
+  .ctl.rot .btn .ic svg { transform:rotate(135deg); }
+  .ctl .lab { font-size:18px; font-weight:700; color:var(--fg); }
+  /* Accept/Decline carry semantic ICON color only — strong rings/fills are reserved for a real,
+     confirmed incoming-call state (none is available yet; see PROJECT.md no-fabricated-state rule).
+     End is the one persistent destructive action: solid red with contrast-safe dark foreground. */
+  .ctl.accept .btn { color:var(--accept); }
+  .ctl.decline .btn { color:var(--danger); }
+  .ctl.end .btn { background:var(--danger); color:#1a0505; }
+  /* Optional big Record button beside Hang Up (Settings → Meeting → Large record button). Idle = a red
+     record dot on the surface circle; live = solid red with a dark stop square. Independent of the
+     top-right record indicator. */
+  .ctl.rec .btn .dot { width:44px; height:44px; border-radius:50%; background:var(--danger); }
+  .ctl.rec.on .btn { background:var(--danger); }
+  .ctl.rec.on .btn .sq { width:40px; height:40px; border-radius:8px; background:#1a0505; }
+  .ctl.foc:focus-visible .btn { box-shadow:0 0 0 4px var(--accent); }
+  /* Only with all three columns open is the deck tight; pull 72px out of its whitespace (separator
+     margins 48->24 = 48px, control gaps 34->28 = 24px across the Teams layout's 4 gaps). Measured
+     result: Teams needs 905 in a 946 box, 41px of slack, no page overflow. Touch targets untouched. */
+  body.pctl.pslide.phl .sep { margin:0 24px; }
+  body.pctl.pslide.phl .crow { gap:28px; }
+
+  /* The three utility columns are all opt-in from the top bar and stack right of the deck in a
+     fixed order: Control, Slide Capture, Highlight. Measured at 1920x480: the columns settle at
+     320 / 302 / 260 (their content minimums exceed the 300/300/260 basis), and the deck's worst
+     case is Teams — 2 AV + 4 call controls at 124px each (the LABEL is wider than the 112px
+     circle), 282 + 97 sep + 598 = 977. 977 + 882 + 3x16 gaps = 1907, i.e. 31px past the 1876 of
+     usable width, so the all-three case tightens the deck's own spacing to buy it back (below). */
+  #rail { display:none; flex:0 0 300px; background:var(--surf2); border-radius:18px; padding:18px; flex-direction:column; gap:14px; }
+  body.pctl #rail { display:flex; }
+  .rlabel { font-size:13px; font-weight:800; letter-spacing:1.5px; color:var(--dim); }
+  #vol { display:flex; align-items:stretch; gap:12px; }
+  #vol .vb { width:82px; height:104px; border-radius:14px; background:var(--surf); display:flex; align-items:center; justify-content:center; color:var(--fg); }
+  #vol .vb .ic { width:40px; height:40px; }
+  #vol .lvl { flex:1; background:var(--surf); border-radius:14px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:0 10px; }
+  #vol .lvl .pct { font-size:36px; font-weight:800; font-variant-numeric:tabular-nums; }
+  #vol .lvl .pct.unknown .ic { width:38px; height:38px; color:var(--muted); margin:0 auto; }
+  #vol .lvl .track { width:78%; height:8px; border-radius:4px; background:var(--surf2); overflow:hidden; }
+  #vol .lvl .track i { display:block; height:100%; width:0%; background:var(--accent); transition:width .15s ease; }
+  .rsep { height:1px; background:var(--tile-bd); opacity:.5; }
+  .rrow { height:64px; display:flex; align-items:center; gap:14px; padding:0 16px; border-radius:12px; background:var(--surf);
+    color:var(--fg); font-size:18px; font-weight:600; }
+  .rrow .ic { width:26px; height:26px; color:var(--muted); flex:0 0 auto; }
+
+  /* ---- slide-capture column (hidden unless body.slides) ---- */
+  #slide { display:none; flex:0 0 300px; background:var(--surf2); border-radius:18px; padding:18px; flex-direction:column; gap:14px; }
+  body.slides.pslide #slide { display:flex; }
+  .srow { height:64px; display:flex; align-items:center; gap:12px; padding:0 16px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:18px; font-weight:600; text-align:left; }
+  .srow .ic { width:24px; height:24px; color:var(--muted); flex:0 0 auto; }
+  .srow .val { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .srow .val.none { color:var(--dim); font-weight:600; }
+  .srow .chev { color:var(--dim); font-size:22px; flex:0 0 auto; }
+  .sbig { height:96px; border-radius:14px; display:flex; align-items:center; justify-content:center; gap:12px;
+    font-size:22px; font-weight:800; background:var(--accent); color:var(--accent-fg,#04121f); }
+  .sbig .sglyph { width:0; height:0; border-left:20px solid currentColor; border-top:12px solid transparent; border-bottom:12px solid transparent; }
+  body.slides.capturing .sbig { background:var(--danger); color:#1a0505; }        /* Start -> Stop, same box */
+  body.slides.capturing .sbig .sglyph { width:18px; height:18px; border:0; border-radius:4px; background:currentColor; }
+  .smanual { height:64px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:18px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; gap:12px; }
+  .smanual .ic { width:24px; height:24px; flex:0 0 auto; }
+  .sstat { font-size:15px; color:var(--dim); font-weight:600; text-align:center; min-height:20px; line-height:1.3; }
+  .sstat b { color:var(--accent); font-variant-numeric:tabular-nums; }
+  .sstat.warn { color:var(--danger); }
+
+  /* ---- highlight column ---- */
+  #hl { display:none; flex:0 0 260px; background:var(--surf2); border-radius:18px; padding:18px; flex-direction:column; gap:14px; }
+  body.hlon.phl #hl { display:flex; }
+  .hbig { height:96px; border-radius:14px; display:flex; align-items:center; justify-content:center; gap:12px;
+    background:var(--accent); color:var(--accent-fg,#04121f); font-size:19px; font-weight:800; text-align:center; }
+  .hbig .hglyph { width:18px; height:18px; border-radius:50%; background:currentColor; flex:0 0 auto; }
+  body.highlighting .hbig { background:var(--danger); color:#1a0505; }   /* Start -> Stop, same box */
+  body.highlighting .hbig .hglyph { border-radius:4px; animation:pulse 1.4s infinite; }
+  /* Nothing recording = nothing to flag; .sdis is the column-wide dimmed-but-present treatment. */
+  .hclear { height:64px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:17px; font-weight:700; }
+  .hstat { font-size:15px; color:var(--dim); font-weight:600; text-align:center; min-height:20px; line-height:1.3; }
+  .hstat b { color:var(--accent); font-variant-numeric:tabular-nums; }
+  body.highlighting .hstat { color:var(--danger); }
+  /* capture controls are inert until a recording is live (slides need a home folder); Select stays usable */
+  .sdis { opacity:.4; pointer-events:none; }
+
+  /* ---- recording popover (anchored under Record, over the rail) ---- */
+  #scrim { position:absolute; inset:0; background:rgba(3,6,10,.28); border-radius:18px; display:none; }
+  body.light #scrim { background:rgba(210,220,230,.34); }
+  #recPanel { position:absolute; top:0; right:0; width:540px; background:var(--surf); border-radius:16px; padding:22px;
+    display:none; flex-direction:column; gap:16px; box-shadow:0 18px 50px rgba(0,0,0,.5); border:1px solid var(--tile-bd); }
+  #wrap.drawer-open #scrim, #wrap.drawer-open #recPanel { display:flex; }
+  #recPanel .phead { display:flex; align-items:center; }
+  #recPanel .phead .h { font-size:24px; font-weight:800; flex:1; }
+  #recClose { width:48px; height:48px; border-radius:10px; color:var(--dim); font-size:28px; display:flex; align-items:center; justify-content:center; position:relative; }
+  #recClose::after { content:''; position:absolute; inset:-6px; }   /* generous 60px hit zone around the small × glyph */
+  #micRow { display:flex; align-items:center; gap:12px; height:62px; padding:0 18px; border-radius:11px; background:var(--surf2); font-size:18px; font-weight:600; }
+  #micRow .lbl { color:var(--dim); font-weight:700; } #micRow .val { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } #micRow .chev { color:var(--dim); font-size:22px; }
+  #recStart { height:88px; border-radius:13px; background:var(--accent); color:var(--accent-fg,#04121f); font-size:24px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:14px; }
+  #recStart .dot { width:20px; height:20px; border-radius:50%; background:var(--accent-fg,#04121f); }
+  #recHint { font-size:13px; color:var(--dim); text-align:center; }
+  /* recording-details view (filename + Stop) — replaces Start while live and the popover is reopened */
+  #recFile { font-size:13px; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #recStopBig { height:88px; border-radius:13px; background:var(--danger); color:#1a0505; font-size:24px; font-weight:800; display:flex; align-items:center; justify-content:center; gap:14px; }
+  #recStopBig .sq { width:20px; height:20px; border-radius:5px; background:#1a0505; }
+  #recPanel.details #recStart, #recPanel.details #recHint { display:none; }
+  #recPanel:not(.details) #recFile, #recPanel:not(.details) #recStopBig { display:none; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* ---- shared picker chrome (microphone + capture-window) — opaque appliance pages ---- */
+  #devOverlay, #winOverlay { position:fixed; inset:0; background:var(--bg); display:none; flex-direction:column; padding:20px 40px; z-index:20; }
+  #devOverlay.show, #winOverlay.show { display:flex; }
+  .pickerHead { display:flex; align-items:center; gap:16px; height:56px; margin-bottom:16px; flex:0 0 auto; }
+  .pickerTitle { font-size:32px; font-weight:800; flex:0 0 auto; }
+  .pickerSub { font-size:16px; color:var(--dim); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pickerSpacer { flex:1; }
+  .pickerAct { height:56px; padding:0 24px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:18px; font-weight:700; flex:0 0 auto; }
+  .pickerCancel { height:56px; padding:0 26px; border-radius:12px; background:var(--surf2); color:var(--dim); font-size:18px; font-weight:700; flex:0 0 auto; }
+  #devList { flex:1; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:12px; }
+
+  /* window picker: 3-column tile grid + a paging rail that appears only when it overflows */
+  .pickerBody { flex:1; display:flex; gap:16px; min-height:0; }
+  .winGrid { flex:1; display:grid; grid-template-columns:repeat(3, 1fr); grid-auto-rows:80px; gap:12px; overflow-y:auto; overscroll-behavior:contain; align-content:start; }
+  .winTile { display:flex; align-items:center; text-align:left; padding:0 20px; border-radius:14px; background:var(--surf); border:1px solid var(--tile-bd);
+    color:var(--fg); font-size:21px; font-weight:600; line-height:1.2; overflow:hidden; }
+  .winTile span { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .winTile.current { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, var(--surf)); }
+  .winTile.current::before { content:'\2713'; color:var(--accent); font-weight:800; font-size:24px; margin-right:12px; flex:0 0 auto; }
+  .winTile.foc:focus-visible, .winTile.foc.kfocus { box-shadow:0 0 0 4px var(--accent); }
+  .winTile .minTag { margin-left:12px; flex:0 0 auto; font-style:normal; font-size:14px; font-weight:700; color:var(--dim);
+    border:1px solid var(--tile-bd); border-radius:7px; padding:3px 8px; }
+  .winMsg { grid-column:1 / -1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+    color:var(--dim); font-size:20px; padding:48px 24px; text-align:center; line-height:1.4; }
+  .winMsg b { color:var(--fg); font-size:24px; font-weight:800; }
+  .winScroll { flex:0 0 76px; display:flex; flex-direction:column; gap:12px; }
+  .winScrollBtn { flex:1; border-radius:14px; background:var(--surf); color:var(--fg); font-size:28px; display:flex; align-items:center; justify-content:center; }
+  .devRow { display:flex; align-items:center; height:68px; padding:0 22px; border-radius:12px; background:var(--surf); color:var(--fg);
+    font-size:22px; font-weight:600; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .devRow.current { background:var(--accent); color:var(--accent-fg,#04121f); }
+
+  /* ---- library / transcription / analysis overlays: full-screen, OPAQUE — each reads as its own
+     page, not a veil over the console (user direction, 2026-08-14) ---- */
+  button:focus:not(:focus-visible) { outline:none; }
+  .fsOverlay { position:fixed; inset:0; background:var(--bg); display:none; flex-direction:column; padding:24px 40px; z-index:20; }
+  .fsOverlay.show { display:flex; }
+  .ovHead { display:flex; align-items:center; gap:18px; margin-bottom:16px; }
+  .ovTitle { font-size:26px; font-weight:800; }
+  .ovNote { flex:1; font-size:16px; color:var(--dim); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ovNote.err { color:var(--danger); }
+  .ovClose { height:56px; padding:0 26px; border-radius:12px; background:var(--surf); color:var(--fg); font-size:18px; font-weight:700; flex:0 0 auto; }
+  /* header bulk-action buttons (Select all / Delete-Transcribe-Analyze selected) */
+  .ovBtn { height:56px; padding:0 22px; border-radius:12px; background:var(--surf); border:1px solid var(--tile-bd);
+    color:var(--fg); font-size:18px; font-weight:700; flex:0 0 auto; }
+  .ovBtn:disabled { opacity:.4; }
+  .ovBtn.danger { color:var(--danger); }
+  .ovBtn.confirm { background:var(--danger); border-color:transparent; color:#1a0505; }
+  .ovBtn.primary { background:var(--accent); border-color:transparent; color:var(--accent-fg,#04121f); }
+  /* per-row selection box: 48px square, accent-filled check when on */
+  .selBox { width:48px; height:48px; border-radius:10px; border:2px solid var(--tile-bd); background:var(--surf2);
+    color:transparent; font-size:26px; font-weight:800; flex:0 0 auto; display:flex; align-items:center; justify-content:center; }
+  .selBox.on { background:var(--accent); border-color:transparent; color:var(--accent-fg,#04121f); }
+  .ovBody { flex:1; min-height:0; display:flex; gap:12px; }
+  /* ▲/▼ page buttons, not drag thumbs — the reliable touch-scroll control on the panel */
+  .ovList { flex:1; min-width:0; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:12px; scrollbar-width:none; }
+  .ovList::-webkit-scrollbar { display:none; }
+  .ovScroll { flex:0 0 56px; display:flex; flex-direction:column; gap:10px; }
+  .ovScrollBtn { flex:1; min-height:48px; border-radius:12px; border:1px solid var(--tile-bd); background:var(--surf); color:var(--fg); font-size:26px; touch-action:none; }
+  .ovEmpty { padding:32px 8px; font-size:22px; color:var(--dim); }
+  .fileRow { flex:0 0 auto; display:flex; align-items:center; gap:16px; min-height:80px; padding:0 22px; border-radius:12px; background:var(--surf); }
+  .fileRow.playing { box-shadow:inset 0 0 0 2px var(--accent); }
+  .fileRow .meta { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .fileRow .fname { font-size:22px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fileRow .fsub { font-size:15px; color:var(--dim); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fileRow .fsub.err { color:var(--danger); }
+  .rowBtn { height:56px; min-width:130px; padding:0 20px; border-radius:11px; background:var(--surf2); border:1px solid var(--tile-bd);
+    color:var(--fg); font-size:18px; font-weight:700; flex:0 0 auto; }
+  .rowBtn:disabled { opacity:.4; }
+  .rowBtn.danger { color:var(--danger); }
+  .rowBtn.confirm { background:var(--danger); border-color:transparent; color:#1a0505; }
+  .rowBtn.primary { background:var(--accent); border-color:transparent; color:var(--accent-fg,#04121f); }
+  /* analysis folder navigation: Up + breadcrumb (one folder shown at a time, no recursion) */
+  #anNav { flex:0 0 auto; display:flex; align-items:center; gap:14px; margin-bottom:12px; }
+  #anPath { font-size:18px; color:var(--muted); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fileRow.folder { width:100%; text-align:left; color:var(--fg); }
+  .fileRow.folder .chev { color:var(--dim); font-size:26px; }
+  /* transcription status strip: current job + honest elapsed time (no fabricated percent) */
+  #txStatus { flex:0 0 auto; min-height:56px; display:flex; align-items:center; gap:14px; padding:0 22px; margin-bottom:12px;
+    border-radius:12px; background:var(--surf); font-size:18px; font-weight:600; color:var(--muted); }
+  #txStatus .t { font-variant-numeric:tabular-nums; font-weight:700; color:var(--fg); }
+  /* analysis result reader (own overlay so the shared list scroll buttons stay simple) */
+  #anView { flex:1; min-width:0; overflow-y:auto; overscroll-behavior:contain; background:var(--surf); border-radius:12px;
+    padding:20px 26px; font-size:22px; line-height:1.5; user-select:text; scrollbar-width:none; white-space:pre-wrap; }
+  #anView::-webkit-scrollbar { display:none; }
+  #anView b { font-weight:800; }
+  #anView pre { background:var(--surf2); border-radius:10px; padding:14px 18px; font-size:18px; overflow-x:auto; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="topbar">
+      <div id="segctl">
+        <button class="seg press foc" type="button" data-platform="zoom">Zoom</button>
+        <button class="seg press foc" type="button" data-platform="teams">Teams</button>
+      </div>
+      <button class="topBtn colBtn press foc" id="btnCtlPanel" type="button">Control</button>
+      <button class="topBtn colBtn press foc" id="btnSlidePanel" type="button">Slide Capture</button>
+      <button class="topBtn colBtn press foc" id="btnHlPanel" type="button">Highlight</button>
+      <div id="status">Ready</div>
+      <div id="spacer"></div>
+      <button class="topBtn press foc" id="btnAnalysis" type="button">Analysis</button>
+      <button class="topBtn press foc" id="btnUnprocessed" type="button">Unprocessed</button>
+      <div id="recHost"></div>
+    </div>
+
+    <div id="body">
+      <div id="deck">
+        <div class="cluster">
+          <div class="clabel">AUDIO &amp; VIDEO</div>
+          <div class="crow" id="avRow"></div>
+        </div>
+        <div class="sep"></div>
+        <div class="cluster">
+          <div class="clabel">CALL</div>
+          <div class="crow" id="callRow"></div>
+        </div>
+      </div>
+
+      <div id="rail">
+        <div class="rlabel">VOLUME</div>
+        <div id="vol">
+          <button class="vb press foc" id="volDown" type="button"></button>
+          <div class="lvl"><div class="pct unknown" id="volPct"></div><div class="track" id="volTrack" style="display:none"><i id="volFill"></i></div></div>
+          <button class="vb press foc" id="volUp" type="button"></button>
+        </div>
+        <div class="rsep"></div>
+        <button class="rrow press foc" id="settingsRow" type="button"><span class="ic" id="ic-settings"></span>Mic</button>
+        <button class="rrow press foc" id="shareScreen" type="button"><span class="ic" id="ic-share"></span>Share screen</button>
+      </div>
+
+      <!-- Slide-capture column: present only when the feature is enabled (main.js sets body.slides).
+           Select is always usable; Start/Manual are disabled until a recording is live. -->
+      <div id="slide">
+        <div class="rlabel">SLIDE CAPTURE</div>
+        <button class="srow press foc" id="slideSelect" type="button"><span class="ic" id="ic-slide-target"></span><span class="val" id="slideTargetVal">No window selected</span><span class="chev">&rsaquo;</span></button>
+        <button class="sbig press foc" id="slideToggle" type="button"><span class="sglyph"></span><span class="slbl">Start capture</span></button>
+        <button class="smanual press foc" id="slideManual" type="button"><span class="ic" id="ic-slide-cam"></span>Manual capture</button>
+        <div class="sstat" id="slideStat"></div>
+      </div>
+
+      <div id="hl">
+        <div class="rlabel">HIGHLIGHT</div>
+        <button class="hbig press foc" id="hlToggle" type="button"><span class="hglyph"></span><span class="hlbl">Start highlighting</span></button>
+        <button class="hclear press foc" id="hlClear" type="button">Clear current highlight</button>
+        <div class="hstat" id="hlStat"></div>
+      </div>
+
+      <div id="scrim"></div>
+      <div id="recPanel">
+        <div class="phead"><div class="h">Recording</div><button id="recClose" class="foc" type="button">&times;</button></div>
+        <button id="micRow" class="press foc" type="button"><span class="lbl">Microphone</span><span class="val" id="micVal">System default</span><span class="chev">&rsaquo;</span></button>
+        <button id="recStart" class="press foc" type="button"><span class="dot"></span>Start recording</button>
+        <div id="recHint">Starts automatically during Zoom and Teams calls</div>
+        <div id="recFile">&nbsp;</div>
+        <button id="recStopBig" class="press foc" type="button"><span class="sq"></span>Stop recording</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="devOverlay">
+    <div class="pickerHead"><div class="pickerTitle">Microphone</div><div class="pickerSpacer"></div><button class="pickerCancel foc" id="devCancel" type="button">Cancel</button></div>
+    <div id="devList"></div>
+  </div>
+
+  <!-- Slide-capture window picker: opaque appliance page, 3-col tile grid + paging rail -->
+  <div id="winOverlay">
+    <div class="pickerHead">
+      <div class="pickerTitle">Capture a window</div>
+      <div class="pickerSub" id="winSub">Choose the window being presented</div>
+      <div class="pickerSpacer"></div>
+      <button class="pickerAct foc" id="winRetry" type="button" style="display:none">Retry</button>
+      <button class="pickerAct foc" id="winClear" type="button">Clear selection</button>
+      <button class="pickerCancel foc" id="winCancel" type="button">Cancel</button>
+    </div>
+    <div class="pickerBody">
+      <div class="winGrid" id="winList"></div>
+      <div class="winScroll" id="winScrollRail" style="display:none">
+        <button class="winScrollBtn foc" id="winUp" type="button">&#9650;</button>
+        <button class="winScrollBtn foc" id="winDown" type="button">&#9660;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unprocessed recordings: list / play / transcribe / delete (transcription queue lives here) -->
+  <div class="fsOverlay" id="libOverlay">
+    <div class="ovHead"><div class="ovTitle">Unprocessed Recordings</div>
+      <button class="ovBtn press foc" id="libSelAll" type="button">Select all</button>
+      <button class="ovBtn primary press foc" id="libGoSel" type="button" disabled>Transcribe selected</button>
+      <button class="ovBtn danger press foc" id="libDelSel" type="button" disabled>Delete selected</button>
+      <div class="ovNote" id="libNote"></div>
+      <button class="ovClose press foc" id="libClose" type="button">Close</button></div>
+    <div id="txStatus"></div>
+    <div class="ovBody">
+      <div class="ovList" id="libList"></div>
+      <div class="ovScroll"><button class="ovScrollBtn press foc" id="libUp" type="button">&#9650;</button>
+        <button class="ovScrollBtn press foc" id="libDown" type="button">&#9660;</button></div>
+    </div>
+  </div>
+
+  <!-- Analysis: send transcripts to the AI, then read the result -->
+  <div class="fsOverlay" id="anOverlay">
+    <div class="ovHead"><div class="ovTitle">Analysis</div>
+      <button class="ovBtn press foc" id="anSelAll" type="button">Select all</button>
+      <button class="ovBtn primary press foc" id="anGoSel" type="button" disabled>Analyze selected</button>
+      <div class="ovNote" id="anNote"></div>
+      <button class="ovClose press foc" id="anClose" type="button">Close</button></div>
+    <div id="anNav"><button class="ovBtn press foc" id="anUp" type="button" disabled>&#11014; Up</button><div id="anPath"></div></div>
+    <div class="ovBody">
+      <div class="ovList" id="anList"></div>
+      <div class="ovScroll"><button class="ovScrollBtn press foc" id="anScrollUp" type="button">&#9650;</button>
+        <button class="ovScrollBtn press foc" id="anScrollDown" type="button">&#9660;</button></div>
+    </div>
+  </div>
+  <div class="fsOverlay" id="anViewOverlay" style="z-index:21">
+    <div class="ovHead"><div class="ovTitle" id="anViewTitle">Analysis</div><div class="ovNote"></div>
+      <button class="ovClose press foc" id="anViewBack" type="button">Back</button></div>
+    <div class="ovBody">
+      <div id="anView"></div>
+      <div class="ovScroll"><button class="ovScrollBtn press foc" id="anViewUp" type="button">&#9650;</button>
+        <button class="ovScrollBtn press foc" id="anViewDown" type="button">&#9660;</button></div>
+    </div>
+  </div>
+
+  <audio id="libAudio" style="display:none"></audio>
+
+  <script src="meetingview.js"></script>
+</body>
+</html>

@@ -1,4 +1,14 @@
   const panelApi = window.openQuakePanel;
+  // Software mode = the panel served into a normal desktop window (?mode=software). No device, no knob:
+  // the stage scales to fit the window (never rotates) and a floating button drives the page menu.
+  const SOFTWARE_MODE = new URLSearchParams(location.search).get('mode') === 'software';
+  if (SOFTWARE_MODE) document.documentElement.classList.add('swmode');
+  // Pane slot = one stacked page inside a software pane window. The top slot (?psel=1) keeps the ☰
+  // selector — main feeds it the PANE list, so it switches panes the way pages switch normally. The
+  // other slots show a fixed page: selector hidden, wiring off.
+  const PANE_SLOT = new URLSearchParams(location.search).get('pane') === '1';
+  const PANE_SEL = new URLSearchParams(location.search).get('psel') === '1';
+  if (PANE_SLOT && !PANE_SEL) document.documentElement.classList.add('paneslot');
   const grid = document.getElementById('grid'), vol = document.getElementById('vol'), web = document.getElementById('web');
   const webgrid = document.getElementById('webgrid');   // button strip beside a dashboard
   const selector = document.getElementById('selector'), selitems = document.getElementById('selitems');
@@ -8,8 +18,8 @@
   let armed = false, idleT = null, lastHit = -1, volT = null;
   let selOpen = false, selIdx = 0, selAutoClose = null;
   let knobSel = -1;   // knob "select button" mode: index of the highlighted tile (-1 = none)
-  let pendingRotFlash = false;   // a knob click just toggled rotation -> flash the new state when it comes back
   let webMode = false, curUrl = '', webReady = false, webDown = false, lastWeb = { x: 0, y: 0 }, webIdle = null;
+  let pendingMicToggle = false;   // a translation-toggle hotkey fired while the page was still loading; run on dom-ready
   let haToken = '', haInject = false, webExternalLinks = false, webAttached = false, pendingWebUrl = null;
   let webThemed = false, lastTheme = null;   // our served app pages (Music/Chat): inject live light/dark + accent into the guest
   // dashboard button strip: webRegion = the webview's sub-rect, webStrip = the tile-strip geometry (null = none)
@@ -30,6 +40,7 @@
   }
   web.addEventListener('dom-ready', () => {
     webReady = true;
+    if (pendingMicToggle) { pendingMicToggle = false; web.executeJavaScript('window.oqxToggleConversation && window.oqxToggleConversation()').catch(function () {}); }
     if (!webAttached) {
       webAttached = true;
       try { defaultUA = web.getUserAgent(); } catch (e) {}      // true default (about:blank), before any override
@@ -76,6 +87,9 @@
   });
   web.addEventListener('console-message', (e) => {
     if (webExternalLinks && e.message && e.message.indexOf('OQX_OPEN::') === 0) panelApi.openExternal(e.message.slice(10));
+    // Ring-state signaling (Claude Code app): same host-channel trick as OQX_OPEN, but unconditional —
+    // any served page can drive the ring this way, not gated behind the external-links toggle.
+    if (e.message && e.message.indexOf('OQX_RING::') === 0) panelApi.setRingState(e.message.slice(10));
   });
   web.addEventListener('did-finish-load', () => {
     if (!webExternalLinks) return;
@@ -86,6 +100,16 @@
   function layoutStage() {
     const stage = document.getElementById('stage');
     const w = window.innerWidth, h = window.innerHeight;
+    if (SOFTWARE_MODE) {
+      // Desktop window: scale the 1920x480 content to fit, centered and letterboxed. The window
+      // aspect is locked to 1920:480 so the letterbox is ~0, but min() + centering stays correct
+      // during resize. Never rotate — this is a landscape window driven by the OS cursor.
+      const scale = Math.min(w / 1920, h / 480);
+      const offX = Math.round((w - 1920 * scale) / 2), offY = Math.round((h - 480 * scale) / 2);
+      stage.style.transformOrigin = '0 0';
+      stage.style.transform = `translate(${offX}px, ${offY}px) scale(${scale})`;
+      return;
+    }
     // Portrait display (e.g. 480x1920): rotate the 1920x480 stage 90° to fill it.
     // Landscape display (1920x480, Windows Orientation = Landscape): no rotation, so the
     // OS mouse cursor and the content agree (otherwise the cursor reads 90° off).
@@ -117,9 +141,11 @@
       wrap.appendChild(bMinus); wrap.appendChild(center); wrap.appendChild(bPlus);
       d.appendChild(wrap);
     } else if (!empty) {                                       // build via DOM nodes (never innerHTML) so a config-supplied label/icon can't inject markup
+      if (t.tileState) d.classList.add('obs-' + t.tileState);   // live OBS state (program/preview/muted/live/on) -> colour
       if (t.iconSrc) { const im = document.createElement('img'); im.className = 'ic-img'; im.src = t.iconSrc; d.appendChild(im); }
       else { const icd = document.createElement('div'); icd.className = 'ic'; icd.textContent = t.icon || '▫️'; d.appendChild(icd); }
       const lb = document.createElement('div'); lb.className = 'lb'; lb.textContent = t.label || ''; d.appendChild(lb);
+      if (t.sub) { const sb = document.createElement('div'); sb.className = 'sub'; sb.textContent = t.sub; d.appendChild(sb); }   // live state label
     }
     return d;
   }
@@ -186,13 +212,20 @@
     lastTheme = t; injectWebTheme();                                    // push the theme live into a served app page (no reload needed)
   });
   panelApi.onGridList(d => { grids = d.grids; activeId = d.activeId; if (selOpen) renderWheel(); });
+  // Global reload hotkey (Settings -> Software -> Dashboards): main already checked the active page
+  // is kind:'web' before sending this, but webMode is the renderer's own source of truth for what's
+  // actually on screen right now, so gate on it here too.
+  panelApi.onReloadDashboard(() => { if (webMode) { try { web.reload(); } catch (e) {} } });
   panelApi.onRotation(r => {
     rotEnabled = !!r.enabled; rotRunning = !!r.running; if (selOpen) renderWheel();
-    if (pendingRotFlash) { pendingRotFlash = false; flashVol(rotRunning ? '⟳ Rotation on' : '⛔ Rotation off'); }
+    if (r.flash) flashVol(rotRunning ? '⟳ Rotation on' : '⛔ Rotation off');   // knob/tray/hotkey user toggle
   });
 
   // ---- first-run intro overlay (one-time "double-click the knob" hint) ----
-  panelApi.onIntro(() => { if (introOpen) return; introOpen = true; intro.classList.add('open'); });
+  panelApi.onIntro(() => {
+    if (SOFTWARE_MODE) { panelApi.introDone(); return; }   // no knob to teach in a desktop window
+    if (introOpen) return; introOpen = true; intro.classList.add('open');
+  });
   function dismissIntro() { if (!introOpen) return; introOpen = false; intro.classList.remove('open'); panelApi.introDone(); }
   introok.addEventListener('click', dismissIntro);   // PC mouse
 
@@ -339,6 +372,7 @@
     items.forEach((it, i) => {
       const d = document.createElement('div');
       d.className = 'selitem' + (i === selIdx ? ' sel' : '');
+      d.dataset.si = i;                                   // software mode: click-to-pick maps back to this index
       d.textContent = it.rot ? (rotRunning ? '⏸ Rotation: ON' : '▶ Rotation: OFF') : it.name;
       selitems.appendChild(d);
     });
@@ -361,21 +395,73 @@
   }
   function resetAutoClose() { clearTimeout(selAutoClose); selAutoClose = setTimeout(closeSelector, 4500); }
 
+  // ---- software mode: mouse drives the page menu (no knob) ----
+  // The ☰ button toggles the page menu; clicking an item picks it; clicking the dim backdrop closes;
+  // the wheel scrolls the list. In panel/monitor mode none of this is wired (the knob owns the menu).
+  if (SOFTWARE_MODE && (!PANE_SLOT || PANE_SEL)) {
+    const swBtn = document.getElementById('swpages');
+    if (swBtn) swBtn.addEventListener('click', () => { selOpen ? closeSelector() : openSelector(); });
+    selitems.addEventListener('click', (e) => {
+      const it = e.target.closest && e.target.closest('[data-si]');
+      if (!it) return;
+      selIdx = parseInt(it.dataset.si, 10); confirmSelector();
+    });
+    selector.addEventListener('click', (e) => { if (e.target === selector) closeSelector(); });
+    selector.addEventListener('wheel', (e) => { e.preventDefault(); moveSelector(e.deltaY > 0 ? 1 : -1); }, { passive: false });
+    document.addEventListener('keydown', (e) => {
+      if (!selOpen) { if (e.key === 'Escape') return; return; }
+      if (e.key === 'Escape') closeSelector();
+      else if (e.key === 'ArrowDown') { e.preventDefault(); moveSelector(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); moveSelector(-1); }
+      else if (e.key === 'Enter') { e.preventDefault(); confirmSelector(); }
+    });
+  }
+
+  // ---- translation-toggle hotkey ----
+  // A global hotkey (registered in main) sends 'micToggle'; run the served page's own mic toggle --
+  // the exact hook the knob uses (window.oqxToggleConversation). If main just switched to the page
+  // and the webview isn't ready yet, defer until dom-ready fires.
+  panelApi.onMicToggle(() => {
+    if (webMode && webReady) web.executeJavaScript('window.oqxToggleConversation && window.oqxToggleConversation()').catch(function () {});
+    else pendingMicToggle = true;
+  });
+
   // ---- knob ----
   // The knob does click-type detection in hardware: press index 1 = single-click, 2 = double-click.
+  // Generic drop-in knob capability: a gesture whose resolved mode is 'app' is delivered VERBATIM
+  // into the served page's window.oqKnob(event). The page returns false (or doesn't define oqKnob,
+  // or isn't loaded yet) to decline -> the panel falls back to the base default for that gesture,
+  // so the knob is never dead. Injection targets the one foreground webview, so "only the active
+  // page gets knob events" is inherent.
+  function knobToApp(k) {
+    if (!(webMode && webReady)) return Promise.resolve(false);
+    try {
+      return web.executeJavaScript('(function(){try{return window.oqKnob?(window.oqKnob(' + JSON.stringify(k) + ')!==false):false}catch(e){return false}})()')
+        .then(function (v) { return v === true; }, function () { return false; });
+    } catch (e) { return Promise.resolve(false); }
+  }
+  function pttInject(k) {   // press-and-hold -> push-to-talk; the served chat page defines window.pttStart/Stop
+    if (webMode && webReady) web.executeJavaScript(k.phase === 'start' ? 'window.pttStart&&window.pttStart()' : 'window.pttStop&&window.pttStop()').catch(function () {});
+  }
   panelApi.onKnob(k => {
     if (introOpen) {   // teach by doing: a double-click clears the intro and opens the page menu; ignore other knob input
       if (k.type === 'press' && k.index === 2) { dismissIntro(); openSelector(); }
       return;
     }
-    if (k.type === 'hold') {   // press-and-hold -> push-to-talk; the served chat page defines window.pttStart/Stop
-      if (webMode && webReady) web.executeJavaScript(k.phase === 'start' ? 'window.pttStart&&window.pttStart()' : 'window.pttStop&&window.pttStop()').catch(function () {});
+    const kn = cfg._knob || {};
+    const appMode = kn.turn === 'app' || kn.click === 'app' || kn.dblclick === 'app';
+    if (k.type === 'hold') {
+      // App-controlled pages get hold first (full event vocabulary); unconsumed -> the existing
+      // push-to-talk injection, so ai-voice/livetranslate keep working unchanged.
+      if (appMode) knobToApp(k).then(function (used) { if (!used) pttInject(k); });
+      else pttInject(k);
       return;
     }
     if (k.type === 'rotate') {
       if (selOpen) { moveSelector(k.dir > 0 ? -1 : 1); return; }          // CW scrolls down the page list
-      const turn = (cfg._knob && cfg._knob.turn) || 'pages';
-      if (turn === 'volume') { panelApi.volume(k.dir > 0 ? 1 : -1); flashVol(k.dir > 0 ? '🔊 +' : '🔉 −'); }
+      const turn = kn.turn || 'pages';
+      if (turn === 'app') { knobToApp(k).then(function (used) { if (!used) cyclePage(k.dir > 0 ? -1 : 1); }); }
+      else if (turn === 'volume') { panelApi.volume(k.dir > 0 ? 1 : -1); flashVol(k.dir > 0 ? '🔊 +' : '🔉 −'); }
       else if (turn === 'scroll') {                                       // native wheel at center -> inner scrollables (Grafana/HA, lyrics) scroll too
         if (webMode && webReady) { try { web.sendInputEvent({ type: 'mouseWheel', x: Math.round(webRegion.width / 2), y: 240, deltaX: 0, deltaY: k.dir > 0 ? -120 : 120, wheelTicksX: 0, wheelTicksY: k.dir > 0 ? -1 : 1, hasPreciseScrollingDeltas: true, canScroll: true }); } catch (e) {} }
       }
@@ -385,18 +471,39 @@
     }
     if (k.type === 'press') {
       if (selOpen) { confirmSelector(); return; }           // any press picks the highlighted grid
-      if (k.index === 2) { openSelector(); return; }        // double-click -> page selector (always available)
-      const click = (cfg._knob && cfg._knob.click) || 'rotation';
-      if (click === 'mute') { panelApi.volume('mute'); flashVol('🔇'); }
-      else if (click === 'enter') { knobEnter(); }
-      else { pendingRotFlash = true; panelApi.toggleRotation(); }   // 'rotation' (default) — flash the new state on the rotation update
+      // Single press -> configured click action; double press -> configured dblclick action.
+      // Defaults preserve prior behavior: click='rotation' (toggle), dblclick='selector' -- except
+      // the Claude Code app, which defaults its own click to 'enter' (tap-to-talk) so voice works
+      // with zero setup rather than requiring the same manual per-page "Knob Override" that Music's
+      // play/pause needs. An explicit per-page override (Advanced -> Knob) still wins either way.
+      const defaultClick = (cfg && (cfg.app === 'ai-voice' || cfg.app === 'livetranslate')) ? 'enter' : 'rotation';
+      const action = (k.index === 2)
+        ? (kn.dblclick || 'selector')
+        : (kn.click || defaultClick);
+      if (action === 'app') {
+        knobToApp(k).then(function (used) { if (!used) doKnobAction(k.index === 2 ? 'selector' : 'rotation'); });
+        return;
+      }
+      doKnobAction(action);
     }
   });
+  function doKnobAction(a) {
+    if (a === 'selector') return openSelector();
+    if (a === 'mute') { panelApi.volume('mute'); flashVol('🔇'); return; }
+    if (a === 'enter') return knobEnter();
+    if (a === 'home') return panelApi.gotoHome();
+    if (a === 'rotation_start') return panelApi.startRotation();
+    if (a === 'rotation_stop') return panelApi.stopRotation();
+    // 'rotation' (default toggle) — main flashes the new state on the rotation update
+    panelApi.toggleRotation();
+  }
   // ---- knob "scroll pages" / "select button" / "enter" ----
   function cyclePage(dir) {
     if (!grids.length) return;
     let gi = grids.findIndex(g => g.id === activeId); if (gi < 0) gi = 0;
-    panelApi.switchGrid(grids[(gi + dir + grids.length) % grids.length].id);
+    const next = grids[(gi + dir + grids.length) % grids.length];
+    panelApi.switchGrid(next.id);
+    flashVol(next.name || '(unnamed)');                 // brief overlay of the page name (same pattern as volume/rotation flashes)
   }
   function selHost() { return (webMode && webStrip) ? webgrid : (!webMode ? grid : null); }   // grid tiles, or a dashboard/app's strip; null on a page with no buttons
   function selButtons() { const out = []; (cfg.tiles || []).forEach((t, i) => { if (t && t.type && t.cover == null) out.push(i); }); return out; }
@@ -419,6 +526,10 @@
       return;
     }
     if (cfg && cfg.app === 'music') { panelApi.media('playpause'); return; }   // music: play/pause
+    if (cfg && (cfg.app === 'ai-voice' || cfg.app === 'livetranslate')) {   // AI Voice (every backend) + live translate: tap toggles on/off
+      if (webMode && webReady) web.executeJavaScript('window.oqxToggleConversation && window.oqxToggleConversation()').catch(function () {});
+      return;
+    }
     panelApi.launch({ type: 'key', value: 'enter', label: 'knob enter' });     // else: a real Enter keystroke
   }
   let counterLocked = false;
@@ -434,4 +545,12 @@
     panelApi.saveTileValue(cfg.id, idx, String(count));
   }
 
-  function flashVol(t) { vol.textContent = t; vol.style.opacity = 1; clearTimeout(volT); volT = setTimeout(() => vol.style.opacity = 0, 500); }
+  function flashVol(t) { vol.classList.remove('notice'); vol.textContent = t; vol.style.opacity = 1; clearTimeout(volT); volT = setTimeout(() => vol.style.opacity = 0, 500); }
+  // Short sentence from main (routine couldn't run, ran somewhere else). Shares the flash overlay
+  // but wraps and lingers -- a sentence at 44px for half a second is unreadable.
+  function flashNotice(t) {
+    if (!t) return;
+    vol.classList.add('notice'); vol.textContent = t; vol.style.opacity = 1;
+    clearTimeout(volT); volT = setTimeout(() => { vol.style.opacity = 0; vol.classList.remove('notice'); }, 2800);
+  }
+  panelApi.onNotice(flashNotice);

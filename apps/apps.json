@@ -1,7 +1,124 @@
 [
   {
+    "id": "discord",
+    "name": "Discord",
+    "description": "Voice status and controls",
+    "file": "discordview.html",
+    "served": true,
+    "options": [],
+    "settings": {
+      "key": "discord",
+      "title": "Discord integration",
+      "options": [
+        {
+          "key": "enabled",
+          "label": "Enable Discord integration",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "key": "autoReconnect",
+          "label": "Automatic reconnect",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "key": "richPresence",
+          "label": "Rich Presence enabled",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "key": "defaultView",
+          "label": "Default Discord view",
+          "type": "select",
+          "default": "voice",
+          "choices": [
+            [
+              "voice",
+              "Voice"
+            ],
+            [
+              "chat",
+              "Chat"
+            ],
+            [
+              "activity",
+              "Activity"
+            ]
+          ]
+        },
+        {
+          "key": "showUnavailable",
+          "label": "Show/hide unavailable controls",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "key": "applicationIdOverride",
+          "label": "Custom Discord Application ID",
+          "type": "text",
+          "default": "",
+          "maxLength": 128,
+          "advanced": true,
+          "help": "Development/team override. Leave blank to use the built-in open-quake Discord application. Register http://127.0.0.1:51120/callback for a custom app."
+        },
+        {
+          "key": "customVoiceScopes",
+          "label": "Custom app: Voice permissions",
+          "type": "bool",
+          "default": false,
+          "advanced": true,
+          "help": "Request rpc.voice.read and rpc.voice.write. These scopes require Discord approval or applicable tester access."
+        },
+        {
+          "key": "customMessageScopes",
+          "label": "Custom app: Message permissions",
+          "type": "bool",
+          "default": false,
+          "advanced": true,
+          "help": "Request messages.read for message history and live message events."
+        },
+        {
+          "key": "customNotificationScopes",
+          "label": "Custom app: Notification permissions",
+          "type": "bool",
+          "default": false,
+          "advanced": true,
+          "help": "Request rpc.notifications.read. Discord documents this scope as approved-partner only."
+        }
+      ]
+    }
+  },
+  {
+    "id": "obs",
+    "name": "OBS Switcher",
+    "description": "Streaming scene controls",
+    "file": "obsview.html",
+    "served": true,
+    "options": [
+      {
+        "key": "layout",
+        "label": "Scene buttons",
+        "type": "select",
+        "default": "12x4",
+        "choices": [
+          [
+            "12x4",
+            "Normal — 6 across, 24 visible"
+          ],
+          [
+            "8x2",
+            "Large — 4 across, 12 visible"
+          ]
+        ]
+      }
+    ]
+  },
+  {
     "id": "clock",
     "name": "Flip Clock",
+    "description": "Flip clock and weather",
     "file": "clock.html",
     "options": [
       {
@@ -18,35 +135,194 @@
             "12",
             "12-hour"
           ]
-        ]
+        ],
+        "section": "Clock display"
       },
       {
         "key": "seconds",
         "label": "Show seconds",
         "type": "bool",
-        "default": false
+        "default": false,
+        "section": "Clock display"
       },
       {
         "key": "date",
         "label": "Show date & day",
         "type": "bool",
-        "default": true
+        "default": true,
+        "section": "Clock display"
+      },
+      {
+        "key": "weather",
+        "label": "Show weather",
+        "type": "bool",
+        "default": false,
+        "section": "Clock display"
+      },
+      {
+        "key": "weatherCity",
+        "label": "City",
+        "type": "text",
+        "default": "",
+        "help": "e.g. \"Salt Lake City, US\" — looked up via Open-Meteo, no account or key needed.",
+        "showIf": {
+          "key": "weather",
+          "value": true
+        },
+        "section": "Clock display"
+      },
+      {
+        "key": "weatherUnit",
+        "label": "Units",
+        "type": "select",
+        "default": "f",
+        "choices": [
+          [
+            "f",
+            "°F"
+          ],
+          [
+            "c",
+            "°C"
+          ]
+        ],
+        "showIf": {
+          "key": "weather",
+          "value": true
+        },
+        "section": "Clock display"
       }
     ]
   },
   {
+    "id": "meeting",
+    "name": "Meeting",
+    "description": "Teams and Zoom call controls",
+    "file": "meetingview.html",
+    "served": true,
+    "options": [
+      {
+        "key": "defaultPlatform",
+        "label": "Default platform",
+        "type": "select",
+        "default": "zoom",
+        "choices": [
+          [
+            "zoom",
+            "Zoom"
+          ],
+          [
+            "teams",
+            "Teams"
+          ]
+        ],
+        "help": "Which platform the Meeting page opens to. Switching tabs on the panel still works for a one-off call on the other platform; this just sets what shows up by default.",
+        "section": "Platform"
+      },
+      {
+        "key": "zoomUseDefaults",
+        "label": "Zoom tab: use Zoom's default key mappings",
+        "type": "bool",
+        "default": true,
+        "help": "Zoom ships with these combos already bound: Alt+A mute, Alt+V video, Ctrl+Shift+A/D phone accept/decline, Alt+Q leave. If you haven't changed Zoom's own Keyboard Shortcuts there's nothing to configure; turn this off only if you've remapped them in Zoom yourself.",
+        "section": "Zoom",
+        "helpCollapsed": true
+      },
+      {
+        "key": "zoomMute",
+        "label": "Zoom: Mute/unmute combo",
+        "type": "text",
+        "default": "alt+a",
+        "help": "Zoom default: Alt+A (\"Mute/Unmute Audio\"). Must match whatever's actually assigned in Zoom → Settings → Keyboard Shortcuts, with \"Enable Global Shortcut\" checked so it works even when Zoom isn't focused.",
+        "showIf": {
+          "key": "zoomUseDefaults",
+          "value": false
+        },
+        "section": "Zoom"
+      },
+      {
+        "key": "zoomVideo",
+        "label": "Zoom: Start/stop video combo",
+        "type": "text",
+        "default": "alt+v",
+        "help": "Zoom default: Alt+V (\"Start/Stop Video\").",
+        "showIf": {
+          "key": "zoomUseDefaults",
+          "value": false
+        },
+        "section": "Zoom"
+      },
+      {
+        "key": "zoomAccept",
+        "label": "Zoom: Accept inbound call combo",
+        "type": "text",
+        "default": "control+shift+a",
+        "help": "Zoom default: Ctrl+Shift+A (Zoom Phone's \"Accept inbound call\").",
+        "showIf": {
+          "key": "zoomUseDefaults",
+          "value": false
+        },
+        "section": "Zoom"
+      },
+      {
+        "key": "zoomDecline",
+        "label": "Zoom: Decline inbound call combo",
+        "type": "text",
+        "default": "control+shift+d",
+        "help": "Zoom default: Ctrl+Shift+D (Zoom Phone's \"Decline inbound call\").",
+        "showIf": {
+          "key": "zoomUseDefaults",
+          "value": false
+        },
+        "section": "Zoom"
+      },
+      {
+        "key": "zoomLeave",
+        "label": "Zoom: Leave meeting combo",
+        "type": "text",
+        "default": "alt+q",
+        "help": "Zoom default: Alt+Q (\"Display prompt to end or leave meeting\") — this opens Zoom's leave/end confirmation dialog rather than leaving instantly; you'll still need to confirm it once (in Zoom, via mouse or Enter).",
+        "showIf": {
+          "key": "zoomUseDefaults",
+          "value": false
+        },
+        "section": "Zoom"
+      }
+    ]
+  },
+  {
+    "id": "diagnostics",
+    "name": "Device Diagnostics",
+    "description": "Device self-test",
+    "file": "diagnosticsview.html",
+    "served": true,
+    "options": []
+  },
+  {
     "id": "music",
     "name": "Music",
+    "description": "Now playing and transport",
     "file": "musicview.html",
     "served": true,
     "options": [
-      { "key": "art", "label": "Show album art", "type": "bool", "default": true },
-      { "key": "lyrics", "label": "Show lyrics", "type": "bool", "default": false }
+      {
+        "key": "art",
+        "label": "Show album art",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "key": "lyrics",
+        "label": "Show lyrics",
+        "type": "bool",
+        "default": false
+      }
     ]
   },
   {
     "id": "chat",
     "name": "Open WebUI",
+    "description": "AI chat via Open WebUI",
     "file": "chatview.html",
     "served": true,
     "options": [
@@ -72,8 +348,53 @@
     ]
   },
   {
+    "id": "github",
+    "name": "GitHub",
+    "description": "Repositories and Actions",
+    "file": "github.html",
+    "served": true,
+    "knob": true,
+    "options": []
+  },
+  {
+    "id": "ha-dashboard",
+    "name": "Home Assistant Dashboard",
+    "description": "Home Assistant dashboards",
+    "options": [
+      {
+        "key": "dashboard",
+        "label": "Dashboard",
+        "type": "text",
+        "default": "lovelace",
+        "help": "url_path of an HA Lovelace dashboard (e.g. 'lovelace' for Overview). Use the picker above to pick one from your HA server."
+      },
+      {
+        "key": "kiosk",
+        "label": "Kiosk mode",
+        "type": "bool",
+        "default": false,
+        "help": "Hides both the header and sidebar. Requires the kiosk-mode integration installed on your Home Assistant instance — this only sets the URL flag it reads."
+      },
+      {
+        "key": "hideHeader",
+        "label": "Hide header",
+        "type": "bool",
+        "default": false,
+        "help": "Hides just HA's top header bar. Also requires the kiosk-mode integration on your HA instance."
+      },
+      {
+        "key": "hideSidebar",
+        "label": "Hide sidebar",
+        "type": "bool",
+        "default": false,
+        "help": "Hides just HA's sidebar. Also requires the kiosk-mode integration on your HA instance."
+      }
+    ]
+  },
+  {
     "id": "tzclock",
     "name": "World Clock",
+    "description": "World time",
     "file": "tzclock.html",
     "options": [
       {
@@ -90,7 +411,8 @@
             "cities",
             "Cities"
           ]
-        ]
+        ],
+        "section": "Clock display"
       },
       {
         "key": "display",
@@ -105,6 +427,2944 @@
           [
             "analog",
             "Analog"
+          ]
+        ],
+        "section": "Clock display"
+      },
+      {
+        "key": "format",
+        "label": "Time format",
+        "type": "select",
+        "default": "12",
+        "choices": [
+          [
+            "12",
+            "12-hour"
+          ],
+          [
+            "24",
+            "24-hour"
+          ]
+        ],
+        "section": "Clock display"
+      },
+      {
+        "key": "seconds",
+        "label": "Show seconds",
+        "type": "bool",
+        "default": false,
+        "section": "Clock display"
+      },
+      {
+        "key": "usLayout",
+        "label": "US layout",
+        "type": "select",
+        "default": "row",
+        "choices": [
+          [
+            "row",
+            "One row of 4"
+          ],
+          [
+            "grid",
+            "2 x 2"
+          ]
+        ],
+        "showIf": {
+          "key": "mode",
+          "value": "us"
+        },
+        "section": "Clock display"
+      },
+      {
+        "key": "autoOrder",
+        "label": "Auto-order by time zone",
+        "type": "bool",
+        "default": false,
+        "help": "Sorts the chosen cities west → east by GMT offset (GMT−7 before GMT+9), ignoring the order you picked them in.",
+        "showIf": {
+          "key": "mode",
+          "value": "cities"
+        },
+        "section": "Cities"
+      },
+      {
+        "key": "c1",
+        "label": "City 1",
+        "type": "select",
+        "default": "",
+        "choices": [
+          [
+            "",
+            "— none —"
+          ],
+          [
+            "Pacific/Midway",
+            "Midway Island"
+          ],
+          [
+            "US/Samoa",
+            "Samoa"
+          ],
+          [
+            "US/Hawaii",
+            "Hawaii"
+          ],
+          [
+            "US/Alaska",
+            "Alaska"
+          ],
+          [
+            "US/Pacific",
+            "Pacific Time (US & Canada)"
+          ],
+          [
+            "America/Tijuana",
+            "Tijuana"
+          ],
+          [
+            "US/Arizona",
+            "Arizona"
+          ],
+          [
+            "US/Mountain",
+            "Mountain Time (US & Canada)"
+          ],
+          [
+            "America/Chihuahua",
+            "Chihuahua"
+          ],
+          [
+            "America/Mazatlan",
+            "Mazatlan"
+          ],
+          [
+            "America/Mexico_City",
+            "Mexico City"
+          ],
+          [
+            "America/Monterrey",
+            "Monterrey"
+          ],
+          [
+            "Canada/Saskatchewan",
+            "Saskatchewan"
+          ],
+          [
+            "US/Central",
+            "Central Time (US & Canada)"
+          ],
+          [
+            "US/Eastern",
+            "Eastern Time (US & Canada)"
+          ],
+          [
+            "US/East-Indiana",
+            "Indiana (East)"
+          ],
+          [
+            "America/Bogota",
+            "Bogota"
+          ],
+          [
+            "America/Lima",
+            "Lima"
+          ],
+          [
+            "America/Caracas",
+            "Caracas"
+          ],
+          [
+            "Canada/Atlantic",
+            "Atlantic Time (Canada)"
+          ],
+          [
+            "America/La_Paz",
+            "La_Paz"
+          ],
+          [
+            "America/Santiago",
+            "Santiago"
+          ],
+          [
+            "Canada/Newfoundland",
+            "Newfoundland"
+          ],
+          [
+            "America/Buenos_Aires",
+            "Buenos Aires"
+          ],
+          [
+            "Greenland",
+            "Greenland"
+          ],
+          [
+            "Atlantic/Stanley",
+            "Stanley"
+          ],
+          [
+            "Atlantic/Azores",
+            "Azores"
+          ],
+          [
+            "Atlantic/Cape_Verde",
+            "Cape Verde Is."
+          ],
+          [
+            "Africa/Casablanca",
+            "Casablanca"
+          ],
+          [
+            "Europe/Dublin",
+            "Dublin"
+          ],
+          [
+            "Europe/Lisbon",
+            "Libson"
+          ],
+          [
+            "Europe/London",
+            "London"
+          ],
+          [
+            "Africa/Monrovia",
+            "Monrovia"
+          ],
+          [
+            "Europe/Amsterdam",
+            "Amsterdam"
+          ],
+          [
+            "Europe/Belgrade",
+            "Belgrade"
+          ],
+          [
+            "Europe/Berlin",
+            "Berlin"
+          ],
+          [
+            "Europe/Bratislava",
+            "Bratislava"
+          ],
+          [
+            "Europe/Brussels",
+            "Brussels"
+          ],
+          [
+            "Europe/Budapest",
+            "Budapest"
+          ],
+          [
+            "Europe/Copenhagen",
+            "Copenhagen"
+          ],
+          [
+            "Europe/Ljubljana",
+            "Ljubljana"
+          ],
+          [
+            "Europe/Madrid",
+            "Madrid"
+          ],
+          [
+            "Europe/Paris",
+            "Paris"
+          ],
+          [
+            "Europe/Prague",
+            "Prague"
+          ],
+          [
+            "Europe/Rome",
+            "Rome"
+          ],
+          [
+            "Europe/Sarajevo",
+            "Sarajevo"
+          ],
+          [
+            "Europe/Skopje",
+            "Skopje"
+          ],
+          [
+            "Europe/Stockholm",
+            "Stockholm"
+          ],
+          [
+            "Europe/Vienna",
+            "Vienna"
+          ],
+          [
+            "Europe/Warsaw",
+            "Warsaw"
+          ],
+          [
+            "Europe/Zagreb",
+            "Zagreb"
+          ],
+          [
+            "Europe/Athens",
+            "Athens"
+          ],
+          [
+            "Europe/Bucharest",
+            "Bucharest"
+          ],
+          [
+            "Africa/Cairo",
+            "Cairo"
+          ],
+          [
+            "Africa/Harare",
+            "Harere"
+          ],
+          [
+            "Europe/Helsinki",
+            "Helsinki"
+          ],
+          [
+            "Europe/Istanbul",
+            "Istanbul"
+          ],
+          [
+            "Asia/Jerusalem",
+            "Jerusalem"
+          ],
+          [
+            "Europe/Kiev",
+            "Kiev"
+          ],
+          [
+            "Europe/Minsk",
+            "Minsk"
+          ],
+          [
+            "Europe/Riga",
+            "Riga"
+          ],
+          [
+            "Europe/Sofia",
+            "Sofia"
+          ],
+          [
+            "Europe/Tallinn",
+            "Tallinn"
+          ],
+          [
+            "Europe/Vilnius",
+            "Vilnius"
+          ],
+          [
+            "Asia/Baghdad",
+            "Baghdad"
+          ],
+          [
+            "Asia/Kuwait",
+            "Kuwait"
+          ],
+          [
+            "Africa/Nairobi",
+            "Nairobi"
+          ],
+          [
+            "Asia/Riyadh",
+            "Riyadh"
+          ],
+          [
+            "Asia/Tehran",
+            "Tehran"
+          ],
+          [
+            "Europe/Moscow",
+            "Moscow"
+          ],
+          [
+            "Asia/Baku",
+            "Baku"
+          ],
+          [
+            "Europe/Volgograd",
+            "Volgograd"
+          ],
+          [
+            "Asia/Muscat",
+            "Muscat"
+          ],
+          [
+            "Asia/Tbilisi",
+            "Tbilisi"
+          ],
+          [
+            "Asia/Yerevan",
+            "Yerevan"
+          ],
+          [
+            "Asia/Kabul",
+            "Kabul"
+          ],
+          [
+            "Asia/Karachi",
+            "Karachi"
+          ],
+          [
+            "Asia/Tashkent",
+            "Tashkent"
+          ],
+          [
+            "Asia/Kolkata",
+            "Kolkata"
+          ],
+          [
+            "Asia/Kathmandu",
+            "Kathmandu"
+          ],
+          [
+            "Asia/Yekaterinburg",
+            "Yekaterinburg"
+          ],
+          [
+            "Asia/Almaty",
+            "Almaty"
+          ],
+          [
+            "Asia/Dhaka",
+            "Dhaka"
+          ],
+          [
+            "Asia/Novosibirsk",
+            "Novosibirsk"
+          ],
+          [
+            "Asia/Bangkok",
+            "Bangkok"
+          ],
+          [
+            "Asia/Jakarta",
+            "Jakarta"
+          ],
+          [
+            "Asia/Krasnoyarsk",
+            "Krasnoyarsk"
+          ],
+          [
+            "Asia/Chongqing",
+            "Chongqing"
+          ],
+          [
+            "Asia/Hong_Kong",
+            "Hong Kong"
+          ],
+          [
+            "Asia/Kuala_Lumpur",
+            "Kuala Lumpur"
+          ],
+          [
+            "Australia/Perth",
+            "Perth"
+          ],
+          [
+            "Asia/Singapore",
+            "Singapore"
+          ],
+          [
+            "Asia/Taipei",
+            "Taipei"
+          ],
+          [
+            "Asia/Ulaanbaatar",
+            "Ulaan Bataar"
+          ],
+          [
+            "Asia/Urumqi",
+            "Urumqi"
+          ],
+          [
+            "Asia/Irkutsk",
+            "Irkutsk"
+          ],
+          [
+            "Asia/Seoul",
+            "Seoul"
+          ],
+          [
+            "Asia/Tokyo",
+            "Tokyo"
+          ],
+          [
+            "Australia/Adelaide",
+            "Adelaide"
+          ],
+          [
+            "Australia/Darwin",
+            "Darwin"
+          ],
+          [
+            "Asia/Yakutsk",
+            "Yakutsk"
+          ],
+          [
+            "Australia/Brisbane",
+            "Brisbane"
+          ],
+          [
+            "Australia/Canberra",
+            "Canberra"
+          ],
+          [
+            "Pacific/Guam",
+            "Guam"
+          ],
+          [
+            "Australia/Hobart",
+            "Hobart"
+          ],
+          [
+            "Australia/Melbourne",
+            "Melbourne"
+          ],
+          [
+            "Pacific/Port_Moresby",
+            "Port Moresby"
+          ],
+          [
+            "Australia/Sydney",
+            "Sydney"
+          ],
+          [
+            "Asia/Vladivostok",
+            "Vladivostok"
+          ],
+          [
+            "Asia/Magadan",
+            "Magadan"
+          ],
+          [
+            "Pacific/Auckland",
+            "Auckland"
+          ],
+          [
+            "Pacific/Fiji",
+            "Fiji"
+          ]
+        ],
+        "showIf": {
+          "key": "mode",
+          "value": "cities"
+        },
+        "section": "Cities"
+      },
+      {
+        "key": "l1",
+        "label": "City 1 label (optional)",
+        "type": "text",
+        "default": "",
+        "showIf": {
+          "key": "mode",
+          "value": "cities"
+        },
+        "section": "Cities"
+      },
+      {
+        "key": "c2",
+        "label": "City 2",
+        "type": "select",
+        "default": "",
+        "choices": [
+          [
+            "",
+            "— none —"
+          ],
+          [
+            "Pacific/Midway",
+            "Midway Island"
+          ],
+          [
+            "US/Samoa",
+            "Samoa"
+          ],
+          [
+            "US/Hawaii",
+            "Hawaii"
+          ],
+          [
+            "US/Alaska",
+            "Alaska"
+          ],
+          [
+            "US/Pacific",
+            "Pacific Time (US & Canada)"
+          ],
+          [
+            "America/Tijuana",
+            "Tijuana"
+          ],
+          [
+            "US/Arizona",
+            "Arizona"
+          ],
+          [
+            "US/Mountain",
+            "Mountain Time (US & Canada)"
+          ],
+          [
+            "America/Chihuahua",
+            "Chihuahua"
+          ],
+          [
+            "America/Mazatlan",
+            "Mazatlan"
+          ],
+          [
+            "America/Mexico_City",
+            "Mexico City"
+          ],
+          [
+            "America/Monterrey",
+            "Monterrey"
+          ],
+          [
+            "Canada/Saskatchewan",
+            "Saskatchewan"
+          ],
+          [
+            "US/Central",
+            "Central Time (US & Canada)"
+          ],
+          [
+            "US/Eastern",
+            "Eastern Time (US & Canada)"
+          ],
+          [
+            "US/East-Indiana",
+            "Indiana (East)"
+          ],
+          [
+            "America/Bogota",
+            "Bogota"
+          ],
+          [
+            "America/Lima",
+            "Lima"
+          ],
+          [
+            "America/Caracas",
+            "Caracas"
+          ],
+          [
+            "Canada/Atlantic",
+            "Atlantic Time (Canada)"
+          ],
+          [
+            "America/La_Paz",
+            "La_Paz"
+          ],
+          [
+            "America/Santiago",
+            "Santiago"
+          ],
+          [
+            "Canada/Newfoundland",
+            "Newfoundland"
+          ],
+          [
+            "America/Buenos_Aires",
+            "Buenos Aires"
+          ],
+          [
+            "Greenland",
+            "Greenland"
+          ],
+          [
+            "Atlantic/Stanley",
+            "Stanley"
+          ],
+          [
+            "Atlantic/Azores",
+            "Azores"
+          ],
+          [
+            "Atlantic/Cape_Verde",
+            "Cape Verde Is."
+          ],
+          [
+            "Africa/Casablanca",
+            "Casablanca"
+          ],
+          [
+            "Europe/Dublin",
+            "Dublin"
+          ],
+          [
+            "Europe/Lisbon",
+            "Libson"
+          ],
+          [
+            "Europe/London",
+            "London"
+          ],
+          [
+            "Africa/Monrovia",
+            "Monrovia"
+          ],
+          [
+            "Europe/Amsterdam",
+            "Amsterdam"
+          ],
+          [
+            "Europe/Belgrade",
+            "Belgrade"
+          ],
+          [
+            "Europe/Berlin",
+            "Berlin"
+          ],
+          [
+            "Europe/Bratislava",
+            "Bratislava"
+          ],
+          [
+            "Europe/Brussels",
+            "Brussels"
+          ],
+          [
+            "Europe/Budapest",
+            "Budapest"
+          ],
+          [
+            "Europe/Copenhagen",
+            "Copenhagen"
+          ],
+          [
+            "Europe/Ljubljana",
+            "Ljubljana"
+          ],
+          [
+            "Europe/Madrid",
+            "Madrid"
+          ],
+          [
+            "Europe/Paris",
+            "Paris"
+          ],
+          [
+            "Europe/Prague",
+            "Prague"
+          ],
+          [
+            "Europe/Rome",
+            "Rome"
+          ],
+          [
+            "Europe/Sarajevo",
+            "Sarajevo"
+          ],
+          [
+            "Europe/Skopje",
+            "Skopje"
+          ],
+          [
+            "Europe/Stockholm",
+            "Stockholm"
+          ],
+          [
+            "Europe/Vienna",
+            "Vienna"
+          ],
+          [
+            "Europe/Warsaw",
+            "Warsaw"
+          ],
+          [
+            "Europe/Zagreb",
+            "Zagreb"
+          ],
+          [
+            "Europe/Athens",
+            "Athens"
+          ],
+          [
+            "Europe/Bucharest",
+            "Bucharest"
+          ],
+          [
+            "Africa/Cairo",
+            "Cairo"
+          ],
+          [
+            "Africa/Harare",
+            "Harere"
+          ],
+          [
+            "Europe/Helsinki",
+            "Helsinki"
+          ],
+          [
+            "Europe/Istanbul",
+            "Istanbul"
+          ],
+          [
+            "Asia/Jerusalem",
+            "Jerusalem"
+          ],
+          [
+            "Europe/Kiev",
+            "Kiev"
+          ],
+          [
+            "Europe/Minsk",
+            "Minsk"
+          ],
+          [
+            "Europe/Riga",
+            "Riga"
+          ],
+          [
+            "Europe/Sofia",
+            "Sofia"
+          ],
+          [
+            "Europe/Tallinn",
+            "Tallinn"
+          ],
+          [
+            "Europe/Vilnius",
+            "Vilnius"
+          ],
+          [
+            "Asia/Baghdad",
+            "Baghdad"
+          ],
+          [
+            "Asia/Kuwait",
+            "Kuwait"
+          ],
+          [
+            "Africa/Nairobi",
+            "Nairobi"
+          ],
+          [
+            "Asia/Riyadh",
+            "Riyadh"
+          ],
+          [
+            "Asia/Tehran",
+            "Tehran"
+          ],
+          [
+            "Europe/Moscow",
+            "Moscow"
+          ],
+          [
+            "Asia/Baku",
+            "Baku"
+          ],
+          [
+            "Europe/Volgograd",
+            "Volgograd"
+          ],
+          [
+            "Asia/Muscat",
+            "Muscat"
+          ],
+          [
+            "Asia/Tbilisi",
+            "Tbilisi"
+          ],
+          [
+            "Asia/Yerevan",
+            "Yerevan"
+          ],
+          [
+            "Asia/Kabul",
+            "Kabul"
+          ],
+          [
+            "Asia/Karachi",
+            "Karachi"
+          ],
+          [
+            "Asia/Tashkent",
+            "Tashkent"
+          ],
+          [
+            "Asia/Kolkata",
+            "Kolkata"
+          ],
+          [
+            "Asia/Kathmandu",
+            "Kathmandu"
+          ],
+          [
+            "Asia/Yekaterinburg",
+            "Yekaterinburg"
+          ],
+          [
+            "Asia/Almaty",
+            "Almaty"
+          ],
+          [
+            "Asia/Dhaka",
+            "Dhaka"
+          ],
+          [
+            "Asia/Novosibirsk",
+            "Novosibirsk"
+          ],
+          [
+            "Asia/Bangkok",
+            "Bangkok"
+          ],
+          [
+            "Asia/Jakarta",
+            "Jakarta"
+          ],
+          [
+            "Asia/Krasnoyarsk",
+            "Krasnoyarsk"
+          ],
+          [
+            "Asia/Chongqing",
+            "Chongqing"
+          ],
+          [
+            "Asia/Hong_Kong",
+            "Hong Kong"
+          ],
+          [
+            "Asia/Kuala_Lumpur",
+            "Kuala Lumpur"
+          ],
+          [
+            "Australia/Perth",
+            "Perth"
+          ],
+          [
+            "Asia/Singapore",
+            "Singapore"
+          ],
+          [
+            "Asia/Taipei",
+            "Taipei"
+          ],
+          [
+            "Asia/Ulaanbaatar",
+            "Ulaan Bataar"
+          ],
+          [
+            "Asia/Urumqi",
+            "Urumqi"
+          ],
+          [
+            "Asia/Irkutsk",
+            "Irkutsk"
+          ],
+          [
+            "Asia/Seoul",
+            "Seoul"
+          ],
+          [
+            "Asia/Tokyo",
+            "Tokyo"
+          ],
+          [
+            "Australia/Adelaide",
+            "Adelaide"
+          ],
+          [
+            "Australia/Darwin",
+            "Darwin"
+          ],
+          [
+            "Asia/Yakutsk",
+            "Yakutsk"
+          ],
+          [
+            "Australia/Brisbane",
+            "Brisbane"
+          ],
+          [
+            "Australia/Canberra",
+            "Canberra"
+          ],
+          [
+            "Pacific/Guam",
+            "Guam"
+          ],
+          [
+            "Australia/Hobart",
+            "Hobart"
+          ],
+          [
+            "Australia/Melbourne",
+            "Melbourne"
+          ],
+          [
+            "Pacific/Port_Moresby",
+            "Port Moresby"
+          ],
+          [
+            "Australia/Sydney",
+            "Sydney"
+          ],
+          [
+            "Asia/Vladivostok",
+            "Vladivostok"
+          ],
+          [
+            "Asia/Magadan",
+            "Magadan"
+          ],
+          [
+            "Pacific/Auckland",
+            "Auckland"
+          ],
+          [
+            "Pacific/Fiji",
+            "Fiji"
+          ]
+        ],
+        "showIf": {
+          "key": "mode",
+          "value": "cities"
+        },
+        "section": "Cities"
+      },
+      {
+        "key": "l2",
+        "label": "City 2 label (optional)",
+        "type": "text",
+        "default": "",
+        "showIf": {
+          "key": "mode",
+          "value": "cities"
+        },
+        "section": "Cities"
+      },
+      {
+        "key": "c3",
+        "label": "City 3",
+        "type": "select",
+        "default": "",
+        "choices": [
+          [
+            "",
+            "— none —"
+          ],
+          [
+            "Pacific/Midway",
+            "Midway Island"
+          ],
+          [
+            "US/Samoa",
+            "Samoa"
+          ],
+          [
+            "US/Hawaii",
+            "Hawaii"
+          ],
+          [
+            "US/Alaska",
+            "Alaska"
+          ],
+          [
+            "US/Pacific",
+            "Pacific Time (US & Canada)"
+          ],
+          [
+            "America/Tijuana",
+            "Tijuana"
+          ],
+          [
+            "US/Arizona",
+            "Arizona"
+          ],
+          [
+            "US/Mountain",
+            "Mountain Time (US & Canada)"
+          ],
+          [
+            "America/Chihuahua",
+            "Chihuahua"
+          ],
+          [
+            "America/Mazatlan",
+            "Mazatlan"
+          ],
+          [
+            "America/Mexico_City",
+            "Mexico City"
+          ],
+          [
+            "America/Monterrey",
+            "Monterrey"
+          ],
+          [
+            "Canada/Saskatchewan",
+            "Saskatchewan"
+          ],
+          [
+            "US/Central",
+            "Central Time (US & Canada)"
+          ],
+          [
+            "US/Eastern",
+            "Eastern Time (US & Canada)"
+          ],
+          [
+            "US/East-Indiana",
+            "Indiana (East)"
+          ],
+          [
+            "America/Bogota",
+            "Bogota"
+          ],
+          [
+            "America/Lima",
+            "Lima"
+          ],
+          [
+            "America/Caracas",
+            "Caracas"
+          ],
+          [
+            "Canada/Atlantic",
+            "Atlantic Time (Canada)"
+          ],
+          [
+            "America/La_Paz",
+            "La_Paz"
+          ],
+          [
+            "America/Santiago",
+            "Santiago"
+          ],
+          [
+            "Canada/Newfoundland",
+            "Newfoundland"
+          ],
+          [
+            "America/Buenos_Aires",
+            "Buenos Aires"
+          ],
+          [
+            "Greenland",
+            "Greenland"
+          ],
+          [
+            "Atlantic/Stanley",
+            "Stanley"
+          ],
+          [
+            "Atlantic/Azores",
+            "Azores"
+          ],
+          [
+            "Atlantic/Cape_Verde",
+            "Cape Verde Is."
+          ],
+          [
+            "Africa/Casablanca",
+            "Casablanca"
+          ],
+          [
+            "Europe/Dublin",
+            "Dublin"
+          ],
+          [
+            "Europe/Lisbon",
+            "Libson"
+          ],
+          [
+            "Europe/London",
+            "London"
+          ],
+          [
+            "Africa/Monrovia",
+            "Monrovia"
+          ],
+          [
+            "Europe/Amsterdam",
+            "Amsterdam"
+          ],
+          [
+            "Europe/Belgrade",
+            "Belgrade"
+          ],
+          [
+            "Europe/Berlin",
+            "Berlin"
+          ],
+          [
+            "Europe/Bratislava",
+            "Bratislava"
+          ],
+          [
+            "Europe/Brussels",
+            "Brussels"
+          ],
+          [
+            "Europe/Budapest",
+            "Budapest"
+          ],
+          [
+            "Europe/Copenhagen",
+            "Copenhagen"
+          ],
+          [
+            "Europe/Ljubljana",
+            "Ljubljana"
+          ],
+          [
+            "Europe/Madrid",
+            "Madrid"
+          ],
+          [
+            "Europe/Paris",
+            "Paris"
+          ],
+          [
+            "Europe/Prague",
+            "Prague"
+          ],
+          [
+            "Europe/Rome",
+            "Rome"
+          ],
+          [
+            "Europe/Sarajevo",
+            "Sarajevo"
+          ],
+          [
+            "Europe/Skopje",
+            "Skopje"
+          ],
+          [
+            "Europe/Stockholm",
+            "Stockholm"
+          ],
+          [
+            "Europe/Vienna",
+            "Vienna"
+          ],
+          [
+            "Europe/Warsaw",
+            "Warsaw"
+          ],
+          [
+            "Europe/Zagreb",
+            "Zagreb"
+          ],
+          [
+            "Europe/Athens",
+            "Athens"
+          ],
+          [
+            "Europe/Bucharest",
+            "Bucharest"
+          ],
+          [
+            "Africa/Cairo",
+            "Cairo"
+          ],
+          [
+            "Africa/Harare",
+            "Harere"
+          ],
+          [
+            "Europe/Helsinki",
+            "Helsinki"
+          ],
+          [
+            "Europe/Istanbul",
+            "Istanbul"
+          ],
+          [
+            "Asia/Jerusalem",
+            "Jerusalem"
+          ],
+          [
+            "Europe/Kiev",
+            "Kiev"
+          ],
+          [
+            "Europe/Minsk",
+            "Minsk"
+          ],
+          [
+            "Europe/Riga",
+            "Riga"
+          ],
+          [
+            "Europe/Sofia",
+            "Sofia"
+          ],
+          [
+            "Europe/Tallinn",
+            "Tallinn"
+          ],
+          [
+            "Europe/Vilnius",
+            "Vilnius"
+          ],
+          [
+            "Asia/Baghdad",
+            "Baghdad"
+          ],
+          [
+            "Asia/Kuwait",
+            "Kuwait"
+          ],
+          [
+            "Africa/Nairobi",
+            "Nairobi"
+          ],
+          [
+            "Asia/Riyadh",
+            "Riyadh"
+          ],
+          [
+            "Asia/Tehran",
+            "Tehran"
+          ],
+          [
+            "Europe/Moscow",
+            "Moscow"
+          ],
+          [
+            "Asia/Baku",
+            "Baku"
+          ],
+          [
+            "Europe/Volgograd",
+            "Volgograd"
+          ],
+          [
+            "Asia/Muscat",
+            "Muscat"
+          ],
+          [
+            "Asia/Tbilisi",
+            "Tbilisi"
+          ],
+          [
+            "Asia/Yerevan",
+            "Yerevan"
+          ],
+          [
+            "Asia/Kabul",
+            "Kabul"
+          ],
+          [
+            "Asia/Karachi",
+            "Karachi"
+          ],
+          [
+            "Asia/Tashkent",
+            "Tashkent"
+          ],
+          [
+            "Asia/Kolkata",
+            "Kolkata"
+          ],
+          [
+            "Asia/Kathmandu",
+            "Kathmandu"
+          ],
+          [
+            "Asia/Yekaterinburg",
+            "Yekaterinburg"
+          ],
+          [
+            "Asia/Almaty",
+            "Almaty"
+          ],
+          [
+            "Asia/Dhaka",
+            "Dhaka"
+          ],
+          [
+            "Asia/Novosibirsk",
+            "Novosibirsk"
+          ],
+          [
+            "Asia/Bangkok",
+            "Bangkok"
+          ],
+          [
+            "Asia/Jakarta",
+            "Jakarta"
+          ],
+          [
+            "Asia/Krasnoyarsk",
+            "Krasnoyarsk"
+          ],
+          [
+            "Asia/Chongqing",
+            "Chongqing"
+          ],
+          [
+            "Asia/Hong_Kong",
+            "Hong Kong"
+          ],
+          [
+            "Asia/Kuala_Lumpur",
+            "Kuala Lumpur"
+          ],
+          [
+            "Australia/Perth",
+            "Perth"
+          ],
+          [
+            "Asia/Singapore",
+            "Singapore"
+          ],
+          [
+            "Asia/Taipei",
+            "Taipei"
+          ],
+          [
+            "Asia/Ulaanbaatar",
+            "Ulaan Bataar"
+          ],
+          [
+            "Asia/Urumqi",
+            "Urumqi"
+          ],
+          [
+            "Asia/Irkutsk",
+            "Irkutsk"
+          ],
+          [
+            "Asia/Seoul",
+            "Seoul"
+          ],
+          [
+            "Asia/Tokyo",
+            "Tokyo"
+          ],
+          [
+            "Australia/Adelaide",
+            "Adelaide"
+          ],
+          [
+            "Australia/Darwin",
+            "Darwin"
+          ],
+          [
+            "Asia/Yakutsk",
+            "Yakutsk"
+          ],
+          [
+            "Australia/Brisbane",
+            "Brisbane"
+          ],
+          [
+            "Australia/Canberra",
+            "Canberra"
+          ],
+          [
+            "Pacific/Guam",
+            "Guam"
+          ],
+          [
+            "Australia/Hobart",
+            "Hobart"
+          ],
+          [
+            "Australia/Melbourne",
+            "Melbourne"
+          ],
+          [
+            "Pacific/Port_Moresby",
+            "Port Moresby"
+          ],
+          [
+            "Australia/Sydney",
+            "Sydney"
+          ],
+          [
+            "Asia/Vladivostok",
+            "Vladivostok"
+          ],
+          [
+            "Asia/Magadan",
+            "Magadan"
+          ],
+          [
+            "Pacific/Auckland",
+            "Auckland"
+          ],
+          [
+            "Pacific/Fiji",
+            "Fiji"
+          ]
+        ],
+        "showIf": {
+          "key": "mode",
+          "value": "cities"
+        },
+        "section": "Cities"
+      },
+      {
+        "key": "l3",
+        "label": "City 3 label (optional)",
+        "type": "text",
+        "default": "",
+        "showIf": {
+          "key": "mode",
+          "value": "cities"
+        },
+        "section": "Cities"
+      },
+      {
+        "key": "c4",
+        "label": "City 4",
+        "type": "select",
+        "default": "",
+        "choices": [
+          [
+            "",
+            "— none —"
+          ],
+          [
+            "Pacific/Midway",
+            "Midway Island"
+          ],
+          [
+            "US/Samoa",
+            "Samoa"
+          ],
+          [
+            "US/Hawaii",
+            "Hawaii"
+          ],
+          [
+            "US/Alaska",
+            "Alaska"
+          ],
+          [
+            "US/Pacific",
+            "Pacific Time (US & Canada)"
+          ],
+          [
+            "America/Tijuana",
+            "Tijuana"
+          ],
+          [
+            "US/Arizona",
+            "Arizona"
+          ],
+          [
+            "US/Mountain",
+            "Mountain Time (US & Canada)"
+          ],
+          [
+            "America/Chihuahua",
+            "Chihuahua"
+          ],
+          [
+            "America/Mazatlan",
+            "Mazatlan"
+          ],
+          [
+            "America/Mexico_City",
+            "Mexico City"
+          ],
+          [
+            "America/Monterrey",
+            "Monterrey"
+          ],
+          [
+            "Canada/Saskatchewan",
+            "Saskatchewan"
+          ],
+          [
+            "US/Central",
+            "Central Time (US & Canada)"
+          ],
+          [
+            "US/Eastern",
+            "Eastern Time (US & Canada)"
+          ],
+          [
+            "US/East-Indiana",
+            "Indiana (East)"
+          ],
+          [
+            "America/Bogota",
+            "Bogota"
+          ],
+          [
+            "America/Lima",
+            "Lima"
+          ],
+          [
+            "America/Caracas",
+            "Caracas"
+          ],
+          [
+            "Canada/Atlantic",
+            "Atlantic Time (Canada)"
+          ],
+          [
+            "America/La_Paz",
+            "La_Paz"
+          ],
+          [
+            "America/Santiago",
+            "Santiago"
+          ],
+          [
+            "Canada/Newfoundland",
+            "Newfoundland"
+          ],
+          [
+            "America/Buenos_Aires",
+            "Buenos Aires"
+          ],
+          [
+            "Greenland",
+            "Greenland"
+          ],
+          [
+            "Atlantic/Stanley",
+            "Stanley"
+          ],
+          [
+            "Atlantic/Azores",
+            "Azores"
+          ],
+          [
+            "Atlantic/Cape_Verde",
+            "Cape Verde Is."
+          ],
+          [
+            "Africa/Casablanca",
+            "Casablanca"
+          ],
+          [
+            "Europe/Dublin",
+            "Dublin"
+          ],
+          [
+            "Europe/Lisbon",
+            "Libson"
+          ],
+          [
+            "Europe/London",
+            "London"
+          ],
+          [
+            "Africa/Monrovia",
+            "Monrovia"
+          ],
+          [
+            "Europe/Amsterdam",
+            "Amsterdam"
+          ],
+          [
+            "Europe/Belgrade",
+            "Belgrade"
+          ],
+          [
+            "Europe/Berlin",
+            "Berlin"
+          ],
+          [
+            "Europe/Bratislava",
+            "Bratislava"
+          ],
+          [
+            "Europe/Brussels",
+            "Brussels"
+          ],
+          [
+            "Europe/Budapest",
+            "Budapest"
+          ],
+          [
+            "Europe/Copenhagen",
+            "Copenhagen"
+          ],
+          [
+            "Europe/Ljubljana",
+            "Ljubljana"
+          ],
+          [
+            "Europe/Madrid",
+            "Madrid"
+          ],
+          [
+            "Europe/Paris",
+            "Paris"
+          ],
+          [
+            "Europe/Prague",
+            "Prague"
+          ],
+          [
+            "Europe/Rome",
+            "Rome"
+          ],
+          [
+            "Europe/Sarajevo",
+            "Sarajevo"
+          ],
+          [
+            "Europe/Skopje",
+            "Skopje"
+          ],
+          [
+            "Europe/Stockholm",
+            "Stockholm"
+          ],
+          [
+            "Europe/Vienna",
+            "Vienna"
+          ],
+          [
+            "Europe/Warsaw",
+            "Warsaw"
+          ],
+          [
+            "Europe/Zagreb",
+            "Zagreb"
+          ],
+          [
+            "Europe/Athens",
+            "Athens"
+          ],
+          [
+            "Europe/Bucharest",
+            "Bucharest"
+          ],
+          [
+            "Africa/Cairo",
+            "Cairo"
+          ],
+          [
+            "Africa/Harare",
+            "Harere"
+          ],
+          [
+            "Europe/Helsinki",
+            "Helsinki"
+          ],
+          [
+            "Europe/Istanbul",
+            "Istanbul"
+          ],
+          [
+            "Asia/Jerusalem",
+            "Jerusalem"
+          ],
+          [
+            "Europe/Kiev",
+            "Kiev"
+          ],
+          [
+            "Europe/Minsk",
+            "Minsk"
+          ],
+          [
+            "Europe/Riga",
+            "Riga"
+          ],
+          [
+            "Europe/Sofia",
+            "Sofia"
+          ],
+          [
+            "Europe/Tallinn",
+            "Tallinn"
+          ],
+          [
+            "Europe/Vilnius",
+            "Vilnius"
+          ],
+          [
+            "Asia/Baghdad",
+            "Baghdad"
+          ],
+          [
+            "Asia/Kuwait",
+            "Kuwait"
+          ],
+          [
+            "Africa/Nairobi",
+            "Nairobi"
+          ],
+          [
+            "Asia/Riyadh",
+            "Riyadh"
+          ],
+          [
+            "Asia/Tehran",
+            "Tehran"
+          ],
+          [
+            "Europe/Moscow",
+            "Moscow"
+          ],
+          [
+            "Asia/Baku",
+            "Baku"
+          ],
+          [
+            "Europe/Volgograd",
+            "Volgograd"
+          ],
+          [
+            "Asia/Muscat",
+            "Muscat"
+          ],
+          [
+            "Asia/Tbilisi",
+            "Tbilisi"
+          ],
+          [
+            "Asia/Yerevan",
+            "Yerevan"
+          ],
+          [
+            "Asia/Kabul",
+            "Kabul"
+          ],
+          [
+            "Asia/Karachi",
+            "Karachi"
+          ],
+          [
+            "Asia/Tashkent",
+            "Tashkent"
+          ],
+          [
+            "Asia/Kolkata",
+            "Kolkata"
+          ],
+          [
+            "Asia/Kathmandu",
+            "Kathmandu"
+          ],
+          [
+            "Asia/Yekaterinburg",
+            "Yekaterinburg"
+          ],
+          [
+            "Asia/Almaty",
+            "Almaty"
+          ],
+          [
+            "Asia/Dhaka",
+            "Dhaka"
+          ],
+          [
+            "Asia/Novosibirsk",
+            "Novosibirsk"
+          ],
+          [
+            "Asia/Bangkok",
+            "Bangkok"
+          ],
+          [
+            "Asia/Jakarta",
+            "Jakarta"
+          ],
+          [
+            "Asia/Krasnoyarsk",
+            "Krasnoyarsk"
+          ],
+          [
+            "Asia/Chongqing",
+            "Chongqing"
+          ],
+          [
+            "Asia/Hong_Kong",
+            "Hong Kong"
+          ],
+          [
+            "Asia/Kuala_Lumpur",
+            "Kuala Lumpur"
+          ],
+          [
+            "Australia/Perth",
+            "Perth"
+          ],
+          [
+            "Asia/Singapore",
+            "Singapore"
+          ],
+          [
+            "Asia/Taipei",
+            "Taipei"
+          ],
+          [
+            "Asia/Ulaanbaatar",
+            "Ulaan Bataar"
+          ],
+          [
+            "Asia/Urumqi",
+            "Urumqi"
+          ],
+          [
+            "Asia/Irkutsk",
+            "Irkutsk"
+          ],
+          [
+            "Asia/Seoul",
+            "Seoul"
+          ],
+          [
+            "Asia/Tokyo",
+            "Tokyo"
+          ],
+          [
+            "Australia/Adelaide",
+            "Adelaide"
+          ],
+          [
+            "Australia/Darwin",
+            "Darwin"
+          ],
+          [
+            "Asia/Yakutsk",
+            "Yakutsk"
+          ],
+          [
+            "Australia/Brisbane",
+            "Brisbane"
+          ],
+          [
+            "Australia/Canberra",
+            "Canberra"
+          ],
+          [
+            "Pacific/Guam",
+            "Guam"
+          ],
+          [
+            "Australia/Hobart",
+            "Hobart"
+          ],
+          [
+            "Australia/Melbourne",
+            "Melbourne"
+          ],
+          [
+            "Pacific/Port_Moresby",
+            "Port Moresby"
+          ],
+          [
+            "Australia/Sydney",
+            "Sydney"
+          ],
+          [
+            "Asia/Vladivostok",
+            "Vladivostok"
+          ],
+          [
+            "Asia/Magadan",
+            "Magadan"
+          ],
+          [
+            "Pacific/Auckland",
+            "Auckland"
+          ],
+          [
+            "Pacific/Fiji",
+            "Fiji"
+          ]
+        ],
+        "showIf": {
+          "key": "mode",
+          "value": "cities"
+        },
+        "section": "Cities"
+      },
+      {
+        "key": "l4",
+        "label": "City 4 label (optional)",
+        "type": "text",
+        "default": "",
+        "showIf": {
+          "key": "mode",
+          "value": "cities"
+        },
+        "section": "Cities"
+      },
+      {
+        "key": "c5",
+        "label": "City 5",
+        "type": "select",
+        "default": "",
+        "choices": [
+          [
+            "",
+            "— none —"
+          ],
+          [
+            "Pacific/Midway",
+            "Midway Island"
+          ],
+          [
+            "US/Samoa",
+            "Samoa"
+          ],
+          [
+            "US/Hawaii",
+            "Hawaii"
+          ],
+          [
+            "US/Alaska",
+            "Alaska"
+          ],
+          [
+            "US/Pacific",
+            "Pacific Time (US & Canada)"
+          ],
+          [
+            "America/Tijuana",
+            "Tijuana"
+          ],
+          [
+            "US/Arizona",
+            "Arizona"
+          ],
+          [
+            "US/Mountain",
+            "Mountain Time (US & Canada)"
+          ],
+          [
+            "America/Chihuahua",
+            "Chihuahua"
+          ],
+          [
+            "America/Mazatlan",
+            "Mazatlan"
+          ],
+          [
+            "America/Mexico_City",
+            "Mexico City"
+          ],
+          [
+            "America/Monterrey",
+            "Monterrey"
+          ],
+          [
+            "Canada/Saskatchewan",
+            "Saskatchewan"
+          ],
+          [
+            "US/Central",
+            "Central Time (US & Canada)"
+          ],
+          [
+            "US/Eastern",
+            "Eastern Time (US & Canada)"
+          ],
+          [
+            "US/East-Indiana",
+            "Indiana (East)"
+          ],
+          [
+            "America/Bogota",
+            "Bogota"
+          ],
+          [
+            "America/Lima",
+            "Lima"
+          ],
+          [
+            "America/Caracas",
+            "Caracas"
+          ],
+          [
+            "Canada/Atlantic",
+            "Atlantic Time (Canada)"
+          ],
+          [
+            "America/La_Paz",
+            "La_Paz"
+          ],
+          [
+            "America/Santiago",
+            "Santiago"
+          ],
+          [
+            "Canada/Newfoundland",
+            "Newfoundland"
+          ],
+          [
+            "America/Buenos_Aires",
+            "Buenos Aires"
+          ],
+          [
+            "Greenland",
+            "Greenland"
+          ],
+          [
+            "Atlantic/Stanley",
+            "Stanley"
+          ],
+          [
+            "Atlantic/Azores",
+            "Azores"
+          ],
+          [
+            "Atlantic/Cape_Verde",
+            "Cape Verde Is."
+          ],
+          [
+            "Africa/Casablanca",
+            "Casablanca"
+          ],
+          [
+            "Europe/Dublin",
+            "Dublin"
+          ],
+          [
+            "Europe/Lisbon",
+            "Libson"
+          ],
+          [
+            "Europe/London",
+            "London"
+          ],
+          [
+            "Africa/Monrovia",
+            "Monrovia"
+          ],
+          [
+            "Europe/Amsterdam",
+            "Amsterdam"
+          ],
+          [
+            "Europe/Belgrade",
+            "Belgrade"
+          ],
+          [
+            "Europe/Berlin",
+            "Berlin"
+          ],
+          [
+            "Europe/Bratislava",
+            "Bratislava"
+          ],
+          [
+            "Europe/Brussels",
+            "Brussels"
+          ],
+          [
+            "Europe/Budapest",
+            "Budapest"
+          ],
+          [
+            "Europe/Copenhagen",
+            "Copenhagen"
+          ],
+          [
+            "Europe/Ljubljana",
+            "Ljubljana"
+          ],
+          [
+            "Europe/Madrid",
+            "Madrid"
+          ],
+          [
+            "Europe/Paris",
+            "Paris"
+          ],
+          [
+            "Europe/Prague",
+            "Prague"
+          ],
+          [
+            "Europe/Rome",
+            "Rome"
+          ],
+          [
+            "Europe/Sarajevo",
+            "Sarajevo"
+          ],
+          [
+            "Europe/Skopje",
+            "Skopje"
+          ],
+          [
+            "Europe/Stockholm",
+            "Stockholm"
+          ],
+          [
+            "Europe/Vienna",
+            "Vienna"
+          ],
+          [
+            "Europe/Warsaw",
+            "Warsaw"
+          ],
+          [
+            "Europe/Zagreb",
+            "Zagreb"
+          ],
+          [
+            "Europe/Athens",
+            "Athens"
+          ],
+          [
+            "Europe/Bucharest",
+            "Bucharest"
+          ],
+          [
+            "Africa/Cairo",
+            "Cairo"
+          ],
+          [
+            "Africa/Harare",
+            "Harere"
+          ],
+          [
+            "Europe/Helsinki",
+            "Helsinki"
+          ],
+          [
+            "Europe/Istanbul",
+            "Istanbul"
+          ],
+          [
+            "Asia/Jerusalem",
+            "Jerusalem"
+          ],
+          [
+            "Europe/Kiev",
+            "Kiev"
+          ],
+          [
+            "Europe/Minsk",
+            "Minsk"
+          ],
+          [
+            "Europe/Riga",
+            "Riga"
+          ],
+          [
+            "Europe/Sofia",
+            "Sofia"
+          ],
+          [
+            "Europe/Tallinn",
+            "Tallinn"
+          ],
+          [
+            "Europe/Vilnius",
+            "Vilnius"
+          ],
+          [
+            "Asia/Baghdad",
+            "Baghdad"
+          ],
+          [
+            "Asia/Kuwait",
+            "Kuwait"
+          ],
+          [
+            "Africa/Nairobi",
+            "Nairobi"
+          ],
+          [
+            "Asia/Riyadh",
+            "Riyadh"
+          ],
+          [
+            "Asia/Tehran",
+            "Tehran"
+          ],
+          [
+            "Europe/Moscow",
+            "Moscow"
+          ],
+          [
+            "Asia/Baku",
+            "Baku"
+          ],
+          [
+            "Europe/Volgograd",
+            "Volgograd"
+          ],
+          [
+            "Asia/Muscat",
+            "Muscat"
+          ],
+          [
+            "Asia/Tbilisi",
+            "Tbilisi"
+          ],
+          [
+            "Asia/Yerevan",
+            "Yerevan"
+          ],
+          [
+            "Asia/Kabul",
+            "Kabul"
+          ],
+          [
+            "Asia/Karachi",
+            "Karachi"
+          ],
+          [
+            "Asia/Tashkent",
+            "Tashkent"
+          ],
+          [
+            "Asia/Kolkata",
+            "Kolkata"
+          ],
+          [
+            "Asia/Kathmandu",
+            "Kathmandu"
+          ],
+          [
+            "Asia/Yekaterinburg",
+            "Yekaterinburg"
+          ],
+          [
+            "Asia/Almaty",
+            "Almaty"
+          ],
+          [
+            "Asia/Dhaka",
+            "Dhaka"
+          ],
+          [
+            "Asia/Novosibirsk",
+            "Novosibirsk"
+          ],
+          [
+            "Asia/Bangkok",
+            "Bangkok"
+          ],
+          [
+            "Asia/Jakarta",
+            "Jakarta"
+          ],
+          [
+            "Asia/Krasnoyarsk",
+            "Krasnoyarsk"
+          ],
+          [
+            "Asia/Chongqing",
+            "Chongqing"
+          ],
+          [
+            "Asia/Hong_Kong",
+            "Hong Kong"
+          ],
+          [
+            "Asia/Kuala_Lumpur",
+            "Kuala Lumpur"
+          ],
+          [
+            "Australia/Perth",
+            "Perth"
+          ],
+          [
+            "Asia/Singapore",
+            "Singapore"
+          ],
+          [
+            "Asia/Taipei",
+            "Taipei"
+          ],
+          [
+            "Asia/Ulaanbaatar",
+            "Ulaan Bataar"
+          ],
+          [
+            "Asia/Urumqi",
+            "Urumqi"
+          ],
+          [
+            "Asia/Irkutsk",
+            "Irkutsk"
+          ],
+          [
+            "Asia/Seoul",
+            "Seoul"
+          ],
+          [
+            "Asia/Tokyo",
+            "Tokyo"
+          ],
+          [
+            "Australia/Adelaide",
+            "Adelaide"
+          ],
+          [
+            "Australia/Darwin",
+            "Darwin"
+          ],
+          [
+            "Asia/Yakutsk",
+            "Yakutsk"
+          ],
+          [
+            "Australia/Brisbane",
+            "Brisbane"
+          ],
+          [
+            "Australia/Canberra",
+            "Canberra"
+          ],
+          [
+            "Pacific/Guam",
+            "Guam"
+          ],
+          [
+            "Australia/Hobart",
+            "Hobart"
+          ],
+          [
+            "Australia/Melbourne",
+            "Melbourne"
+          ],
+          [
+            "Pacific/Port_Moresby",
+            "Port Moresby"
+          ],
+          [
+            "Australia/Sydney",
+            "Sydney"
+          ],
+          [
+            "Asia/Vladivostok",
+            "Vladivostok"
+          ],
+          [
+            "Asia/Magadan",
+            "Magadan"
+          ],
+          [
+            "Pacific/Auckland",
+            "Auckland"
+          ],
+          [
+            "Pacific/Fiji",
+            "Fiji"
+          ]
+        ],
+        "showIf": {
+          "key": "mode",
+          "value": "cities"
+        },
+        "section": "Cities"
+      },
+      {
+        "key": "l5",
+        "label": "City 5 label (optional)",
+        "type": "text",
+        "default": "",
+        "showIf": {
+          "key": "mode",
+          "value": "cities"
+        },
+        "section": "Cities"
+      },
+      {
+        "key": "c6",
+        "label": "City 6",
+        "type": "select",
+        "default": "",
+        "choices": [
+          [
+            "",
+            "— none —"
+          ],
+          [
+            "Pacific/Midway",
+            "Midway Island"
+          ],
+          [
+            "US/Samoa",
+            "Samoa"
+          ],
+          [
+            "US/Hawaii",
+            "Hawaii"
+          ],
+          [
+            "US/Alaska",
+            "Alaska"
+          ],
+          [
+            "US/Pacific",
+            "Pacific Time (US & Canada)"
+          ],
+          [
+            "America/Tijuana",
+            "Tijuana"
+          ],
+          [
+            "US/Arizona",
+            "Arizona"
+          ],
+          [
+            "US/Mountain",
+            "Mountain Time (US & Canada)"
+          ],
+          [
+            "America/Chihuahua",
+            "Chihuahua"
+          ],
+          [
+            "America/Mazatlan",
+            "Mazatlan"
+          ],
+          [
+            "America/Mexico_City",
+            "Mexico City"
+          ],
+          [
+            "America/Monterrey",
+            "Monterrey"
+          ],
+          [
+            "Canada/Saskatchewan",
+            "Saskatchewan"
+          ],
+          [
+            "US/Central",
+            "Central Time (US & Canada)"
+          ],
+          [
+            "US/Eastern",
+            "Eastern Time (US & Canada)"
+          ],
+          [
+            "US/East-Indiana",
+            "Indiana (East)"
+          ],
+          [
+            "America/Bogota",
+            "Bogota"
+          ],
+          [
+            "America/Lima",
+            "Lima"
+          ],
+          [
+            "America/Caracas",
+            "Caracas"
+          ],
+          [
+            "Canada/Atlantic",
+            "Atlantic Time (Canada)"
+          ],
+          [
+            "America/La_Paz",
+            "La_Paz"
+          ],
+          [
+            "America/Santiago",
+            "Santiago"
+          ],
+          [
+            "Canada/Newfoundland",
+            "Newfoundland"
+          ],
+          [
+            "America/Buenos_Aires",
+            "Buenos Aires"
+          ],
+          [
+            "Greenland",
+            "Greenland"
+          ],
+          [
+            "Atlantic/Stanley",
+            "Stanley"
+          ],
+          [
+            "Atlantic/Azores",
+            "Azores"
+          ],
+          [
+            "Atlantic/Cape_Verde",
+            "Cape Verde Is."
+          ],
+          [
+            "Africa/Casablanca",
+            "Casablanca"
+          ],
+          [
+            "Europe/Dublin",
+            "Dublin"
+          ],
+          [
+            "Europe/Lisbon",
+            "Libson"
+          ],
+          [
+            "Europe/London",
+            "London"
+          ],
+          [
+            "Africa/Monrovia",
+            "Monrovia"
+          ],
+          [
+            "Europe/Amsterdam",
+            "Amsterdam"
+          ],
+          [
+            "Europe/Belgrade",
+            "Belgrade"
+          ],
+          [
+            "Europe/Berlin",
+            "Berlin"
+          ],
+          [
+            "Europe/Bratislava",
+            "Bratislava"
+          ],
+          [
+            "Europe/Brussels",
+            "Brussels"
+          ],
+          [
+            "Europe/Budapest",
+            "Budapest"
+          ],
+          [
+            "Europe/Copenhagen",
+            "Copenhagen"
+          ],
+          [
+            "Europe/Ljubljana",
+            "Ljubljana"
+          ],
+          [
+            "Europe/Madrid",
+            "Madrid"
+          ],
+          [
+            "Europe/Paris",
+            "Paris"
+          ],
+          [
+            "Europe/Prague",
+            "Prague"
+          ],
+          [
+            "Europe/Rome",
+            "Rome"
+          ],
+          [
+            "Europe/Sarajevo",
+            "Sarajevo"
+          ],
+          [
+            "Europe/Skopje",
+            "Skopje"
+          ],
+          [
+            "Europe/Stockholm",
+            "Stockholm"
+          ],
+          [
+            "Europe/Vienna",
+            "Vienna"
+          ],
+          [
+            "Europe/Warsaw",
+            "Warsaw"
+          ],
+          [
+            "Europe/Zagreb",
+            "Zagreb"
+          ],
+          [
+            "Europe/Athens",
+            "Athens"
+          ],
+          [
+            "Europe/Bucharest",
+            "Bucharest"
+          ],
+          [
+            "Africa/Cairo",
+            "Cairo"
+          ],
+          [
+            "Africa/Harare",
+            "Harere"
+          ],
+          [
+            "Europe/Helsinki",
+            "Helsinki"
+          ],
+          [
+            "Europe/Istanbul",
+            "Istanbul"
+          ],
+          [
+            "Asia/Jerusalem",
+            "Jerusalem"
+          ],
+          [
+            "Europe/Kiev",
+            "Kiev"
+          ],
+          [
+            "Europe/Minsk",
+            "Minsk"
+          ],
+          [
+            "Europe/Riga",
+            "Riga"
+          ],
+          [
+            "Europe/Sofia",
+            "Sofia"
+          ],
+          [
+            "Europe/Tallinn",
+            "Tallinn"
+          ],
+          [
+            "Europe/Vilnius",
+            "Vilnius"
+          ],
+          [
+            "Asia/Baghdad",
+            "Baghdad"
+          ],
+          [
+            "Asia/Kuwait",
+            "Kuwait"
+          ],
+          [
+            "Africa/Nairobi",
+            "Nairobi"
+          ],
+          [
+            "Asia/Riyadh",
+            "Riyadh"
+          ],
+          [
+            "Asia/Tehran",
+            "Tehran"
+          ],
+          [
+            "Europe/Moscow",
+            "Moscow"
+          ],
+          [
+            "Asia/Baku",
+            "Baku"
+          ],
+          [
+            "Europe/Volgograd",
+            "Volgograd"
+          ],
+          [
+            "Asia/Muscat",
+            "Muscat"
+          ],
+          [
+            "Asia/Tbilisi",
+            "Tbilisi"
+          ],
+          [
+            "Asia/Yerevan",
+            "Yerevan"
+          ],
+          [
+            "Asia/Kabul",
+            "Kabul"
+          ],
+          [
+            "Asia/Karachi",
+            "Karachi"
+          ],
+          [
+            "Asia/Tashkent",
+            "Tashkent"
+          ],
+          [
+            "Asia/Kolkata",
+            "Kolkata"
+          ],
+          [
+            "Asia/Kathmandu",
+            "Kathmandu"
+          ],
+          [
+            "Asia/Yekaterinburg",
+            "Yekaterinburg"
+          ],
+          [
+            "Asia/Almaty",
+            "Almaty"
+          ],
+          [
+            "Asia/Dhaka",
+            "Dhaka"
+          ],
+          [
+            "Asia/Novosibirsk",
+            "Novosibirsk"
+          ],
+          [
+            "Asia/Bangkok",
+            "Bangkok"
+          ],
+          [
+            "Asia/Jakarta",
+            "Jakarta"
+          ],
+          [
+            "Asia/Krasnoyarsk",
+            "Krasnoyarsk"
+          ],
+          [
+            "Asia/Chongqing",
+            "Chongqing"
+          ],
+          [
+            "Asia/Hong_Kong",
+            "Hong Kong"
+          ],
+          [
+            "Asia/Kuala_Lumpur",
+            "Kuala Lumpur"
+          ],
+          [
+            "Australia/Perth",
+            "Perth"
+          ],
+          [
+            "Asia/Singapore",
+            "Singapore"
+          ],
+          [
+            "Asia/Taipei",
+            "Taipei"
+          ],
+          [
+            "Asia/Ulaanbaatar",
+            "Ulaan Bataar"
+          ],
+          [
+            "Asia/Urumqi",
+            "Urumqi"
+          ],
+          [
+            "Asia/Irkutsk",
+            "Irkutsk"
+          ],
+          [
+            "Asia/Seoul",
+            "Seoul"
+          ],
+          [
+            "Asia/Tokyo",
+            "Tokyo"
+          ],
+          [
+            "Australia/Adelaide",
+            "Adelaide"
+          ],
+          [
+            "Australia/Darwin",
+            "Darwin"
+          ],
+          [
+            "Asia/Yakutsk",
+            "Yakutsk"
+          ],
+          [
+            "Australia/Brisbane",
+            "Brisbane"
+          ],
+          [
+            "Australia/Canberra",
+            "Canberra"
+          ],
+          [
+            "Pacific/Guam",
+            "Guam"
+          ],
+          [
+            "Australia/Hobart",
+            "Hobart"
+          ],
+          [
+            "Australia/Melbourne",
+            "Melbourne"
+          ],
+          [
+            "Pacific/Port_Moresby",
+            "Port Moresby"
+          ],
+          [
+            "Australia/Sydney",
+            "Sydney"
+          ],
+          [
+            "Asia/Vladivostok",
+            "Vladivostok"
+          ],
+          [
+            "Asia/Magadan",
+            "Magadan"
+          ],
+          [
+            "Pacific/Auckland",
+            "Auckland"
+          ],
+          [
+            "Pacific/Fiji",
+            "Fiji"
+          ]
+        ],
+        "showIf": {
+          "key": "mode",
+          "value": "cities"
+        },
+        "section": "Cities"
+      },
+      {
+        "key": "l6",
+        "label": "City 6 label (optional)",
+        "type": "text",
+        "default": "",
+        "showIf": {
+          "key": "mode",
+          "value": "cities"
+        },
+        "section": "Cities"
+      }
+    ]
+  },
+  {
+    "id": "tzconvert",
+    "name": "Time Zone Converter",
+    "description": "Time zone converter",
+    "file": "tzconvert.html",
+    "options": [
+      {
+        "key": "mode",
+        "label": "Mode",
+        "type": "select",
+        "default": "us",
+        "choices": [
+          [
+            "us",
+            "US Time Zones"
+          ],
+          [
+            "cities",
+            "Cities"
           ]
         ]
       },
@@ -125,29 +3385,14 @@
         ]
       },
       {
-        "key": "seconds",
-        "label": "Show seconds",
+        "key": "autoOrder",
+        "label": "Auto-order by time zone",
         "type": "bool",
-        "default": false
-      },
-      {
-        "key": "usLayout",
-        "label": "US layout",
-        "type": "select",
-        "default": "row",
-        "choices": [
-          [
-            "row",
-            "One row of 4"
-          ],
-          [
-            "grid",
-            "2 x 2"
-          ]
-        ],
+        "default": false,
+        "help": "Sorts the chosen cities west → east by GMT offset (GMT−7 before GMT+9), ignoring the order you picked them in.",
         "showIf": {
           "key": "mode",
-          "value": "us"
+          "value": "cities"
         }
       },
       {
@@ -2997,70 +6242,386 @@
     ]
   },
   {
-    "id": "haschedule",
-    "name": "HA Schedule",
-    "file": "haschedule.html",
+    "id": "keyshortcuts",
+    "name": "Keyboard Shortcuts",
+    "description": "Keyboard shortcut launcher",
+    "file": "keyshortcutsview.html",
     "served": true,
-    "dev": true,
+    "options": []
+  },
+  {
+    "id": "ai-voice",
+    "name": "AI Voice",
+    "description": "Voice and text AI assistant",
+    "file": "claudevoiceview.html",
+    "served": true,
     "options": [
       {
-        "key": "interval",
-        "label": "Refresh",
+        "key": "backend",
+        "label": "Backend",
         "type": "select",
-        "default": "600",
+        "default": "claude",
         "choices": [
-          ["60", "1 min"],
-          ["300", "5 min"],
-          ["600", "10 min"],
-          ["1800", "30 min"],
-          ["3600", "1 hour"]
+          [
+            "claude",
+            "Claude Code — CLI agent with tools"
+          ],
+          [
+            "codex",
+            "Codex — CLI agent with tools"
+          ],
+          [
+            "copilot",
+            "Copilot — CLI agent with tools"
+          ],
+          [
+            "owui",
+            "Open WebUI — your server (Auth tab connection)"
+          ],
+          [
+            "api",
+            "API endpoint — your own key (OpenAI, DeepSeek, OpenRouter, …)"
+          ]
         ]
+      },
+      {
+        "key": "projectDir",
+        "label": "Default folder",
+        "type": "text",
+        "default": ""
+      },
+      {
+        "key": "projectsRoot",
+        "label": "Folders root (for the panel picker)",
+        "type": "text",
+        "default": ""
+      },
+      {
+        "key": "permissionMode",
+        "label": "Permission mode (choices depend on the backend)",
+        "type": "text",
+        "default": ""
+      },
+      {
+        "key": "profilePick",
+        "label": "AI profile (see Settings → AI Profiles)",
+        "type": "text",
+        "default": ""
+      },
+      {
+        "key": "approvalsEnabled",
+        "label": "Touch approval when in Manual mode (Claude Code)",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "key": "apiBaseUrl",
+        "label": "API endpoint base URL (OpenAI-compatible)",
+        "type": "text",
+        "default": "https://api.openai.com/v1"
+      },
+      {
+        "key": "apiKey",
+        "label": "API endpoint key",
+        "type": "secret",
+        "default": ""
+      },
+      {
+        "key": "apiModel",
+        "label": "API model (e.g. gpt-4o-mini)",
+        "type": "text",
+        "default": ""
+      },
+      {
+        "key": "chatFontSize",
+        "label": "Chat text size (px)",
+        "type": "text",
+        "default": "16"
+      },
+      {
+        "key": "vadHangoverMs",
+        "label": "Voice pause tolerance (ms)",
+        "type": "text",
+        "default": "400"
+      },
+      {
+        "key": "micDevice",
+        "label": "Microphone (set from the panel Settings)",
+        "type": "text",
+        "default": ""
+      },
+      {
+        "key": "spkDevice",
+        "label": "Speaker (set from the panel Settings)",
+        "type": "text",
+        "default": ""
+      },
+      {
+        "key": "modelPick",
+        "label": "Model (set from the panel Settings; blank = default)",
+        "type": "text",
+        "default": ""
       }
     ]
   },
   {
-    "id": "agenda",
-    "name": "Agenda",
-    "file": "agenda.html",
+    "id": "lucidtype",
+    "name": "LucidType",
+    "description": "Dictation with AI cleanup",
+    "file": "lucidtypeview.html",
     "served": true,
-    "dev": true,
-    "grid": { "cols": 3, "rows": 2, "defaults": [] },
+    "options": []
+  },
+  {
+    "id": "livetranslate",
+    "name": "Live Translate",
+    "description": "Live speech translation",
+    "file": "livetranslateview.html",
+    "served": true,
     "options": [
       {
-        "key": "interval",
-        "label": "Refresh",
+        "key": "provider",
+        "label": "Translation provider",
         "type": "select",
-        "default": "600",
+        "default": "soniox",
         "choices": [
-          ["60", "1 min"],
-          ["300", "5 min"],
-          ["600", "10 min"],
-          ["1800", "30 min"],
-          ["3600", "1 hour"]
+          [
+            "soniox",
+            "Soniox — cloud real-time translation (recommended)"
+          ],
+          [
+            "ai",
+            "AI translate — your own API key (DeepSeek, OpenAI, …)"
+          ]
         ]
+      },
+      {
+        "key": "sonioxApiKey",
+        "label": "Soniox API key",
+        "type": "secret",
+        "default": ""
+      },
+      {
+        "key": "aiBaseUrl",
+        "label": "AI endpoint base URL (OpenAI-compatible)",
+        "type": "text",
+        "default": "https://api.deepseek.com"
+      },
+      {
+        "key": "aiApiKey",
+        "label": "AI endpoint API key",
+        "type": "secret",
+        "default": ""
+      },
+      {
+        "key": "aiModel",
+        "label": "AI model (e.g. deepseek-v4-flash)",
+        "type": "text",
+        "default": "deepseek-v4-flash"
+      },
+      {
+        "key": "targetLanguage",
+        "label": "Target language code (e.g. en, es, de)",
+        "type": "text",
+        "default": "en"
+      },
+      {
+        "key": "sourceHint",
+        "label": "Source language hint (optional, e.g. de)",
+        "type": "text",
+        "default": ""
+      },
+      {
+        "key": "vadHangoverMs",
+        "label": "Voice pause tolerance (ms, AI provider)",
+        "type": "text",
+        "default": "800"
+      },
+      {
+        "key": "targetLangLabel",
+        "label": "Panel label override (optional)",
+        "type": "text",
+        "default": ""
+      },
+      {
+        "key": "saveToFile",
+        "label": "Save transcript to a file",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "key": "saveFolder",
+        "label": "Save folder (blank = Documents\\OpenQuake Translations)",
+        "type": "text",
+        "default": ""
+      },
+      {
+        "key": "micDevice",
+        "label": "Microphone (set from the panel Settings)",
+        "type": "text",
+        "default": ""
+      },
+      {
+        "key": "micHotkey",
+        "label": "Toggle-translation hotkey (global)",
+        "type": "text",
+        "default": ""
       }
     ]
   },
   {
-    "id": "events",
-    "name": "Events",
-    "file": "events.html",
+    "id": "screensaver",
+    "name": "Screensaver",
+    "description": "Idle scenes and media",
+    "file": "screensaverview.html",
     "served": true,
-    "dev": true,
-    "grid": { "cols": 3, "rows": 2, "defaults": [] },
     "options": [
       {
-        "key": "interval",
-        "label": "Refresh",
+        "key": "showScenes",
+        "label": "Built-in scenes",
+        "type": "bool",
+        "default": true,
+        "editorCustom": true
+      },
+      {
+        "key": "showPhotos",
+        "label": "My photos",
+        "type": "bool",
+        "default": true,
+        "editorCustom": true
+      },
+      {
+        "key": "showVideos",
+        "label": "My videos",
+        "type": "bool",
+        "default": true,
+        "editorCustom": true
+      },
+      {
+        "key": "sceneWaves",
+        "label": "Waves",
+        "type": "bool",
+        "default": true,
+        "editorCustom": true
+      },
+      {
+        "key": "sceneStarfield",
+        "label": "Starfield",
+        "type": "bool",
+        "default": true,
+        "editorCustom": true
+      },
+      {
+        "key": "sceneLava",
+        "label": "Lava lamp",
+        "type": "bool",
+        "default": true,
+        "editorCustom": true
+      },
+      {
+        "key": "sceneFireflies",
+        "label": "Fireflies",
+        "type": "bool",
+        "default": true,
+        "editorCustom": true
+      },
+      {
+        "key": "sceneFlurry",
+        "label": "Flurry",
+        "type": "bool",
+        "default": true,
+        "editorCustom": true
+      },
+      {
+        "key": "imageStyle",
+        "label": "Photo style",
         "type": "select",
-        "default": "600",
+        "default": "slide",
         "choices": [
-          ["60", "1 min"],
-          ["300", "5 min"],
-          ["600", "10 min"],
-          ["1800", "30 min"],
-          ["3600", "1 hour"]
-        ]
+          [
+            "slide",
+            "Slideshow (one at a time)"
+          ],
+          [
+            "collage",
+            "Collage (scrapbook pile)"
+          ]
+        ],
+        "showIf": {
+          "key": "showPhotos",
+          "value": true
+        },
+        "help": "Collage fills the screen with tilted prints (a new one every 0.5-1.5s), then holds the finished board for the interval. Videos always play full-screen."
+      },
+      {
+        "key": "imageFit",
+        "label": "Photos",
+        "type": "select",
+        "default": "cover",
+        "choices": [
+          [
+            "cover",
+            "Crop to fill the screen"
+          ],
+          [
+            "contain",
+            "Don't crop (letterbox)"
+          ]
+        ],
+        "showIf": [
+          {
+            "key": "showPhotos",
+            "value": true
+          },
+          {
+            "key": "imageStyle",
+            "value": "slide"
+          }
+        ],
+        "help": "Applies to slideshow photos only — videos are never cropped (they letterbox unless they're already 1920×480)."
+      },
+      {
+        "key": "intervalSec",
+        "label": "Change every (s)",
+        "type": "text",
+        "default": "10",
+        "help": "Seconds per photo/scene. Videos always play through to the end instead; a finished collage board is displayed for this long."
+      },
+      {
+        "key": "shuffle",
+        "label": "Shuffle",
+        "type": "bool",
+        "default": false,
+        "inline": "Shuffle the order"
+      },
+      {
+        "key": "idleMinutes",
+        "label": "Idle auto-start",
+        "type": "text",
+        "default": "30",
+        "help": "Minutes of no input; 0 = never. With no panel touches or knob turns for this long, the panel switches to this page by itself; any input returns to the page you were on. Panel mode only. 0 disables auto-start — the page then only appears manually or in rotation."
+      },
+      {
+        "key": "excludePages",
+        "label": "Excluded pages",
+        "type": "text",
+        "default": "",
+        "editorCustom": true,
+        "help": "Exclusion list: while any picked page is on screen, idle auto-start never fires — for pages you watch without touching (dashboards, meetings). Leaving the page resumes the normal idle countdown; manual starts still work."
+      },
+      {
+        "key": "photosDir",
+        "label": "Photos folder",
+        "type": "text",
+        "default": "",
+        "serverOnly": true
+      },
+      {
+        "key": "videosDir",
+        "label": "Videos folder",
+        "type": "text",
+        "default": "",
+        "serverOnly": true
       }
     ]
   }

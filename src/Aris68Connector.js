@@ -72,8 +72,7 @@ class Aris68Connector extends EventEmitter {
     this._closeCtrl(); this._closeTouch();
   }
 
-  _find(spec) {
-    const devs = this.HID.devices();
+  _find(spec, devs = this.HID.devices()) {
     for (const [vid, pid, up] of spec) {
       const d = devs.find(x => x.vendorId === vid && x.productId === pid && (up === undefined || x.usagePage === up));
       if (d) return d;
@@ -82,8 +81,15 @@ class Aris68Connector extends EventEmitter {
   }
 
   _open() {
+    let devices;
+    try {
+      devices = this.HID.devices();
+    } catch (e) {
+      this.emit('error', e);
+      return;
+    }
     if (!this.ctrl) {
-      const info = this._find(CONTROL_IFACES);
+      const info = this._find(CONTROL_IFACES, devices);
       if (info) try {
         const d = new this.HID.HID(info.path); this.ctrl = d;
         d.on('data', b => this._onCtrl(b));
@@ -93,7 +99,7 @@ class Aris68Connector extends EventEmitter {
       } catch (e) { this.emit('error', e); }
     }
     if (!this.touch) {
-      const info = this._find(TOUCH_IFACES);
+      const info = this._find(TOUCH_IFACES, devices);
       if (info) try {
         const d = new this.HID.HID(info.path); this.touch = d;
         d.on('data', b => this._onTouch(b));

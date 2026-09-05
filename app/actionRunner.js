@@ -26,8 +26,12 @@ function resolveAppPath(value, deps) {
     const resolver = commandResolver(platform);
     deps.execFile(resolver.file, resolver.args(value), hiddenOptions(platform), (err, stdout) => {
       if (err) return resolve(null);
+      // Trust `where`'s output — it only returns paths Windows considers valid. Don't double-check
+      // with fs.existsSync: Microsoft Store app-execution-alias reparse points (e.g. mspaint.exe in
+      // %LOCALAPPDATA%\Microsoft\WindowsApps\) make existsSync return false, even though the alias
+      // is launchable via shell.openPath / ShellExecuteEx.
       const first = (stdout || '').split(/\r?\n/).map(s => s.trim()).find(Boolean);
-      resolve(first && deps.fs.existsSync(first) ? first : null);
+      resolve(first || null);
     });
   });
 }
@@ -35,22 +39,20 @@ function resolveAppPath(value, deps) {
 async function launchApp(value, deps) {
   if (!value || typeof value !== 'string') return false;
   const platform = platformOf(deps);
-  if (hasPathSeparator(value)) {
-    const resolved = await resolveAppPath(value, deps);
-    if (!resolved) return false;
-    const error = await deps.shell.openPath(resolved);
-    if (error && deps.log) deps.log(`openPath error: ${error}`);
-    return !error;
-  }
-  if (platform === 'darwin') {
+  // macOS bare name: `open -a name` handles app lookup natively.
+  if (platform === 'darwin' && !hasPathSeparator(value)) {
     deps.execFile('/usr/bin/open', ['-a', value], hiddenOptions(platform), () => {});
     return true;
   }
   const resolved = await resolveAppPath(value, deps);
-  if (!resolved) return false;
-  const child = deps.spawn(resolved, [], { detached: true, stdio: 'ignore', ...hiddenOptions(platform) });
-  if (child && typeof child.unref === 'function') child.unref();
-  return true;
+  if (!resolved) { if (deps.log) deps.log('launchApp: could not resolve "' + value + '"'); return false; }
+  // shell.openPath (ShellExecuteEx under the hood) is the only sane Windows launcher: it handles
+  // Microsoft Store app aliases (mspaint, calc, etc. — zero-byte reparse points that direct
+  // CreateProcess can't launch) AND it doesn't pass SW_HIDE to GUI apps the way detached+
+  // windowsHide spawn does, which previously kept GUI apps like Notepad invisible after launch.
+  const err = await deps.shell.openPath(resolved);
+  if (err && deps.log) deps.log('launchApp: openPath error for "' + resolved + '": ' + err);
+  return !err;
 }
 
 function runShellCommand(value, deps) {

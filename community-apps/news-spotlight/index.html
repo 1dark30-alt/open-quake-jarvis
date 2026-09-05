@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>News Spotlight</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app" class="news-shell" aria-label="News Spotlight panel">
+    <section class="image-stage" aria-live="polite">
+      <img id="storyImageA" class="story-image active" alt="">
+      <img id="storyImageB" class="story-image" alt="">
+      <div class="image-gradient"></div>
+      <div class="headline-stack">
+        <div id="breakingBadge" class="breaking-badge" hidden>Breaking News</div>
+        <h1 id="headline" class="headline">News Spotlight</h1>
+      </div>
+    </section>
+
+    <aside id="infoPanel" class="info-panel">
+      <div class="source-row">
+        <div>
+          <p id="source" class="source-name">News Spotlight</p>
+          <p id="category" class="category-name">Live RSS rotation</p>
+        </div>
+        <p id="published" class="published-time">Waiting</p>
+      </div>
+      <p id="summary" class="summary">Loading configured feeds.</p>
+      <div class="status-row">
+        <p id="counter" class="counter">Story 0 of 0</p>
+        <p id="refreshStatus" class="refresh-status">Refresh pending</p>
+      </div>
+    </aside>
+
+    <section id="emptyState" class="empty-state" hidden>
+      <div>
+        <p class="empty-kicker">News Spotlight</p>
+        <h2>No stories available</h2>
+        <p id="emptyStatus">Feed status pending.</p>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 {
   "name": "open-quake",
-  "version": "0.3.0",
+  "version": "0.8.4",
   "private": true,
   "description": "Open driver + multi-grid touchscreen launcher for the DK-QUAKE / ARIS-68 touchscreen-and-knob macro device.",
   "main": "app/main.js",
@@ -9,10 +9,12 @@
     "node": ">=18 <25"
   },
   "scripts": {
-    "start": "node build-smtc.js && electron .",
-    "rebuild": "electron-rebuild -v 42.4.1 -f --only node-hid",
+    "start": "node build-dpapi.js && node build-smtc.js && electron .",
+    "rebuild": "electron-rebuild -v 42.4.1 -f --only node-hid && node build-dpapi.js",
+    "build:dpapi": "node build-dpapi.js",
     "build:smtc": "node build-smtc.js",
-    "dist": "node build-smtc.js && electron-builder --win"
+    "test": "node --test test/*.test.js",
+    "dist": "node build-dpapi.js && node build-smtc.js && electron-builder --win"
   },
   "license": "SEE LICENSE IN LICENSE",
   "keywords": [
@@ -26,8 +28,12 @@
   ],
   "dependencies": {
     "@jitsi/robotjs": "^0.6.22",
+    "adm-zip": "^0.6.0",
+    "emojilib": "^4.0.3",
     "node-hid": "^3.3.0",
-    "systeminformation": "^5.31.7"
+    "obs-websocket-js": "^5.0.8",
+    "win-ca": "^3.5.1",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.1",
@@ -46,17 +52,23 @@
       "!docs/**",
       "!tools/**",
       "!native/**",
+      "!build-dpapi.js",
       "!build-smtc.js",
       "!sign.js",
       "!afterpack.js",
-      "!.signing/**"
+      "!.signing/**",
+      "!.ua/**",
+      "!community-apps/**",
+      "!community-wallpapers/**",
+      "!node_modules/win-ca/pem/**"
     ],
     "npmRebuild": false,
     "afterPack": "./afterpack.js",
     "asarUnpack": [
       "apps/**/*",
       "app/native/**",
-      "**/*.node"
+      "**/*.node",
+      "node_modules/win-ca/**"
     ],
     "win": {
       "target": [
@@ -69,13 +81,13 @@
       }
     },
     "portable": {
-      "artifactName": "open-quake-${version}-portable.${ext}"
+      "artifactName": "open-quake-portable.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
-      "artifactName": "open-quake-${version}-setup.${ext}"
+      "artifactName": "open-quake-setup.${ext}"
     }
   }
 }

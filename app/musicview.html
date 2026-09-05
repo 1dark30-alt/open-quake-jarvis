@@ -18,50 +18,96 @@
   /* album art (far left) | now-playing + transport | lyrics (far right, optional). The launcher grid is a
      native strip outside this page (pinned far right), so the webview just narrows when it's on. */
   #wrap { display: flex; width: 100vw; height: 100vh; padding: 26px; align-items: stretch; gap: 8px; }
-  .art-col { flex: 1; display: flex; align-items: center; justify-content: flex-start; }
+  /* flex:0 0 auto -- size to CONTENT (the square art image, bound by row height), not a proportional
+     share of the row. flex:1 here previously over-allocated width to this column (the row is short,
+     so the square art is much narrower than an even flex share), leaving a large dead gap between the
+     art and .mid that pushed everything else off-balance toward the right edge. */
+  .art-col { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-start; }
   body.no-art .art-col { display: none; }                 /* album art hidden -> the rest slides left to fill */
-  .mid { flex: 1.45; min-width: 0; display: flex; flex-direction: column; justify-content: space-evenly; gap: 28px; padding: 30px 46px; }
-  /* tight: when the webview is narrow (e.g. a 2×3 grid strip is on), pull the padding/gaps in to make room */
-  body.tight #wrap { padding: 14px; }
-  body.tight .mid { padding: 14px 22px; gap: 16px; }
 
-  /* album art: the 🎵 note shows until the SMTC .NET helper supplies cover art (then artImg covers it) */
+  /* deliberate, fixed rhythm (not viewport-elastic space-evenly) so the layout reads as intentional
+     at any panel height, and compresses cleanly when idle rather than leaving dead space. Everything
+     in this column shares the same left edge -- no differential nudging on any one child. */
+  .mid { flex: 1.45; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 30px; padding: 30px 46px; }
+  body.tight #wrap { padding: 14px; }
+  body.tight .mid { padding: 14px 22px; gap: 18px; }
+
+  /* album art: the 🎵 note shows until the SMTC .NET helper supplies cover art (then artImg covers it).
+     Shrinks (not just fades) when idle so it stops visually dominating an empty state, and grows back
+     with a smooth transition the moment playback resumes. */
   .art { height: 100%; aspect-ratio: 1/1; border-radius: 18px; position: relative; overflow: hidden;
     background: linear-gradient(160deg, var(--surf1), var(--surf2)); border: 1px solid var(--tile-bd);
-    display: flex; align-items: center; justify-content: center; }
+    display: flex; align-items: center; justify-content: center;
+    transform-origin: left center; transition: transform .35s ease; }
+  body.idle .art { transform: scale(.6); }
   .art .note { font-size: 150px; opacity: .22; }
   .art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; }
 
-  .title { font-size: 52px; font-weight: 800; line-height: 1.12; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* three-tier metadata: song (primary) / artist (~77%) / album (~65%, dimmer) -- a standard media-player
+     hierarchy. Album was already flowing through /nowplaying (SMTC reports it); just never rendered. */
+  .npblock { display: flex; flex-direction: column; gap: 8px; }
+  .title { font-size: 52px; font-weight: 800; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   body.tight .title { font-size: 44px; }
-  .artist { font-size: 32px; color: var(--muted); margin-top: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  body.tight .artist { font-size: 28px; margin-top: 12px; }
-  .status { display: flex; align-items: center; gap: 12px; margin-top: 26px; font-size: 19px; color: var(--dim); }
+  .artist { font-size: 40px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.tight .artist { font-size: 34px; }
+  .album { font-size: 34px; font-weight: 500; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .album:empty { display: none; }
+  body.tight .album { font-size: 29px; }
+
+  /* progress bar: real elapsed/total from SMTC's timeline (already flowing through /nowplaying — this
+     was previously unused). Dims and holds at 0:00/0:00 when there's no duration to report. */
+  .progress { display: flex; flex-direction: column; gap: 8px; }
+  .pbar { height: 6px; border-radius: 4px; background: var(--tile-bd); overflow: hidden; }
+  .pfill { height: 100%; width: 0%; background: var(--accent); border-radius: 4px; transition: width .2s linear; }
+  .ptimes { display: flex; justify-content: space-between; font-size: 13px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .progress.idle .pbar { opacity: .35; }
+  .progress.idle .pfill { transition: none; }
+
+  /* status ("Playing" / source app) -- lives above the lyrics panel as its attribution caption when
+     lyrics are shown (it's more "what am I reading" context than core now-playing identity); falls
+     back into .mid, right after the metadata block, when lyrics are off. See musicview.js. */
+  .status { display: flex; align-items: center; gap: 10px; font-size: 17px; }
+  .status.hide { display: none; }
   .status .pill { padding: 4px 14px; border-radius: 20px; background: var(--pill);
     color: var(--pill-fg); font-weight: 700; letter-spacing: .5px; }
-  .controls { display: flex; align-items: center; justify-content: space-between; }
-  .btn { width: 92px; height: 92px; border-radius: 50%; border: 2px solid var(--btn-bd); cursor: pointer; color: var(--fg);
+  .status .pill.last { color: var(--dim); }              /* "Last played" reads as quieter than a live status */
+  .status #mApp { font-size: .82em; opacity: .75; color: var(--dim); }   /* source app: clearly secondary to the status pill */
+  .lyrics-col .status { margin-bottom: 10px; }
+
+  /* transport controls read as ONE grouped unit (card), not floating circles -- aligned to the same
+     left edge as the title/artist/album/progress above it, not independently nudged. */
+  .controls { display: flex; align-items: center; justify-content: space-between; gap: 18px;
+    padding: 19px 32px; border-radius: 22px; border: 1px solid var(--tile-bd);
+    background: linear-gradient(160deg, var(--surf1), var(--surf2)); }
+  body.tight .controls { padding: 12px 20px; }
+  .btn { width: 104px; height: 104px; border-radius: 50%; border: 2px solid var(--btn-bd); cursor: pointer; color: var(--fg);
     background: linear-gradient(160deg, var(--surf1), var(--surf2)); display: flex; align-items: center; justify-content: center;
-    transition: transform .08s ease; }
-  body.tight .btn { width: 78px; height: 78px; }
+    opacity: .68; transition: transform .08s ease, opacity .12s ease; }
+  body.tight .btn { width: 88px; height: 88px; }
   .btn:active { transform: scale(.92); }
   .btn svg { width: 42%; height: 42%; fill: currentColor; }
-  /* play button carries the accent — the most prominent "live" control on the page */
-  .btn.play { width: 116px; height: 116px; color: #04121f; border-color: var(--accent);
+  /* play button carries the accent, full opacity -- the one deliberate focal point among the transport */
+  .btn.play { width: 116px; height: 116px; color: #04121f; border-color: var(--accent); opacity: 1;
     background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 86%, #fff 14%), var(--accent)); }
   body.tight .btn.play { width: 98px; height: 98px; }
   body.light .btn.play { border-color: var(--btn-bd); }   /* dark outline in light mode, like the other buttons */
 
-  /* lyrics (far right, optional) — scrollable; the active synced line is highlighted + auto-scrolled */
-  .lyrics-col { flex: 1.15; min-width: 0; display: none; }
+  /* lyrics (far right, optional) — deliberately quieter than the art/controls cards (darker flat fill,
+     desaturated border, dimmer resting text, thin scrollbar) so it recedes until you actually read it;
+     the highlighted active line still pops via the accent-adjacent --fg/bold treatment. */
+  .lyrics-col { flex: 1.15; min-width: 0; display: none; flex-direction: column; }
   body.show-lyrics .lyrics-col { display: flex; }
-  .lyrics { flex: 1; min-width: 0; border-radius: 16px; border: 1px solid var(--tile-bd); overflow-y: auto;
-    background: linear-gradient(160deg, var(--surf1), var(--surf2)); padding: 16px 22px; scrollbar-width: thin; }
-  .lyrics .ln { font-size: 27px; line-height: 1.5; color: var(--muted); transition: color .2s ease; }
+  .lyrics { flex: 1; min-width: 0; border-radius: 16px; overflow-y: auto;
+    background: var(--surf2); border: 1px solid color-mix(in srgb, var(--tile-bd) 55%, var(--bg) 45%);
+    padding: 16px 22px; scrollbar-width: thin; }
+  .lyrics::-webkit-scrollbar { width: 6px; }
+  .lyrics::-webkit-scrollbar-thumb { background: var(--tile-bd); border-radius: 3px; }
+  .lyrics::-webkit-scrollbar-track { background: transparent; }
+  .lyrics .ln { font-size: 27px; line-height: 1.65; color: var(--dim); transition: color .2s ease; }
   .lyrics .ln.on { color: var(--fg); font-weight: 800; }
   body.tight .lyrics .ln { font-size: 23px; }
-  .lyrics .plain { white-space: pre-wrap; font-size: 24px; line-height: 1.5; color: var(--fg); }
-  .lyrics .none { color: var(--muted); font-size: 22px; padding: 8px 0; }
+  .lyrics .plain { white-space: pre-wrap; font-size: 24px; line-height: 1.65; color: var(--muted); }
+  .lyrics .none { color: var(--dim); font-size: 22px; padding: 8px 0; }
 
   #recon { position: fixed; right: 14px; bottom: 10px; font-size: 12px; color: #c98; opacity: 0; transition: opacity .3s; }
   #recon.show { opacity: 1; }
@@ -71,10 +117,14 @@
   <div id="wrap">
     <div class="art-col"><div class="art"><div class="note">🎵</div><img id="artImg"></div></div>
     <div class="mid">
-      <div>
+      <div class="npblock">
         <div class="title" id="mTitle">Nothing playing</div>
-        <div class="artist" id="mArtist">—</div>
-        <div class="status"><span class="pill" id="mStatus">—</span><span id="mApp"></span></div>
+        <div class="artist" id="mArtist"></div>
+        <div class="album" id="mAlbum"></div>
+      </div>
+      <div class="progress" id="progress">
+        <div class="pbar"><div class="pfill" id="pFill"></div></div>
+        <div class="ptimes"><span id="pElapsed">0:00</span><span id="pTotal">0:00</span></div>
       </div>
       <div class="controls">
         <div class="btn" id="bPrev"></div>
@@ -83,7 +133,10 @@
         <div class="btn" id="bPause"></div>
       </div>
     </div>
-    <div class="lyrics-col"><div class="lyrics" id="lyrics"></div></div>
+    <div class="lyrics-col">
+      <div class="status hide" id="status"><span class="pill" id="mStatus">—</span><span id="mApp"></span></div>
+      <div class="lyrics" id="lyrics"></div>
+    </div>
   </div>
   <div id="recon">reconnecting…</div>
 

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>*arr Dashboard</title>
+  <link rel="stylesheet" href="style.css?v=1.0.5">
+</head>
+<body>
+  <main class="shell">
+    <nav class="rail" id="rail" aria-label="Services"></nav>
+
+    <section class="mid" aria-labelledby="activity-heading">
+      <header class="mid-head">
+        <span class="sec" id="activity-heading">Active downloads</span>
+        <button type="button" class="back-btn" id="back-all" hidden>&#8249; All apps</button>
+      </header>
+      <div class="list-wrap">
+        <div class="dl-list" id="dl-list"></div>
+        <div class="sbar" id="sbar" hidden><div class="sbar-thumb" id="sbar-thumb"></div></div>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div id="open-row"></div>
+      <div id="health"></div>
+      <div id="disks"></div>
+      <div class="cal" id="cal-box">
+        <header class="sec" id="cal-heading">Next 24 hours</header>
+        <div id="cal"></div>
+      </div>
+    </aside>
+  </main>
+  <script src="app.js?v=1.0.5"></script>
+</body>
+</html>

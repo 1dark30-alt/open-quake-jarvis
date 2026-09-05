@@ -43,6 +43,10 @@ function createMediaKeys({ log = () => {} } = {}) {
     click(button) { if (robot) { try { robot.mouseClick(button || 'left'); } catch (e) {} } },
     scroll(dy) { if (robot) { try { robot.scrollMouse(0, dy); } catch (e) {} } },
     tapKey(name) { if (robot) { try { robot.keyTap(name); } catch (e) {} } },
+    // Release a modifier (or any key) system-wide. Used by the global-shortcut handler to clear
+    // the stuck-modifier state Win32 RegisterHotKey leaves behind when a hotkey with modifiers
+    // fires while the user is still holding them. `name` is a robotjs key name (e.g. 'control').
+    keyUp(name) { if (robot) { try { robot.keyToggle(name, 'up'); } catch (e) {} } },
     // Macro: send a key combo like "control+shift+c". Last non-modifier token is the key.
     tapCombo(combo) {
       if (!robot) return false;

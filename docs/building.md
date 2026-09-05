@@ -2,6 +2,14 @@
 
 ## How the hardware works
 
+open-quake drives two different knob devices through the same code path, routed by
+`app/multiKnob.js`: whichever one is actually plugged in wins, checked in this order —
+**Bedrock** (`app/BedrockConnector.js`, the open RP2040 knob — see the companion
+[bedrock-console](https://github.com/TeeJS/bedrock-console) project) first, falling back
+to **ARIS-68** (`src/Aris68Connector.js`, reverse-engineered) if no Bedrock device is
+found. Both connectors emit the same internal knob-event shape, so the rest of the app
+(panel, rotation, desktop focus, etc.) doesn't know or care which one is attached.
+
 The DK-QUAKE's screen is a standard external monitor (HDMI or USB-C DisplayPort
 alt-mode) recognized by Windows as a 480×1920 portrait display. A separate USB
 link handles touch and control/knob/mic interfaces. Video travels over the
@@ -15,7 +23,9 @@ idle-blanks; the driver wakes it and sends a periodic keep-alive so it stays on.
 The on-board mic enumerates as a standard **"5- USB PnP Audio Device"** — any app
 can read it directly; `open-quake` doesn't wrap it.
 
-Full reverse-engineered protocol: [DEVICE_PROTOCOL.md](DEVICE_PROTOCOL.md).
+Full reverse-engineered ARIS-68 protocol: [DEVICE_PROTOCOL.md](DEVICE_PROTOCOL.md).
+The Bedrock knob's own (non-reverse-engineered, open) HID protocol is documented in
+the bedrock-console repo's `firmware/PROTOCOL.md`.
 
 ## Build & run (Windows)
 
@@ -41,6 +51,20 @@ npm start
 > If `npm install` fails with `EBUSY … electron.exe`, a copy of the app is still
 > running — close it first, then retry.
 
+`npm start` / `npm run dist` also run `node build-smtc.js` first, which compiles the C#
+native helpers in `native/` (album art, SMTC transport + now-playing monitor, reserved
+display, mic session monitor, system volume, Outlook meeting info, foreground watcher)
+with the .NET Framework `csc.exe` — needs the Windows 10/11 SDK. It's idempotent (skips
+already-current builds) and best-effort: a missing/failed build means the dependent
+feature logs itself unavailable at runtime, it won't block `npm start`.
+
+These helpers exist deliberately: features that once shelled out to `powershell.exe`
+(now-playing, foreground-app tracking, window focus, volume reads) now use small signed
+persistent helpers instead, because repeated PowerShell process creation is flagged by
+endpoint-security tools as malware-like behavior. Keep it that way — new Windows
+integrations should be a `native/*.cs` helper (persistent + streaming if called
+repeatedly), not a PowerShell spawn.
+
 Building the natives on modern Windows needs Visual Studio 2022 Build Tools
 (Desktop C++ workload) and a Python with `distutils` (`pip install
 "setuptools<81"` on Python 3.12+). Set `GYP_MSVS_VERSION=2022` if node-gyp picks
@@ -56,6 +80,28 @@ keeps the mouse and touch aligned with what you see. open-quake auto-rotates its
 render if you leave it portrait, but then a desktop mouse moved onto the panel
 reads 90° off.
 
+If your taps land on the **wrong monitor** (Windows binds touch to the primary
+display by default for any HID touchscreen that doesn't include the proper
+Container ID in its USB descriptor — which most generic HDMI touchscreens don't),
+open the editor → **Settings → Hardware → Set up touchscreen**. That launches
+Windows' built-in `multidigimon -touch` wizard, the same backend tool Tablet PC
+Settings → Setup → Touch Input used to fire before Microsoft broke that UI in
+Win 11 24H2.
+
+**How to drive the wizard:** Accept the UAC prompt. The wizard shows
+*"Tap this screen with a single finger to identify it as a touch screen — if
+this is not the touch screen, press Enter to move to the next screen"* on each
+display in sequence, starting with your primary. **Press Enter on your keyboard
+to skip past every monitor that isn't the panel.** Only when the prompt window
+appears on the 480-tall panel itself do you tap the panel with your finger.
+That writes a persistent override under
+`HKLM\SOFTWARE\Microsoft\Wisp\Pen\Digimon` that survives reboot, sleep, USB
+reconnect, and primary-display swaps.
+
+**Clear all calibrations** is only for fixing stale `tabcal` coordinate
+calibration (taps land on the right display but slightly off). You don't
+normally need it for initial binding — `Set up touchscreen` alone is sufficient.
+
 ## Code layout
 
 ```
@@ -64,16 +110,24 @@ docs/DEVICE_PROTOCOL.md   reverse-engineered protocol spec           [PolyForm N
 tools/                    standalone HID probe / write-test scripts  [PolyForm NC]
 app/                      the Electron launcher + PC grid editor     [MIT]
   main.js                 host: windows, IPC, launch/volume/config
+  multiKnob.js            picks Bedrock or ARIS-68, whichever is plugged in
+  BedrockConnector.js     the open RP2040 knob's HID driver (mirrors Aris68Connector's shape)
+  secretStore.js          encrypts secret-typed config fields at rest (dispatches to backend)
+  dpapi.js                Windows secret backend: raw DPAPI, no key file (see Settings & Auth docs)
   index.html              the on-panel UI (grids + web dashboards)
   config.html             the PC editor (pages, tiles, icons)
   config.default.json     seed config (copied to config.json on first run)
-  sysmetrics.js           SystemView: live host metrics (systeminformation + GPU counters)
-  nowplaying.js           Music: now-playing from Windows SMTC (via PowerShell)
-  sysserver.js            localhost server for the served app pages (SystemView, Music, chat)
-  sysview.html            SystemView: the on-panel system-monitor dashboard
+  nowplaying.js           Music: now-playing from Windows SMTC (via smtc-monitor.exe)
+  sysserver.js            localhost server for the served app pages (Music, chat, meetings)
   musicview.html          Music: now-playing + transport + the embedded app grid
   chatview.html           Open WebUI chat wrapper + knob push-to-talk
   ChatWidget.js           bundled Open WebUI chat widget   [vendored, MIT]
   owui-widget.css         widget styles                    [vendored, MIT]
 apps/                     bundled local web apps + apps.json manifest [MIT]
 ```
+
+Secrets (dashboard/HA tokens, app secret options) are encrypted at rest via `secretStore.js`,
+which dispatches to a platform backend: an in-process, first-party raw Windows DPAPI Node-API
+binding (`dpapi.js`, per-value, current-user scope, no key file) on Windows, and Electron
+`safeStorage` (Keychain-backed) elsewhere. Run `npm run build:dpapi` to build that binding alone;
+`npm start`, `npm run rebuild`, and `npm run dist` build it automatically when stale.

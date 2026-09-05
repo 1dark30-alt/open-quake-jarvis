@@ -1,0 +1,31 @@
+{
+  "id": "pihole-dash",
+  "name": "Pi-hole Dashboard",
+  "version": "1.0.2",
+  "description": "Multi-server Pi-hole dashboard — per-server tabs with live stats, 24-hour query chart, top lists, and blocking controls.",
+  "entry": "index.html",
+  "served": true,
+  "server": "server.js",
+  "options": [
+    { "key": "server1Name", "label": "Server 1 name", "type": "text", "default": "Primary", "help": "Tab label for this Pi-hole." },
+    { "key": "server1Url", "label": "Server 1 URL", "type": "text", "default": "", "serverOnly": true, "help": "e.g. http://192.168.1.2 — leave blank to hide this slot. Requires Pi-hole v6." },
+    { "key": "server1Pass", "label": "Server 1 password", "type": "secret", "default": "", "serverOnly": true, "help": "Admin password or (better) an app password from Settings > Web Interface / API > App password. Leave blank if the Pi-hole has no password." },
+    { "key": "server2Name", "label": "Server 2 name", "type": "text", "default": "Secondary" },
+    { "key": "server2Url", "label": "Server 2 URL", "type": "text", "default": "", "serverOnly": true, "help": "Leave blank to hide this slot." },
+    { "key": "server2Pass", "label": "Server 2 password", "type": "secret", "default": "", "serverOnly": true },
+    { "key": "server3Name", "label": "Server 3 name", "type": "text", "default": "" },
+    { "key": "server3Url", "label": "Server 3 URL", "type": "text", "default": "", "serverOnly": true, "help": "Leave blank to hide this slot." },
+    { "key": "server3Pass", "label": "Server 3 password", "type": "secret", "default": "", "serverOnly": true },
+    { "key": "server4Name", "label": "Server 4 name", "type": "text", "default": "" },
+    { "key": "server4Url", "label": "Server 4 URL", "type": "text", "default": "", "serverOnly": true, "help": "Leave blank to hide this slot." },
+    { "key": "server4Pass", "label": "Server 4 password", "type": "secret", "default": "", "serverOnly": true },
+    {
+      "key": "refreshSeconds",
+      "label": "Refresh interval",
+      "type": "select",
+      "default": "10",
+      "choices": [["5", "5 seconds"], ["10", "10 seconds"], ["30", "30 seconds"]],
+      "help": "How often the dashboard polls the servers."
+    }
+  ]
+}

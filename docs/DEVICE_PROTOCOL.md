@@ -13,6 +13,10 @@ Goal: rebuild an open driver that drives the ARIS-68 (touchscreen + knob + mic) 
 
 Your `hotlotus` (VID 1810) = the touch interface. Models: `ARIS-68`, `Quake-HID`.
 
+The `usage`/`usagePage` columns above are as observed on real hardware, but **device
+matching in code only filters on VID + PID + `usagePage`** (`Aris68Connector.js`) — `usage`
+is not used as a match criterion, just recorded here for completeness.
+
 ## 2. Connection (blob: control L32603-32733, touch L25293-25347)
 - **Control:** poll `HID.devices()` every 5 s → filter `SUPPORTED_VPID` (VID+PID, optional usage/usagePage) → `new HID(path)` (`{nonExclusive:true}` on macOS) → `on("data")` → `checkDataValid()` → listeners. EIO ("could not read from HID device"): 3 errors/10 s ⇒ reconnect w/ backoff.
 - **Touch:** poll every 2 s → find `TOUCH_HID_DEVICE` → `new HID(path)` → `on("data")` → `_checkAndConvertToCoordinate()`. Rebind 2 s after error.
@@ -34,7 +38,10 @@ Your `hotlotus` (VID 1810) = the touch interface. Models: `ARIS-68`, `Quake-HID`
 
 ## 4. Incoming events
 **Control** (`QuakeMainController.handleDeviceData`, blob L25580) — frames are `0xA3` short-cmds:
-- `opCode 3` **knob**: `cmdID 1` = rotate (`subData[0]`: 1=dir-A else dir-B); `cmdID 2` = press (`subData[0]`=knob idx).
+- `opCode 3` **knob**: `cmdID 1` = rotate (`subData[0]`: 1=dir-A else dir-B); `cmdID 2` = press,
+  where `subData[0]` disambiguates: `5` = **hold start**, `0xFF` = **hold end** (push-to-talk),
+  anything else = a regular press with that value as the knob index. Single vs. double-click is
+  a host-side timing interpretation on top of these regular-press events, not a distinct wire value.
 - `opCode 0x55` **state**: `cmdID 0` = state-sync ack (`subData[0]==0x90`⇒busy) / mic-change result; `3` = mic (`subData[0]`:1=on); `5` = luminance (0-255); `0xEF` = keep-alive **pong**; `0x2E` = name + **firmware** `subData[1].subData[2].subData[3]`.
 - `0x01` frame = key press (§3).
 
@@ -56,7 +63,8 @@ Your `hotlotus` (VID 1810) = the touch interface. Models: `ARIS-68`, `Quake-HID`
 
 Device present as **QUAKE** (VID 0x4158/0x514B, control on `uP=0xFF60`) + **hotlotus** touchscreen (VID 0x0712/0x0010, touch on `uP=0xFF73`). Decode confirmed exactly:
 - **Knob rotate**: `a3 03 03 01 0X` — opCode 3, cmdID 1, `subData[0]` = 1 (dir A) / 2 (dir B). ✅
-- **Knob press**: `a3 03 03 02 01` — opCode 3, cmdID 2, `subData[0]` = knob idx (1). ✅
+- **Knob press**: `a3 03 03 02 01` — opCode 3, cmdID 2, `subData[0]` = knob idx (1) for a
+  regular press; `subData[0] = 5` / `0xFF` are hold-start / hold-end instead (§4). ✅
 - **Touch**: `a3 1c 03 1a <count> [action,yLo,yHi,xLo,xHi]…` — continuous drag, accurate 16-bit coords. ✅
 - **Screen resolution ≈ 1920 × 480** (observed x≤1906, y≤479).
 - **No physical keys.** This unit is one big **1920×480 touchscreen + a knob** — touch zones act as the "buttons." Touch + knob is the *complete* input set, and both are validated. (The standard-keyboard HID collection is just the MCU's default descriptor; unused here.)
@@ -75,10 +83,47 @@ Other senders: buzzer `l(163,[2,tone],1)`; knob-LED `l(163,[6,0/1],1)`; **DFU `l
 
 **Mic LED is firmware-coupled to the mic mute — no independent control (probed 2026-06-18, all negative).** Held the mic ON and watched the indicator LED while sending: `0x03` with extra/alt params (`[03,01,00]`, `[03,01,02]`, `[03,02]`), plus every unmapped opCode-1 SET cmdID `0x07`–`0x0D` at both value 0 and 1 — nothing turned the LED off while the audio stayed live. The LED simply tracks the `0x03` mute state in firmware; there is no separate LED on/off or brightness command (DK-Suite exposes none either). **To kill the bright mic LED you must mute the mic.** The LED also only lights once the panel is fully awake — at connect a `0x03` set toggles the audio but the LED is dropped until a later `screenOn` re-syncs it (open-quake re-asserts mic ~2 s after connect for this reason). DFU `0x2F` was never sent during probing.
 
-## 9. Remaining: display output (the last piece)
-Wire op = `wrapData(0xA2, jpegBytes, 0x02, "resType-RC", seq)` (per-tile) — but the full 1920×480 Quake screen likely uses a **full-frame** push via the "RemoteScreen" window. Trace `sendResource` / `_checkForQuakeScreen` / `_triggerScreenBindProcess` / RemoteScreen in the blob to get the framing, then push a test image.
+## 9. Display output — reverse-engineered wire op, NOT how open-quake actually drives the panel
 
-## 8. Build plan
-1. **Probe** (next): standalone Node script + `node-hid` → open both interfaces, parse, and log decoded **key / knob / touch / firmware** events live → validates this spec against the real device.
-2. Wrap into an `Aris68Connector` module (events out, display + commands in) on the V0.0.61 base.
-3. Add display rendering + mic.
+**This section documents what the DK-Suite blob's protocol supports, for completeness — it is
+not the mechanism open-quake uses.** In practice the panel's screen is a standard external
+monitor over its display cable (HDMI / USB-C DisplayPort alt-mode); open-quake just renders an
+Electron window onto that display like any other monitor. See
+[building.md](building.md#how-the-hardware-works) for the actual mechanism.
+
+The reverse-engineered per-tile push wire op, for reference: `wrapData(0xA2, jpegBytes, 0x02,
+"resType-RC", seq)` — the full 1920×480 Quake screen likely used a **full-frame** push via the
+"RemoteScreen" window in DK-Suite. `sendResource` / `_checkForQuakeScreen` /
+`_triggerScreenBindProcess` / RemoteScreen in the blob have the framing, if this is ever needed.
+
+## 10. Knob RGB ring (QMK VIA) — VALIDATED ✅
+
+A second command channel on the **same control interface**, standard QMK VIA framing: report =
+`[0x00 report-id, command, ...data]` zero-padded to **33 bytes**. Commands: `0x07` = set, `0x08`
+= get, `0x09` = save-to-flash. The ring's RGB-Matrix lighting lives on VIA custom channel **3**;
+within it, field byte `1` = brightness, `2` = effect index (`0`–`43`, the RGB-Matrix effect
+list — `0` = All Off), `3` = speed, `4` = color (`[hue, sat]`). Verified live against real
+hardware (VIA protocol 12). Implementation: `Aris68Connector.js`'s `_via`/`setLedBrightness`/
+`setLedEffect`/`setLedSpeed`/`setLedColor`/`saveLighting`/`getLighting`.
+
+## 11. Bedrock connector — a separate, open (not reverse-engineered) protocol
+
+open-quake also drives **Bedrock**, an open-hardware RP2040 knob from the companion
+[bedrock-console](https://github.com/TeeJS/bedrock-console) project — a from-scratch "homebrew
+device" HID protocol, not related to ARIS-68's. `multiKnob.js` picks whichever device is
+actually plugged in (Bedrock first, ARIS-68 fallback); both emit the same internal knob-event
+shape so the rest of the app doesn't need to know which is connected. Full protocol spec (VID
+`0x1209`/PID `0xBED0`, usage page `0xFF00`, single 8-byte tagged bidirectional report) lives in
+the firmware repo: `bedrock-console/firmware/PROTOCOL.md`. Implementation here:
+`app/BedrockConnector.js`.
+
+## 12. Build plan — historical (all steps below are done)
+
+1. ~~**Probe**: standalone Node script + `node-hid` → open both interfaces, parse, and log
+   decoded **key / knob / touch / firmware** events live → validates this spec against the
+   real device.~~ Done — see §7.
+2. ~~Wrap into an `Aris68Connector` module (events out, display + commands in).~~ Done —
+   `src/Aris68Connector.js`, plus the RGB ring (§10) and Bedrock (§11) added since.
+3. ~~Add display rendering + mic.~~ Display is a standard monitor cable, not a custom
+   protocol (§9); mic is the panel's standard USB audio device (§6) — neither needed
+   protocol-level work.

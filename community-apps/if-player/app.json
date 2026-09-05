@@ -1,0 +1,100 @@
+{
+  "id": "if-player",
+  "name": "Interactive Fiction",
+  "version": "1.1.1",
+  "description": "Play Inform / Z-machine & Glulx text adventures with TTS narration and voice commands.",
+  "entry": "index.html",
+  "served": true,
+  "server": "server.js",
+  "options": [
+    {
+      "key": "storiesDir",
+      "label": "Stories folder",
+      "type": "folder",
+      "default": "",
+      "help": "Folder anywhere on this PC that holds your story files (.z5 / .z8 / .zblorb / .ulx / .gblorb). Browse to it; every story inside shows up in the on-screen list. Leave blank to use the app's own bundled stories folder."
+    },
+    {
+      "key": "savesDir",
+      "label": "Saves folder",
+      "type": "folder",
+      "default": "",
+      "help": "Folder anywhere on this PC where your save files are written (one subfolder per story). Browse to it. Saves are real files kept outside the app, so they survive app updates and reinstalls. Leave blank to keep them in a 'saves' folder next to your stories."
+    },
+    {
+      "key": "speak",
+      "label": "Read the story aloud",
+      "type": "bool",
+      "default": true,
+      "help": "Speak each new passage through the system TTS voice (Settings → TTS/STT). Can be toggled on screen at any time."
+    },
+    {
+      "key": "voiceInput",
+      "label": "Voice commands",
+      "type": "bool",
+      "default": true,
+      "help": "Show the Listen control so you can say commands instead of typing them. Uses the system STT (Settings → TTS/STT)."
+    },
+    {
+      "key": "autosave",
+      "label": "Auto-save to file",
+      "type": "bool",
+      "default": false,
+      "help": "Automatically save your progress for the current story every few minutes, so you never lose your place. Saves are written to a 'saves' folder next to your stories. Off by default."
+    },
+    {
+      "key": "autosaveInterval",
+      "label": "Auto-save every (minutes)",
+      "type": "text",
+      "default": "5",
+      "maxLength": 4,
+      "showIf": { "key": "autosave", "value": true },
+      "help": "How often to auto-save, in minutes. Minimum 1."
+    },
+    {
+      "key": "story",
+      "label": "Auto-start story (optional)",
+      "type": "text",
+      "default": "",
+      "help": "Optional: a filename from the stories folder to open straight into. Leave blank to browse the on-screen list (the normal way)."
+    }
+  ],
+  "settings": {
+    "key": "ifPlayer",
+    "title": "Interactive Fiction",
+    "options": [
+      {
+        "key": "ttsHost",
+        "label": "TTS host override",
+        "type": "text",
+        "default": "",
+        "advanced": true,
+        "help": "Developer override: a Wyoming TTS host just for this app. Blank uses the system TTS server (Settings → TTS/STT)."
+      },
+      {
+        "key": "ttsPort",
+        "label": "TTS port override",
+        "type": "text",
+        "default": "",
+        "advanced": true,
+        "help": "Blank uses the system setting (default 10200)."
+      },
+      {
+        "key": "sttHost",
+        "label": "STT host override",
+        "type": "text",
+        "default": "",
+        "advanced": true,
+        "help": "Developer override: a Wyoming STT host just for this app. Blank uses the system STT server (Settings → TTS/STT)."
+      },
+      {
+        "key": "sttPort",
+        "label": "STT port override",
+        "type": "text",
+        "default": "",
+        "advanced": true,
+        "help": "Blank uses the system setting (default 10300)."
+      }
+    ]
+  }
+}

@@ -6,6 +6,11 @@ server. Add it from the editor via
 **+ App → Open WebUI**. It's named for the provider so you can add other chat backends as
 their own apps later.
 
+> Looking for streaming replies, voice via the Wyoming pipeline, a live model picker, and
+> multi-turn memory? That's the newer **[AI Voice](ai-voice.md)** app (Open WebUI backend), built
+> on the agent-panel framework and configured once on **Settings → Auth**. This widget keeps its
+> own per-page endpoint fields for now; a future release may consolidate the two.
+
 ## Setup
 
 In the editor, open the **Open WebUI** app page and fill in three fields:
@@ -81,5 +86,6 @@ loopback origin). The bundled widget is the
   aren't set.
 - **Voice does nothing on hold** — make sure you're on the chat page; the device mic is on; and
   OWUI's STT is set to local Whisper.
-- **Security note** — the API key is stored in plain text in `%APPDATA%\open-quake\config.json`.
-  Fine for a local, trusted panel; don't ship that config off the device.
+- **Security note** — the API key is encrypted at rest in `%APPDATA%\open-quake\config.json`
+  (DPAPI on Windows, Keychain-backed on macOS), same as the Home Assistant token. It's still
+  local to this device and this Windows login — don't ship that config off the device.

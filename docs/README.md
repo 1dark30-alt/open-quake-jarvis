@@ -10,12 +10,17 @@ Detailed guides for open-quake. Back to the [project README](../README.md).
 - **[Apps & drop-ins](apps.md)** — bundled apps, writing your own, and the drop-in app manager
 - **[Community apps](community-apps.md)** — install or submit shared drop-in apps
 - **[Music controller](music.md)** — now-playing, transport, album art, lyrics, button strip
+- **[Meeting](meeting.md)** — one-tap mute/video/accept/decline/leave for Zoom and Teams
 - **[System monitor](system-monitor.md)** — live CPU/GPU/RAM/disk/network/battery
 - **[Open WebUI chat + voice](ai-chat.md)** — chat to your LLM, hold the knob to talk
+- **[AI Voice](ai-voice.md)** — one voice+text app, five backends: a real Claude Code / Codex / Copilot agent session (talk or type, touch approvals), or plain chat against Open WebUI or any OpenAI-compatible API with your own key
+- **[Microsoft 365 drop-in](apps.md)** — installable profile, presence, and calendar panel with its own OAuth connection, configurable app shortcuts, and one-tap Join meeting
 - **[Settings & knob](settings.md)** — launch mode, rotation, RGB ring, knob behavior, mic
+- **[Reserved Display](reserved-display.md)** — keep normal Windows apps off the Quake display
 
 ## Under the hood
 
 - **[Building & how it works](building.md)** — hardware, build from source, code layout
 - **[Drop-in apps spec](drop-in-spec.md)** — integration spec for fork maintainers
 - **[Device protocol](DEVICE_PROTOCOL.md)** — the reverse-engineered HID protocol
+- **[UI design system](design-system.md)** — layout, spacing, hierarchy, color, and typography rules for every on-panel page. Read before building or restyling any panel UI (Music, Meeting, dashboards, drop-in apps).
