@@ -20,7 +20,7 @@ def spoken_text(text):
 
 
 class LocalVoice:
-    def __init__(self, length_scale=1.06, pitch=0.98):
+    def __init__(self, length_scale=1.06, pitch=1.08):
         self.length_scale = max(.8, min(1.4, float(length_scale)))
         self.pitch = max(.9, min(1.1, float(pitch)))
         self.voice = None

@@ -13,7 +13,7 @@ The Open Quake launcher now defaults to **Codex signed in with ChatGPT**, with a
 
 ## Voice
 
-Piper's `en_GB-vctk-medium` voice with Scottish male speaker `p237` (Fife) runs locally with a measured pace (`local_voice_pace: 1.06`) and a subtle pitch reduction (`local_voice_pitch: 0.98`). These values are in `Mark-LV/config/api_keys.json`. The generated voice uses a Scottish accent, not a clone of a film actor. Spoken replies omit code blocks and raw URLs while the panel retains the full text. The avatar follows the synthesized audio.
+Piper's `en_GB-vctk-medium` voice with Scottish male speaker `p237` (Fife) runs locally with a measured pace (`local_voice_pace: 1.06`) and a brighter, higher pitch (`local_voice_pitch: 1.08`). These values are in `Mark-LV/config/api_keys.json`. The generated voice uses a Scottish accent, not a clone of a film actor. Spoken replies omit code blocks and raw URLs while the panel retains the full text. The avatar follows the synthesized audio.
 
 Faster Whisper `base.en` performs CPU transcription locally. Only the resulting text goes to Codex. Push-to-talk avoids continuously listening and prevents the assistant from transcribing its own speech. Transcription defaults to English. The global hotkey integration uses Windows key-state polling; use the Quake knob for other platforms.
 

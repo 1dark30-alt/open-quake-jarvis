@@ -30,7 +30,7 @@ async function start(options) {
     config.llm_provider = options.llm_provider || 'codex';
     config.os_system = process.platform;
     config.local_voice_pace = 1.06;
-    config.local_voice_pitch = 0.98;
+    config.local_voice_pitch = 1.08;
     config.push_to_talk_enabled = true;
     if (config.llm_provider !== 'codex' && !config.gemini_api_key) return { ok: false, error: 'Set your Gemini API key in JARVIS options.' };
     if (!config.quake_pin) config.quake_pin = 'QUAKE';

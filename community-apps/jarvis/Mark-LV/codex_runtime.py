@@ -42,7 +42,7 @@ class CodexRuntime:
     def __init__(self, ui, controls):
         self.ui, self.controls = ui, controls
         config = load_api_keys()
-        self.voice = LocalVoice(config.get('local_voice_pace', 1.06), config.get('local_voice_pitch', .98))
+        self.voice = LocalVoice(config.get('local_voice_pace', 1.06), config.get('local_voice_pitch', 1.08))
         self.transcriber = LocalTranscriber()
         self.client = CodexClient(self.event, self.server_request)
         self.dashboard = QuakeDashboard()
