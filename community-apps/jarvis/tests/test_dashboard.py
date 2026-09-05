@@ -28,9 +28,9 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
     async def test_health_and_authentication(self):
         self.assertEqual((await self.client.get('/api/health')).json(), {'version': '55'})
         self.assertEqual((await self.client.post('/login', json={'pin': 'wrong'})).status_code, 401)
-        for route in ['metrics', 'remote-pairing', 'files']:
+        for route in ['metrics', 'remote-pairing', 'files', 'codex/status']:
             self.assertEqual((await self.client.get('/api/' + route)).status_code, 401)
-        for route in ['toggle_mute', 'show_ui', 'command']:
+        for route in ['toggle_mute', 'show_ui', 'command', 'codex/login', 'voice/preview']:
             self.assertEqual((await self.client.post('/api/' + route, json={})).status_code, 401)
 
     async def test_reconnect_and_command(self):
@@ -57,6 +57,20 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
         response = await self.client.get('/api/metrics', headers=headers)
         self.assertEqual(response.status_code, 200)
         self.assertTrue({'cpu', 'mem', 'net', 'gpu', 'tmp', 'uptime', 'proc_count'} <= response.json().keys())
+
+    async def test_subscription_buttons(self):
+        from unittest.mock import AsyncMock, Mock
+        response = await self.client.post('/login', json={'pin': 'TEST55'})
+        headers = {'Authorization': 'Bearer ' + response.json()['token']}
+        runtime = Mock(busy=False, login=AsyncMock(return_value={'ok': True}), submit=AsyncMock(),
+                       status=AsyncMock(return_value={'signed_in': True}))
+        self.dashboard.runtime = runtime
+        self.assertEqual((await self.client.post('/api/codex/login', headers=headers)).status_code, 200)
+        runtime.login.assert_awaited_once()
+        self.assertEqual((await self.client.post('/api/voice/preview', headers=headers)).status_code, 200)
+        runtime.submit.assert_awaited_once_with('/preview')
+        runtime.busy = True
+        self.assertEqual((await self.client.post('/api/voice/preview', headers=headers)).status_code, 409)
 
     async def test_cors(self):
         for origin, allowed in [('http://127.0.0.1:3000', True), ('https://example.com', False)]:

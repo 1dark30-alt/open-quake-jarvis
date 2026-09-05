@@ -6,7 +6,7 @@ dist/
 out/
 build/
 
-# user runtime config (seeded from app/config.default.json on first run — keeps personal setups out of git)
+# user runtime config (seeded from app/config.default.json on first run â€” keeps personal setups out of git)
 app/config.json
 
 # local Azure Trusted Signing assets (3rd-party dlib + machine-specific metadata; re-fetched per machine)
@@ -42,3 +42,6 @@ community-apps/jarvis/Mark-LV/config/*.json
 community-apps/jarvis/Mark-LV/config/certs/
 community-apps/jarvis/Mark-LV/memory/*.json
 community-apps/jarvis/Mark-LV/uploads/
+
+community-apps/jarvis/Mark-LV/models/
+community-apps/jarvis/Mark-LV/voice-preview.wav

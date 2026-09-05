@@ -1675,6 +1675,9 @@ class CustomizeOverlay(QWidget):
         lay.addSpacing(4)
         lay.addWidget(_lbl("ASSISTANT VOICE", 8, color=C.TEXT_DIM,
                             align=Qt.AlignmentFlag.AlignLeft))
+        if _read_full_config().get("llm_provider") == "codex":
+            AVAILABLE_VOICES = ["British local voice"]
+            DEFAULT_VOICE = "British local voice"
         self._sel_voice   = (voice or DEFAULT_VOICE)
         if self._sel_voice not in AVAILABLE_VOICES:
             self._sel_voice = DEFAULT_VOICE
@@ -5555,7 +5558,7 @@ class MainWindow(QMainWindow):
         if not API_FILE.exists(): return False
         try:
             d = json.loads(API_FILE.read_text(encoding="utf-8"))
-            return bool(d.get("gemini_api_key")) and bool(d.get("os_system"))
+            return d.get("llm_provider") == "codex" or (bool(d.get("gemini_api_key")) and bool(d.get("os_system")))
         except Exception:
             return False
 

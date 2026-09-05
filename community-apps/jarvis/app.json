@@ -18,6 +18,22 @@
       "default": "QUAKE"
     },
     {
+      "key": "llm_provider",
+      "label": "Conversation engine",
+      "type": "select",
+      "default": "codex",
+      "choices": [
+        [
+          "codex",
+          "ChatGPT subscription (Codex + local British voice)"
+        ],
+        [
+          "gemini-live",
+          "Gemini Live (API key)"
+        ]
+      ]
+    },
+    {
       "key": "gemini_api_key",
       "label": "Gemini API Key",
       "type": "secret",

@@ -1,0 +1,103 @@
+"""Local British speech and CPU transcription. Never calls a speech API."""
+from pathlib import Path
+import re
+import threading
+import wave
+import numpy as np
+
+ROOT = Path(__file__).resolve().parents[1]
+MODELS = ROOT / 'models'
+VOICE = 'en_GB-alan-medium'
+
+
+def spoken_text(text):
+    text = re.sub(r'```.*?```', 'The code is shown on screen.', text, flags=re.S)
+    text = re.sub(r'\[([^]]+)\]\([^)]+\)', r'\1', text)
+    text = re.sub(r'https?://\S+', 'the link on screen', text)
+    return re.sub(r'[*#`_]', '', text).strip()
+
+
+class LocalVoice:
+    def __init__(self, length_scale=1.06, pitch=0.98):
+        self.length_scale = max(.8, min(1.4, float(length_scale)))
+        self.pitch = max(.9, min(1.1, float(pitch)))
+        self.voice = None
+        self.lock = threading.Lock()
+        self.speaking = threading.Event()
+        self.cancelled = threading.Event()
+
+    def synthesize(self, text):
+        from piper import PiperVoice, SynthesisConfig
+        with self.lock:
+            if self.voice is None:
+                model = MODELS / VOICE / (VOICE + '.onnx')
+                if not model.exists():
+                    raise RuntimeError('Local British voice is missing. Run install_mark55.py.')
+                self.voice = PiperVoice.load(str(model))
+            chunks = list(self.voice.synthesize(spoken_text(text), syn_config=SynthesisConfig(
+                length_scale=self.length_scale, noise_scale=.55, noise_w_scale=.7)))
+            if not chunks:
+                return np.zeros(0, dtype=np.int16), 22050
+            samples = np.concatenate([np.frombuffer(c.audio_int16_bytes, dtype=np.int16) for c in chunks])
+            return samples, round(chunks[0].sample_rate * self.pitch)
+
+    def save(self, text, destination):
+        samples, rate = self.synthesize(text)
+        with wave.open(str(destination), 'wb') as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(rate)
+            output.writeframes(samples.tobytes())
+
+    def speak(self, text, device=None, on_audio=None):
+        import sounddevice as sd
+        self.cancelled.clear()
+        self.speaking.set()
+        try:
+            samples, rate = self.synthesize(text)
+            if self.cancelled.is_set():
+                return
+            if on_audio:
+                on_audio(samples, rate)
+            sd.play(samples, rate, device=device, blocking=True)
+        finally:
+            self.speaking.clear()
+
+    def stop(self):
+        self.cancelled.set()
+        import sounddevice as sd
+        sd.stop()
+
+
+class LocalTranscriber:
+    def __init__(self):
+        self.model = None
+        self.lock = threading.Lock()
+
+    def transcribe(self, samples):
+        if len(samples) < 3200 or float(np.max(np.abs(samples))) < .006:
+            return ''
+        with self.lock:
+            if self.model is None:
+                from faster_whisper import WhisperModel
+                path = MODELS / 'whisper-base.en'
+                if not (path / 'model.bin').exists():
+                    raise RuntimeError('Local speech recognition is missing. Run install_mark55.py.')
+                self.model = WhisperModel(str(path), device='cpu', compute_type='int8', local_files_only=True)
+            segments, _ = self.model.transcribe(samples, language='en', beam_size=1,
+                vad_filter=True, condition_on_previous_text=False)
+            return ' '.join(s.text.strip() for s in segments if s.no_speech_prob < .6).strip()
+
+
+def install_models():
+    """Explicit installer only: the running assistant never downloads a model."""
+    import subprocess
+    import sys
+    from faster_whisper.utils import download_model
+    directory = MODELS / VOICE
+    directory.mkdir(parents=True, exist_ok=True)
+    subprocess.run([sys.executable, '-m', 'piper.download_voices', '--download-dir', str(directory), VOICE], check=True)
+    download_model('base.en', output_dir=str(MODELS / 'whisper-base.en'))
+
+if __name__ == '__main__':
+    install_models()

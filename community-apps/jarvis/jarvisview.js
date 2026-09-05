@@ -425,6 +425,18 @@
     }
   }
 
+  for (const [id, endpoint] of [['codex-login', '/api/codex/login'], ['voice-preview', '/api/voice/preview']]) {
+    document.getElementById(id).addEventListener('click', async () => {
+      if (!authToken) { logSystemMessage('Connect to JARVIS first.'); return; }
+      try {
+        const result = await fetch(config.endpoint + endpoint, { method: 'POST', headers: { Authorization: `Bearer ${authToken}` } });
+        const data = await result.json();
+        if (!result.ok) throw new Error(data.error || 'Request failed');
+        logSystemMessage(id === 'codex-login' ? 'Complete ChatGPT sign-in in your browser.' : 'Playing the local British voice.');
+      } catch (e) { logSystemMessage(e.message); }
+    });
+  }
+
   // ── Initialize ──
 
   async function startSetup() {
@@ -440,6 +452,16 @@
     const ok = await authenticate();
     if (ok) {
       connectWebSocket();
+      try {
+        const response = await fetch(config.endpoint + '/api/codex/status', { headers: { Authorization: `Bearer ${authToken}` } });
+        if (response.ok) {
+          const status = await response.json();
+          const enabled = status.provider === 'codex';
+          document.getElementById('codex-login').hidden = !enabled;
+          document.getElementById('voice-preview').hidden = !enabled;
+          document.getElementById('codex-login').textContent = status.signed_in ? 'ChatGPT connected' : 'Sign in with ChatGPT';
+        }
+      } catch (e) { /* The engine may still be initializing. Sign-in stays available. */ }
     }
   }
 

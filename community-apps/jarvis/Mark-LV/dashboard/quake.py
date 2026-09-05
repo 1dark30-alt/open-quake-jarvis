@@ -88,6 +88,69 @@ class QuakeDashboard(DashboardServer):
             if not authorized(req):
                 return JSONResponse({'error': 'Unauthorized'}, status_code=401)
             return {'manual_url': 'Local panel mode. Run Mark-LV/main.py for LAN access.', 'key': 'LOCAL ONLY'}
+        @app.get('/api/codex/status')
+        async def codex_status(req: Request):
+            if not authorized(req):
+                return JSONResponse({'error': 'Unauthorized'}, status_code=401)
+            runtime = getattr(self, 'runtime', None)
+            if runtime is None:
+                return {'provider': 'gemini-live'}
+            return await runtime.status()
+
+        @app.post('/api/codex/login')
+        async def codex_login(req: Request):
+            if not authorized(req):
+                return JSONResponse({'error': 'Unauthorized'}, status_code=401)
+            runtime = getattr(self, 'runtime', None)
+            if runtime is None:
+                return JSONResponse({'error': 'Select the ChatGPT subscription engine and restart JARVIS.'}, status_code=409)
+            try:
+                return await runtime.login()
+            except Exception as exc:
+                return JSONResponse({'error': str(exc)}, status_code=503)
+
+        @app.post('/api/voice/preview')
+        async def preview(req: Request):
+            if not authorized(req):
+                return JSONResponse({'error': 'Unauthorized'}, status_code=401)
+            runtime = getattr(self, 'runtime', None)
+            if runtime is None:
+                return JSONResponse({'error': 'Select the ChatGPT subscription engine first.'}, status_code=409)
+            if runtime.busy:
+                return JSONResponse({'error': 'Wait for the current reply to finish.'}, status_code=409)
+            await runtime.submit('/preview')
+            return {'ok': True}
+
+        # Preserve the upstream audio route in Gemini mode, consume bounded PCM
+        # utterances locally in Codex mode. Both use the same bearer authentication.
+        from fastapi import WebSocket, WebSocketDisconnect
+        original_audio = next(r.endpoint for r in app.routes if getattr(r, 'path', '') == '/ws/phone-audio')
+        app.router.routes[:] = [r for r in app.routes if getattr(r, 'path', '') != '/ws/phone-audio']
+        @app.websocket('/ws/phone-audio')
+        async def audio(websocket: WebSocket, token: str = ''):
+            runtime = getattr(self, 'runtime', None)
+            if runtime is None:
+                return await original_audio(websocket, token)
+            if token not in self._tokens:
+                await websocket.close(code=4001)
+                return
+            await websocket.accept()
+            chunks, size = [], 0
+            try:
+                while True:
+                    data = await websocket.receive_bytes()
+                    size += len(data)
+                    if size > 16000 * 2 * 30:
+                        await websocket.close(code=1009, reason='Maximum utterance is 30 seconds')
+                        break
+                    chunks.append(data)
+            except WebSocketDisconnect:
+                pass
+            if chunks:
+                import numpy as np
+                raw = b''.join(chunks)
+                samples = np.frombuffer(raw[:len(raw)//2*2], dtype='<i2').astype(np.float32) / 32768
+                await runtime.audio(samples)
         return app
 
     @staticmethod

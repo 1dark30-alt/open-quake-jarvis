@@ -312,6 +312,9 @@ def api_key(refresh: bool = False) -> str:
 def client(timeout_ms: int = DEFAULT_TIMEOUT_MS, key: str = ""):
     """A configured genai.Client with a deadline on it. Raises if there is no
     key, because a caller that cannot work without one should say so."""
+    from memory.config_manager import load_api_keys
+    if load_api_keys().get("llm_provider") == "codex":
+        raise RuntimeError("This legacy helper requires Gemini. Use Codex tools for this task instead.")
     from google import genai
     from google.genai import types as gtypes
 
@@ -369,6 +372,9 @@ def _to_live_parts(contents) -> list:
 
 
 async def _live_turn(parts: list, system: str, key: str, timeout_s: float) -> str:
+    from memory.config_manager import load_api_keys
+    if load_api_keys().get("llm_provider") == "codex":
+        raise RuntimeError("This legacy helper requires Gemini. Use Codex tools for this task instead.")
     from google import genai
     from google.genai import types as gtypes
 
@@ -479,6 +485,9 @@ def call(contents, tier: str = FAST, config=None,
     # is tried first, with the reasoning ladder behind it. So a user's choice is
     # honoured, and a user's choice that is having an outage still degrades to
     # something that answers instead of to nothing.
+    from memory.config_manager import load_api_keys
+    if load_api_keys().get("llm_provider") == "codex":
+        raise RuntimeError("This legacy helper requires Gemini. Use Codex tools for this task instead.")
     ladder = _LADDERS.get(tier)
     if ladder is None:
         ladder = (tier,) + tuple(m for m in _LADDERS[SMART] if m != tier)
