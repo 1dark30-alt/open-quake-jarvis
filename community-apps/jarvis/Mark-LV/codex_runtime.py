@@ -1,4 +1,4 @@
-"""Subscription-backed Jarvis: Codex conversations, local PTT and British speech."""
+"""Subscription-backed Jarvis: Codex conversations, local PTT and Scottish speech."""
 import asyncio
 import base64
 import json
@@ -16,7 +16,7 @@ from core.audio_devices import resolve
 from dashboard.quake import QuakeDashboard
 
 ROOT = Path(__file__).resolve().parent
-STYLE = '''You are JARVIS, a personal desktop assistant. Speak in clear, concise British English.
+STYLE = '''You are JARVIS, a personal desktop assistant. Speak in clear, concise English. The local voice has a Scottish accent; use natural phrasing without forced slang or phonetic accent spellings.
 Be calm, composed, precise and quietly witty when appropriate. Use short natural sentences
 that sound good aloud. No theatrical roleplay or claims to be a film character. Avoid reading
 code, markup or long URLs aloud. Do not claim an action succeeded without tool evidence.
@@ -95,7 +95,7 @@ class CodexRuntime:
         return {'ok': True}
 
     async def status(self):
-        return dict(await self.client.account(), provider='codex', voice='British local voice', push_to_talk='Ctrl+Space')
+        return dict(await self.client.account(), provider='codex', voice='Scottish local voice', push_to_talk='Ctrl+Space')
 
     async def submit(self, text):
         text = text.strip()
@@ -310,7 +310,7 @@ class CodexRuntime:
             self.schedule(self.conversation())
             self.schedule(self.commands())
             self.schedule(self.watch_mute())
-            self.log('Codex + local British voice ready. Hold Ctrl+Space to speak. Type /login to sign in.')
+            self.log('Codex + local Scottish voice ready. Hold Ctrl+Space to speak. Type /login to sign in.')
             await self.state('listening')
             await self.stopping.wait()
         finally:

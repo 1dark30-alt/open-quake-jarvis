@@ -1676,8 +1676,8 @@ class CustomizeOverlay(QWidget):
         lay.addWidget(_lbl("ASSISTANT VOICE", 8, color=C.TEXT_DIM,
                             align=Qt.AlignmentFlag.AlignLeft))
         if _read_full_config().get("llm_provider") == "codex":
-            AVAILABLE_VOICES = ["British local voice"]
-            DEFAULT_VOICE = "British local voice"
+            AVAILABLE_VOICES = ["Scottish local voice"]
+            DEFAULT_VOICE = "Scottish local voice"
         self._sel_voice   = (voice or DEFAULT_VOICE)
         if self._sel_voice not in AVAILABLE_VOICES:
             self._sel_voice = DEFAULT_VOICE

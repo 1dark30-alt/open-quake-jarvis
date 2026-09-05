@@ -1,13 +1,15 @@
-"""Local British speech and CPU transcription. Never calls a speech API."""
+"""Local Scottish speech and CPU transcription. Never calls a speech API."""
 from pathlib import Path
 import re
+import json
 import threading
 import wave
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 MODELS = ROOT / 'models'
-VOICE = 'en_GB-alan-medium'
+VOICE = 'en_GB-vctk-medium'
+SPEAKER = 'p237'  # Scottish male, Fife; resolve the model-specific numeric ID below.
 
 
 def spoken_text(text):
@@ -22,6 +24,7 @@ class LocalVoice:
         self.length_scale = max(.8, min(1.4, float(length_scale)))
         self.pitch = max(.9, min(1.1, float(pitch)))
         self.voice = None
+        self.speaker_id = None
         self.lock = threading.Lock()
         self.speaking = threading.Event()
         self.cancelled = threading.Event()
@@ -32,10 +35,14 @@ class LocalVoice:
             if self.voice is None:
                 model = MODELS / VOICE / (VOICE + '.onnx')
                 if not model.exists():
-                    raise RuntimeError('Local British voice is missing. Run install_mark55.py.')
+                    raise RuntimeError('Local Scottish voice is missing. Run install_mark55.py.')
+                metadata = json.loads(Path(str(model) + '.json').read_text(encoding='utf-8'))
+                self.speaker_id = metadata.get('speaker_id_map', {}).get(SPEAKER)
+                if self.speaker_id is None:
+                    raise RuntimeError('Scottish speaker is missing from the voice model. Re-run install_mark55.py.')
                 self.voice = PiperVoice.load(str(model))
             chunks = list(self.voice.synthesize(spoken_text(text), syn_config=SynthesisConfig(
-                length_scale=self.length_scale, noise_scale=.55, noise_w_scale=.7)))
+                speaker_id=self.speaker_id, length_scale=self.length_scale, noise_scale=.55, noise_w_scale=.7)))
             if not chunks:
                 return np.zeros(0, dtype=np.int16), 22050
             samples = np.concatenate([np.frombuffer(c.audio_int16_bytes, dtype=np.int16) for c in chunks])

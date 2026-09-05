@@ -432,7 +432,7 @@
         const result = await fetch(config.endpoint + endpoint, { method: 'POST', headers: { Authorization: `Bearer ${authToken}` } });
         const data = await result.json();
         if (!result.ok) throw new Error(data.error || 'Request failed');
-        logSystemMessage(id === 'codex-login' ? 'Complete ChatGPT sign-in in your browser.' : 'Playing the local British voice.');
+        logSystemMessage(id === 'codex-login' ? 'Complete ChatGPT sign-in in your browser.' : 'Playing the local Scottish voice.');
       } catch (e) { logSystemMessage(e.message); }
     });
   }

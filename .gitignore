@@ -44,4 +44,4 @@ community-apps/jarvis/Mark-LV/memory/*.json
 community-apps/jarvis/Mark-LV/uploads/
 
 community-apps/jarvis/Mark-LV/models/
-community-apps/jarvis/Mark-LV/voice-preview.wav
+community-apps/jarvis/Mark-LV/voice-preview*.wav

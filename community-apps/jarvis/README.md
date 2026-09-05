@@ -1,19 +1,19 @@
-# JARVIS Mark 55 — ChatGPT subscription + local British voice
+# JARVIS Mark 55 — ChatGPT subscription + local Scottish voice
 
-The Open Quake launcher now defaults to **Codex signed in with ChatGPT**, with an offline British voice and offline English speech recognition. No Gemini key, OpenAI API key or paid speech service is needed in this mode. Codex requests count against your plan's Codex allowance; this is not the ChatGPT Voice service.
+The Open Quake launcher now defaults to **Codex signed in with ChatGPT**, with an offline Scottish voice and offline English speech recognition. No Gemini key, OpenAI API key or paid speech service is needed in this mode. Codex requests count against your plan's Codex allowance; this is not the ChatGPT Voice service.
 
 ## Install and use
 
 1. Install Codex and sign in with ChatGPT. The launcher finds `codex` on PATH or the Windows Codex app's bundled executable. You can set `JARVIS_CODEX_EXE` to its absolute executable path.
 2. Import `community-apps/jarvis.zip` into Open Quake (or use this app folder).
-3. In the installed app folder, run `python install_mark55.py` with Python 3.11 or newer. It installs an isolated environment, Chromium, the British voice and offline speech-recognition model. Internet is needed for this initial download; subsequent speech processing is local. Re-run after moving the app, since virtual environments are not portable.
-4. In the JARVIS options choose **ChatGPT subscription (Codex + local British voice)**. Open the panel and use **Sign in with ChatGPT** if you are not already signed in. Set the same pairing PIN in the app options and local backend.
+3. In the installed app folder, run `python install_mark55.py` with Python 3.11 or newer. It installs an isolated environment, Chromium, the Scottish voice and offline speech-recognition model. Internet is needed for this initial download; subsequent speech processing is local. Re-run after moving the app, since virtual environments are not portable.
+4. In the JARVIS options choose **ChatGPT subscription (Codex + local Scottish voice)**. Open the panel and use **Sign in with ChatGPT** if you are not already signed in. Set the same pairing PIN in the app options and local backend.
 5. Hold **Ctrl+Space** on Windows to talk, or hold the Quake device knob. Release to send the utterance (maximum 30 seconds). Type commands in either chat box. The Orb toggles microphone mute; **Escape** in the desktop window stops speech and interrupts the current Codex turn.
-6. Use **Preview British voice** to hear the voice without making a Codex request. Desktop chat also accepts `/login`, `/preview`, and `/stop`.
+6. Use **Preview Scottish voice** to hear the voice without making a Codex request. Desktop chat also accepts `/login`, `/preview`, and `/stop`.
 
 ## Voice
 
-Piper's `en_GB-alan-medium` voice runs locally with a measured pace (`local_voice_pace: 1.06`) and a subtle pitch reduction (`local_voice_pitch: 0.98`). These values are in `Mark-LV/config/api_keys.json`. The generated voice is an original British assistant sound, not a clone of a film actor. Spoken replies omit code blocks and raw URLs while the panel retains the full text. The avatar follows the synthesized audio.
+Piper's `en_GB-vctk-medium` voice with Scottish male speaker `p237` (Fife) runs locally with a measured pace (`local_voice_pace: 1.06`) and a subtle pitch reduction (`local_voice_pitch: 0.98`). These values are in `Mark-LV/config/api_keys.json`. The generated voice uses a Scottish accent, not a clone of a film actor. Spoken replies omit code blocks and raw URLs while the panel retains the full text. The avatar follows the synthesized audio.
 
 Faster Whisper `base.en` performs CPU transcription locally. Only the resulting text goes to Codex. Push-to-talk avoids continuously listening and prevents the assistant from transcribing its own speech. Transcription defaults to English. The global hotkey integration uses Windows key-state polling; use the Quake knob for other platforms.
 
@@ -48,6 +48,6 @@ The ZIP uses an explicit source allowlist and excludes virtual environments, dow
 
 - [Codex app-server integration and ChatGPT sign-in](https://developers.openai.com/codex/app-server)
 - [Piper Python API](https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/API_PYTHON.md)
-- [British Alan model card](https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_GB/alan/medium/MODEL_CARD)
+- [VCTK model card](https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_GB/vctk/medium/MODEL_CARD)
 - [Faster Whisper](https://github.com/SYSTRAN/faster-whisper)
 - Supplied Mark LV source by FatihMakes: `Mark-LV/readme.md` and `Mark-LV/LICENSE`.
