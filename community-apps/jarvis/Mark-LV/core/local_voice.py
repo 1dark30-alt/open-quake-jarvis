@@ -8,7 +8,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 MODELS = ROOT / 'models'
-VOICE = 'en_GB-vctk-medium'
+VOICE = 'en_GB-alan-medium'
 SPEAKER = 'p237'  # Scottish male, Fife; resolve the model-specific numeric ID below.
 
 
@@ -20,7 +20,10 @@ def spoken_text(text):
 
 
 class LocalVoice:
-    def __init__(self, length_scale=1.06, pitch=1.08):
+    def __init__(self, length_scale=1.0, pitch=1.0, model_name=VOICE):
+        if model_name not in ('en_GB-alan-medium', 'en_GB-vctk-medium'):
+            raise ValueError('Unsupported local voice model')
+        self.model_name = model_name
         self.length_scale = max(.8, min(1.4, float(length_scale)))
         self.pitch = max(.9, min(1.1, float(pitch)))
         self.voice = None
@@ -33,12 +36,12 @@ class LocalVoice:
         from piper import PiperVoice, SynthesisConfig
         with self.lock:
             if self.voice is None:
-                model = MODELS / VOICE / (VOICE + '.onnx')
+                model = MODELS / self.model_name / (self.model_name + '.onnx')
                 if not model.exists():
-                    raise RuntimeError('Local Scottish voice is missing. Run install_mark55.py.')
+                    raise RuntimeError('Local voice is missing. Run install_mark55.py.')
                 metadata = json.loads(Path(str(model) + '.json').read_text(encoding='utf-8'))
                 self.speaker_id = metadata.get('speaker_id_map', {}).get(SPEAKER)
-                if self.speaker_id is None:
+                if self.model_name == 'en_GB-vctk-medium' and self.speaker_id is None:
                     raise RuntimeError('Scottish speaker is missing from the voice model. Re-run install_mark55.py.')
                 self.voice = PiperVoice.load(str(model))
             chunks = list(self.voice.synthesize(spoken_text(text), syn_config=SynthesisConfig(

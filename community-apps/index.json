@@ -91,8 +91,8 @@
     {
       "id": "jarvis",
       "name": "JARVIS Mark 55",
-      "description": "Mark 55 assistant with ChatGPT via Codex and local Scottish speech.",
-      "version": "1.1.0",
+      "description": "Mark 55 assistant with ChatGPT via Codex and local British speech.",
+      "version": "1.2.0",
       "zip": "jarvis.zip",
       "server": true
     },

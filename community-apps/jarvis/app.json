@@ -1,8 +1,8 @@
 {
   "id": "jarvis",
   "name": "JARVIS Mark 55",
-  "version": "1.1.0",
-  "description": "Mark 55 assistant with ChatGPT via Codex and local Scottish speech.",
+  "version": "1.2.0",
+  "description": "Mark 55 assistant with ChatGPT via Codex and local British speech.",
   "knob": true,
   "entry": "jarvisview.html",
   "served": true,
@@ -28,7 +28,7 @@
       "choices": [
         [
           "codex",
-          "ChatGPT subscription (Codex + local Scottish voice)"
+          "ChatGPT subscription (Codex + local British voice)"
         ],
         [
           "gemini-live",
