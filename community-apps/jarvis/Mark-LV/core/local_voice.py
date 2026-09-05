@@ -1,4 +1,4 @@
-"""Local Scottish speech and CPU transcription. Never calls a speech API."""
+"""Local Kokoro/Piper speech and CPU transcription. Never calls a speech API."""
 from pathlib import Path
 import re
 import json
@@ -8,7 +8,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 MODELS = ROOT / 'models'
-VOICE = 'en_GB-alan-medium'
+VOICE = 'kokoro-bm_george'
 SPEAKER = 'p237'  # Scottish male, Fife; resolve the model-specific numeric ID below.
 
 
@@ -21,7 +21,7 @@ def spoken_text(text):
 
 class LocalVoice:
     def __init__(self, length_scale=1.0, pitch=1.0, model_name=VOICE):
-        if model_name not in ('en_GB-alan-medium', 'en_GB-vctk-medium'):
+        if model_name not in ('kokoro-bm_george', 'kokoro-bm_daniel', 'en_GB-alan-medium', 'en_GB-vctk-medium'):
             raise ValueError('Unsupported local voice model')
         self.model_name = model_name
         self.length_scale = max(.8, min(1.4, float(length_scale)))
@@ -33,6 +33,8 @@ class LocalVoice:
         self.cancelled = threading.Event()
 
     def synthesize(self, text):
+        if self.model_name.startswith('kokoro-'):
+            return self._kokoro(text)
         from piper import PiperVoice, SynthesisConfig
         with self.lock:
             if self.voice is None:
@@ -50,6 +52,22 @@ class LocalVoice:
                 return np.zeros(0, dtype=np.int16), 22050
             samples = np.concatenate([np.frombuffer(c.audio_int16_bytes, dtype=np.int16) for c in chunks])
             return samples, round(chunks[0].sample_rate * self.pitch)
+
+    def _kokoro(self, text):
+        from kokoro_onnx import Kokoro
+        with self.lock:
+            if self.voice is None:
+                model = MODELS / 'kokoro' / 'kokoro-v1.0.onnx'
+                voices = MODELS / 'kokoro' / 'voices-v1.0.bin'
+                if not model.exists() or not voices.exists():
+                    raise RuntimeError('Kokoro models are missing. Run install_mark55.py.')
+                self.voice = Kokoro(str(model), str(voices))
+            text = spoken_text(text)
+            if not text:
+                return np.zeros(0, dtype=np.int16), 24000
+            samples, rate = self.voice.create(text, voice=self.model_name.removeprefix('kokoro-'),
+                                             speed=1 / self.length_scale, lang='en-gb')
+            return (np.clip(samples, -1, 1) * 32767).astype(np.int16), round(rate * self.pitch)
 
     def save(self, text, destination):
         samples, rate = self.synthesize(text)
@@ -104,9 +122,20 @@ def install_models():
     import subprocess
     import sys
     from faster_whisper.utils import download_model
-    directory = MODELS / VOICE
+    import urllib.request
+    directory = MODELS / 'kokoro'
     directory.mkdir(parents=True, exist_ok=True)
-    subprocess.run([sys.executable, '-m', 'piper.download_voices', '--download-dir', str(directory), VOICE], check=True)
+    for name in ('kokoro-v1.0.onnx', 'voices-v1.0.bin'):
+        target = directory / name
+        if not target.exists():
+            temporary = target.with_suffix('.download')
+            release = 'model-files-v1.0' if name.endswith('.onnx') else 'model-files-v1.1'
+            urllib.request.urlretrieve('https://github.com/thewh1teagle/kokoro-onnx/releases/download/' + release + '/' + name, temporary)
+            temporary.replace(target)
+    # Retain Alan as an explicitly selectable alternative.
+    directory = MODELS / 'en_GB-alan-medium'
+    directory.mkdir(parents=True, exist_ok=True)
+    subprocess.run([sys.executable, '-m', 'piper.download_voices', '--download-dir', str(directory), 'en_GB-alan-medium'], check=True)
     download_model('base.en', output_dir=str(MODELS / 'whisper-base.en'))
 
 if __name__ == '__main__':

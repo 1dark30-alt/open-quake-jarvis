@@ -4,7 +4,7 @@ The Open Quake launcher now defaults to **Codex signed in with ChatGPT**, with a
 
 ## Install and use
 
-This fork includes Open Quake 0.8.4 (upstream main at `8f62ce1203bcb515d076fbc536fe34dcdca3d1e8`). The Jarvis drop-in is version 1.2.0 and retains the Mark 55 backend and voice settings. Import the updated ZIP when upgrading an existing installed copy.
+This fork includes Open Quake 0.8.4 (upstream main at `8f62ce1203bcb515d076fbc536fe34dcdca3d1e8`). The Jarvis drop-in is version 1.3.0 and retains the Mark 55 backend and voice settings. Import the updated ZIP when upgrading an existing installed copy.
 
 1. Install Codex and sign in with ChatGPT. The launcher finds `codex` on PATH or the Windows Codex app's bundled executable. You can set `JARVIS_CODEX_EXE` to its absolute executable path.
 2. Import `community-apps/jarvis.zip` into Open Quake (or use this app folder).
@@ -15,7 +15,7 @@ This fork includes Open Quake 0.8.4 (upstream main at `8f62ce1203bcb515d076fbc53
 
 ## Voice
 
-Piper's `en_GB-alan-medium` British male voice runs locally at natural pace and pitch (`local_voice_options: {"pace": 1.0, "pitch": 1.0}`). The voice options override legacy launcher pitch settings. Select the model with `local_voice_model` in `Mark-LV/config/api_keys.json`; `en_GB-vctk-medium` retains the previous Scottish voice if its model is installed. Spoken replies omit code blocks and raw URLs; the avatar follows the audio.
+Kokoro's British male **George** voice is the default (`local_voice_model: kokoro-bm_george`). Speech runs locally with `kokoro-onnx`, at natural pitch. `local_voice_options` controls pace and pitch and overrides legacy launcher settings. You can also choose `kokoro-bm_daniel`, or the installed Piper alternatives `en_GB-alan-medium` and `en_GB-vctk-medium`. Model files are downloaded by the installer, never during speech generation. Kokoro weights use Apache 2.0; the ONNX runner uses MIT. See [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) and [the ONNX runner](https://github.com/thewh1teagle/kokoro-onnx).
 
 Faster Whisper `base.en` performs CPU transcription locally. Only the resulting text goes to Codex. Push-to-talk records only while held. Wake-word mode monitors locally and suppresses input during speech playback. Transcription defaults to English. The global hotkey integration uses Windows key-state polling; use the Quake knob for other platforms.
 

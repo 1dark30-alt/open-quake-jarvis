@@ -59,6 +59,20 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(response['result']['success'])
 
 class VoiceTests(unittest.TestCase):
+    def test_kokoro_converts_float_audio_and_uses_british_voice(self):
+        voice = LocalVoice(model_name='kokoro-bm_george', length_scale=1.25)
+        voice.voice = Mock()
+        voice.voice.create.return_value = (np.array([-2., 0., 2.], dtype=np.float32), 24000)
+        samples, rate = voice.synthesize('**Ready.**')
+        self.assertEqual(samples.tolist(), [-32767, 0, 32767])
+        self.assertEqual(rate, 24000)
+        voice.voice.create.assert_called_once_with('Ready.', voice='bm_george', speed=.8, lang='en-gb')
+
+    def test_missing_kokoro_model_reports_install_without_downloading(self):
+        with patch('core.local_voice.MODELS', Path('missing-test-model-directory')):
+            with self.assertRaisesRegex(RuntimeError, 'Run install_mark55.py'):
+                LocalVoice().synthesize('Hello')
+
     def test_silence_never_loads_a_model_or_creates_text(self):
         recognizer = LocalTranscriber()
         self.assertEqual(recognizer.transcribe(np.zeros(16000, dtype=np.float32)), '')

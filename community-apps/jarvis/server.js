@@ -31,7 +31,7 @@ async function start(options) {
     config.os_system = process.platform;
     config.local_voice_pace ??= 1.0;
     config.local_voice_pitch ??= 1.0;
-    config.local_voice_model ??= 'en_GB-alan-medium';
+    config.local_voice_model ??= 'kokoro-bm_george';
     config.push_to_talk_enabled = true;
     if (config.llm_provider !== 'codex' && !config.gemini_api_key) return { ok: false, error: 'Set your Gemini API key in JARVIS options.' };
     if (!config.quake_pin) config.quake_pin = 'QUAKE';

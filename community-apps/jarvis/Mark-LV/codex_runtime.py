@@ -48,7 +48,7 @@ class CodexRuntime:
         tuning = config.get('local_voice_options', {})
         self.voice = LocalVoice(tuning.get('pace', config.get('local_voice_pace', 1.0)),
                                 tuning.get('pitch', config.get('local_voice_pitch', 1.0)),
-                                config.get('local_voice_model', 'en_GB-alan-medium'))
+                                config.get('local_voice_model', 'kokoro-bm_george'))
         self.transcriber = LocalTranscriber()
         self.client = CodexClient(self.event, self.server_request)
         self.dashboard = QuakeDashboard()

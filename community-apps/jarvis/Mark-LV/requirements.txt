@@ -110,4 +110,5 @@ pynvml                       # system_monitor + the HUD's GPU meter (NVIDIA)
 
 # Local subscription-mode speech (no cloud speech API)
 piper-tts>=1.3,<2
+kokoro-onnx==0.4.7
 faster-whisper>=1.1,<2
