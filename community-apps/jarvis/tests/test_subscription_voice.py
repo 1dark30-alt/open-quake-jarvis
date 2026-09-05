@@ -59,6 +59,24 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(response['result']['success'])
 
 class VoiceTests(unittest.TestCase):
+    def test_xtts_uses_isolated_client_and_stop_closes_it(self):
+        voice = LocalVoice(model_name='xtts-v2')
+        client = Mock()
+        client.synthesize.return_value = (np.zeros(100, dtype=np.int16), 24000)
+        with patch('core.xtts_client.XttsClient', return_value=client), patch('sounddevice.stop'):
+            samples, rate = voice.synthesize('**Ready.**')
+            client.synthesize.assert_called_once_with('Ready.', 1.0)
+            self.assertEqual(rate, 24000)
+            voice.stop()
+            client.close.assert_called_once()
+
+    def test_xtts_reports_missing_optional_environment(self):
+        from core.xtts_client import XttsClient
+        client = XttsClient()
+        with patch('core.xtts_client.ROOT', Path('missing-xtts-test-folder')):
+            with self.assertRaisesRegex(RuntimeError, 'install_xtts.py'):
+                client.synthesize('Hello', 1.)
+
     def test_kokoro_converts_float_audio_and_uses_british_voice(self):
         voice = LocalVoice(model_name='kokoro-bm_george', length_scale=1.25)
         voice.voice = Mock()

@@ -4,7 +4,7 @@ The Open Quake launcher now defaults to **Codex signed in with ChatGPT**, with a
 
 ## Install and use
 
-This fork includes Open Quake 0.8.4 (upstream main at `8f62ce1203bcb515d076fbc536fe34dcdca3d1e8`). The Jarvis drop-in is version 1.3.0 and retains the Mark 55 backend and voice settings. Import the updated ZIP when upgrading an existing installed copy.
+This fork includes Open Quake 0.8.4 (upstream main at `8f62ce1203bcb515d076fbc536fe34dcdca3d1e8`). The Jarvis drop-in is version 1.4.0 and retains the Mark 55 backend and voice settings. Import the updated ZIP when upgrading an existing installed copy.
 
 1. Install Codex and sign in with ChatGPT. The launcher finds `codex` on PATH or the Windows Codex app's bundled executable. You can set `JARVIS_CODEX_EXE` to its absolute executable path.
 2. Import `community-apps/jarvis.zip` into Open Quake (or use this app folder).
@@ -57,3 +57,9 @@ The ZIP uses an explicit source allowlist and excludes virtual environments, dow
 ## Hey Jarvis wake word
 
 Enable **Settings → Wake Word** in the desktop Jarvis window. The first use downloads the local detector. Say **Hey Jarvis**, pause briefly for the “Awake” log, then speak your command. Recording ends after 1.2 seconds of silence, 8 seconds without speech, or 30 seconds total. Only the command is transcribed and its text sent to Codex. The detector runs locally and pauses when muted, speaking, processing a request, or using push-to-talk. **Wake Now** also starts one command; **Sleep Now** discards it. Select the correct input microphone in Settings. Room noise can affect detection and silence timing.
+
+## Optional XTTS v2 (Windows / NVIDIA)
+
+Run `python install_xtts.py` from this app folder, then set `local_voice_model` to `xtts-v2` in `Mark-LV/config/api_keys.json` and restart Jarvis. This creates a separate Python 3.12 environment under `models/xtts-env` with CUDA PyTorch and downloads the XTTS checkpoint. It uses the built-in Craig Gutsy speaker; no voice recording is required. The worker stays loaded between replies and exits on interruption or Jarvis shutdown. Cold loading takes longer than Kokoro. No speech API is used. Return to `kokoro-bm_george` to use Kokoro again.
+
+XTTS models and generated output are governed by the [Coqui Public Model License](https://huggingface.co/coqui/XTTS-v2/blob/main/LICENSE.txt), which permits non-commercial use. The optional models and Python environment are excluded from the ZIP.

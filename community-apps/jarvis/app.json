@@ -1,8 +1,8 @@
 {
   "id": "jarvis",
   "name": "JARVIS Mark 55",
-  "version": "1.3.0",
-  "description": "Mark 55 assistant with ChatGPT, local Kokoro speech and Hey Jarvis wake word.",
+  "version": "1.4.0",
+  "description": "Mark 55 assistant with ChatGPT, local Kokoro or optional XTTS speech, and Hey Jarvis.",
   "knob": true,
   "entry": "jarvisview.html",
   "served": true,

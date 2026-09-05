@@ -3,7 +3,7 @@ from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 root = Path(__file__).resolve().parent
 files = [root / name for name in ('app.json', 'jarvisview.html', 'jarvisview.js',
-    'server.js', 'start_jarvis.vbs', 'install_mark55.py', 'package_mark55.py', 'README.md')]
+    'server.js', 'start_jarvis.vbs', 'install_mark55.py', 'install_xtts.py', 'package_mark55.py', 'README.md')]
 files += [p for p in (root / 'assets').rglob('*') if p.is_file()]
 backend = root / 'Mark-LV'
 for folder in ('actions', 'core', 'dashboard', 'memory', 'plugins', 'config'):
