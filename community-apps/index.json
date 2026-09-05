@@ -92,7 +92,7 @@
       "id": "jarvis",
       "name": "JARVIS Mark 55",
       "description": "Mark 55 assistant with ChatGPT, local Kokoro or optional XTTS speech, and Hey Jarvis.",
-      "version": "1.5.0",
+      "version": "1.5.1",
       "zip": "jarvis.zip",
       "server": true
     },

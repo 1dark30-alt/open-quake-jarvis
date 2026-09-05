@@ -19,7 +19,9 @@ def main():
     subprocess.run([uv, 'pip', 'install', '--python', str(python), 'torch==2.8.0', 'torchaudio==2.8.0',
         '--index-url', 'https://download.pytorch.org/whl/cu128'], check=True)
     subprocess.run([uv, 'pip', 'install', '--python', str(python),
-        'coqui-tts>=0.27.4,<0.28', 'transformers<5'], check=True)
+        'coqui-tts>=0.27.4,<0.28', 'transformers<5', 'spacy>=3.8,<4'], check=True)
+    subprocess.run([str(python), '-c',
+        "from TTS.tts.layers.xtts.tokenizer import split_sentence; assert len(split_sentence('Sentence splitting must work for longer replies. ' * 10, 'en')) > 1"], check=True)
     code = "from huggingface_hub import snapshot_download; snapshot_download('coqui/XTTS-v2', local_dir='models/xtts-v2', allow_patterns=['config.json','model.pth','vocab.json','speakers_xtts.pth','LICENSE.txt'])"
     subprocess.run([str(python), '-c', code], cwd=root, check=True)
     print('XTTS installed. Select local_voice_model: xtts-v2 in config/api_keys.json and restart Jarvis.')

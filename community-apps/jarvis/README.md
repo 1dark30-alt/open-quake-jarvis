@@ -4,7 +4,7 @@ The Open Quake launcher now defaults to **Codex signed in with ChatGPT**, with a
 
 ## Install and use
 
-This fork includes Open Quake 0.8.4 (upstream main at `8f62ce1203bcb515d076fbc536fe34dcdca3d1e8`). The Jarvis drop-in is version 1.5.0 and retains the Mark 55 backend and voice settings. Import the updated ZIP when upgrading an existing installed copy.
+This fork includes Open Quake 0.8.4 (upstream main at `8f62ce1203bcb515d076fbc536fe34dcdca3d1e8`). The Jarvis drop-in is version 1.5.1 and retains the Mark 55 backend and voice settings. Import the updated ZIP when upgrading an existing installed copy.
 
 1. Install Codex and sign in with ChatGPT. The launcher finds `codex` on PATH or the Windows Codex app's bundled executable. You can set `JARVIS_CODEX_EXE` to its absolute executable path.
 2. Import `community-apps/jarvis.zip` into Open Quake (or use this app folder).
@@ -69,3 +69,5 @@ XTTS models and generated output are governed by the [Coqui Public Model License
 `local_voice_model: xtts-jarvis` uses up to four local `sample-*.wav` files under `Mark-LV/models/jarvis-reference`. XTTS caches their speaker conditioning while running. This profile needs the optional XTTS environment. It reports a missing-reference error if the clips are absent; choose `xtts-v2` for the built-in speaker.
 
 The personal prototype used rows 0–3 of [this community JARVIS dataset](https://huggingface.co/datasets/derekurban2001/jarvis-voice-samples). Its original recording provenance and licensing are not documented. It is a synthetic approximation, not an authenticated movie voice. The downloaded reference clips and provenance record stay local under the ignored models folder and are excluded from Git and the distributable ZIP. The installer does not download these clips. XTTS output remains subject to its non-commercial model license.
+
+XTTS setup includes spaCy for replies longer than 250 characters and verifies sentence splitting before completing installation. Existing installations can repair this dependency by rerunning `install_xtts.py`. No spaCy language-model download is required for English sentence splitting.
