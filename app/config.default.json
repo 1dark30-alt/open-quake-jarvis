@@ -1,5 +1,22 @@
 {
   "activeGridId": "default",
+  "settings": {
+    "discord": {
+      "enabled": true,
+      "applicationIdOverride": "",
+      "customVoiceScopes": false,
+      "customMessageScopes": false,
+      "customNotificationScopes": false,
+      "defaultView": "voice",
+      "autoReconnect": true,
+      "showUnavailable": true,
+      "richPresence": false
+    },
+    "github": {
+      "repository": "",
+      "branch": ""
+    }
+  },
   "grids": [
     {
       "id": "default",

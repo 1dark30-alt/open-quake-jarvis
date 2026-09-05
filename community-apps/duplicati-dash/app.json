@@ -1,0 +1,47 @@
+{
+  "id": "duplicati-dash",
+  "name": "Duplicati Dashboard",
+  "version": "1.0.2",
+  "description": "Backup status board for a Duplicati server — every job with a green/red result dot, live progress while running, and one tap to open the web UI on the PC.",
+  "entry": "index.html",
+  "served": true,
+  "server": "server.js",
+  "options": [
+    {
+      "key": "duplicatiUrl",
+      "label": "Duplicati URL",
+      "type": "text",
+      "default": "",
+      "serverOnly": true,
+      "help": "e.g. http://192.168.1.25:8200 — the Duplicati web UI address."
+    },
+    {
+      "key": "password",
+      "label": "Web UI password",
+      "type": "secret",
+      "default": "",
+      "serverOnly": true,
+      "help": "The Duplicati web interface password. Not needed if a pre-auth token is set below."
+    },
+    {
+      "key": "preAuthToken",
+      "label": "Pre-auth token (optional)",
+      "type": "secret",
+      "default": "",
+      "serverOnly": true,
+      "help": "Used instead of the password when set. Requires Duplicati started with --webservice-pre-auth-tokens=<token>."
+    },
+    {
+      "key": "refreshSeconds",
+      "label": "Refresh interval",
+      "type": "select",
+      "default": "30",
+      "choices": [
+        ["10", "10 seconds"],
+        ["30", "30 seconds"],
+        ["60", "60 seconds"]
+      ],
+      "help": "How often the dashboard polls Duplicati."
+    }
+  ]
+}

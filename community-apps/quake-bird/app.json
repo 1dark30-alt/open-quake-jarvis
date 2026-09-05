@@ -1,0 +1,24 @@
+{
+  "id": "quake-bird",
+  "name": "Quake Bird",
+  "version": "1.0.0",
+  "description": "A flappy-style arcade game with optional shared high scores.",
+  "entry": "bird.html",
+  "options": [
+    {
+      "key": "playerName",
+      "label": "Player initials (optional)",
+      "type": "text",
+      "default": "",
+      "maxLength": 3,
+      "help": "Overrides the initials entered in the game. 1-3 letters (A-Z); scores are recorded under them on the shared high-score server (arcade style: same initials = same player)."
+    },
+    {
+      "key": "serverUrl",
+      "label": "Server URL (advanced)",
+      "type": "text",
+      "default": "https://scores.doofenshmirtzevil.com",
+      "help": "Advanced: base URL of the shared score server. Clear it to play offline — your best then stays on this PC."
+    }
+  ]
+}

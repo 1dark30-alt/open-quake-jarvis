@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('openQuakePanel', {
   stopRotation() { ipcRenderer.send('stopRotation'); },
   gotoHome() { ipcRenderer.send('gotoHome'); },
   openExternal(url) { ipcRenderer.send('openExternal', url); },
+  setRingState(state) { ipcRenderer.send('ringState', state); },
   introDone() { ipcRenderer.send('introDone'); },
   saveTileValue(gridId, index, value) { ipcRenderer.send('saveTileValue', { gridId, index, value }); },
   onTheme(callback) { return on('theme', callback); },
@@ -28,4 +29,7 @@ contextBridge.exposeInMainWorld('openQuakePanel', {
   onIntro(callback) { return on('intro', callback); },
   onTouch(callback) { return on('touch', callback); },
   onKnob(callback) { return on('knob', callback); },
+  onMicToggle(callback) { return on('micToggle', callback); },
+  onReloadDashboard(callback) { return on('reloadDashboard', callback); },
+  onNotice(callback) { return on('notice', callback); },
 });

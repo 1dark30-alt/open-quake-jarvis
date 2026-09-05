@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pi-hole Dashboard</title>
+  <link rel="stylesheet" href="style.css?v=1.0.2">
+</head>
+<body>
+  <main class="shell">
+    <nav class="tabs" id="tabs" aria-label="Pi-hole servers"></nav>
+    <div class="body" id="body">
+      <section class="stats" id="stats" aria-label="Statistics"></section>
+      <section class="mid">
+        <div class="chart-box">
+          <header class="sec">Queries — last 24 hours</header>
+          <div class="chart" id="chart"></div>
+          <div class="legend"><span><s class="lg-total"></s>Total</span><span><s class="lg-blocked"></s>Blocked</span></div>
+        </div>
+        <div class="lists">
+          <div class="lst"><header class="sec">Top blocked</header><div id="top-blocked"></div></div>
+          <div class="lst"><header class="sec">Top clients</header><div id="top-clients"></div></div>
+        </div>
+      </section>
+      <aside class="side">
+        <button type="button" class="open-btn" id="open-web">Open Pi-hole web UI&nbsp;&nbsp;&#8599;</button>
+        <div class="blockcard">
+          <div class="bstate" id="bstate">&#8230;</div>
+          <div class="brow" id="brow"></div>
+        </div>
+        <div class="meta" id="meta"></div>
+      </aside>
+    </div>
+    <div class="down-overlay" id="down-overlay" hidden>
+      <div class="down-card" id="down-card"></div>
+    </div>
+  </main>
+  <script src="app.js?v=1.0.2"></script>
+</body>
+</html>

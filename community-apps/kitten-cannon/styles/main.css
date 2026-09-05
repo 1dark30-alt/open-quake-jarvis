@@ -1,0 +1,45 @@
+@font-face {
+    font-family: "Nicotine";
+    src: url("../assets/fonts/289_Nicotine\ Stains.woff2"), url("../assets/fonts/289_Nicotine\ Stains.woff");
+}
+body {
+    margin: 0px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    width: 100vw;
+    background-color: #000;
+    overflow: hidden;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+canvas {
+    width: 100vw;
+    height: auto;
+    display: none;
+    background: white;
+    background: linear-gradient(to bottom, skyblue, white);
+    z-index: 100;
+}
+
+body::before {
+    content: "Starting, please wait...";
+    color: #444;
+    font-family: "Nicotine";
+    text-align: center;
+    z-index: 0;
+    font-size: 65px;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.landscape {
+    transform-origin: 50% 50%;
+    transform: rotate(90deg);
+}

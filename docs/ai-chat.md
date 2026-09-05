@@ -6,6 +6,11 @@ server. Add it from the editor via
 **+ App → Open WebUI**. It's named for the provider so you can add other chat backends as
 their own apps later.
 
+> Looking for streaming replies, voice via the Wyoming pipeline, a live model picker, and
+> multi-turn memory? That's the newer **[AI Voice](ai-voice.md)** app (Open WebUI backend), built
+> on the agent-panel framework and configured once on **Settings → Auth**. This widget keeps its
+> own per-page endpoint fields for now; a future release may consolidate the two.
+
 ## Setup
 
 In the editor, open the **Open WebUI** app page and fill in three fields:

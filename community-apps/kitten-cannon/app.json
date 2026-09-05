@@ -1,0 +1,25 @@
+{
+  "id": "kitten-cannon",
+  "name": "Kitten Cannon",
+  "version": "1.0.0",
+  "description": "Launch the kitten for distance — a touch remake of the classic, with online high scores.",
+  "entry": "index.html",
+  "served": true,
+  "options": [
+    {
+      "key": "playerName",
+      "label": "Initials",
+      "type": "text",
+      "default": "AAA",
+      "maxLength": 3,
+      "help": "Your 3-letter arcade initials — scores are recorded under them on the shared high-score server (same initials = same player)."
+    },
+    {
+      "key": "serverUrl",
+      "label": "Server URL (advanced)",
+      "type": "text",
+      "default": "https://scores.doofenshmirtzevil.com",
+      "help": "Advanced: base URL of the kitten-cannon score server. Clear it to play offline — high scores then stay on this PC."
+    }
+  ]
+}

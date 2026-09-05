@@ -51,11 +51,19 @@ npm start
 > If `npm install` fails with `EBUSY … electron.exe`, a copy of the app is still
 > running — close it first, then retry.
 
-`npm start` / `npm run dist` also run `node build-smtc.js` first, which compiles two more
-native helpers (`native/smtc-art.cs` → album-art reader, `native/smtc-control.cs` → SMTC
-transport control) with the .NET Framework `csc.exe` — needs the Windows 10/11 SDK.
-It's idempotent (skips already-current builds) and best-effort: a missing/failed build
-just means no cover art at runtime, it won't block `npm start`.
+`npm start` / `npm run dist` also run `node build-smtc.js` first, which compiles the C#
+native helpers in `native/` (album art, SMTC transport + now-playing monitor, reserved
+display, mic session monitor, system volume, Outlook meeting info, foreground watcher)
+with the .NET Framework `csc.exe` — needs the Windows 10/11 SDK. It's idempotent (skips
+already-current builds) and best-effort: a missing/failed build means the dependent
+feature logs itself unavailable at runtime, it won't block `npm start`.
+
+These helpers exist deliberately: features that once shelled out to `powershell.exe`
+(now-playing, foreground-app tracking, window focus, volume reads) now use small signed
+persistent helpers instead, because repeated PowerShell process creation is flagged by
+endpoint-security tools as malware-like behavior. Keep it that way — new Windows
+integrations should be a `native/*.cs` helper (persistent + streaming if called
+repeatedly), not a PowerShell spawn.
 
 Building the natives on modern Windows needs Visual Studio 2022 Build Tools
 (Desktop C++ workload) and a Python with `distutils` (`pip install
@@ -109,10 +117,8 @@ app/                      the Electron launcher + PC grid editor     [MIT]
   index.html              the on-panel UI (grids + web dashboards)
   config.html             the PC editor (pages, tiles, icons)
   config.default.json     seed config (copied to config.json on first run)
-  sysmetrics.js           SystemView: live host metrics (systeminformation + GPU counters)
-  nowplaying.js           Music: now-playing from Windows SMTC (via PowerShell)
-  sysserver.js            localhost server for the served app pages (SystemView, Music, chat)
-  sysview.html            SystemView: the on-panel system-monitor dashboard
+  nowplaying.js           Music: now-playing from Windows SMTC (via smtc-monitor.exe)
+  sysserver.js            localhost server for the served app pages (Music, chat, meetings)
   musicview.html          Music: now-playing + transport + the embedded app grid
   chatview.html           Open WebUI chat wrapper + knob push-to-talk
   ChatWidget.js           bundled Open WebUI chat widget   [vendored, MIT]
@@ -121,5 +127,7 @@ apps/                     bundled local web apps + apps.json manifest [MIT]
 ```
 
 Secrets (dashboard/HA tokens, app secret options) are encrypted at rest via `secretStore.js`,
-which dispatches to a platform backend: raw Windows DPAPI (`dpapi.js`, per-value, no key file)
-on Windows, Electron `safeStorage` (Keychain-backed) elsewhere.
+which dispatches to a platform backend: an in-process, first-party raw Windows DPAPI Node-API
+binding (`dpapi.js`, per-value, current-user scope, no key file) on Windows, and Electron
+`safeStorage` (Keychain-backed) elsewhere. Run `npm run build:dpapi` to build that binding alone;
+`npm start`, `npm run rebuild`, and `npm run dist` build it automatically when stale.

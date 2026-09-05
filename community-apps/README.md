@@ -1,29 +1,97 @@
-# Community drop-in apps — downloads
+# Community drop-in apps — catalog
 
-Downloadable drop-in apps for open-quake. Grab an app's **`.zip`** below and import it with
-**Settings → Drop-In Apps → Add (import .zip)**.
+Install these straight from the panel: **Settings → Drop-In Apps → Browse…** lists every app in
+this folder and installs (and later updates) it in one tap. This folder is the default app
+repository; point the repository field at your own GitHub fork to install from there instead.
+
+> **Maintainers:** each app declares a `version` in its `app.json`. When you add an app or bump a
+> version, rebuild that app's `<id>.zip` **and** regenerate the catalog the panel reads:
+> `node tools/build-community-index.js` (writes `index.json`), then commit both. The in-panel
+> **Check for updates** button compares `index.json` against the installed version.
 
 For how to install or submit an app — and a safety note — see the docs:
 **[docs/community-apps.md](../docs/community-apps.md)**.
 
 ## Available apps
 
+- **[arr-dash](arr-dash)** — *arr media-stack dashboard: **Sonarr, Radarr, Lidarr,
+  SABnzbd, Youtarr, LidaTube** in one glance — merged download queue with progress,
+  health warnings, disk space, and the next 24 hours of releases. Tap a service to
+  focus on it (its queue + recent history) or open its web UI on the PC. Read-only;
+  API keys stay server-side.
+- **[duplicati-dash](duplicati-dash)** — backup status board for a **Duplicati** server:
+  every job with a green/red result dot, last run, sizes, versions, and next run;
+  live progress while a backup runs; failed jobs surface their error inline; one tap
+  opens the Duplicati web UI on the PC. Read-only.
+- **[file-bridge](file-bridge)** — scheduled file replicator that brings **local folders,
+  Google Drive, and subscription sites** into local folders. Change-only copying
+  (time/size/content), mirror deletions with Recycle Bin + safety guards, safe replace,
+  dated-backup tokens, live filter groups, per-run Pause/Resume, and a full progress +
+  results view. Google Drive jobs read through the **Drive API** (sees everything shared
+  with you) with optional Office export and Drive-for-Desktop-matched naming. Read-only
+  on the source; the Drive sign-in is the app's own (read-only scope).
+- **[dev-services](dev-services)** — compact local developer-services panel with four
+  touch-friendly cards per page, live port status, safe URL/folder actions, expected-process
+  mismatch warnings, and guarded process stopping on supported platforms.
+- **[azure](azure)** — touch-first Azure operations dashboard with configurable overview cards,
+  subscription health, resources, deployments, alerts, costs, and contextual App Service / VM
+  controls. Uses Microsoft Entra OAuth and an app-local server module.
+- **[azure-devops](azure-devops)** — project-focused Azure DevOps control panel for repositories,
+  pipelines and runs, pull requests, and work items. Uses Microsoft Entra OAuth with optional,
+  disabled-by-default pipeline run and cancel controls.
+- **[if-player](if-player)** — play Inform / Z-machine text adventures (Z-code and Glulx),
+  with the story **read aloud** through your TTS voice and **spoken commands** transcribed by
+  your STT — both picked up automatically from Settings → TTS/STT. Keyboard play works
+  normally; drop story files into the app's `stories/` folder. Bundles the
+  [Parchment](https://github.com/curiousdannii/parchment) interpreter (MIT).
 - **[jarvis](jarvis)** — JARVIS voice-assistant client: pairs with a JARVIS server over a
-  PIN, and talks to Gemini Live, Ollama, or an OpenAI-compatible endpoint. Download
-  [`jarvis.zip`](jarvis.zip) and import via **Settings → Drop-In Apps → Add**.
+  PIN, and talks to Gemini Live, Ollama, or an OpenAI-compatible endpoint.
+- **[kitten-cannon](kitten-cannon)** — a remake of the classic Kitten Cannon flash game,
+  ported for the panel with touch controls: drag or hold the arrow buttons to aim, tap
+  FIRE to launch, bounce off trampolines and TNT for distance. Optional shared
+  high-score server (configurable Server URL; works fully offline too) and a
+  persistent mute button.
+- **[music-assistant](music-assistant)** — full **Music Assistant** controller: now playing
+  with album art, transport and scrubbing, live queue (reorder, play-from-here, transfer),
+  player selection and grouping with per-member volume, and a library browser with search
+  on an on-screen keyboard. Talks to MA's WebSocket API directly for real-time updates;
+  the API token is stored encrypted. Knob = volume, press = play/pause.
 - **[news-spotlight](news-spotlight)** — full-screen rotating RSS feed reader. Defaults
   to BBC / Sky / The Verge / Ars Technica; configurable feeds, story duration, Ken
-  Burns motion, breaking-news mode, and an SSRF-safe proxy. Download
-  [`news-spotlight.zip`](news-spotlight.zip) and import via
-  **Settings → Drop-In Apps → Add**.
+  Burns motion, breaking-news mode, and an SSRF-safe proxy.
+- **[office](office)** — Microsoft 365 calendar, presence, app launcher, and configurable
+  desktop shortcuts. Its Microsoft sign-in belongs to this app and is managed from that app's
+  editor settings (with a panel fallback); no global Microsoft OAuth setting is required.
+- **[pihole-dash](pihole-dash)** — multi-server **Pi-hole** dashboard: up to four
+  Pi-holes as tabs on one pane — live stats, 24-hour query chart with blocked share,
+  top blocked/clients, pause/disable/enable blocking, and one-tap open of the web UI
+  on the PC. Pi-hole v6; passwords stay server-side.
+- **[quake-bird](quake-bird)** — a flappy-style arcade game: tap to flap, thread the pipe
+  gaps, chase your best score. Original canvas artwork; pipes follow your accent color and
+  the page theme. Optional shared high scores on the same score server as kitten-cannon
+  (player initials + configurable Server URL; fully playable offline).
+- **[deck-host](deck-host)** — run **Elgato Stream Deck plugins** on the panel: point it at a
+  folder of `*.sdPlugin` packages and it launches them against Elgato's documented plugin
+  protocol; the on-screen key grid shows each plugin's live images/titles, taps press keys,
+  and the knob cycles profiles. Keypad actions from native/Node plugins (no property
+  inspectors or dials yet). Plugins are real programs — only use ones you trust.
 - **[spotify-volume](spotify-volume)** — per-app Windows volume control for the knob (Spotify
   by default, configurable to any process). Uses a bundled native helper against the Core
   Audio session APIs — no admin, no Spotify login/Premium, no Web API. By **J Last**.
-  Download [`spotify-volume.zip`](spotify-volume.zip) and import via
-  **Settings → Drop-In Apps → Add**.
+- **[vlc-remote](vlc-remote)** — control a local or network VLC player: transport, seek,
+  volume, status, and playlist, via VLC's built-in web interface (enable it in VLC
+  Preferences → Main interfaces → Lua). By **Mark Hollingworth**.
 
 To add one, open a pull request — see
 [docs/community-apps.md](../docs/community-apps.md#submitting-one).
+
+## Shared high scores for your game
+
+Want online leaderboards in your community game? A free hosted score server is available
+to all community apps — kitten-cannon and quake-bird already use it, and you're welcome
+to as well. See **[SCORE-API.md](SCORE-API.md)** for the URL (use of it in community
+games is explicitly permitted), the game-slug and 3-letter-initials conventions, and the
+endpoint reference. Self-hosting instructions are linked there too.
 
 ## For developers
 

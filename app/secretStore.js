@@ -18,6 +18,11 @@
 //   settings:
 //     settings.spotify.refreshToken                   (NOT settings.spotify.clientId — clientId is public)
 //     settings.haAuth.token                           (NOT settings.haAuth.url — the URL is not sensitive)
+//     settings.owui.apiKey                            (NOT settings.owui.url/model — those are not secrets)
+//     settings.obs.password                            (NOT settings.obs.host/port — those are not secrets)
+//     settings.meeting.joplinToken                    (NOT settings.meeting.joplinUrl/joplinNotebook)
+//     settings.oauth.providers[*].clientSecret        (optional confidential OAuth clients)
+//     settings.oauth.tokens[*].accessToken / refreshToken
 const MARKER = 'oqenc:v1:';    // legacy: Electron safeStorage — still decrypted, never written on Windows
 const MARKER2 = 'oqenc:v2:';   // Windows: raw DPAPI per-value blobs (app/dpapi.js), no key file
 
@@ -32,18 +37,18 @@ function createSecretStore({ safeStorage, dpapi, loadApps, log = () => {} }) {
   }
 
   // Encrypt one value for at-rest storage. Idempotent (already-marked values pass through), and a
-  // no-op for non-strings / empty strings. Falls back to plaintext (caller logs) when unavailable.
+  // no-op for non-strings / empty strings. Encryption failure aborts the enclosing save.
   function encryptValue(plain) {
     if (typeof plain !== 'string' || plain === '') return plain;
     if (plain.startsWith(MARKER) || plain.startsWith(MARKER2)) return plain;   // already encrypted — don't double-wrap
     if (dp) {
       const blob = dp.protectOne(plain);
       if (blob) return MARKER2 + blob;
-      log('dpapi protect failed — storing plaintext (fallback)');
-      return plain;
+      throw new Error('Secret encryption failed');
     }
-    if (!available()) return plain;                          // fallback: store plaintext (logged by saveConfig path)
-    return MARKER + safeStorage.encryptString(plain).toString('base64');
+    if (!available()) throw new Error('Secret encryption is unavailable');
+    try { return MARKER + safeStorage.encryptString(plain).toString('base64'); }
+    catch (e) { throw new Error('Secret encryption failed'); }
   }
 
   // Decrypt one stored value. Plaintext (unmarked) values pass through unchanged — this is also the
@@ -54,12 +59,12 @@ function createSecretStore({ safeStorage, dpapi, loadApps, log = () => {} }) {
     if (stored.startsWith(MARKER2)) {
       if (!dp) return stored;                                // v2 blob on a non-Windows box: preserve as-is
       const plain = dp.unprotectOne(stored.slice(MARKER2.length));
-      if (plain === null) { log('secret decrypt failed (dpapi)'); return stored; }
+      if (plain === null) { log('secret decrypt failed (DPAPI could not unprotect a v2 blob) — re-enter the secret in the editor'); return stored; }
       return plain;
     }
     if (!stored.startsWith(MARKER)) return stored;
     try { return safeStorage.decryptString(Buffer.from(stored.slice(MARKER.length), 'base64')); }
-    catch (e) { log('secret decrypt failed: ' + e.message); return stored; }
+    catch (e) { log('skipping a legacy (v1) secret whose safeStorage key was rotated away — re-enter it in the editor to re-save it securely'); return stored; }
   }
 
   // The option keys an app declares as type:'secret' in apps.json (e.g. Open WebUI api_key).
@@ -90,7 +95,7 @@ function createSecretStore({ safeStorage, dpapi, loadApps, log = () => {} }) {
   }
 
   // Apply `fn` to exactly the secret fields under config.settings, in place (config is a clone supplied
-  // by the callers). Currently: settings.spotify.refreshToken and settings.haAuth.token (URL/clientId
+  // by the callers). See the header comment for the full field list (URL/clientId/model fields
   // stay plaintext — they aren't secrets).
   function transformSettingsSecrets(config, fn) {
     const sp = config && config.settings && config.settings.spotify;
@@ -100,6 +105,35 @@ function createSecretStore({ safeStorage, dpapi, loadApps, log = () => {} }) {
     const ha = config && config.settings && config.settings.haAuth;
     if (ha && typeof ha === 'object' && typeof ha.token === 'string' && ha.token !== '') {
       ha.token = fn(ha.token);
+    }
+    const ow = config && config.settings && config.settings.owui;
+    if (ow && typeof ow === 'object' && typeof ow.apiKey === 'string' && ow.apiKey !== '') {
+      ow.apiKey = fn(ow.apiKey);
+    }
+    const obs = config && config.settings && config.settings.obs;
+    if (obs && typeof obs === 'object' && typeof obs.password === 'string' && obs.password !== '') {
+      obs.password = fn(obs.password);
+    }
+    const me = config && config.settings && config.settings.meeting;
+    if (me && typeof me === 'object' && typeof me.joplinToken === 'string' && me.joplinToken !== '') {
+      me.joplinToken = fn(me.joplinToken);
+    }
+    const oauth = config && config.settings && config.settings.oauth;
+    if (oauth && typeof oauth === 'object') {
+      const providers = oauth.providers && typeof oauth.providers === 'object' ? oauth.providers : {};
+      Object.keys(providers).forEach(id => {
+        const p = providers[id];
+        if (p && typeof p === 'object' && typeof p.clientSecret === 'string' && p.clientSecret !== '') {
+          p.clientSecret = fn(p.clientSecret);
+        }
+      });
+      const tokens = oauth.tokens && typeof oauth.tokens === 'object' ? oauth.tokens : {};
+      Object.keys(tokens).forEach(id => {
+        const t = tokens[id];
+        if (!t || typeof t !== 'object') return;
+        if (typeof t.accessToken === 'string' && t.accessToken !== '') t.accessToken = fn(t.accessToken);
+        if (typeof t.refreshToken === 'string' && t.refreshToken !== '') t.refreshToken = fn(t.refreshToken);
+      });
     }
   }
 

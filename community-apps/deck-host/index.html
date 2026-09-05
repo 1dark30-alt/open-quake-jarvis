@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Stream Deck Host</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <aside id="left">
+    <button id="profilebtn" type="button" tabindex="-1"><span class="bl">Profile</span><span class="bv" id="profilename">Main</span></button>
+    <button id="editbtn" type="button" tabindex="-1"><span class="bl">Edit</span><span class="bv" id="editstate">Off</span></button>
+    <button id="pluginsbtn" type="button" tabindex="-1"><span class="bl"><span class="dot" id="hostdot"></span> Plugins</span><span class="bv" id="plugcount"></span></button>
+    <div id="toast" hidden></div>
+  </aside>
+
+  <main id="grid" aria-label="Deck keys"></main>
+
+  <div id="profilepane" hidden>
+    <div class="ov-head">
+      <span>Profiles</span>
+      <span class="ov-spacer"></span>
+      <button id="addprofile" type="button">+ Profile</button>
+      <button id="profileclose" type="button">Close</button>
+    </div>
+    <div id="profilelist" class="ov-body ov-list"></div>
+  </div>
+
+  <div id="assign" hidden>
+    <div class="ov-head">
+      <span id="assigntitle">Assign key</span>
+      <span class="ov-spacer"></span>
+      <button id="copybtn" type="button">Copy to…</button>
+      <button id="movebtn" type="button">Move…</button>
+      <button id="unassignbtn" class="danger" type="button">Clear key</button>
+      <button id="assignclose" type="button">Close</button>
+    </div>
+    <div class="ov-body">
+      <div id="actionlist" class="ov-col"></div>
+      <div class="ov-col">
+        <div class="ov-label">Key settings (JSON)</div>
+        <textarea id="settingsbox" spellcheck="false"></textarea>
+        <p class="ov-note">No keyboard on the panel? Edit keys from the PC: open this page in the open-quake editor.</p>
+        <button id="settingssave" type="button">Save settings</button>
+        <div id="assignmsg" class="ov-msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="pluginspane" hidden>
+    <div class="ov-head">
+      <span class="dot" id="panedot"></span>
+      <span id="hoststatus">Starting…</span>
+      <span class="ov-spacer"></span>
+      <button id="rescanbtn" type="button">Rescan folder</button>
+      <button id="pluginsclose" type="button">Close</button>
+    </div>
+    <div id="pluginlist" class="ov-body ov-list"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

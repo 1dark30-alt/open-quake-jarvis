@@ -14,6 +14,7 @@ Use this skill when creating or changing standalone drop-in apps in the open-qua
 - Keep `app.json.id` stable, lowercase, and unique. Prefer matching the folder name for new apps.
 - During migration, preserve an existing app id even if the folder name differs.
 - Do not edit host/runtime files for a normal app.
+- Do not add "Demo data" / mock-mode options — apps show real data or an honest empty/error state.
 - Treat changes to app discovery, serving, editor behavior, IPC, packaging, local server behavior, or build files as platform work, not app work.
 - Use relative asset URLs in HTML, such as `style.css` and `app.js`.
 
@@ -41,6 +42,8 @@ Minimal `app.json`:
 ```
 
 Use `"served": true` when the app needs `/app-proxy`, `/app-api`, `/apptiles`, `/launch`, or other same-origin local server features.
+
+Declare `"knob": true` (served apps) to receive the panel's rotary knob: define `window.oqKnob(ev)` on the page — events are `{type:'rotate',dir:±1}`, `{type:'press',index:1|2}`, `{type:'hold',phase:'start'|'end'}`; return `false` to decline an event back to the panel's default handling. Drive the knob LED ring with `console.log('OQX_RING::custom:{"hue":0-255,"sat":0-255,"effect":0-43,"speed":0-255}')` (or the named states / `idle`). See docs/drop-in-spec.md §5.4.
 
 # Repository Rules
 
@@ -112,6 +115,18 @@ Current proxy contract:
 - Use `GET /app-proxy/config` to read active app options, including server-only options.
 - Use `GET /app-proxy?url=<encoded-url>` to fetch an allowed upstream URL.
 
+Folder picker (host-mediated, opt-in — never add an app-specific host route for this):
+
+- Declare `"hostCapabilities": ["pick-folder"]` in `app.json` (served apps only; do NOT add it
+  to templates by default — only when the app genuinely needs a directory from the user).
+- `POST /app-host/pick-folder` with a JSON body `{ "defaultPath": "<absolute path, optional>" }`
+  opens a host-owned directory-only dialog and resolves to `{ok:true,path}` on selection,
+  `{ok:false,canceled:true}` on cancel, `409 {code:'busy'}` while one is already open, and
+  `503 {code:'unavailable'}` when the host can't show one — degrade to a typed path field.
+- The page gets only the user's explicit selection; relative defaults are ignored, paths never
+  go in URLs or logs, and the app gains no dialog/filesystem authority. See
+  `docs/drop-in-spec.md` §5.6.
+
 For app-local server code, declare `"server": "server.js"` and export `handle(action, context)`.
 
 ```js
@@ -128,6 +143,56 @@ module.exports = { handle };
 The active app can call `GET /app-api/<action>`. Keep integration-specific server code inside the app folder.
 
 Avoid adding routes named for a single integration, such as `/api/qnap/...`, unless the user asks for a built-in one-off integration.
+
+### Interactive editor management surface
+
+A served app that manages app-owned state MAY expose its own desktop management UI without
+adding app-specific code to the host editor:
+
+```json
+"editor": { "entry": "index.html", "label": "Manage jobs" }
+```
+
+The editor entry MUST be a contained relative path and is loaded with `_surface=editor`, theme
+parameters, and non-secret app options. Reusing the panel entry is encouraged when it can switch
+to a responsive desktop layout. The iframe has scripts, forms, and its app origin, but no preload,
+Node, raw IPC, or parent-editor access. Persist app-owned changes through `/app-api/*`; those
+changes take effect immediately and are outside the host editor's **Save & apply** transaction.
+Use `/app-host/*` only for generic host capabilities explicitly declared by the app.
+
+### OAuth (per-app)
+
+A served app can integrate with one OAuth 2.0 + PKCE provider. Declare it in `app.json`. A shipped public client may put its non-secret `clientId` in the OAuth block; otherwise the user supplies client credentials via app options:
+
+```json
+"oauth": { "name": "Spotify", "clientId": "public-client-id",
+  "authUrl": "https://accounts.spotify.com/authorize",
+  "tokenUrl": "https://accounts.spotify.com/api/token", "scopes": ["playlist-read-private"] },
+"options": [
+  { "key": "oauthClientId", "label": "Client ID", "type": "text" },
+  { "key": "oauthClientSecret", "label": "Client secret", "type": "secret" }
+]
+```
+
+The provider registers as `app:<your-app-id>`; the redirect URI is always `http://localhost:5173/oauth/callback` (register that with the provider). The editor renders an account panel for the app (one collapsed line when healthy, full controls otherwise); if your app ships its OWN complete connect/disconnect UI, add `"selfManaged": true` to the `oauth` block to suppress the editor panel — your app then owns first-connect AND recovery, including disconnect. `handle()` receives `context.oauth`, already scoped to your app — you cannot reach another app's or a built-in provider:
+
+```js
+async function handle(action, context) {
+  const o = context.oauth, opt = context.options;
+  if (action === 'auth-status') return o.status();                       // { connected, configured, scopes }
+  if (action === 'connect') return o.connect(['playlist-read-private'],  // opens the browser to sign in
+    opt.oauthClientId ? { clientId: opt.oauthClientId, clientSecret: opt.oauthClientSecret } : undefined);
+  if (action === 'disconnect') return o.disconnect();
+  if (action === 'my-playlists') {                                       // use the token HERE, in main:
+    const t = await o.getAccessToken();                                 // { accessToken, ... } or null
+    if (!t) return { ok: false, error: 'not connected' };
+    const r = await fetch('https://api.spotify.com/v1/me/playlists', { headers: { Authorization: 'Bearer ' + t.accessToken } });
+    return { ok: true, playlists: await r.json() };                     // return RESULTS to the page, not the token
+  }
+}
+```
+
+`getAccessToken()` auto-refreshes. **Never return the token to your page** — make the API call in `server.js` and hand back only the data. Tokens/secrets are stored encrypted by the host.
 
 ## Platform Work
 

@@ -1,6 +1,8 @@
 {
   "id": "spotify-volume",
   "name": "Spotify Volume",
+  "version": "1.0.0",
+  "description": "Per-app Windows volume control for the knob (Spotify by default, configurable to any process).",
   "entry": "index.html",
   "served": true,
   "server": "server.js",

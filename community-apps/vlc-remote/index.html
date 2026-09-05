@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VLC Control Deck</title>
+  <link rel="stylesheet" href="style.css?v=1.0.6">
+</head>
+<body>
+  <main class="shell">
+    <section class="deck">
+      <section class="now-panel" aria-labelledby="track-title">
+        <header class="app-identity">
+          <div class="brand-mark" aria-hidden="true">VLC</div>
+          <div>
+            <span class="app-kicker">VLC Desktop Remote</span>
+            <p>Media player control</p>
+          </div>
+        </header>
+
+        <div class="now-copy">
+          <span class="eyebrow">Now playing</span>
+          <h1 id="track-title">Connecting to VLC</h1>
+          <p id="track-meta" aria-live="polite">Checking the VLC web interface</p>
+        </div>
+
+        <div class="progress-console">
+          <div class="progress-track" id="progress-track" role="progressbar" aria-label="Playback progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <i id="progress-fill"></i>
+          </div>
+          <div class="time-row">
+            <span id="elapsed">0:00</span>
+            <span id="duration">0:00</span>
+          </div>
+        </div>
+
+        <footer class="now-footer">
+          <div class="status-pill loading" id="status-pill" role="status">
+            <span class="dot" aria-hidden="true"></span>
+            <span id="status-text">Connecting</span>
+          </div>
+          <time class="deck-clock" id="deck-clock">--:--</time>
+        </footer>
+      </section>
+
+      <section class="control-panel" aria-labelledby="playback-heading">
+        <header class="section-heading">
+          <span>Primary controls</span>
+          <h2 id="playback-heading">Playback</h2>
+        </header>
+
+        <div class="transport-grid" id="transport-grid" aria-busy="false">
+          <button class="control" type="button" data-command="pl_previous" aria-label="Previous item">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 20 9 12l10-8v16Z"></path><path d="M5 19V5"></path></svg>
+            <span>Previous</span>
+          </button>
+          <button class="control primary" id="play-toggle" type="button" data-command="pl_pause" aria-label="Play">
+            <svg class="icon play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z"></path></svg>
+            <svg class="icon pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"></path></svg>
+            <span id="play-label">Play</span>
+          </button>
+          <button class="control" type="button" data-command="pl_next" aria-label="Next item">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 4 10 8-10 8V4Z"></path><path d="M19 5v14"></path></svg>
+            <span>Next</span>
+          </button>
+
+          <button class="control seek" type="button" data-command="seek" data-val="-60" aria-label="Back 60 seconds">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 3-6.2"></path><path d="M4 4v6h6"></path></svg>
+            <strong>-60 s</strong><span>Back</span>
+          </button>
+          <button class="control seek" type="button" data-command="seek" data-val="-10" aria-label="Back 10 seconds">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 3-6.2"></path><path d="M4 4v6h6"></path></svg>
+            <strong>-10 s</strong><span>Back</span>
+          </button>
+          <button class="control seek" type="button" data-command="seek" data-val="+10" aria-label="Forward 10 seconds">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-3-6.2"></path><path d="M20 4v6h-6"></path></svg>
+            <strong>+10 s</strong><span>Forward</span>
+          </button>
+          <button class="control seek" type="button" data-command="seek" data-val="+60" aria-label="Forward 60 seconds">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-3-6.2"></path><path d="M20 4v6h-6"></path></svg>
+            <strong>+60 s</strong><span>Forward</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="secondary-panel" aria-label="Secondary controls">
+        <section class="control-group" aria-labelledby="volume-heading">
+          <header class="section-heading compact">
+            <span>Output</span>
+            <h2 id="volume-heading">Volume</h2>
+          </header>
+          <div class="volume-grid">
+            <button class="control" type="button" data-command="volume" data-val="-16" aria-label="Volume down">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"></path><path d="M16 12h5"></path></svg>
+              <span>Down</span>
+            </button>
+            <div class="volume-readout" role="status" aria-label="Current volume">
+              <strong id="volume-label">--%</strong>
+              <span>Current</span>
+            </div>
+            <button class="control" type="button" data-command="volume" data-val="+16" aria-label="Volume up">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"></path><path d="M16 12h5M18.5 9.5v5"></path></svg>
+              <span>Up</span>
+            </button>
+            <button class="control mute" type="button" data-command="volume" data-val="0" aria-label="Set volume to zero">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"></path><path d="m16 9 5 6M21 9l-5 6"></path></svg>
+              <span>Volume zero</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="control-group" aria-labelledby="actions-heading">
+          <header class="section-heading compact">
+            <span>Secondary</span>
+            <h2 id="actions-heading">Actions</h2>
+          </header>
+          <div class="action-grid">
+            <button class="control" type="button" data-command="pl_stop" aria-label="Stop playback">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"></path></svg>
+              <span>Stop</span>
+            </button>
+            <button class="control" id="playlist-open" type="button" aria-label="Open playlist" aria-controls="playlist-page" aria-expanded="false">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"></path></svg>
+              <span>Playlist</span>
+            </button>
+            <button class="control" id="refresh-button" type="button" aria-label="Refresh VLC status">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5"></path><path d="M4 17v-5h5"></path><path d="M6.1 8a7 7 0 0 1 11.5-1L20 12M4 12l2.4 5a7 7 0 0 0 11.5-1"></path></svg>
+              <span>Refresh</span>
+            </button>
+          </div>
+        </section>
+      </section>
+    </section>
+
+    <button class="drawer-backdrop" id="drawer-backdrop" type="button" aria-label="Close playlist" hidden></button>
+
+    <aside class="playlist-page" id="playlist-page" role="dialog" aria-modal="true" aria-labelledby="playlist-heading" aria-hidden="true" inert>
+      <div class="playlist-head">
+        <div>
+          <span class="eyebrow">VLC queue</span>
+          <h2 id="playlist-heading">Playlist</h2>
+        </div>
+        <button class="icon-button" id="playlist-close" type="button" aria-label="Close playlist">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+        </button>
+      </div>
+      <label class="playlist-search">
+        <span class="sr-only">Search playlist</span>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
+        <input id="playlist-search" type="search" autocomplete="off" placeholder="Search playlist">
+      </label>
+      <div class="playlist" id="playlist"></div>
+      <footer class="playlist-footer">
+        <span id="playlist-summary">0 items</span>
+        <button id="playlist-clear" type="button">Clear playlist</button>
+      </footer>
+    </aside>
+  </main>
+
+  <script src="app.js?v=1.0.6"></script>
+</body>
+</html>

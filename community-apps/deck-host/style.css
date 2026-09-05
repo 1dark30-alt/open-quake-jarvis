@@ -1,0 +1,106 @@
+/* Stream Deck Host — 1920x480 panel page. Buttons-first: one slim rail of three buttons, and the
+   rest of the panel is deck keys on a hardware-style bezel plate (so a deck region beside quake
+   tiles — the per-page Buttons strip — is unmistakably a different device). Text a user acts on
+   ≥16px, touch targets ≥48px, spacing on the 8/16/24/32 scale. Theme via the URL (_dark/_accent). */
+:root {
+  --bg: #0d1220; --panel: #131a2c; --panel2: #1a2338;
+  --text: #f2f5ff; --muted: #a7b1cf; --faint: #7c88a6;
+  --accent: #7CFFB2;
+  --ok: #2ee889; --warning: #f0b84b; --danger: #ed4245;
+  --line: rgba(120, 145, 222, .22);
+  --r: 14px;
+  --plate: #08090c;          /* the deck's hardware-black bezel plate — deliberately NOT the app panel color */
+  --keyface: #17181c;
+}
+body.light {
+  --bg: #eef2f9; --panel: #ffffff; --panel2: #f4f7fc;
+  --text: #141c2e; --muted: #45526c; --faint: #66748f;
+  --ok: #0e9d58; --warning: #a9760c; --danger: #d5333b;
+  --line: rgba(40, 64, 116, .28);
+  /* the plate stays hardware-black even in light theme — it IS the device */
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body { background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, sans-serif; touch-action: manipulation; user-select: none;
+  display: flex; gap: 16px; padding: 16px; }
+body.lost #grid { opacity: .35; }
+
+button { font: inherit; font-size: 18px; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; touch-action: manipulation; min-height: 48px; padding: 0 16px; }
+button:active { border-color: var(--accent); }
+button:focus:not(:focus-visible) { outline: none; }
+button.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+button.on { border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel2)); }
+button .grow, .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* the rail: three buttons, nothing else */
+#left { flex: 0 0 200px; display: flex; flex-direction: column; gap: 16px; }
+#left > button { min-height: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 8px; }
+#left .bl { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+#left .bv { font-size: 15px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 12px; height: 12px; border-radius: 50%; background: var(--faint); flex: none; display: inline-block; }
+.dot.ok { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+.dot.warn { background: var(--warning); }
+.dot.bad { background: var(--danger); }
+#toast { margin-top: auto; font-size: 16px; line-height: 1.35; color: var(--muted); padding: 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r); }
+#toast.bad { color: var(--danger); border-color: var(--danger); }
+
+/* the deck: square keys on a hardware-black plate (visibly a device, not more app UI) */
+#grid { flex: 1; min-width: 0; display: grid; gap: 8px; justify-content: center; align-content: center;
+  background: var(--plate); border-radius: 24px; border: 1px solid #000;
+  box-shadow: inset 0 2px 12px rgba(0, 0, 0, .8), inset 0 -1px 0 rgba(255, 255, 255, .04); padding: 16px; }
+.key { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; overflow: hidden;
+  background: var(--keyface); border: 1px solid #26272c; border-radius: 12px; cursor: pointer; touch-action: manipulation; padding: 4px;
+  color: #f2f5ff; box-shadow: 0 2px 4px rgba(0, 0, 0, .6); }
+.key:active, .key.pressed { border-color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent), inset 0 1px 6px rgba(0, 0, 0, .7); transform: translateY(1px); }
+.key.has-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.key.has-img .kt { position: absolute; left: 4px; right: 4px; bottom: 6px; -webkit-line-clamp: 2;
+  font-size: max(16px, calc(var(--kt, 28px) * .62));   /* titles OVER an image face render smaller, like the hardware */
+  color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .95), 0 0 8px rgba(0, 0, 0, .7); }
+.key .kt { font-size: var(--kt, 28px); font-weight: 700; line-height: 1.2; max-width: 100%; text-align: center; white-space: pre-line;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; pointer-events: none; }
+.key .kt.missing { position: absolute; top: 4px; left: 4px; right: 4px; bottom: auto; font-size: 14px; color: var(--danger); text-shadow: none; }
+.key.empty { background: transparent; border: 1px dashed #2c2d33; box-shadow: none; }
+.key.empty .kt { color: #4a4c55; font-weight: 500; }
+.key.movetarget { border: 2px dashed var(--accent); }
+.key.dead { opacity: .4; }
+.key.okflash { border: 3px solid var(--ok); box-shadow: inset 0 0 24px color-mix(in srgb, var(--ok) 35%, transparent); }
+.key.alertflash { border: 3px solid var(--danger); box-shadow: inset 0 0 24px color-mix(in srgb, var(--danger) 35%, transparent); }
+.bigempty { align-self: center; justify-self: center; max-width: 900px; font-size: 26px; line-height: 1.5; color: #8b8e99;
+  text-align: center; white-space: pre-line; }
+
+/* overlays — cover everything (real modality) */
+#assign, #pluginspane, #profilepane { position: fixed; inset: 16px; z-index: 20; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+#assign[hidden], #pluginspane[hidden], #profilepane[hidden] { display: none; }
+.ov-head { flex: none; display: flex; align-items: center; gap: 16px; padding: 8px 16px; border-bottom: 1px solid var(--line); font-size: 22px; font-weight: 750; }
+.ov-spacer { flex: 1; }
+.ov-body { flex: 1; min-height: 0; display: flex; gap: 16px; padding: 16px; }
+.ov-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.ov-list { flex-direction: column; overflow-y: auto; }
+.ov-label { font-size: 14px; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); font-weight: 700; }
+.ov-note { margin: 0; font-size: 16px; color: var(--faint); line-height: 1.4; }
+.ov-msg { font-size: 18px; color: var(--muted); min-height: 24px; }
+#settingsbox { flex: 1; min-height: 100px; resize: none; font: 17px/1.45 Consolas, monospace; color: var(--text);
+  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; }
+#hoststatus { min-width: 0; font-size: 18px; font-weight: 650; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.prof { flex: none; display: flex; gap: 8px; }
+.prof button { min-height: 64px; font-size: 22px; text-align: left; padding: 0 24px; }
+.prof button.danger { flex: 0 0 72px; text-align: center; padding: 0; font-size: 24px; }
+
+.act { flex: none; display: flex; align-items: center; gap: 16px; min-height: 56px; padding: 4px 16px; text-align: left;
+  font-size: 20px; font-weight: 650; background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r); }
+.act img { width: 36px; height: 36px; object-fit: contain; }
+.act .sub { font-size: 14px; color: var(--faint); font-weight: 500; }
+.act.arming { border: 2px solid var(--warning); }
+
+.plug { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 8px 16px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r); }
+.plughead { display: flex; align-items: center; gap: 16px; min-height: 48px; font-size: 20px; }
+.plug .st { flex: none; font-size: 14px; letter-spacing: .05em; text-transform: uppercase; font-weight: 750; color: var(--faint); }
+.plug .st.running { color: var(--ok); }
+.plug .st.crashed, .plug .st.unsupported { color: var(--danger); }
+.plug .st.starting { color: var(--warning); }
+.plugerr { font-size: 18px; line-height: 1.4; color: var(--danger); }
+.pluglog { font: 15px/1.4 Consolas, monospace; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk-empty { padding: 24px; font-size: 18px; color: var(--faint); line-height: 1.5; }

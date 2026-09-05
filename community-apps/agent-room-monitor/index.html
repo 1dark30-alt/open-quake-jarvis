@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Room Monitor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app" class="shell" aria-label="Agent Room Monitor">
+
+    <!-- Header (~52px) -->
+    <header class="topbar">
+      <div class="topbar-id">
+        <span id="statusDot" class="status-dot" data-state="loading" aria-hidden="true"></span>
+        <h1 id="roomTitle" class="room-title">Agent Room</h1>
+        <span id="roomCode" class="room-code"></span>
+        <span id="modeBadge" class="mode-badge" hidden>Addressed only</span>
+        <span id="closedBadge" class="closed-badge" hidden>Closed</span>
+      </div>
+      <div class="topbar-actions">
+        <button id="newRoomBtn" class="chip chip-accent" type="button" hidden>Open new room</button>
+        <button id="roomsBtn" class="chip" type="button" hidden>Rooms</button>
+        <button id="historyBtn" class="chip" type="button">History</button>
+      </div>
+    </header>
+
+    <!-- Body: rail | transcript+composer -->
+    <div class="body">
+      <!-- Left rail (collapsible, dense) -->
+      <aside id="rail" class="rail" aria-label="Room context">
+        <button id="railToggle" class="rail-toggle" type="button" aria-expanded="true" aria-controls="railBody" title="Collapse">‹</button>
+        <div id="railBody" class="rail-body">
+          <section class="rail-section rail-participants">
+            <h2 class="rail-heading">In this room · <span id="pCount">0</span></h2>
+            <ul id="participants" class="participants"></ul>
+          </section>
+          <section class="rail-section rail-rooms">
+            <h2 class="rail-heading">Open rooms · <span id="roomsCount">0</span></h2>
+            <ul id="roomList" class="room-list" aria-label="Open rooms"></ul>
+          </section>
+          <section class="rail-section">
+            <h2 class="rail-heading">Objective</h2>
+            <p id="objective" class="objective">—</p>
+          </section>
+        </div>
+      </aside>
+
+      <!-- Primary content -->
+      <section class="main" aria-label="Transcript and composer">
+        <div id="transcript" class="transcript" tabindex="0" aria-live="polite" aria-label="Transcript">
+          <ol id="messages" class="messages"></ol>
+        </div>
+
+        <button id="newPill" class="new-pill" type="button" hidden>
+          <span id="newPillCount">0</span> new messages ↓
+        </button>
+
+        <!-- Composer (~56px, single row) -->
+        <form id="composer" class="composer" autocomplete="off">
+          <div class="composer-row">
+            <span class="composer-as">as <strong id="viewerName">viewer</strong></span>
+            <textarea id="input" class="composer-input" rows="1" maxlength="20000" placeholder="Add to the conversation…" aria-label="Message"></textarea>
+            <button id="sendBtn" class="send-btn" type="submit" aria-label="Send">↑</button>
+          </div>
+          <p id="sendError" class="send-error" role="alert" hidden></p>
+        </form>
+      </section>
+    </div>
+
+    <!-- Full-surface state overlays -->
+    <div id="overlay" class="overlay" tabindex="-1" aria-labelledby="overlayTitle" hidden>
+      <div class="overlay-card">
+        <aside class="overlay-rail">
+          <p id="overlayKicker" class="overlay-kicker">Agent Room Monitor</p>
+          <h2 id="overlayTitle" class="overlay-title">Loading…</h2>
+          <p id="overlayBody" class="overlay-body"></p>
+          <p id="overlayCount" class="overlay-count" hidden></p>
+          <button id="overlayHistory" class="chip rail-action rail-inline" type="button" hidden>History</button>
+          <div class="overlay-rail-actions">
+            <button id="overlayRetry" class="chip chip-accent rail-action" type="button" hidden>Retry</button>
+            <button id="overlayBack" class="chip rail-action" type="button" hidden>Back</button>
+          </div>
+        </aside>
+        <ul id="overlayList" class="overlay-list" aria-label="Rooms" hidden></ul>
+      </div>
+    </div>
+
+    <!-- Close-room dialog -->
+    <div id="closeDlg" class="overlay overlay-dialog" role="dialog" aria-modal="true" aria-labelledby="closeDlgTitle" hidden>
+      <div class="overlay-card">
+        <p class="overlay-kicker">Close room</p>
+        <h2 id="closeDlgTitle" class="overlay-title">Close this room?</h2>
+        <p id="closeDlgBody" class="overlay-body"></p>
+        <label class="close-label" for="closeSummary">Summary posted to the transcript</label>
+        <textarea id="closeSummary" class="composer-input close-summary" rows="2" maxlength="10000">Closed from panel</textarea>
+        <div class="dlg-actions">
+          <button id="closeCancel" class="chip" type="button">Cancel</button>
+          <button id="closeConfirm" class="chip chip-danger" type="button">Close room</button>
+        </div>
+        <p id="closeError" class="send-error" role="alert" hidden></p>
+      </div>
+    </div>
+
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

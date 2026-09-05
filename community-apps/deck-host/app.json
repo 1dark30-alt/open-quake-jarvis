@@ -1,0 +1,27 @@
+{
+  "id": "deck-host",
+  "name": "Stream Deck Host",
+  "version": "1.4.0",
+  "description": "Run Elgato Stream Deck plugins and profiles on the panel — real *.sdPlugin packages, plus .streamDeckProfile imports with working Hotkey/Text/Open keys.",
+  "entry": "index.html",
+  "served": true,
+  "server": "server.js",
+  "knob": true,
+  "options": [
+    {
+      "key": "pluginsDir",
+      "label": "Plugins folder",
+      "type": "folder",
+      "default": "",
+      "help": "Folder on this PC holding your *.sdPlugin packages and any *.streamDeckProfile files to import (Profile button → Import). Plugins are real programs that run on your PC — only add plugins you trust."
+    },
+    {
+      "key": "rows",
+      "label": "Key size",
+      "type": "select",
+      "default": "3",
+      "choices": [["3", "3 keys high — more keys"], ["2", "2 keys high — jumbo keys"]],
+      "help": "Keys are square; how many columns fit is worked out from the screen automatically. Tip: enable the Buttons strip below to split the panel — open-quake tiles on one side, the deck on the other."
+    }
+  ]
+}

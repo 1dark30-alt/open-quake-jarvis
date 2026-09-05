@@ -47,12 +47,19 @@ class MultiKnob extends EventEmitter {
         this.emit('disconnect', info);
       });
       // Pass-through events. Aris68 emits 'touch' and 'key'; Bedrock never does.
-      ['knob', 'state', 'error', 'touch', 'key'].forEach(ev => impl.on(ev, x => this.emit(ev, x)));
+      ['knob', 'state', 'touch', 'key'].forEach(ev => impl.on(ev, x => this.emit(ev, x)));
+      impl.on('error', error => this.emit('error', this._connectorError(name, 'runtime', error)));
     }
   }
 
   // ---- lifecycle ----
-  start() { for (const c of this.connectors) c.impl.start(); return this; }
+  start() {
+    for (const c of this.connectors) {
+      try { c.impl.start(); }
+      catch (error) { this.emit('error', this._connectorError(c.name, 'start', error)); }
+    }
+    return this;
+  }
   stop()  { for (const c of this.connectors) c.impl.stop(); }
   activate() { return this._call('activate'); }
 
@@ -63,6 +70,15 @@ class MultiKnob extends EventEmitter {
     const target = (this.active && this.active.impl) || this.connectors[0].impl;
     const fn = target[name];
     return typeof fn === 'function' ? fn.apply(target, args) : false;
+  }
+
+  _connectorError(connector, phase, error) {
+    const detail = error && error.message ? error.message : String(error);
+    const wrapped = new Error(`${connector} ${phase} failed: ${detail}`);
+    wrapped.connector = connector;
+    wrapped.phase = phase;
+    wrapped.cause = error;
+    return wrapped;
   }
 
   // ---- panel / power (Aris68 only — Bedrock returns false harmlessly) ----
