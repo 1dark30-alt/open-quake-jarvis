@@ -59,6 +59,16 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(response['result']['success'])
 
 class VoiceTests(unittest.TestCase):
+    def test_jarvis_profile_selects_reference_conditioning(self):
+        voice = LocalVoice(model_name='xtts-jarvis')
+        client = Mock()
+        client.synthesize.return_value = (np.zeros(100, dtype=np.int16), 24000)
+        with patch('core.xtts_client.XttsClient', return_value=client) as factory, patch('sounddevice.stop'):
+            voice.synthesize('Ready.')
+            factory.assert_called_once_with(reference=True)
+            voice.stop()
+            client.close.assert_called_once()
+
     def test_xtts_uses_isolated_client_and_stop_closes_it(self):
         voice = LocalVoice(model_name='xtts-v2')
         client = Mock()

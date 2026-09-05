@@ -12,7 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class XttsClient:
-    def __init__(self):
+    def __init__(self, reference=False):
+        self.reference = reference
         self.process = None
         self.responses = None
         atexit.register(self.close)
@@ -49,7 +50,8 @@ class XttsClient:
             threading.Thread(target=self._read, args=(self.process, self.responses), daemon=True).start()
             self._receive(self.responses)
         process, responses = self.process, self.responses
-        process.stdin.write(json.dumps({'text': text, 'speaker': 'Craig Gutsy', 'speed': speed}) + '\n')
+        process.stdin.write(json.dumps({'text': text,
+            'speaker': '__jarvis_reference__' if self.reference else 'Craig Gutsy', 'speed': speed}) + '\n')
         process.stdin.flush()
         result = self._receive(responses)
         return np.frombuffer(base64.b64decode(result['pcm']), dtype='<i2').copy(), result['rate']

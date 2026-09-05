@@ -21,7 +21,7 @@ def spoken_text(text):
 
 class LocalVoice:
     def __init__(self, length_scale=1.0, pitch=1.0, model_name=VOICE):
-        if model_name not in ('xtts-v2', 'kokoro-bm_george', 'kokoro-bm_daniel', 'en_GB-alan-medium', 'en_GB-vctk-medium'):
+        if model_name not in ('xtts-v2', 'xtts-jarvis', 'kokoro-bm_george', 'kokoro-bm_daniel', 'en_GB-alan-medium', 'en_GB-vctk-medium'):
             raise ValueError('Unsupported local voice model')
         self.model_name = model_name
         self.length_scale = max(.8, min(1.4, float(length_scale)))
@@ -33,11 +33,11 @@ class LocalVoice:
         self.cancelled = threading.Event()
 
     def synthesize(self, text):
-        if self.model_name == 'xtts-v2':
+        if self.model_name.startswith('xtts-'):
             from core.xtts_client import XttsClient
             with self.lock:
                 if self.voice is None:
-                    self.voice = XttsClient()
+                    self.voice = XttsClient(reference=self.model_name == 'xtts-jarvis')
                 text = spoken_text(text)
                 if not text:
                     return np.zeros(0, dtype=np.int16), 24000
@@ -103,7 +103,7 @@ class LocalVoice:
 
     def stop(self):
         self.cancelled.set()
-        if self.model_name == 'xtts-v2' and self.voice is not None:
+        if self.model_name.startswith('xtts-') and self.voice is not None:
             self.voice.close()
         import sounddevice as sd
         sd.stop()

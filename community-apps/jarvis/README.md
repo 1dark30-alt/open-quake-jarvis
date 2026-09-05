@@ -4,7 +4,7 @@ The Open Quake launcher now defaults to **Codex signed in with ChatGPT**, with a
 
 ## Install and use
 
-This fork includes Open Quake 0.8.4 (upstream main at `8f62ce1203bcb515d076fbc536fe34dcdca3d1e8`). The Jarvis drop-in is version 1.4.0 and retains the Mark 55 backend and voice settings. Import the updated ZIP when upgrading an existing installed copy.
+This fork includes Open Quake 0.8.4 (upstream main at `8f62ce1203bcb515d076fbc536fe34dcdca3d1e8`). The Jarvis drop-in is version 1.5.0 and retains the Mark 55 backend and voice settings. Import the updated ZIP when upgrading an existing installed copy.
 
 1. Install Codex and sign in with ChatGPT. The launcher finds `codex` on PATH or the Windows Codex app's bundled executable. You can set `JARVIS_CODEX_EXE` to its absolute executable path.
 2. Import `community-apps/jarvis.zip` into Open Quake (or use this app folder).
@@ -63,3 +63,9 @@ Enable **Settings → Wake Word** in the desktop Jarvis window. The first use do
 Run `python install_xtts.py` from this app folder, then set `local_voice_model` to `xtts-v2` in `Mark-LV/config/api_keys.json` and restart Jarvis. This creates a separate Python 3.12 environment under `models/xtts-env` with CUDA PyTorch and downloads the XTTS checkpoint. It uses the built-in Craig Gutsy speaker; no voice recording is required. The worker stays loaded between replies and exits on interruption or Jarvis shutdown. Cold loading takes longer than Kokoro. No speech API is used. Return to `kokoro-bm_george` to use Kokoro again.
 
 XTTS models and generated output are governed by the [Coqui Public Model License](https://huggingface.co/coqui/XTTS-v2/blob/main/LICENSE.txt), which permits non-commercial use. The optional models and Python environment are excluded from the ZIP.
+
+## Local JARVIS-style reference profile
+
+`local_voice_model: xtts-jarvis` uses up to four local `sample-*.wav` files under `Mark-LV/models/jarvis-reference`. XTTS caches their speaker conditioning while running. This profile needs the optional XTTS environment. It reports a missing-reference error if the clips are absent; choose `xtts-v2` for the built-in speaker.
+
+The personal prototype used rows 0–3 of [this community JARVIS dataset](https://huggingface.co/datasets/derekurban2001/jarvis-voice-samples). Its original recording provenance and licensing are not documented. It is a synthetic approximation, not an authenticated movie voice. The downloaded reference clips and provenance record stay local under the ignored models folder and are excluded from Git and the distributable ZIP. The installer does not download these clips. XTTS output remains subject to its non-commercial model license.
